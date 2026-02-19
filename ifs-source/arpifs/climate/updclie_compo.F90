@@ -1,0 +1,596 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE UPDCLIE_COMPO(YDGEOMETRY,YDDYNA,YDSURF,YDCOMPO,YDMCC,YDERAD,YDML_GCONF,PTSTEP)
+
+!**** *UPDCLIE_COMPO*
+
+!     PURPOSE.
+!     --------
+
+!     Updates the iemission and dry depostion fields for composition every 24 h  
+!     (ECMWF version, distributed or shared memory)
+
+!**   INTERFACE.
+!     ----------
+
+!     CALL UPDCLIE_COMPO(...)
+
+!        Explicit arguments :
+!        --------------------
+!        PTSTEP: TIME STEP
+
+!     METHOD.
+!     -------
+
+!     Reads the time-varying fields ifor composition (chem and aerosol) 
+!     only).  No time interpolation, the most recent fields are used.
+
+!     EXTERNALS.
+!     ----------
+
+!     UPDCAL
+
+!     AUTHORS.
+!     --------
+!       J Flemming (ECMWF) Nov 2013.  (based on routine UPDCLI)
+
+!     MODIFICATIONS.
+!     --------------
+!     ------------------------------------------------------------------
+
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE PARKIND1 , ONLY : JPIM, JPRB, JPRD
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOERAD   , ONLY : TERAD
+USE YOMCST   , ONLY : RDAY
+USE YOMCT0   , ONLY : CNMEXP
+USE YOMLUN   , ONLY : NULOUT, NULERR
+USE YOMMCC   , ONLY : TMCC
+USE YOMMP0   , ONLY : MYPROC
+USE YOMRIP0  , ONLY : NINDAT
+USE YOMCOMPO , ONLY : TCOMPO
+USE YOMDYNA  , ONLY : TDYNA
+USE MPL_MODULE, ONLY : MPL_BROADCAST, MPL_BARRIER
+USE DISGRID_MOD, ONLY : DISGRID_SEND, DISGRID_RECV
+USE GRIB_API, ONLY : GRIB_OPEN_FILE, GRIB_SUCCESS, GRIB_NEW_FROM_FILE, GRIB_END_OF_FILE, GRIB_GET, GRIB_SET,&
+                      & GRIB_RELEASE, GRIB_CLOSE_FILE  
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TDYNA)       ,INTENT(IN)    :: YDDYNA
+TYPE(TSURF)       ,INTENT(INOUT) :: YDSURF
+TYPE(TCOMPO)      ,INTENT(INOUT) :: YDCOMPO
+TYPE(TERAD)       ,INTENT(INOUT) :: YDERAD
+TYPE(TMCC)        ,INTENT(INOUT) :: YDMCC
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(INOUT):: YDML_GCONF
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTEP
+!     ------------------------------------------------------------------
+INTEGER(KIND=JPIM) :: ILMOIS(12),IDM(3)
+INTEGER(KIND=JPIM) :: IINFO(10000,YDMCC%NCLIMR_COMPO)
+INTEGER(KIND=JPIM) :: ILOENG(YDGEOMETRY%YRDIM%NDGLG)
+REAL(KIND=JPRB) :: ZBUF(YDGEOMETRY%YRGEM%NGPTOTG)
+CHARACTER :: CLNOMF*19
+CHARACTER :: CLEVTY*20,CLREPRT*20
+
+INTEGER(KIND=JPIM) :: IA, IA0, IADD, IAE, IAN, ICCYY0, ICCYYE,&
+  & ICOU, ID, IDIF, IDIFD, IDUMY, IEND,&
+  & IFIRST, IGRIB, ICOUNT, IDGNH,&
+  & IIM1, IIM2, IJ0, IJDCR, IJE, IJOUR,&
+  & IJT1, IJT2, IJUL, IJUL0, IJUL1, IJUL2, IJULE,&
+  & IM, IM0, IME, IMM0, IMME, IMOIS, IMT1,&
+  & IPARAM, IPARMAL,&
+  & IBL,&
+  & IRET, IST, ISTADDE,&
+  & ITAG, ITIM, ITIME,&
+  & IYYM0, IYYMD, IZTE, J, JCL, JF, JGL,&
+  & JM, JROF, JSTGLO, JTIM, JY, ISECND
+
+LOGICAL :: LLFIRST,LLFOUND, LLREAD
+INTEGER(KIND=JPIM),SAVE :: IDATEREF=0, IUNITCOMPO 
+INTEGER(KIND=JPIM) :: IDATE, IBITMAP, IYSDMP
+
+REAL(KIND=JPRB) :: ZPOID1, ZPOID2
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "updcal.intfb.h"
+
+#include "fcttim.func.h"
+
+!     ------------------------------------------------------------------
+
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('UPDCLIE_COMPO',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV, &
+  & YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP, YDRIP=>YDML_GCONF%YRRIP,YGFL=>YDML_GCONF%YGFL)
+ASSOCIATE(NACTAERO=>YGFL%NACTAERO, NCHEM=>YGFL%NCHEM, YCHEM=>YGFL%YCHEM, NGHG=>YGFL%NGHG, &
+ & NDGLG=>YDDIM%NDGLG, NDGNH=>YDDIM%NDGNH, NDLON=>YDDIM%NDLON, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & LPERPET=>YDERAD%LPERPET, &
+ & NGPTOT=>YDGEM%NGPTOT, NGPTOTG=>YDGEM%NGPTOTG, NHTYP=>YDGEM%NHTYP, &
+ & NLOENG=>YDGEM%NLOENG, &
+ & CLIMRCOMPO=>YDMCC%CLIMRCOMPO, LMCCIEC_COMPO=>YDMCC%LMCCIEC_COMPO, &
+ & NCLIGC_COMPO=>YDMCC%NCLIGC_COMPO, NCLIMR_COMPO=>YDMCC%NCLIMR_COMPO, &
+ & NDIFC_COMPO=>YDMCC%NDIFC_COMPO, NJDCR_COMPO=>YDMCC%NJDCR_COMPO,NYSDMP_COMPO=>YDMCC%NYSDMP_COMPO, &
+ & NPCOMPO_1=>YDMCC%NPCOMPO_1, NPCOMPO_2=>YDMCC%NPCOMPO_2, &
+ & NUNITCM=>YDMCC%NUNITCM, &
+ & NSTADD=>YDRIP%NSTADD, NSTOP=>YDRIP%NSTOP, &
+ & SD_VF=>YDSURF%SD_VF, YSD_VF=>YDSURF%YSD_VF)
+!     ------------------------------------------------------------------
+!*
+LLFIRST = YDMCC%LFIRSTUPD
+!*    1.1 Calendar
+
+IJ0=NDD(NINDAT)
+IM0=NMM(NINDAT)
+IA0=NCCAA(NINDAT)
+CALL UPDCAL(IJ0,IM0,IA0,NSTADD,IJOUR,IMOIS,IAN,ILMOIS,NULOUT)
+IF(IJOUR > 15)THEN
+  IMT1=IMOIS
+  IJT1=15
+  IJT2=15+ILMOIS(IMT1)
+ELSE
+  IMT1=1+MOD(IMOIS+10,12)
+  IJT1=15-ILMOIS(IMT1)
+  IJT2=15
+ENDIF
+
+
+!*
+!     2. OPEN AND SCAN THE FILE, IF CLIMATE FIELDS REQUIRED
+!     -----------------------------------------------------
+
+!*    2.1 OPEN CLIMATE FILE
+
+SCANIF:IF(NCLIMR_COMPO >= 1.AND.LLFIRST) THEN
+
+  MYPROCIF: IF (MYPROC == 1) THEN
+
+! ONLY PROCESSOR 1 SHOULD OPEN 
+
+    CLNOMF='ICMCL'//CNMEXP(1:4)//'INIT_COMPO'
+    WRITE(NULOUT,*) ' READ CLIMATE FIELDS FROM GRIB '
+    WRITE(NULOUT,*) ' INITIAL DATA TO BE READ FROM FILE ',CLNOMF  
+    CALL GRIB_OPEN_FILE(IUNITCOMPO,CLNOMF,'r',IRET)
+    IF(IRET /= GRIB_SUCCESS) THEN
+      WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: PROBLEM IN GRIB_OPEN_FILE, IRET=',IRET
+      CALL ABOR1('UPDCLIE_COMPO: PROBLEM IN GRIB_OPEN_FILE')
+    ENDIF
+
+
+!*    2.2 READ, DECODE HEADERS, CHECK THE FIELDS AND POSITIONS THE FILE
+
+    SCAN: DO JTIM=1,10000
+      DO JCL=1,NCLIMR_COMPO
+        CALL GRIB_NEW_FROM_FILE(IUNITCOMPO,IGRIB,IRET)
+        IF(IRET == GRIB_END_OF_FILE) THEN
+          ITIM=JTIM-1
+          EXIT SCAN
+        ELSEIF(IRET /= GRIB_SUCCESS) THEN
+          WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: PROBLEM IN GRIB_NEW_FROM_FILE, IRET=',IRET
+          CALL ABOR1('UPDCLIE_COMPO: PROBLEM IN GRIB_NEW_FROM_FILE')
+        ENDIF
+        CALL GRIB_GET(IGRIB,'ifsParam',IPARAM)
+        CALL GRIB_GET(IGRIB,'dataDate',IYYMD)
+        WRITE(NULOUT,'(A,I6,A,I8.8,A)')&
+         & 'UPDCLIE_COMPO: PARAMETER ',IPARAM, ' FOR DATE ',IYYMD,' FOUND IN CLIMATE FILE'  
+        CALL GRIB_GET(IGRIB,'typeOfLevel',CLEVTY)
+        CALL GRIB_GET(IGRIB,'gridType',CLREPRT)
+        CALL GRIB_GET(IGRIB,'N',IDGNH)
+
+!      check some parameters
+
+        IF (TRIM(CLREPRT) /= 'regular_gg' .AND. TRIM(CLREPRT) /= 'reduced_gg') THEN
+          WRITE(NULERR,*) 'UPDCLIE_COMPO: UNEXPECTED DATA REPRESENTATION TYPE',CLREPRT
+          CALL ABOR1(' UPDCLIE_COMPO:INVALID DATA REPRESENTATION TYPE')
+        ENDIF
+        IF(IDGNH /= NDGNH) THEN
+          WRITE(NULERR,*) 'UPDCLIE_COMPO: RESOLUTION OF MODEL ',NDGNH,', OF INITIAL DATA ',IDGNH  
+          CALL ABOR1(' UPDCLIE_COMPO : INVALID DATA RESOLUTION')
+        ENDIF
+        IF(TRIM(CLEVTY) /= 'surface' .AND. TRIM(CLEVTY) /= 'depthBelowLandLayer') THEN
+          WRITE(NULERR,*) 'UDPCLIE:  UNEXPECTED LEVEL TYPE ', CLEVTY
+          CALL ABOR1(' UPDCLIE_COMPO : INVALID LEVEL TYPE')
+        ENDIF
+
+        IF( NHTYP /= 0 )THEN
+          CALL GRIB_GET(IGRIB,'pl',ILOENG)
+          DO JGL=1,NDGLG
+            IF( NLOENG(JGL) /= ILOENG(JGL) )THEN
+              WRITE(NULERR,*) ' UPDCLIE_COMPO :'
+              WRITE(NULERR,*) ' INCONSISTENT REDUCED GRID'
+              WRITE(NULERR,*) ' IN MODEL ',(NLOENG(J),J=1,NDGLG)
+              WRITE(NULERR,*) ' IN FILE  ',(ILOENG(J),J=1,NDGLG)
+              CALL ABOR1(' UPDCLIE_COMPO : INCONSISTENT REDUCED GRID')
+            ENDIF
+          ENDDO
+        ENDIF
+
+        CALL GRIB_RELEASE(IGRIB)
+
+!      record/communicate field index
+
+        IF( NCLIGC_COMPO(JCL) == IPARAM )THEN
+          IINFO(JTIM,JCL)=IYYMD
+        ELSE
+          WRITE(NULERR,'("UPDCLIE_COMPO: SKIPPING OVER FIELD,",&
+           & "GRIB CODE=",I6)') IPARAM  
+          WRITE(NULERR,'("UPDCLIE_COMPO: EXPECTED FIELD,",&
+           & "GRIB CODE=",I6)') NCLIGC_COMPO(JCL)
+        !  CALL ABOR1(' UPDCLIE_COMPO : UNEXPECTED FIELD')
+        ENDIF
+      ENDDO
+    ENDDO SCAN
+
+! Check fields come in a consistent order and position file at the
+!   right place
+
+    ITIME=NINT(PTSTEP)
+    IF (YDDYNA%LTWOTL) THEN
+      IZTE=NINT(PTSTEP*(REAL(NSTOP,JPRB)+0.5_JPRB))
+    ELSE
+      IZTE=ITIME*NSTOP
+    ENDIF
+
+!--
+    IF (LPERPET) THEN
+      ISECND=IZTE/NINT(RDAY)
+      IZTE=IZTE-ISECND*NINT(RDAY)
+    ENDIF
+!--
+
+    ISTADDE=IZTE/NINT(RDAY)
+    CALL UPDCAL(IJ0,IM0,IA0,ISTADDE,IJE,IME,IAE,ILMOIS,NULOUT)
+    IF (LMCCIEC_COMPO) THEN
+      IF (IJOUR > 15) THEN
+        ICCYY0=IAN
+        IMM0=IMOIS
+      ELSE
+        IMM0=1+MOD(IMOIS+10,12)
+        IF (IMM0 == 12) THEN
+          ICCYY0=IAN-1
+        ELSE
+          ICCYY0=IAN
+        ENDIF
+      ENDIF
+      IF (IJE > 15) THEN
+        IMME=1+MOD(IME,12)
+        IF (IMME == 1) THEN
+          ICCYYE=IAE+1
+        ELSE
+          ICCYYE=IAE
+        ENDIF
+      ELSE
+        ICCYYE=IAE
+        IMME=IME
+      ENDIF
+
+! Locates the first field needed
+
+      IYYM0=IMM0+100*ICCYY0
+      LLFOUND=.FALSE.
+      DO J=1,ITIM
+        IF (IYYM0 == IINFO(J,1)/100) THEN
+          IFIRST=J
+          IADD=IINFO(J,1)
+          LLFOUND=.TRUE.
+          EXIT
+        ENDIF
+      ENDDO
+      IF (.NOT.LLFOUND) THEN
+        CALL ABOR1(' UPDCLIE : FIRST FILE NOT FOUND')
+      ENDIF
+
+! Check all fields in the right time order
+
+      ICOU=IFIRST
+      DO JY=ICCYY0,ICCYYE
+        IF (JY == ICCYY0) THEN
+          IIM1=IMM0
+        ELSE
+          IIM1=1
+        ENDIF
+        IF (JY == ICCYYE) THEN
+          IIM2=IMME
+        ELSE
+          IIM2=12
+        ENDIF
+        DO JM=IIM1,IIM2
+          IDUMY=JM+100*JY
+          DO JCL=1,NCLIMR_COMPO
+            IF (IDUMY /= IINFO(ICOU,JCL)/100) THEN
+              WRITE(NULERR,'(A,I4,A,I6.6,A)')&
+               & 'UPDCLIE: FIELD ',NCLIGC_COMPO(JCL),' NOT FOUND FOR ',&
+               & IDUMY,'00'  
+              CALL ABOR1(' UPDCLIE_COMPO : FIELD NOT FOUND')
+            ENDIF
+          ENDDO
+          ICOU=ICOU+1
+        ENDDO
+      ENDDO
+      IDIF=-999
+      IJDCR=-999
+
+     ELSE
+! Locates the first field needed
+
+      IJUL0=RJUDAT(IAN,IMOIS,IJOUR)
+      DO J=1,ITIM
+        IA=NCCAA(IINFO(J,1))
+        IM=NMM(IINFO(J,1))
+        ID=NDD(IINFO(J,1))
+        IJUL=RJUDAT(IA,IM,ID)
+        IF (IJUL > IJUL0) THEN
+          IF (J == 1) THEN
+            WRITE(NULERR,'(A,I8.8)')&
+             & 'UPDCLIE_COMPO: FIRST FILE IS FOR ',IINFO(J,1)  
+            CALL ABOR1(' UPDCLIE_COMPO : FIRST FILE NEEDED NOT FOUND')
+          ENDIF
+          IFIRST=J-1
+          IADD=IINFO(IFIRST,1)
+          EXIT
+        ENDIF
+      ENDDO
+
+! Check all fields in the right time order
+
+      IA=NCCAA(IINFO(IFIRST,1))
+      IM=NMM(IINFO(IFIRST,1))
+      ID=NDD(IINFO(IFIRST,1))
+      IJUL1=RJUDAT(IA,IM,ID)
+      IJDCR=IJUL1
+      IA=NCCAA(IINFO(IFIRST+1,1))
+      IM=NMM(IINFO(IFIRST+1,1))
+      ID=NDD(IINFO(IFIRST+1,1))
+      IJUL2=RJUDAT(IA,IM,ID)
+      IDIF=IJUL2-IJUL1
+      IF (NCLIMR_COMPO > 1) THEN
+        DO JCL=2,NCLIMR_COMPO
+          IA=NCCAA(IINFO(IFIRST,JCL))
+          IM=NMM(IINFO(IFIRST,JCL))
+          ID=NDD(IINFO(IFIRST,JCL))
+          IJUL1=RJUDAT(IA,IM,ID)
+          IA=NCCAA(IINFO(IFIRST+1,JCL))
+          IM=NMM(IINFO(IFIRST+1,JCL))
+          ID=NDD(IINFO(IFIRST+1,JCL))
+          IJUL2=RJUDAT(IA,IM,ID)
+          IDIFD=IJUL2-IJUL1
+          IF (IDIFD /= IDIF) THEN
+            WRITE(NULERR,'(A,2I20,A,I4)')&
+             & 'UPDCLIE_COMPO: JULIAN DAYS ',IJUL1,IJUL2,' FOR FIELD '&
+             & ,NCLIGC_COMPO(JCL)  
+            WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: DIFFERENCE EXPECTED ',IDIF
+            CALL ABOR1(' UPDCLIE_COMPO : IRREGULARLY SPACED FIELDS')
+          ENDIF
+        ENDDO
+      ENDIF
+      DO J=IFIRST+1,ITIM-1
+        DO JCL=1,NCLIMR_COMPO
+          IA=NCCAA(IINFO(J,JCL))
+          IM=NMM(IINFO(J,JCL))
+          ID=NDD(IINFO(J,JCL))
+          IJUL1=RJUDAT(IA,IM,ID)
+          IA=NCCAA(IINFO(J+1,JCL))
+          IM=NMM(IINFO(J+1,JCL))
+          ID=NDD(IINFO(J+1,JCL))
+          IJUL2=RJUDAT(IA,IM,ID)
+          IDIFD=IJUL2-IJUL1
+          IF (IDIFD /= IDIF) THEN
+            WRITE(NULERR,'(A,2I20,A,I4)')&
+             & 'UPDCLIE_COMPO: JULIAN DAYS ',IJUL1,IJUL2,' FOR FIELD '&
+             & ,NCLIGC_COMPO(JCL)  
+            WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: DIFFERENCE EXPECTED ',IDIF
+            CALL ABOR1(' UPDCLIE_COMPO : IRREGULARLY SPACED FIELDS')
+          ENDIF
+        ENDDO
+      ENDDO
+      IJULE=RJUDAT(IAE,IME,IJE)
+      DO JCL=1,NCLIMR_COMPO
+        IA=NCCAA(IINFO(ITIM,JCL))
+        IM=NMM(IINFO(ITIM,JCL))
+        ID=NDD(IINFO(ITIM,JCL))
+        IJUL2=RJUDAT(IA,IM,ID)
+        IDIFD=IJULE-IJUL2
+        IF (IDIFD > IDIF) THEN
+          WRITE(NULERR,'(A)')'UPDCLIE_COMPO: FILE TOO SHORTJULIAN DAYS '
+          WRITE(NULERR,'(A,I20)')'UPDCLIE_COMPO: FORECAST ENDS ',IJULE
+          WRITE(NULERR,'(A,I20)')'UPDCLIE_COMPO: CLIMATE DATA ENDS ',IJUL2
+          WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: DIFFERENCE EXPECTED ',IDIF
+          CALL ABOR1(' UPDCLIE_COMPO : IRREGULARLY SPACED FIELDS')
+        ENDIF
+      ENDDO
+
+ ENDIF
+! Positions the file in the first field needed
+
+    CALL GRIB_CLOSE_FILE(IUNITCOMPO,IRET)
+    IF( IRET /= GRIB_SUCCESS )THEN
+      CALL ABOR1(' UPDCLIE_COMPO: ERROR ON GRIB_CLOSE_FILE')
+    ENDIF
+    CALL GRIB_OPEN_FILE(IUNITCOMPO,CLNOMF,'r')
+    DO JTIM=1,10000*(NCLIMR_COMPO)
+      CALL GRIB_NEW_FROM_FILE(IUNITCOMPO,IGRIB,IRET)
+      IF(IRET /= GRIB_SUCCESS) THEN
+        WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: PROBLEM IN GRIB_NEW_FROM_FILE, IRET=',IRET
+        CALL ABOR1('UPDCLIE_COMPO: PROBLEM IN GRIB_NEW_FROM_FILE')
+      ENDIF
+      CALL GRIB_GET(IGRIB,'dataDate',IYYMD)
+      IF (IYYMD == IADD) THEN
+        EXIT
+      ELSE
+        CALL GRIB_RELEASE(IGRIB) 
+    ENDIF
+   ENDDO
+
+! Pack message
+
+    IDM(1)=IDIF
+    IDM(2)=IJDCR
+    IDM(3)=IUNITCOMPO
+  ENDIF MYPROCIF
+
+! Broadcast
+
+  ITAG=19591213
+  CALL MPL_BROADCAST(IDM,KTAG=ITAG,KROOT=1,CDSTRING='UPDCLIE_COMPO')
+
+  NDIFC_COMPO=IDM(1)
+  NJDCR_COMPO=IDM(2)
+  NUNITCM=IDM(3)
+
+ENDIF SCANIF
+
+!*    3. READ THE FILE, IF NEEDED.
+!     -----------------------------
+
+READIF: IF(NCLIMR_COMPO >= 1) THEN
+
+!* Decide if reading time
+
+  IF (LMCCIEC_COMPO) THEN
+    IF (LLFIRST) THEN
+      IDATEREF=0
+      LLREAD=.TRUE.
+      IFIRST=2
+    ELSE
+      IDATE=IAN*10000+IMOIS*100+IJOUR
+      WRITE(NULOUT,*) 'IDATE=',IDATE,IDATEREF
+      IF (IJOUR == 16 .AND. IDATE > IDATEREF) THEN
+        LLREAD=.TRUE.
+        IFIRST=1
+      ELSE
+        LLREAD=.FALSE.
+        IFIRST=1
+      ENDIF
+    ENDIF
+  ELSE
+    IF (LLFIRST) THEN
+      LLREAD=.TRUE.
+      IFIRST=1
+    ELSE
+      IFIRST=1
+      IJUL=RJUDAT(IAN,IMOIS,IJOUR)
+      LLREAD=NJDCR_COMPO == IJUL
+    ENDIF
+  ENDIF
+
+      WRITE(NULOUT,*) 'UPDCLIME_COMPO IDATE INFO: ',IDATE,IDATEREF,LLREAD, NJDCR_COMPO,NDIFC_COMPO 
+!*    3.1 READ, DECODE AND SELECT THE FIELDS
+
+  IF (LLREAD) THEN
+    FIRST: DO JF=1,IFIRST
+      IF (LMCCIEC_COMPO) THEN
+        NPCOMPO_1=3-NPCOMPO_1
+        NPCOMPO_2=3-NPCOMPO_2
+      ELSE
+        NJDCR_COMPO=NJDCR_COMPO+NDIFC_COMPO
+        NPCOMPO_1=1
+        NPCOMPO_2=1
+      ENDIF
+      READ: DO JCL=1,NCLIMR_COMPO
+        IPARAM=NCLIGC_COMPO(JCL)
+        IF (MYPROC == 1) THEN
+          IF (.NOT. (LLFIRST.AND.JF==1.AND.JCL==1)) THEN
+            CALL GRIB_NEW_FROM_FILE(IUNITCOMPO,IGRIB,IRET)
+            IF(IRET /= GRIB_SUCCESS ) THEN
+              WRITE(NULERR,'(A,I2)')'UPDCLIE_COMPO: PROBLEM IN GRIB_NEW_FROM_FILE, IRET=',IRET
+              CALL ABOR1('UPDCLIE_COMPO: PROBLEM IN GRIB_NEW_FROM_INDEX')
+            ENDIF
+          ENDIF
+          CALL GRIB_SET(IGRIB,'missingValue',19591204.0_JPRB)
+          CALL GSTATS(1703,0)
+          CALL GRIB_GET(IGRIB,'values',ZBUF)
+          CALL GSTATS(1703,1)
+          CALL GRIB_GET(IGRIB,'bitmapPresent',IBITMAP)
+          CALL GRIB_GET(IGRIB,'numberOfValues',ICOUNT)
+          CALL GRIB_GET(IGRIB,'dataDate',IYYMD)
+          CALL GRIB_RELEASE(IGRIB)
+
+          WRITE(NULOUT,'(A,I6,A,I8.8,A)')&
+           & 'UPDCLIE_COMPO: PARAMETER ',IPARAM, ' FOR DATE ',&
+           & IYYMD,' READ FROM CLIMATE FILE'  
+
+          IDATEREF=IYYMD
+        ENDIF
+
+        ! DM communications.
+        IF (MYPROC == 1) THEN
+             CALL DISGRID_SEND(YDGEOMETRY,1,ZBUF,JCL,CLIMRCOMPO(:,NPCOMPO_2,JCL))
+        ELSE
+             CALL DISGRID_RECV(YDGEOMETRY,1,1,CLIMRCOMPO(:,NPCOMPO_2,JCL),JCL)
+        ENDIF
+        CALL MPL_BARRIER(CDSTRING='UPDCLIE_COMPO')
+
+
+! Synchronize IDATEREF
+        ITAG=19591205
+        CALL MPL_BROADCAST(IDATEREF,KTAG=ITAG,KROOT=1,CDSTRING='UPDCLIE_COMPO')
+
+      ENDDO READ
+    ENDDO FIRST
+  ENDIF
+
+  IF (LMCCIEC_COMPO) THEN
+    ZPOID1=REAL(IJT2-IJOUR,JPRB)/REAL(IJT2-IJT1,JPRB)
+    ZPOID2=1.0_JPRB-ZPOID1
+  ENDIF
+
+
+
+
+
+
+
+! fill sdv_VF array ! make openmp 
+   DO IPARMAL=1,NCLIMR_COMPO
+     IYSDMP=NYSDMP_COMPO(IPARMAL) 
+     IF (LMCCIEC_COMPO) THEN
+       DO JSTGLO=1,NGPTOT,NPROMA
+         IEND=MIN(NPROMA,NGPTOT-JSTGLO+1)
+         IST=1
+        ! IBL=(JSTGLO-1)/NPROMA+1
+         DO JROF =1,IEND
+           SD_VF(JROF,IYSDMP,IBL)=CLIMRCOMPO(JSTGLO+JROF-1,NPCOMPO_1,IPARMAL)*ZPOID1&
+           & +CLIMRCOMPO(JSTGLO+JROF-1,NPCOMPO_2,IPARMAL)*ZPOID2
+         ENDDO
+        ENDDO 
+     ELSE
+       DO JSTGLO=1,NGPTOT,NPROMA
+         IEND=MIN(NPROMA,NGPTOT-JSTGLO+1)
+         IST=1
+         IBL=(JSTGLO-1)/NPROMA+1
+         DO JROF =1,IEND
+           SD_VF(JROF,IYSDMP,IBL)=CLIMRCOMPO(JSTGLO+JROF-1,NPCOMPO_2,IPARMAL)
+         ENDDO
+       ENDDO 
+     ENDIF  
+   ENDDO 
+
+ENDIF READIF
+
+WRITE(NULOUT,*) 'UPDCLIE_COMPO finished'
+CALL FLUSH(NULOUT)
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('UPDCLIE_COMPO',1,ZHOOK_HANDLE)
+END SUBROUTINE UPDCLIE_COMPO
+

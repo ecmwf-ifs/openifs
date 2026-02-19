@@ -1,0 +1,200 @@
+! (C) Copyright 2010- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE SUGRIDMLM_MOD
+
+CONTAINS
+SUBROUTINE SUGRIDMLM(LD_LOCMLTKE,KCOM,YDMLM)
+!
+!
+!***  DETERMINES CONSTANTS AND CONSTANT ARRAYS OF MIXED LAYER MODEL
+!
+!
+!     AUTHOR: PETER A.E.M. JANSSEN, OCTOBER 2010
+!     ------
+!
+!
+!     PURPOSE.
+!     --------
+!
+!         SETS UP THE VERTICAL GRID AND FORCING FUNCTIONS F AND R.
+!
+!**   INTERFACE.
+!     ----------
+!
+!         CALL SUGRIDMLM(LD_LOCMLTKE,KCOM)
+!         
+!         INPUT:
+!         -----
+!
+!         *LD_LOCMLTKE*  LOGICAL       IF TRUE OC_MLM MODEL IS RUN
+!         *KCOM*         INTEGER       NUMBER OF VERTICAL LEVELS
+!         
+!         OUTPUT WRITTEN TO MODULE YOS_MLM
+!         ------
+!
+!         *KLEVO*    INTEGER       NUMBER OF VERTICAL LAYERS
+!         *Z*        REAL          VERTICAL COORDINATE ARRAY
+!         *DELZ*     REAL          INCREMENT IN DEPTH
+!         *R*        REAL          RADIATION FORCING FUNCTION TAKEN FROM
+!                                  SOLOVIEV (1982)
+!         *F*        REAL          SHAPE FUNCTION FOR WAVE-INDUCED STRESS
+!                                  DUE TO WAVE BREAKING
+!
+!     METHOD.
+!     -------
+!          THE TOP OF THE OCEAN STARTS AT Z(1) WHILE THE BOTTOM OF THE 
+!          MIXED LAYER CORRESPONDS TO Z(KLEVO+1)
+!
+!
+!     EXTERNALS.
+!     ----------
+!
+!         NO EXTERNALS.
+!
+!     REFERENCE.
+!     ----------
+!      
+!         MIXED LAYER MODELLING, WAVE BREAKING AND THE GENERATION OF 
+!         LANGMUIR CIRCULATION  BY P.A.E.M. JANSSEN, 12 OCTOBER 2010.
+!
+!
+!     HEALTH WARNING
+!     --------------
+!
+!         CODE IS WRITTEN ASSUMING DEPTH Z IS POSITIVE (Z => -Z)		
+!
+!----------------------------------------------------------------------
+!
+!
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_MLM  , ONLY : TMLM
+
+IMPLICIT NONE
+
+LOGICAL,            INTENT(IN)    :: LD_LOCMLTKE ! IF TRUE TKE MIXED LAYER MODEL IS SWITCHED ON
+INTEGER(KIND=JPIM), INTENT(IN)    :: KCOM
+TYPE(TMLM),         INTENT(INOUT) :: YDMLM
+
+INTEGER(KIND=JPIM) :: ILEVO, I
+REAL(KIND=JPRB) :: DELX, X, ZN, ZM, ONE, TWO
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!
+!----------------------------------------------------------------------
+!
+IF (LHOOK) CALL DR_HOOK('SUGRIDMLM',0,ZHOOK_HANDLE)
+ASSOCIATE(B=>YDMLM%B, CP=>YDMLM%CP, DML=>YDMLM%DML, &
+ & LLINLOG=>YDMLM%LLINLOG, LOCMLTKE=>YDMLM%LOCMLTKE, R1=>YDMLM%R1, &
+ & R2=>YDMLM%R2, R3=>YDMLM%R3, RHO=>YDMLM%RHO, SM=>YDMLM%SM, SQ=>YDMLM%SQ, &
+ & XKAPPA=>YDMLM%XKAPPA, ZR1=>YDMLM%ZR1, ZR2=>YDMLM%ZR2, &
+ & ZR3=>YDMLM%ZR3, ZS=>YDMLM%ZS)
+!
+!*      1. DETERMINE CONSTANTS.
+!       ----------------------
+!
+LOCMLTKE = LD_LOCMLTKE
+LLINLOG = .FALSE.
+
+ONE = 1._JPRB
+TWO = 2._JPRB
+
+SQ = 0.2_JPRB
+SM = 0.39_JPRB
+B  = SM**(-3.)
+
+XKAPPA = 0.4_JPRB
+RHO    = 1025._JPRB
+CP     = 4180._JPRB
+
+ZR1 = 0.013986_JPRB
+ZR2 = 0.357143_JPRB
+ZR3 = 14.28571_JPRB
+
+R1 = 0.28_JPRB
+R2 = 0.27_JPRB
+R3 = 0.45_JPRB
+
+ILEVO = KCOM-1
+
+ZS = 0.0250_JPRB*REAL(ILEVO,JPRB)
+DML   = 3.5_JPRB
+
+
+ALLOCATE (YDMLM%R(ILEVO+1))
+ALLOCATE (YDMLM%F(ILEVO+1))
+ALLOCATE (YDMLM%Z(ILEVO+1))
+ALLOCATE (YDMLM%DELZ(ILEVO+1))
+
+!
+!*     2. DETERMINE VERTICAL COORDINATES AND RADIATIVE AND MOMENTUM 
+!         FORCING FUNCTIONS.
+!
+IF (LLINLOG) THEN
+  DELX = DML/REAL(ILEVO,JPRB)
+
+  DO I=1,ILEVO+1
+    YDMLM%Z(I) = DELX*REAL(I-1,JPRB)
+    YDMLM%R(I) = R1*EXP(-YDMLM%Z(I)/ZR1)+R2*EXP(-YDMLM%Z(I)/ZR2)+&
+&          R3*EXP(-YDMLM%Z(I)/ZR3)
+  ENDDO
+
+ELSE
+
+  DELX = LOG(DML/ZS+ONE)/REAL(ILEVO,JPRB)   
+
+  DO I=1,ILEVO+1
+    X = DELX*REAL(I-1,JPRB)
+    YDMLM%Z(I) = ZS*(EXP(X)-ONE)
+    YDMLM%R(I) = R1*EXP(-YDMLM%Z(I)/ZR1)+R2*EXP(-YDMLM%Z(I)/ZR2)+R3*EXP(-YDMLM%Z(I)/ZR3)
+  ENDDO
+
+ENDIF
+
+ZM = 0.01_JPRB
+DO I=1,ILEVO+1
+  ZN   = YDMLM%Z(I)/ZM
+  YDMLM%F(I) = TWO*EXP(-ZN)-EXP(-TWO*ZN)
+ENDDO
+
+DO I=1,ILEVO
+  YDMLM%DELZ(I) = YDMLM%Z(I+1)-YDMLM%Z(I)
+ENDDO
+
+X = DELX*REAL(ILEVO+1,JPRB)
+YDMLM%DELZ(ILEVO+1) = ZS*(EXP(X)-ONE)-YDMLM%Z(ILEVO+1)
+
+IF (LLINLOG) YDMLM%DELZ(ILEVO+1) = DELX
+
+!
+!     PRINT VERTICAL GRID
+!
+WRITE(6,*) '  '
+WRITE(6,*) 'INITIALIZE TKE VERSION OF THE OCEAN MIXED LAYER  '
+WRITE(6,*) '  '
+IF (LLINLOG) THEN
+WRITE(6,*)' VERTICAL GRID IS LINEAR'
+ELSE
+WRITE(6,*)' VERTICAL GRID IS LOGARITHMIC'
+ENDIF
+WRITE(6,*)' NUMBER OF LAYERS = ',ILEVO
+WRITE(6,*)' DML = ',DML
+WRITE(6,*)' DELX = ',DELX
+WRITE(6,*)'  '
+WRITE(6,*)'      Z       R        DELZ'
+DO I=1,ILEVO+1
+  WRITE(6,'(3F10.6)') YDMLM%Z(I),YDMLM%R(I),YDMLM%DELZ(I)
+ENDDO
+
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUGRIDMLM',1,ZHOOK_HANDLE)
+
+END SUBROUTINE SUGRIDMLM
+
+END MODULE SUGRIDMLM_MOD

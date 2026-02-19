@@ -1,0 +1,19 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE SUELDYNB(YDGEOMETRY,YDDYN,YDEDYN,YGFL)
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YEMDYN , ONLY : TEDYN
+USE YOMDYN , ONLY : TDYN
+USE YOM_YGFL , ONLY : TYPE_GFLD
+TYPE(GEOMETRY), INTENT(INOUT) :: YDGEOMETRY
+TYPE(TDYN) ,INTENT(INOUT) :: YDDYN
+TYPE(TEDYN) ,INTENT(INOUT) :: YDEDYN
+TYPE(TYPE_GFLD),INTENT(INOUT) :: YGFL
+call abor1("sueldynb.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE SUELDYNB

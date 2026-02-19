@@ -1,0 +1,19 @@
+
+This directory is the default location for static OpenIFS data files.
+
+The data files can be downloaded from here:
+https://sites.ecmwf.int/openifs/openifs-data/ifsdata/48r1/
+
+Please extract the following tarballs into this directory:
+
+ ifsdata_rtables_48r1.tgz
+ ifsdata_climatology_48r1.tgz
+ ifsdata_climate.v020_${RES}.tgz
+   where ${RES} represents the horizontal grid resolutions you intend to use
+
+Note: Depending on the number of extracted model grids, the data volume of
+the downloaded packages can be large. By default you will be adding this data
+in the $OIFS_HOME location. Please ensure that you have sufficient disk space
+available. Otherwise you can replace this directory with a symbolic link to a
+different location on your file system.
+

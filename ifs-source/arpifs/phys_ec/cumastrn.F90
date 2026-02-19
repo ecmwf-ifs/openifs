@@ -1,0 +1,1582 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE CUMASTRN &
+ & (YDML_PHY_SLIN,     YDML_PHY_EC,        YGFL,   YDCHEM, YDSPP_CONFIG,&
+ & KIDIA,    KFDIA,    KLON,    KLEV, &
+ & LDLAND,   PTSPHY,&
+ & PTEN,     PQEN,     PUEN,     PVEN,     PLITOT,&
+ & PVERVEL,  PQSEN,    PQHFL,    PAHFS,&
+ & PAP,      PAPH,     PGEO,     PGEOH,    PGAW,&
+ & PCUCONVCA,PGP2DSPP, &
+ & PTENT,    PTENQ,    PTENU,    PTENV,    PTENTA,   PTENQA,&
+ & LDCUM,    KTYPE,    KCBOT,    KCTOP,&
+ & LDCUM_LIG, KCBOT_LIG, KCTOP_LIG,&
+ & KBOTSC,   LDSC,&
+ & LDSHCV,&
+ & PLCRIT_AER,&     
+ & PTU,      PQU,      PLU,      PLUDE,    PLUDELI,   PSNDE,&
+ & PENTH,    PMFLXR,   PMFLXS,   PRAIN,    PLRAIN,    PRSUD,&
+ & PMFU,     PMFD,&
+ & PMFUDE_RATE,        PMFDDE_RATE,    PCAPE,   PWMEAN, PVDISCU, PDISS, &
+ & KTRAC,    PCEN,     PTENC,    PSCAV )  
+
+!**** *CUMASTR*  MASTER ROUTINE FOR CUMULUS MASSFLUX-SCHEME
+
+!     PURPOSE
+!     -------
+!          THIS ROUTINE COMPUTES THE PHYSICAL TENDENCIES OF THE
+!     PROGNOSTIC VARIABLES T,Q,U, V AND TRACERS DUE TO CONVECTIVE PROCESSES.
+!     PROCESSES CONSIDERED ARE: CONVECTIVE FLUXES, FORMATION OF
+!     PRECIPITATION, EVAPORATION OF FALLING RAIN BELOW CLOUD BASE,
+!     SATURATED CUMULUS DOWNDRAFTS.
+
+!**   INTERFACE.
+!     ----------
+
+!          *CUMASTR* IS CALLED FROM *CUCALL*
+!     THE ROUTINE TAKES ITS INPUT FROM THE LONG-TERM STORAGE
+!     T,Q,U,V,PHI AND P AND MOISTURE TENDENCIES.
+!     IT RETURNS ITS OUTPUT TO THE SAME SPACE
+!      1.MODIFIED TENDENCIES OF MODEL VARIABLES
+!      2.RATES OF CONVECTIVE PRECIPITATION
+!        (USED IN SUBROUTINE SURF)
+!      3.CLOUD BASE, CLOUD TOP AND PRECIP FOR RADIATION
+!        (USED IN SUBROUTINE CLOUD)
+
+!     METHOD
+!     -------
+
+!     PARAMETERIZATION IS DONE USING A MASSFLUX-SCHEME.
+!        (1) DEFINE CONSTANTS AND PARAMETERS
+!        (2) SPECIFY VALUES (T,Q,QS...) AT HALF LEVELS AND
+!            INITIALIZE UPDRAFT- AND DOWNDRAFT-VALUES IN 'CUINI'
+!        (3) CALCULATE CLOUD BASE IN 'CUBASE'
+!            AND SPECIFY CLOUD BASE MASSFLUX FROM PBL MOISTURE BUDGET
+!        (4) DO CLOUD ASCENT IN 'CUASC' IN ABSENCE OF DOWNDRAFTS
+!        (5) DO DOWNDRAFT CALCULATIONS:
+!              (A) DETERMINE VALUES AT LFS IN 'CUDLFS'
+!              (B) DETERMINE MOIST DESCENT IN 'CUDDRAF'
+!              (C) RECALCULATE CLOUD BASE MASSFLUX CONSIDERING THE
+!                  EFFECT OF CU-DOWNDRAFTS
+!        (6) DO FINAL CLOUD ASCENT IN 'CUASC'
+!        (7) DO FINAL ADJUSMENTS TO CONVECTIVE FLUXES IN 'CUFLX',
+!            DO EVAPORATION IN SUBCLOUD LAYER
+!        (8) CALCULATE INCREMENTS OF T AND Q IN 'CUDTDQ'
+!        (9) CALCULATE INCREMENTS OF U AND V IN 'CUDUDV'
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*        START POINT
+!    *KFDIA*        END POINT
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KLEV*         NUMBER OF LEVELS
+!    *KTRAC*        NUMBER OF CHEMICAL TRACERS
+
+!     INPUT PARAMETERS (LOGICAL)
+
+!    *LDLAND*       LAND SEA MASK (.TRUE. FOR LAND)
+
+!     INPUT PARAMETERS (REAL)
+
+!    *PTSPHY*       TIME STEP FOR THE PHYSICS                       S
+!    *PTEN*         PROVISIONAL ENVIRONMENT TEMPERATURE (T+1)       K
+!    *PQEN*         PROVISIONAL ENVIRONMENT SPEC. HUMIDITY (T+1)  KG/KG
+!    *PUEN*         PROVISIONAL ENVIRONMENT U-VELOCITY (T+1)       M/S
+!    *PVEN*         PROVISIONAL ENVIRONMENT V-VELOCITY (T+1)       M/S
+!    *PCEN*         PROVISIONAL ENVIRONMENT TRACER CONCENTRATIONS KG/KG 
+!    *PLITOT*       GRID MEAN LIQUID WATER+ICE CONTENT            KG/KG
+!    *PVERVEL*      VERTICAL VELOCITY                             PA/S
+!    *PQSEN*        ENVIRONMENT SPEC. SATURATION HUMIDITY (T+1)   KG/KG
+!    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)        KG/(SM2)
+!    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
+!    *PAP*          PROVISIONAL PRESSURE ON FULL LEVELS             PA
+!    *PAPH*         PROVISIONAL PRESSURE ON HALF LEVELS             PA
+!    *PGEO*         GEOPOTENTIAL                                  M2/S2
+!    *PGEOH*        GEOPOTENTIAL ON HALF LEVELS                   M2/S2
+!    *PGAW*       NORMALISED GAUSSIAN QUADRATURE WEIGHT / NUMBER OF LONGITUDE POINTS
+!                           LOCAL SUB-AREA == 4*RPI*RA**2 * PGAW
+!    *PLCRIT_AER*   CRITICAL LIQUID MMR FOR AUTOCONVERSION PROCESS KG/KG
+!    *PCUCONVCA*    COUPLING TO CELL AUTOMATON OR 2D ADV FIELD     ( )
+!    *PGP2DSPP*     Standard stochastic variable (mean=0, SD=1)
+!    *PSCAV*        SCAVENGING COEFFICIENTS FOR CHEM TRANSPORT    UNITLESS
+
+!    UPDATED PARAMETERS (REAL):
+
+!    *PTENT*        TEMPERATURE TENDENCY                           K/S
+!    *PTENQ*        MOISTURE TENDENCY                             KG/(KG S)
+!    *PTENU*        TENDENCY OF U-COMP. OF WIND                    M/S2
+!    *PTENV*        TENDENCY OF V-COMP. OF WIND                    M/S2
+!    *PTENC*        TENDENCY OF CHEMICAL TRACERS                   1/S
+!    *PTENTA*       TEMPERATURE TENDENCY DYNAMICS=TOT ADVECTION    K/S
+!    *PTENQA*       MOISTURE    TENDENCY DYNAMICS=TOT ADVECTION    1/S
+
+!    OUTPUT PARAMETERS (LOGICAL):
+
+!    *LDCUM*        FLAG: .TRUE. FOR CONVECTIVE POINTS 
+!    *LDCUM_LIG*    FLAG: .TRUE. FOR CONVECTIVE POINTS (FOR LIGHTNING PARAM)
+!    *LDSC*         FLAG: .TRUE. FOR SC-POINTS
+
+!    OUTPUT PARAMETERS (INTEGER):
+
+!    *KTYPE*        TYPE OF CONVECTION
+!                       1 = PENETRATIVE CONVECTION
+!                       2 = SHALLOW CONVECTION
+!                       3 = MIDLEVEL CONVECTION
+!    *KCBOT*        CLOUD BASE LEVEL
+!    *KCTOP*        CLOUD TOP LEVEL
+!    *KCBOT_LIG*    CLOUD BASE LEVEL (FOR LIGHTNING PARAM)
+!    *KCTOP_LIG*    CLOUD TOP LEVEL (FOR LIGHTNING PARAM)
+!    *KBOTSC*       CLOUD BASE LEVEL FOR SC-CLOUDS
+
+!    OUTPUT PARAMETERS (REAL):
+
+!    *PTU*          TEMPERATURE IN UPDRAFTS                         K
+!    *PQU*          SPEC. HUMIDITY IN UPDRAFTS                    KG/KG
+!    *PLU*          LIQUID WATER CONTENT IN UPDRAFTS              KG/KG
+!    *PLUDE*        DETRAINED TOTAL CONDENSATE                    KG/(M2*S)
+!    *PLUDELI*      DETRAINED LIQUID, ICE, VAPOR, T               KG/(M2*S)
+!    *PSNDE*        DETRAINED SNOW/RAIN                           KG/(M2*S)
+!    *PENTH*        INCREMENT OF DRY STATIC ENERGY                 J/(KG*S)
+!    *PMFLXR*       CONVECTIVE RAIN FLUX                          KG/(M2*S)
+!    *PMFLXS*       CONVECTIVE SNOW FLUX                          KG/(M2*S)
+!    *PRAIN*        TOTAL PRECIP. PRODUCED IN CONV. UPDRAFTS      KG/(M2*S)
+!                   (NO EVAPORATION IN DOWNDRAFTS)
+!    *PLRAIN*       RAIN+SNOW CONTENT IN UPDRAFTS                 KG/KG
+!    *PRSUD*        CONVECT MEAN RAIN AND SNOW CONTENT IN COLUMN  KG/KG
+!    *PMFU*         MASSFLUX UPDRAFTS                             KG/(M2*S)
+!    *PMFD*         MASSFLUX DOWNDRAFTS                           KG/(M2*S)
+!    *PMFUDE_RATE*  UPDRAFT DETRAINMENT RATE                      KG/(M3*S)
+!    *PMFDDE_RATE*  DOWNDRAFT DETRAINMENT RATE                    KG/(M3*S)
+!    *PCAPE*        CONVECTVE AVAILABLE POTENTIAL ENERGY           J/KG
+!    *PWMEAN*       VERTICALLY AVERAGED UPDRAUGHT VELOCITY         M/S
+!    *PVDISCU*      VERT INTEGRATED CONVECTIVE DISSIPATION RATE    W/m2
+!    *PDISS*        DISSIPATION BY DEEP CONVECTION ESTIMATE       m2/s3^(1/3)
+
+!     EXTERNALS.
+!     ----------
+
+!       CUINI:  INITIALIZES VALUES AT VERTICAL GRID USED IN CU-PARAMETR.
+!       CUBASE: CLOUD BASE CALCULATION FOR PENETR.AND SHALLOW CONVECTION
+!       CUASC:  CLOUD ASCENT FOR ENTRAINING PLUME
+!       CUDLFS: DETERMINES VALUES AT LFS FOR DOWNDRAFTS
+!       CUDDRAF:DOES MOIST DESCENT FOR CUMULUS DOWNDRAFTS
+!       CUFLX:  FINAL ADJUSTMENTS TO CONVECTIVE FLUXES (ALSO IN PBL)
+!       CUDQDT: UPDATES TENDENCIES FOR T AND Q
+!       CUDUDV: UPDATES TENDENCIES FOR U AND V
+!       CUCTRACER: TRACER TRANSPORT
+
+!     SWITCHES.
+!     --------
+
+!          LMFPEN=.TRUE.   PENETRATIVE CONVECTION IS SWITCHED ON
+!          LMFSCV=.TRUE.   SHALLOW CONVECTION IS SWITCHED ON
+!          LMFMID=.TRUE.   MIDLEVEL CONVECTION IS SWITCHED ON
+!          LMFDD=.TRUE.    CUMULUS DOWNDRAFTS SWITCHED ON
+!          LMFDUDV=.TRUE.  CUMULUS FRICTION SWITCHED ON
+!          LMFTRAC=.false. TRACER TRANSPORT 
+
+!     REFERENCE.
+!     ----------
+
+!          PAPER ON MASSFLUX SCHEME (TIEDTKE,1989)
+!          DRAFT PAPER ON MASSFLUX SCHEME (NORDENG, 1995)
+!          Bechtold et al. (2008 QJRMS 134,1337-1351), Rooy et al. (2012 QJRMS)  
+!          Bechtold et al. (2013 JAS)
+
+!     AUTHOR.
+!     -------
+!      M.TIEDTKE      E.C.M.W.F.     1986/1987/1989
+
+!     MODIFICATIONS.
+!     --------------
+!      03-08-29 : Clean-up, deep/shallow switches  P.Bechtold
+!      04-02-11 : Add tracer transport             P.Bechtold
+!      05-02-11 : Positive scaling of total Mflux  P.Bechtold
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      04-12-03 : Turn off shallow convection over stratocu. M.Ko"hler
+!      05-06-27 : Switch off ddraught if idtop<kctop  
+!                 correction for detrainment rates P.Bechtold
+!      05-11-22 : Mods for coarser/finer physics D.Salmond + M.Hortal
+!      06-02-11 : Enable TQ implicit               P.Bechtold
+!      07-06-01 : Only single updraught call with  P.Bechtold
+!                 scaling, convective turnover time
+!                 scale, contain momentum computations in cumastrn
+!      07-10-09 : Added KE dissipation and convective scavenging   P. Bechtold
+!      12-03-02 : remove all entrainment stuff     P. Bechtold
+!      04-10-12 : Add RPLRG/RPLDARE for small planet  N.Semane+P.Bechtold  
+!      13-02-23 : modif diurnal cycle CAPE closure P. Bechtold
+!      13-10-01 : modified option RCAPDCYCL=1 for diurnal cycle N. Semane
+!      16-01-27 : Introduced SPP scheme (LSPP)     M. Leutbecher & S.-J. Lock
+!      20180303 : Gabor: Just a comment line to force recompilation due to 
+!                        compiler wrapper optimation exception liat change
+!      20-08-25 : Additional total moisture advection in CAPE closure P. Bechtold&T. Becker
+!      08-12-20 : Added separate fields for lightning parameterization  P. Lopez.
+!      20-10-12 : SPP abstraction and revision     M. Leutbecher & S. Lang
+!      15-11-21 : Added PVDISCU, vert-integrated convective dissipation rate R.Forbes
+!------------------------------------------------------------------------------------------
+
+USE MODEL_PHYSICS_ECMWF_MOD , ONLY : MODEL_PHYSICS_ECMWF_TYPE
+USE MODEL_PHYSICS_SIMPLINEAR_MOD , ONLY : MODEL_PHYSICS_SIMPLINEAR_TYPE
+USE YOM_YGFL  , ONLY : TYPE_GFLD
+USE YOMCHEM   , ONLY : TCHEM
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST    , ONLY : RG, RD, RCPD, RETV, RLVTT, RLSTT, RTT, RPI, RA
+USE YOMDYNCORE, ONLY : RPLRG, RPLDARE
+USE YOETHF    , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, &
+ &                     R5ALVCP, R5ALSCP, RALVDCP, RALSDCP, RTWAT, RTICE, RTICECU, &
+ &                     RTWAT_RTICECU_R, RTWAT_RTICE_R  
+USE SPP_MOD     , ONLY : TSPP_CONFIG
+USE SPP_GEN_MOD , ONLY : SPP_PERT
+
+IMPLICIT NONE
+
+TYPE(MODEL_PHYSICS_ECMWF_TYPE)     ,INTENT(INOUT):: YDML_PHY_EC
+TYPE(MODEL_PHYSICS_SIMPLINEAR_TYPE),INTENT(INOUT):: YDML_PHY_SLIN
+TYPE(TYPE_GFLD)   ,INTENT(INOUT) :: YGFL
+TYPE(TCHEM)       ,INTENT(INOUT) :: YDCHEM
+TYPE(TSPP_CONFIG) ,INTENT(IN)    :: YDSPP_CONFIG
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTRAC
+LOGICAL           ,INTENT(IN)    :: LDLAND(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLCRIT_AER(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLITOT(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVERVEL(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQSEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQHFL(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAHFS(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEO(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOH(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAW(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCUCONVCA(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGP2DSPP(KLON,YDSPP_CONFIG%SM%NRFTOTAL)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCEN(KLON,KLEV,KTRAC) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSCAV(KTRAC) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENT(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENQ(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENV(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENTA(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENQA(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENC(KLON,KLEV,KTRAC) 
+LOGICAL           ,INTENT(OUT)   :: LDCUM(KLON)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KTYPE(KLON)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KCBOT(KLON)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KCTOP(KLON)
+LOGICAL           ,INTENT(OUT)   :: LDCUM_LIG(KLON)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KCBOT_LIG(KLON)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KCTOP_LIG(KLON)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KBOTSC(KLON) 
+LOGICAL           ,INTENT(OUT)   :: LDSC(KLON) 
+LOGICAL           ,INTENT(IN)    :: LDSHCV(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PLU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PLUDE(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PLUDELI(KLON,KLEV,4) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSNDE(KLON,KLEV,2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PENTH(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PMFLXR(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PMFLXS(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PRAIN(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PLRAIN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PRSUD(KLON,KLEV,2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PMFU(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PMFD(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PMFUDE_RATE(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PMFDDE_RATE(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCAPE(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWMEAN(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVDISCU(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PDISS(KLON,KLEV) 
+
+
+REAL(KIND=JPRB) ::     ZTENH(KLON,KLEV),       ZQENH(KLON,KLEV),&
+ & ZTENH2(KLON,KLEV),      ZQENH2(KLON,KLEV),&
+ & ZQSENH(KLON,KLEV),&
+ & ZTD(KLON,KLEV),         ZQD(KLON,KLEV),&
+ & ZMFUS(KLON,KLEV),       ZMFDS(KLON,KLEV),&
+ & ZMFUQ(KLON,KLEV),       ZMFDQ(KLON,KLEV),&
+ & ZDMFUP(KLON,KLEV),      ZDMFDP(KLON,KLEV),&
+ & ZMFUL(KLON,KLEV),       ZRFL(KLON),&
+ & ZUU(KLON,KLEV),         ZVU(KLON,KLEV),&
+ & ZUD(KLON,KLEV),         ZVD(KLON,KLEV),&
+ & ZKINEU(KLON,KLEV),      ZKINED(KLON,KLEV) 
+REAL(KIND=JPRB) :: &
+ & ZMFUB(KLON),            ZMFUB1(KLON),  ZKHVFL(KLON), ZKHFL(KLON),&
+ & ZDQCV(KLON),            ZFACCA(KLON),  ZMFCFL(KLON), ZSATFR(KLON)
+REAL(KIND=JPRB) ::     ZDPMEL(KLON,KLEV), ZLGLAC(KLON,KLEV)
+REAL(KIND=JPRB) ::     ZDHPBL(KLON),       ZWUBASE(KLON)
+
+REAL(KIND=JPRB) ::     ZDMFEN(KLON,KLEV),  ZDMFDE(KLON,KLEV), ZDX(KLON)
+
+INTEGER(KIND=JPIM) ::  ILAB(KLON,KLEV), IDTOP(KLON), ICTOP0(KLON)
+INTEGER(KIND=JPIM) ::  IDPL(KLON) ! departure level for convection
+REAL(KIND=JPRB) ::     ZCAPE(KLON), ZCAPE2(KLON), ZHEAT(KLON), ZCAPPBL(KLON), ZCAPDCYCL(KLON)
+LOGICAL ::  LLDDRAF(KLON), LLDDRAF3(KLON), LLDCUM(KLON), LLSCVFLAG(KLON)
+LOGICAL ::  LLO1, LLO2(KLON), LLO3
+
+INTEGER(KIND=JPIM) :: IKB, IKD, ITOPM2, JK, IK, JL
+
+REAL(KIND=JPRB) ::   ZCONS2, ZCONS, ZDH, ZDH2,&
+ & ZDQMIN, ZDZ, ZEPS, ZFAC, &
+ & ZMFMAX, ZPBMPT, ZQUMQE, ZRO, ZMFA, ZERATE, ZDERATE, ZORCPD, ZRDOCPD,&
+ & ZDUTEN, ZDVTEN, ZTDIS, ZTAURES, ZAR, ZAS, ZBR, ZBS, ZAK, ZRG !, ZALPHA
+          
+REAL(KIND=JPRB) :: ZTAU(KLON), ZTAUPBL(KLON)  ! adjustment time
+REAL(KIND=JPRB) :: ZXTAU(KLON)
+
+! A bunch of SPP variables
+LOGICAL            :: LLPERT_RTAU     ! SPP perturbation on?
+INTEGER(KIND=JPIM) :: IPRTAU   ! SPP random field pointer
+INTEGER(KIND=JPIM) :: IPN      !  SPP perturbation pointer
+TYPE(SPP_PERT)     :: PN1      ! SPP pertn. configs. for RTAU
+
+! scaling factor for momentum and tracer massflux
+REAL(KIND=JPRB) :: ZMFS(KLON),  ZMFUUS(KLON,KLEV), ZMFDUS(KLON,KLEV) ,&
+                  &             ZMFUDR(KLON,KLEV), ZMFDDR(KLON,KLEV) ,&
+                  &             ZTENU(KLON,KLEV),  ZTENV(KLON,KLEV) ,&
+                  & ZMFUUB(KLON), ZMFUVB(KLON),&
+                  & ZMF_SHAL(KLON), ZKMFL(KLON), &
+                  & ZDMFUPC(KLON,KLEV), ZDMFDPC(KLON,KLEV), ZSCAV(KTRAC),&
+                  & ZUV2(KLON,KLEV), ZSUM12(KLON), ZSUM22(KLON)
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "cuascn.intfb.h"
+#include "cubasen.intfb.h"
+#include "cuddrafn.intfb.h"
+#include "cudlfsn.intfb.h"
+#include "cudtdqn.intfb.h"
+#include "cududv.intfb.h"
+#include "cuflxn.intfb.h"
+#include "cuinin.intfb.h"
+#include "cuctracer.intfb.h"
+
+#include "fcttre.func.h"
+
+!---------------------------------------------------------------------
+
+!     1.           SPECIFY CONSTANTS AND PARAMETERS
+!                  --------------------------------
+
+IF (LHOOK) CALL DR_HOOK('CUMASTRN',0,ZHOOK_HANDLE)
+ASSOCIATE(LMFCUCA=>YDML_PHY_EC%YRECUMF%LMFCUCA, LMFDD=>YDML_PHY_EC%YRECUMF%LMFDD, &
+ & LMFDUDV=>YDML_PHY_EC%YRECUMF%LMFDUDV, LMFPEN=>YDML_PHY_EC%YRECUMF%LMFPEN, LMFSCV=>YDML_PHY_EC%YRECUMF%LMFSCV, &
+ & LMFSMOOTH=>YDML_PHY_EC%YRECUMF%LMFSMOOTH, LMFUVDIS=>YDML_PHY_EC%YRECUMF%LMFUVDIS, &
+ & LMFWSTAR=>YDML_PHY_EC%YRECUMF%LMFWSTAR, NJKT1=>YDML_PHY_EC%YRECUMF%NJKT1, NJKT2=>YDML_PHY_EC%YRECUMF%NJKT2, &
+ & NJKT3=>YDML_PHY_EC%YRECUMF%NJKT3, NJKT5=>YDML_PHY_EC%YRECUMF%NJKT5, RCAPDCYCL=>YDML_PHY_EC%YRECUMF%RCAPDCYCL, &
+ & RDEPTHS=>YDML_PHY_EC%YRECUMF%RDEPTHS, RCUCOV =>YDML_PHY_EC%YRECUMF%RCUCOV, &
+ & RMFCFL=>YDML_PHY_EC%YRECUMF%RMFCFL, RMFCMIN=>YDML_PHY_EC%YRECUMF%RMFCMIN, RMFLIA=>YDML_PHY_EC%YRECUMF%RMFLIA, &
+ & RMFSOLCT=>YDML_PHY_EC%YRECUMF%RMFSOLCT, RCAPQADV=>YDML_PHY_EC%YRECUMF%RCAPQADV,&
+ & RMFSOLTQ=>YDML_PHY_EC%YRECUMF%RMFSOLTQ, RMFSOLUV=>YDML_PHY_EC%YRECUMF%RMFSOLUV, &
+ & RMINCAPE=>YDML_PHY_EC%YRECUMF%RMINCAPE, RTAUA=>YDML_PHY_EC%YRECUMF%RTAUA, &
+ & RUVPER=>YDML_PHY_EC%YRECUMF%RUVPER, RMFADVW=>YDML_PHY_EC%YRECUMF%RMFADVW,RMFADVWDD=>YDML_PHY_EC%YRECUMF%RMFADVWDD,&
+ & LMFSCAV=>YDML_PHY_EC%YREPHY%LMFSCAV, LMFTRAC=>YDML_PHY_EC%YREPHY%LMFTRAC, &
+ & LELIGHT=>YDML_PHY_EC%YREPHY%LELIGHT, LCHEM_LIGHT=>YDCHEM%LCHEM_LIGHT)
+
+ZCONS2=RMFCFL/(RG*PTSPHY)
+ZCONS=1.0_JPRB/(RG*PTSPHY)
+ZORCPD=1.0_JPRB/RCPD
+ZRDOCPD=RD*ZORCPD
+ZRG=1.0_JPRB/RG
+ZTAU(:)=0.0
+
+! prepare SPP PERTURBATIONS
+IF (YDSPP_CONFIG%LSPP) THEN
+  IPN  = YDSPP_CONFIG%PPTR%RTAU
+  LLPERT_RTAU = IPN > 0
+  IF (LLPERT_RTAU) THEN
+    PN1    = YDSPP_CONFIG%SM%PN(IPN)
+    IPRTAU = PN1%MP
+  ENDIF
+
+ELSE
+  LLPERT_RTAU  =.FALSE.
+ENDIF
+
+!----------------------------------------------------------------------
+DO JL=KIDIA,KFDIA
+  PCAPE(JL)=0.0_JPRB
+  PVDISCU(JL)=0.0_JPRB
+  LDCUM(JL)=.FALSE.
+ENDDO
+
+!*    2.           INITIALIZE VALUES AT VERTICAL GRID POINTS IN 'CUINI'
+!                  ---------------------------------------------------
+
+CALL CUININ &
+ & ( YDML_PHY_SLIN%YREPHLI,  YDML_PHY_EC%YRECUMF,&
+ & KIDIA,    KFDIA,    KLON,     KLEV,&
+ & PTEN,     PQEN,     PQSEN,    PUEN,     PVEN,&
+ & PGEO,     PAPH,&
+ & ILAB,&
+ & ZTENH,    ZQENH,    ZQSENH,   PGEOH,&
+ & PTU,      PQU,      ZTD,      ZQD,&
+ & ZUU,      ZVU,      ZUD,      ZVD,&
+ & PLU     )  
+
+!---------------------------------------------------------------------
+
+!*    3.0          CLOUD BASE CALCULATIONS
+!                  -----------------------
+
+!*             (A) DETERMINE CLOUD BASE VALUES IN 'CUBASE'
+!                  ---------------------------------------
+
+ZKMFL(:)=0.0_JPRB
+
+CALL CUBASEN &
+ & ( YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YRECLDP,YDML_PHY_EC%YRECUMF, YDSPP_CONFIG,&
+ & KIDIA,    KFDIA,    KLON,     KLEV,     NJKT1,  .FALSE.,&
+ & ZTENH,    ZQENH,    PGEOH,    PAPH,&
+ & PQHFL,    PAHFS,    PGP2DSPP, ZKMFL,&
+ & PTEN,     PQEN,     PQSEN,    PGEO,&
+ & PTU,      PQU,      PLU,      ZKINEU,   ZWUBASE,&
+ & ILAB,     LDCUM,    LDSC,     KCBOT,    KBOTSC,&
+ & ICTOP0,   IDPL,     PCAPE )   
+
+
+!*             (B) DETERMINE TOTAL MOISTURE CONVERGENCE AND
+!*                 DECIDE ON TYPE OF CUMULUS CONVECTION 
+!*                 ONE THE BASIS OF THE DEPTH OF THE CONVECTION
+!*                 DEEP IF CLOUD DEPTH > 200MB
+!*                 SHALLOW IF CLOUD DEPTH <200MB
+!                  -----------------------------------------
+
+! CALCULATE COLUMN AND SUB CLOUD LAYER MOISTURE CONVERGENCE
+! AND SUB CLOUD LAYER MOIST STATIC ENERGY CONVERGENCE
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  ZDHPBL(JL)=0.0_JPRB
+  IDTOP(JL)=0
+  ZCAPPBL(JL)=0.
+  ZKHVFL(JL)= (-PAHFS(JL,KLEV+1) * ZORCPD - RETV * PTEN(JL,KLEV) * PQHFL(JL,KLEV+1))/(RPLRG*RPLDARE)
+  ZKHFL(JL) = (-PAHFS(JL,KLEV+1) - RLVTT * PQHFL(JL,KLEV+1))/(RPLRG*RPLDARE)
+ENDDO
+DO JK=NJKT2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF(LDCUM(JL).AND.JK >= KCBOT(JL)) THEN
+      ZDZ=(PAPH(JL,JK+1)-PAPH(JL,JK))
+      ZDHPBL(JL)=ZDHPBL(JL)+(RLVTT*PTENQ(JL,JK)+RCPD*PTENT(JL,JK))*ZDZ
+      ZCAPPBL(JL)=ZCAPPBL(JL)+(PTENT(JL,JK)+RETV*PTEN(JL,JK)*PTENQ(JL,JK))*ZDZ
+    ENDIF
+  ENDDO
+ENDDO
+
+!*                 ESTIMATE CLOUD HEIGHT FOR ENTRAINMENT/DETRAINMENT
+!*                 CALCULATIONS IN CUASC AND INITIAL DETERMINATION OF 
+!*                 CLOUD TYPE
+!*                 (MAX.POSSIBLE CLOUD HEIGHT
+!*                 FOR NON-ENTRAINING PLUME, FOLLOWING A.-S.,1974)
+!                  -------------------------------------------------
+
+
+!*                 SPECIFY INITIAL CLOUD TYPE
+!*
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF (LDCUM(JL)) THEN
+    IKB=KCBOT(JL)
+    ITOPM2=ICTOP0(JL)
+    ZPBMPT=PAPH(JL,IKB)-PAPH(JL,ITOPM2)
+    IF (ZPBMPT >= RDEPTHS) THEN
+      KTYPE(JL)=1
+    ELSE
+      KTYPE(JL)=2
+    ENDIF
+  ELSE
+    KTYPE(JL)=0
+  ENDIF
+ENDDO
+
+!*             (C) calculate initial updraught mass flux
+!*                 and set lateral mixing rates
+!*
+!*                 for deep convection assume it is 10% of 
+!*                 maximum value which is determined by the 
+!*                 thickness of the layer and timestep
+!*
+!*                 for shallow convection calculated assuming
+!*                 a balance of moist static energy in the 
+!*                 sub-cloud layer (ignores present of downdraughts)
+!                  ------------------------------------------
+
+IF (LMFWSTAR) THEN
+!DIR$ IVDEP
+!OCL NOVREC
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF (LDCUM(JL)) THEN
+      IKB=KCBOT(JL)
+      ZDZ=MAX(0.0_JPRB,MIN(1.5E3_JPRB,(PGEOH(JL,IKB)-PGEOH(JL,KLEV+1))/RG))
+      ZMF_SHAL(JL)=0.07_JPRB*(RG/PTEN(JL,KLEV)*ZDZ*MAX(0.0_JPRB,ZKHVFL(JL)))**.3333
+      ZMFMAX=(PAPH(JL,IKB)-PAPH(JL,IKB-1))*ZCONS2
+      ZMF_SHAL(JL)=MIN(ZMF_SHAL(JL),ZMFMAX)
+    ENDIF
+  ENDDO
+ENDIF
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF (LDCUM(JL)) THEN
+    IKB=KCBOT(JL)
+    ZMFMAX=(PAPH(JL,IKB)-PAPH(JL,IKB-1))*ZCONS2
+
+! deep convection
+
+    IF (KTYPE(JL) == 1) THEN
+      ZMFUB(JL)=ZMFMAX*0.1_JPRB
+
+    ELSEIF (KTYPE(JL) == 2) THEN
+
+! shallow convection
+
+      ZQUMQE=PQU(JL,IKB)+PLU(JL,IKB)-ZQENH(JL,IKB)
+      ZDQMIN=MAX(0.01_JPRB*ZQENH(JL,IKB),1.E-10_JPRB)
+      ZDH=RCPD*(PTU(JL,IKB)-ZTENH(JL,IKB))+RLVTT*ZQUMQE
+      ZDH=RG*MAX(ZDH,1.E5_JPRB*ZDQMIN)
+      IF (ZDHPBL(JL) > 0.0_JPRB) THEN
+        ZMFUB(JL)=ZDHPBL(JL)/ZDH
+        ZMFUB(JL)=MIN(ZMFUB(JL),ZMFMAX)
+      ELSE
+        ZMFUB(JL)=ZMFMAX*0.1_JPRB
+        LDCUM(JL)=.FALSE.
+      ENDIF
+      IF(LMFWSTAR) ZMFUB(JL)=ZMF_SHAL(JL)
+    ENDIF
+
+  ELSE
+
+! no buoyancy cloud base from surface
+! set cloud base mass flux and mixing rate
+! to default value for safety
+
+    ZMFUB(JL)=0.0_JPRB
+  ENDIF
+ENDDO
+
+!-----------------------------------------------------------------------
+
+!*    4.0          DETERMINE CLOUD ASCENT FOR ENTRAINING PLUME
+!                  -------------------------------------------
+
+!*             (A) ESTIMATE CLOUD HEIGHT FOR ENTRAINMENT/DETRAINMENT
+!*                 CALCULATIONS IN CUASC (MAX.POSSIBLE CLOUD HEIGHT
+!*                 FOR NON-ENTRAINING PLUME, FOLLOWING A.-S.,1974)
+!                  -------------------------------------------------
+
+! CALCULATIONS NOW DONE IS SECTION 3 ABOVE SO THAT
+! INITIAL CLOUD DEPTH CAN BE USED TO SPECIFY
+! THE TYPE OF CONVECTION
+
+!*             (B) DO ASCENT IN 'CUASC'IN ABSENCE OF DOWNDRAFTS
+!                  --------------------------------------------
+
+CALL CUASCN &
+ & ( YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YRECLDP,YDML_PHY_EC%YRECUMF,YDSPP_CONFIG,YGFL, &
+ & KIDIA,    KFDIA,    KLON,    KLEV, &
+ & PTSPHY,&
+ & ZTENH,    ZQENH,    PUEN,     PVEN,&
+ & PTEN,     PQEN,     PQSEN,    PLITOT,&
+ & PGEO,     PGEOH,    PAP,      PAPH,&
+ & PVERVEL,  ZWUBASE,  PGP2DSPP,  &
+ & LDLAND,   LDCUM,    KTYPE,    ILAB,     LLSCVFLAG,&
+ & PTU,      PQU,      PLU,      PLRAIN,&
+ & PMFU,     ZMFUB,    ZLGLAC,&
+ & ZMFUS,    ZMFUQ,    ZMFUL,    PLUDE,    PLUDELI,       ZDMFUP,&
+ & PLCRIT_AER,&
+ & ZDMFEN,&  
+ & KCBOT,    KCTOP,    ICTOP0,   IDPL,     PMFUDE_RATE,   ZKINEU,   PWMEAN ) 
+
+!*         (C) CHECK CLOUD DEPTH AND CHANGE ENTRAINMENT RATE ACCORDINGLY
+!              CALCULATE PRECIPITATION RATE (FOR DOWNDRAFT CALCULATION)
+!              -----------------------------------------------------
+
+!DIR$ IVDEP
+!OCL NOVREC
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF (LDCUM(JL)) THEN
+    IKB=KCBOT(JL)
+    ITOPM2=KCTOP(JL)
+    ZPBMPT=PAPH(JL,IKB)-PAPH(JL,ITOPM2)
+    IF(KTYPE(JL) == 1.AND.ZPBMPT < RDEPTHS) KTYPE(JL)=2
+    IF(KTYPE(JL) == 2.AND.ZPBMPT >= RDEPTHS) KTYPE(JL)=1
+    ICTOP0(JL)=KCTOP(JL)
+  ENDIF
+  ZRFL(JL)=ZDMFUP(JL,1)
+ENDDO
+DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    ZRFL(JL)=ZRFL(JL)+ZDMFUP(JL,JK)
+  ENDDO
+ENDDO
+DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    PMFD(JL,JK)=0.0_JPRB
+    ZMFDS(JL,JK)=0.0_JPRB
+    ZMFDQ(JL,JK)=0.0_JPRB
+    ZDMFDP(JL,JK)=0.0_JPRB
+    ZDPMEL(JL,JK)=0.0_JPRB
+  ENDDO
+ENDDO
+
+! Needed for dissipation rate and if LMFUVDIS=T
+DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    ZTENU(JL,JK)=PTENU(JL,JK)
+    ZTENV(JL,JK)=PTENV(JL,JK)
+  ENDDO
+ENDDO
+
+!-----------------------------------------------------------------------
+
+!*    5.0          CUMULUS DOWNDRAFT CALCULATIONS
+!                  ------------------------------
+
+IF(LMFDD) THEN
+
+!*             (A) DETERMINE LFS IN 'CUDLFS'
+!                  -------------------------
+
+  CALL CUDLFSN &
+   & ( YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YRECUMF,&
+   & KIDIA,    KFDIA,    KLON,     KLEV,&
+   & KCBOT,    KCTOP,    LDCUM,&
+   & ZTENH,    ZQENH,    PTEN,     PQSEN,    PGEO,&
+   & PGEOH,    PAPH,     PTU,      PQU,&
+   & ZMFUB,    ZRFL,&
+   & ZTD,      ZQD,&
+   & PMFD,     ZMFDS,    ZMFDQ,    ZDMFDP,&
+   & IDTOP,    LLDDRAF )  
+
+!*            (B)  DETERMINE DOWNDRAFT T,Q AND FLUXES IN 'CUDDRAF'
+!                  -----------------------------------------------
+
+  CALL CUDDRAFN &
+   & ( YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YRECUMF,&
+   & KIDIA,    KFDIA,    KLON,    KLEV,&
+   & LLDDRAF,&
+   & ZTENH,    ZQENH,    PQSEN,&
+   & PGEO,     PGEOH,    PAPH,     ZRFL,&
+   & ZTD,      ZQD,      PMFU,&
+   & PMFD,     ZMFDS,    ZMFDQ,    ZDMFDP,&
+   & ZDMFDE,   PMFDDE_RATE,        ZKINED )  
+
+ENDIF
+
+!-----------------------------------------------------------------------
+
+!*    6.0          CLOSURE
+!                  ------
+
+!*                  RECALCULATE CLOUD BASE MASSFLUX FROM A
+!*                 CAPE CLOSURE FOR DEEP CONVECTION (KTYPE=1)
+!*                 AND BY PBL EQUILIBRUM TAKING DOWNDRAFTS INTO
+!*                 ACCOUNT FOR SHALLOW CONVECTION (KTYPE=2)          
+!                  --------------------------------------------
+
+!   DEEP CONVECTION
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  ZHEAT(JL)=0.0_JPRB
+  ZCAPE(JL)=0.0_JPRB
+  ZCAPE2(JL)=0.0_JPRB
+  ZMFUB1(JL)=ZMFUB(JL)
+  ZDQCV(JL)=0.0_JPRB
+  ZSATFR(JL)=0.0_JPRB
+  ZDX(JL)=2*RA*SQRT(RPI*PGAW(JL))
+  ZDX(JL)=MAX(ZDX(JL),1.E2_JPRB)
+ENDDO
+
+DO JK=NJKT2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    LLO1=LDCUM(JL).AND.KTYPE(JL) == 1
+    LLO3=LLO1.AND.JK <= KCBOT(JL).AND.JK > KCTOP(JL)
+    IF(LLO3) THEN
+      ZDZ=(PGEO(JL,JK-1)-PGEO(JL,JK))
+      ZHEAT(JL)=ZHEAT(JL) +MAX(0.0_JPRB,&
+       & (  (PTEN(JL,JK-1)-PTEN(JL,JK) + ZDZ*ZORCPD)/ZTENH(JL,JK)&
+       & +  RETV*(PQEN(JL,JK-1)-PQEN(JL,JK))  ) *&
+       & (RG*(PMFU(JL,JK)+PMFD(JL,JK))) )
+      ZDZ=(PAP(JL,JK)-PAP(JL,JK-1))
+      ZCAPE(JL)=ZCAPE(JL) +&
+       & ((PTU(JL,JK)-ZTENH(JL,JK))/ZTENH(JL,JK)&
+       & +RETV*(PQU(JL,JK)-ZQENH(JL,JK))&
+       & -PLU(JL,JK) ) * ZDZ  ! -PLRAIN(JL,JK) not added
+    ENDIF
+    IF(LLO3.AND.RCAPQADV>0.0_JPRB) THEN
+      ZTENH2(JL,JK)=ZTENH(JL,JK)-0.5_JPRB*(PTENTA(JL,JK)+PTENTA(JL,JK-1))*PTSPHY
+      ZQENH2(JL,JK)=ZQENH(JL,JK)-0.5_JPRB*(PTENQA(JL,JK)+PTENQA(JL,JK-1))*PTSPHY
+      ZCAPE2(JL)=ZCAPE2(JL) +&
+       & ((PTU(JL,JK)-ZTENH2(JL,JK))/ZTENH2(JL,JK)&
+       & +RETV*(PQU(JL,JK)-ZQENH2(JL,JK))&
+       & -PLU(JL,JK) ) * ZDZ  ! -ZLRAIN(JL,JK) not added
+    ENDIF
+  ! IF(LLO1.AND.JK > KCTOP(JL)) THEN
+    IF(LLO1) THEN
+       ZDZ=(PAPH(JL,JK+1)-PAPH(JL,JK))
+       ZDQCV(JL)=ZDQCV(JL)+PTENQA(JL,JK)*ZDZ*(PQEN(JL,JK)/PQSEN(JL,JK))
+     ! ZMFA=2.5_JPRB/MAX(2.5_JPRB,-PVERVEL(JL,JK))*PQSEN(JL,JK)/ZDX(JL)
+     ! ZDQCV(JL)=ZDQCV(JL)+MIN(ZMFA,PTENQA(JL,JK))*ZDZ*(PQEN(JL,JK)/PQSEN(JL,JK))
+    ENDIF
+    IF(LLO1.AND.JK >= KCTOP(JL)) THEN
+       ZDZ=(PAPH(JL,JK+1)-PAPH(JL,JK))
+       ZSATFR(JL)=ZSATFR(JL)+(PQEN(JL,JK)/PQSEN(JL,JK))*ZDZ
+    ENDIF
+  ENDDO
+ENDDO
+! time scale and subcloud contribution to CAPE to be substracted for better diurnal cycle over land
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  ZCAPDCYCL(JL)=0.0_JPRB
+  ZTAU(JL)=0.0_JPRB
+!! CFL limit as function of resolution used in DWD ICON model
+! ZMFCFL(JL) = 2._JPRB*MIN(2._JPRB,1._JPRB + 2.5E-5_JPRB*ZDX(JL))
+  IF(LDCUM(JL).AND.KTYPE(JL) == 1) THEN
+    ZTAURES=1.0_JPRB+1.60_JPRB*ZDX(JL)/125.E3_JPRB
+    ! for the 10-1 km resolution range increase ZTAURES
+    IF(ZDX(JL)<8.E3_JPRB) THEN
+      ZTAURES=1.0_JPRB+(LOG(8.E3_JPRB/ZDX(JL)))**2
+    ENDIF
+    IF(ZDX(JL)>125.E3_JPRB) ZTAURES=MIN(3.0_JPRB,ZTAURES)
+
+    IKD=IDPL(JL)
+    IKB=KCBOT(JL)
+    IK=KCTOP(JL)
+    ZTAU(JL)=(PGEOH(JL,IK)-PGEOH(JL,IKB))/((2.0_JPRB+MIN(15.0_JPRB,PWMEAN(JL)))*RG)*ZTAURES*RTAUA
+    IF (LLPERT_RTAU) THEN
+      ZXTAU(JL)= ZTAU(JL)*EXP(PN1%MU(1)+PN1%XMAG(1)*PGP2DSPP(JL, IPRTAU))
+    ELSE
+      ZXTAU(JL)=ZTAU(JL)
+    ENDIF
+
+    LLO1=PAPH(JL,KLEV+1)-PAPH(JL,IKD)<50.E2_JPRB
+    IF(LLO1.AND.LDLAND(JL).AND.RCAPDCYCL==1.0_JPRB) THEN
+       ZDZ=MIN(1.E4_JPRB,PGEOH(JL,IKB)-PGEOH(JL,KLEV+1))/RG
+       ZCAPDCYCL(JL)=ZXTAU(JL)*MAX(0.0_JPRB,ZKHVFL(JL))*RCPD/ZDZ
+    ENDIF
+    IF(LLO1.AND.RCAPDCYCL==2.0_JPRB) THEN
+      IF(LDLAND(JL)) THEN
+        ZCAPDCYCL(JL)=ZCAPPBL(JL)*ZTAU(JL)/ZTAURES
+      ELSE
+        ZDUTEN=2.0_JPRB+SQRT(0.5*(PUEN(JL,IKB)**2+PVEN(JL,IKB)**2+PUEN(JL,NJKT3)**2+PVEN(JL,NJKT3)**2))
+        ZTAUPBL(JL)=MIN(1.E4_JPRB,PGEOH(JL,IKB)-PGEOH(JL,KLEV+1))/(RG*ZDUTEN)
+        ZCAPDCYCL(JL)=ZCAPPBL(JL)*ZTAUPBL(JL)
+      ENDIF
+    ENDIF
+
+    ZDQCV(JL)=ZDQCV(JL)*RLVTT/PGEOH(JL,IK)*ZXTAU(JL)/MAX(1.25_JPRB,ZTAURES)*RCAPQADV
+    ZSATFR(JL)=ZSATFR(JL)/(PAPH(JL,KLEV+1)-PAPH(JL,IK))
+
+  ELSE
+    ZTAU(JL)=0.0_JPRB
+  ENDIF
+ENDDO
+
+IF (LMFCUCA) THEN
+!only allow cloud base mass flux to vary by certain amount
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    ZFACCA(JL)=MAX(0.3_JPRB,MIN(1.8_JPRB,PCUCONVCA(JL)))
+  ENDDO
+ELSE
+  ZFACCA(KIDIA:KFDIA)=1.0_JPRB
+ENDIF
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF(LDCUM(JL).AND.KTYPE(JL) == 1) THEN
+    IKB=KCBOT(JL)
+    ZCAPE2(JL)=RCAPQADV*ZCAPE2(JL)+(1.0_JPRB-RCAPQADV)*ZCAPE(JL)
+    ZCAPDCYCL(JL)=MAX(ZCAPDCYCL(JL),-2*ZCAPE2(JL))
+    IF(ZSATFR(JL)<=0.94.OR.PVERVEL(JL,NJKT5)<-100._JPRB) THEN
+       ZCAPE(JL)=MAX(RMINCAPE*ZCAPE(JL),ZCAPE2(JL)-ZCAPDCYCL(JL)+ZDQCV(JL))
+    ELSE
+       ZCAPE(JL)=MAX(RMINCAPE*ZCAPE(JL),ZCAPE(JL)-ZCAPDCYCL(JL))
+    ENDIF
+    ZCAPE(JL)=MIN(ZCAPE(JL),5000.0_JPRB)
+    ZHEAT(JL)=MAX(1.E-4_JPRB,ZHEAT(JL))
+!    ZXTAU(JL)=MAX(720._JPRB,ZXTAU(JL))
+    ZXTAU(JL)=MAX(3.6E3_JPRB/(5.0_JPRB*RPLRG*RPLDARE),MIN(3.0_JPRB*3.6E3_JPRB/(RPLRG*RPLDARE),ZXTAU(JL)))
+    ZMFUB1(JL)=(ZCAPE(JL)*ZMFUB(JL))/(ZHEAT(JL)*ZXTAU(JL))
+    ZMFUB1(JL)=MAX(ZMFUB1(JL),0.001_JPRB)*ZFACCA(JL)
+    ZMFMAX=(PAPH(JL,IKB)-PAPH(JL,IKB-1))*ZCONS2
+    ZMFUB1(JL)=MIN(ZMFUB1(JL),ZMFMAX)
+  ENDIF
+ENDDO
+
+!  SHALLOW CONVECTION AND MID_LEVEL
+
+!DIR$ IVDEP
+!OCL NOVREC
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF ( LDCUM(JL) .AND. KTYPE(JL) >= 2 ) THEN
+    IKB=KCBOT(JL)
+    IF(PMFD(JL,IKB) < 0.0_JPRB) THEN
+      ZEPS=-PMFD(JL,IKB)/MAX(ZMFUB(JL),1.E-10_JPRB)
+    ELSE
+      ZEPS=0.0_JPRB
+    ENDIF
+! maximum permissible value of ud base mass flux 
+    ZMFMAX=(PAPH(JL,IKB)-PAPH(JL,IKB-1))*ZCONS2
+
+! shallow convection
+
+    IF(KTYPE(JL) == 2) THEN
+      IF(ZDHPBL(JL) > 0.0_JPRB) THEN
+        ZQUMQE=PQU(JL,IKB)+PLU(JL,IKB)-&
+         & ZEPS*ZQD(JL,IKB)-(1.0_JPRB-ZEPS)*ZQENH(JL,IKB)  
+        ZDH=RCPD*(PTU(JL,IKB)-ZEPS*ZTD(JL,IKB)-&
+         & (1.0_JPRB-ZEPS)*ZTENH(JL,IKB))+RLVTT*ZQUMQE  
+        ZDH2=RCPD*(PTU(JL,IKB-1)-ZEPS*ZTD(JL,IKB-1)-&
+         & (1.0_JPRB-ZEPS)*ZTENH(JL,IKB-1))+RLVTT*ZQUMQE 
+        ZDH=0.5_JPRB*(ZDH+ZDH2)
+        ZDH=RG*MAX(ZDH,0.1_JPRB*RCPD)
+        ZMFUB1(JL)=ZDHPBL(JL)/ZDH
+        IF(ZMFUB1(JL)>0.9_JPRB*ZMFMAX/RMFCFL.AND.ZDH<0.5_JPRB*RG*RCPD) THEN
+          ZDH=0.75_JPRB*RCPD*RG
+          ZMFUB1(JL)=ZDHPBL(JL)/ZDH
+        ENDIF 
+      ELSE
+        ZMFUB1(JL)=ZMFUB(JL)
+      ENDIF
+      IF(LMFWSTAR) ZMFUB1(JL)=ZMF_SHAL(JL)
+      ZMFUB1(JL)=MIN(ZMFUB1(JL),ZMFMAX)
+    ENDIF
+
+! mid-level convection
+
+    IF(KTYPE(JL) == 3)THEN
+      ZMFUB1(JL)=MAX(ZMFUB(JL),5*ZKHFL(JL)/MAX(1.E2_JPRB,PGEOH(JL,IKB)))&
+     &                    *(1.0_JPRB+ZEPS)
+      IF(PGEOH(JL,IKB)<1.5E3_JPRB) THEN
+        ZMFUB1(JL)=MIN(ZMFUB1(JL),ZMFMAX/(1.05_JPRB*RMFCFL))
+      ELSE
+        ZMFUB1(JL)=MIN(ZMFUB1(JL),ZMFMAX)
+      ENDIF
+    ENDIF
+
+  ENDIF
+ENDDO
+
+! rescale DD fluxes if deep and shallow convection
+
+DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF ( LLDDRAF(JL) .AND.( KTYPE(JL) == 1.OR. KTYPE(JL) == 2 ) ) THEN
+      ZFAC=ZMFUB1(JL)/MAX(ZMFUB(JL),1.E-10_JPRB)
+      PMFD(JL,JK)=PMFD(JL,JK)*ZFAC
+      ZMFDS(JL,JK)=ZMFDS(JL,JK)*ZFAC
+      ZMFDQ(JL,JK)=ZMFDQ(JL,JK)*ZFAC
+      ZDMFDP(JL,JK)=ZDMFDP(JL,JK)*ZFAC
+!  also rescale detrainment flux for ERA pp
+      PMFDDE_RATE(JL,JK)=PMFDDE_RATE(JL,JK)*ZFAC
+    ENDIF
+  ENDDO
+ENDDO
+
+!-----------------------------------------------------------------------
+
+!*    6.2          FINAL CLOSURE=SCALING
+!                  ---------------------
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF(LDCUM(JL)) THEN
+    ZMFS(JL)=ZMFUB1(JL)/MAX(RMFCMIN,ZMFUB(JL))
+  ENDIF
+ENDDO
+DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF(LDCUM(JL).AND.JK>=KCTOP(JL)-1) THEN
+      IKB=KCBOT(JL)
+      IF(JK>IKB) THEN
+        ZDZ=((PAPH(JL,KLEV+1)-PAPH(JL,JK))/(PAPH(JL,KLEV+1)-PAPH(JL,IKB)))
+        PMFU(JL,JK)=PMFU(JL,IKB)*ZDZ
+      ENDIF
+      ZMFMAX=(PAPH(JL,JK)-PAPH(JL,JK-1))*ZCONS2 !*zmfcfl(jl)/rmfcfl
+      ZMFMAX=MIN(ZMFMAX,RMFLIA)
+      IF(PMFU(JL,JK)*ZMFS(JL)>ZMFMAX) THEN 
+         ZMFS(JL)=MIN(ZMFS(JL),ZMFMAX/PMFU(JL,JK))  
+         ZMFS(JL)=MAX(ZMFS(JL),1.E-10_JPRB)  
+      ENDIF
+    ENDIF
+  ENDDO
+ENDDO
+ 
+!test additionally on divergence limit in case of direct Dynamics coupling
+IF (RMFADVW>0.0_JPRB) THEN
+  DO JK=2,KLEV-1
+     DO JL=KIDIA,KFDIA
+       IF(KTYPE(JL)==1.AND.JK>=KCTOP(JL)-1) THEN
+          ZFAC=ZMFS(JL)*RG*RMFADVW*(PMFU(JL,JK)-PMFU(JL,JK+1)+RMFADVWDD*(PMFD(JL,JK)-PMFD(JL,JK+1)))/&
+                      &(PAPH(JL,JK)-PAPH(JL,JK+1))*PTSPHY
+          IF(ABS(ZFAC)>0.98_JPRB) ZMFS(JL)=ZMFS(JL)/MAX(1.02_JPRB,ABS(ZFAC))
+       ENDIF
+     ENDDO
+  ENDDO
+  JK=KLEV
+  DO JL=KIDIA,KFDIA
+       IF(KTYPE(JL)==1) THEN
+          ZFAC=ZMFS(JL)*RG*RMFADVW*(PMFU(JL,JK)+RMFADVWDD*PMFD(JL,JK))/(PAPH(JL,JK)-PAPH(JL,JK+1))*PTSPHY
+          IF(ABS(ZFAC)>0.98_JPRB) ZMFS(JL)=ZMFS(JL)/MAX(1.02_JPRB,ABS(ZFAC))
+       ENDIF
+  ENDDO
+ENDIF
+
+DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF(LDCUM(JL).AND.JK<=KCBOT(JL).AND.JK>=KCTOP(JL)-1) THEN
+      PMFU(JL,JK)=PMFU(JL,JK)*ZMFS(JL)
+      ZMFUS(JL,JK)=ZMFUS(JL,JK)*ZMFS(JL)
+      ZMFUQ(JL,JK)=ZMFUQ(JL,JK)*ZMFS(JL)
+      ZMFUL(JL,JK)=ZMFUL(JL,JK)*ZMFS(JL)
+      ZDMFUP(JL,JK)=ZDMFUP(JL,JK)*ZMFS(JL)
+      ZDMFEN(JL,JK)=ZDMFEN(JL,JK)*ZMFS(JL)
+      PLUDE(JL,JK)=PLUDE(JL,JK)*ZMFS(JL)
+      PLUDELI(JL,JK,1)=PLUDELI(JL,JK,1)*ZMFS(JL)
+      PLUDELI(JL,JK,2)=PLUDELI(JL,JK,2)*ZMFS(JL)
+      PMFUDE_RATE(JL,JK)=PMFUDE_RATE(JL,JK)*ZMFS(JL)
+    ENDIF
+  ENDDO
+ENDDO
+
+!-----------------------------------------------------------------------
+
+!*    6.5          IN CASE THAT EITHER DEEP OR SHALLOW IS SWITCHED OFF
+!                  RESET LDCUM TO FALSE-> FLUXES SET TO ZERO IN CUFLXN
+!                  ---------------------------------------------------
+
+!                 exclude pathological KTYPE=2 KCBOT=KCTOP=KLEV-1
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF(KTYPE(JL)==2.AND.KCBOT(JL)==KCTOP(JL).AND.KCBOT(JL)>=KLEV-1) THEN
+    LDCUM(JL)=.FALSE.
+    KTYPE(JL)=0
+  ENDIF
+ENDDO
+
+!                  turn off shallow convection if stratocumulus PBL type
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  LLO2(JL)=.FALSE.
+  IF((.NOT.LDSHCV(JL) .AND. KTYPE(JL)==2)) THEN
+    LLO2(JL)=.TRUE.
+    LDCUM(JL)=.FALSE.
+  ENDIF
+ENDDO
+
+
+IF (LELIGHT .OR. LCHEM_LIGHT) THEN
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  ! The following is needed to allow lightning calculations in case deep convection 
+  ! is treated explicitly (i.e. when LMFPEN=false).
+  DO JL=KIDIA,KFDIA
+    ! Store convection flag.
+    LDCUM_LIG(JL)=LDCUM(JL)
+    ! Store convective cloud top and bottom levels.
+    KCTOP_LIG(JL)=KCTOP(JL)
+    KCBOT_LIG(JL)=KCBOT(JL)
+  ENDDO
+ENDIF
+
+IF (.NOT.LMFSCV .OR. .NOT.LMFPEN) THEN
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+   ! LLO2(JL)=.FALSE.
+    IF((.NOT.LMFSCV .AND. KTYPE(JL)==2).OR.(.NOT.LMFPEN .AND. KTYPE(JL)==1))THEN
+      LLO2(JL)=.TRUE.
+      LDCUM(JL)=.FALSE.
+    ENDIF
+  ENDDO
+ENDIF
+
+!-----------------------------------------------------------------------
+
+!*    7.0          DETERMINE FINAL CONVECTIVE FLUXES IN 'CUFLX'
+!                  ------------------------------------------
+
+!- set DD mass fluxes to zero above cloud top
+!  (because of inconsistency with second updraught)
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+  IF(LLDDRAF(JL).AND.IDTOP(JL)<=KCTOP(JL)) THEN
+    IDTOP(JL)=KCTOP(JL)+1
+  ENDIF
+ENDDO
+
+DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF (LLDDRAF(JL)) THEN
+      IF (JK<IDTOP(JL)) THEN
+        PMFD(JL,JK)=0.0_JPRB
+        ZMFDS(JL,JK)=0.0_JPRB
+        ZMFDQ(JL,JK)=0.0_JPRB
+        PMFDDE_RATE(JL,JK)=0.0_JPRB
+        ZDMFDP(JL,JK)=0.0_JPRB
+      ELSEIF (JK==IDTOP(JL)) THEN
+        PMFDDE_RATE(JL,JK)=0.0_JPRB
+      ENDIF
+    ENDIF
+  ENDDO
+ENDDO
+CALL CUFLXN &
+ & ( YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YRECUMF,&
+ & KIDIA,    KFDIA,    KLON,     KLEV,&
+ & PTSPHY,&
+ & PTEN,     PQEN,     PQSEN,    ZTENH,    ZQENH,&
+ & PAPH,     PAP,      PGEOH,    LDLAND,   LDCUM,&
+ & KCBOT,    KCTOP,    IDTOP,    ITOPM2,&
+ & KTYPE,    LLDDRAF,&
+ & PMFU,     PMFD,     ZMFUS,    ZMFDS,&
+ & ZMFUQ,    ZMFDQ,    ZMFUL,    PLUDE,    PLUDELI,   PLRAIN,  PSNDE,&
+ & ZDMFUP,   ZDMFDP,   ZDPMEL,   ZLGLAC,&
+ & PMFLXR,   PMFLXS,   PRAIN,    PMFUDE_RATE,  PMFDDE_RATE )  
+ 
+!- correct DD detrainment rates if entrainment becomes negative
+!- correct UD detrainment rates if entrainment becomes negative
+!- conservation correction for precip
+
+DO JK=2,KLEV-1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF ( LLDDRAF(JL) .AND. JK>=IDTOP(JL)-1 ) THEN
+       ZERATE=-PMFD(JL,JK)+PMFD(JL,JK-1)+PMFDDE_RATE(JL,JK)
+       IF(ZERATE<0.0_JPRB) THEN
+         PMFDDE_RATE(JL,JK)=PMFDDE_RATE(JL,JK)-ZERATE
+       ENDIF
+    ENDIF
+    IF ( LDCUM(JL) .AND. JK>=KCTOP(JL)-1 ) THEN
+       ZERATE=PMFU(JL,JK)-PMFU(JL,JK+1)+PMFUDE_RATE(JL,JK)
+       IF(ZERATE<0.0_JPRB) THEN
+         PMFUDE_RATE(JL,JK)=PMFUDE_RATE(JL,JK)-ZERATE
+       ENDIF
+     ! ZDMFUP(JL,JK)=ZDMFUP(JL,JK)+ZDMFDP(JL,JK)
+       ZDMFUP(JL,JK)=PMFLXR(JL,JK+1)+PMFLXS(JL,JK+1)&
+                   &-PMFLXR(JL,JK)-PMFLXS(JL,JK)
+       ZDMFDP(JL,JK)=0.0_JPRB
+    ENDIF
+  ENDDO
+ENDDO
+
+! avoid negative humidities at ddraught top
+!DIR$ LOOP_INFO EST_TRIPS(16)
+DO JL=KIDIA,KFDIA
+ IF(LLDDRAF(JL)) THEN
+   JK=IDTOP(JL)
+   IK=MIN(JK+1,KLEV)
+   IF(ZMFDQ(JL,JK)<0.3_JPRB*ZMFDQ(JL,IK)) THEN
+     IF(RMFSOLTQ==0.0_JPRB) THEN
+       ZMFDQ(JL,JK)=0.3_JPRB*ZMFDQ(JL,IK)
+     ELSE
+       PMFD(JL,JK)=0.3_JPRB*PMFD(JL,IK)
+     ENDIF
+   ENDIF
+ ENDIF
+ENDDO
+
+! avoid negative humidities near cloud top because gradient of precip flux
+! and detrainment / liquid water flux too large
+DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF(LDCUM(JL).AND.JK>=KCTOP(JL)-1.AND.JK<KCBOT(JL)) THEN
+      ZDZ=PTSPHY*RG/(PAPH(JL,JK+1)-PAPH(JL,JK))
+      ZMFA=ZMFUQ(JL,JK+1)+ZMFDQ(JL,JK+1)-ZMFUQ(JL,JK)-ZMFDQ(JL,JK)+&
+          &ZMFUL(JL,JK+1)-ZMFUL(JL,JK)+ZDMFUP(JL,JK)-PSNDE(JL,JK,1)-PSNDE(JL,JK,2)
+      ZMFA=(ZMFA-PLUDE(JL,JK))*ZDZ
+      IF(PQEN(JL,JK)+ZMFA<0.0_JPRB.AND.PLUDE(JL,JK)>0.0_JPRB) THEN
+        ZFAC=MIN(-(PQEN(JL,JK)+ZMFA)/ZDZ,PLUDE(JL,JK))
+        PLUDE(JL,JK)=PLUDE(JL,JK)+ZFAC
+        PLUDELI(JL,JK,1)=PLUDELI(JL,JK,1)+ZFAC*PLUDELI(JL,JK,1)/PLUDE(JL,JK)
+        PLUDELI(JL,JK,2)=PLUDELI(JL,JK,2)+ZFAC*PLUDELI(JL,JK,2)/PLUDE(JL,JK)
+      ENDIF
+      IF(PLUDE(JL,JK)<0.0_JPRB) THEN
+        PLUDE(JL,JK)=0.0_JPRB
+        PLUDELI(JL,JK,1)=0.0_JPRB
+        PLUDELI(JL,JK,2)=0.0_JPRB
+      ENDIF
+    ENDIF
+    IF(.NOT.LDCUM(JL)) THEN
+       PMFUDE_RATE(JL,JK)=0.0_JPRB
+    ENDIF
+    IF(PMFD(JL,JK-1)==0.0_JPRB) THEN
+       PMFDDE_RATE(JL,JK)=0.0_JPRB
+    ENDIF
+  ENDDO
+ENDDO
+!----------------------------------------------------------------------
+
+!*    8.0          UPDATE TENDENCIES FOR T AND Q IN SUBROUTINE CUDTDQ
+!                  --------------------------------------------------
+
+IF( RMFSOLTQ>0.0_JPRB) THEN
+! derive draught properties for implicit
+
+  DO JK=KLEV,2,-1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      IF(LDCUM(JL)) THEN
+        IF(JK>KCBOT(JL)) THEN
+          ZMFA=1.0_JPRB/MAX(1.E-15_JPRB,PMFU(JL,JK))
+          PQU(JL,JK)=ZQENH(JL,JK)+ZMFUQ(JL,JK)*ZMFA
+          PTU(JL,JK)=ZTENH(JL,JK)+ZMFUS(JL,JK)*ZMFA*ZORCPD
+          ZMFUS(JL,JK)=PMFU(JL,JK)*(RCPD*PTU(JL,JK)+PGEOH(JL,JK))
+          ZMFUQ(JL,JK)=PMFU(JL,JK)*PQU(JL,JK)
+          IF(LLDDRAF(JL)) THEN
+            ZMFA=1.0_JPRB/MIN(-1.E-15_JPRB,PMFD(JL,JK))
+            ZQD(JL,JK)=ZQENH(JL,JK)+ZMFDQ(JL,JK)*ZMFA
+            ZTD(JL,JK)=ZTENH(JL,JK)+ZMFDS(JL,JK)*ZMFA*ZORCPD
+            ZMFDQ(JL,JK)=PMFD(JL,JK)*ZQD(JL,JK)
+            ZMFDS(JL,JK)=PMFD(JL,JK)*(RCPD*ZTD(JL,JK)+PGEOH(JL,JK))
+          ENDIF
+        ELSEIF(JK<=KCBOT(JL).AND.JK>=KCTOP(JL)) THEN
+          ZMFUS(JL,JK)=PMFU(JL,JK)*(RCPD*PTU(JL,JK)+PGEOH(JL,JK))
+          ZMFUQ(JL,JK)=PMFU(JL,JK)*PQU(JL,JK)
+          ZMFDS(JL,JK)=PMFD(JL,JK)*(RCPD*ZTD(JL,JK)+PGEOH(JL,JK))
+          ZMFDQ(JL,JK)=PMFD(JL,JK)*ZQD(JL,JK)
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDDO
+  
+ENDIF
+
+CALL CUDTDQN &
+ & ( YDML_PHY_SLIN%YREPHLI,YDML_PHY_SLIN%YRPHNC,YDML_PHY_EC%YRECUMF,YDML_PHY_EC%YREPHY,&
+ & KIDIA,    KFDIA,    KLON,     KLEV,&
+ & ITOPM2,   KTYPE,    KCTOP,    KCBOT,    IDTOP,    LDCUM,    LLDDRAF,   LLSCVFLAG,   PTSPHY,&
+ & PAPH,     PAP,      PGEOH,    PGEO,&
+ & PTEN,     ZTENH,    PQEN,     ZQENH,    PQSEN,&
+ & ZLGLAC,   PLUDE,    PLUDELI,  PSNDE,    PMFU,     PMFD,&
+ & ZMFUS,    ZMFDS,    ZMFUQ,    ZMFDQ,&
+ & ZMFUL,    ZDMFUP,   ZDPMEL,   PMFLXR,   PMFLXS,&
+ & PTENT,    PTENQ,    PENTH )
+
+!----------------------------------------------------------------------
+
+!*    9.0          COMPUTE MOMENTUM IN UPDRAUGHT AND DOWNDRAUGHT
+!                  ---------------------------------------------
+
+IF(LMFDUDV) THEN
+
+  DO JK=KLEV-1,2,-1
+    IK=JK+1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      IF(LDCUM(JL)) THEN
+        IF(JK==KCBOT(JL).AND.KTYPE(JL)<3) THEN
+           IKB=IDPL(JL)
+           ZUU(JL,JK)=PUEN(JL,IKB-1)
+           ZVU(JL,JK)=PVEN(JL,IKB-1)
+        ELSEIF(JK==KCBOT(JL).AND.KTYPE(JL)==3) THEN
+           ZUU(JL,JK)=PUEN(JL,JK-1)
+           ZVU(JL,JK)=PVEN(JL,JK-1)
+        ENDIF
+        IF( JK<KCBOT(JL).AND.JK>=KCTOP(JL)) THEN
+          ZFAC=0.0_JPRB
+        ! IF(KTYPE(JL)==2) ZFAC=1.0_JPRB
+          ZERATE=PMFU(JL,JK)-PMFU(JL,IK)+(1.0_JPRB+ZFAC)*PMFUDE_RATE(JL,JK)
+          ZDERATE=(1.0_JPRB+ZFAC)*PMFUDE_RATE(JL,JK)
+          ZMFA=1.0_JPRB/MAX(RMFCMIN,PMFU(JL,JK))
+          ZUU(JL,JK)=(ZUU(JL,IK)*PMFU(JL,IK)+ZERATE*PUEN(JL,JK)-ZDERATE*ZUU(JL,IK))*ZMFA
+          ZVU(JL,JK)=(ZVU(JL,IK)*PMFU(JL,IK)+ZERATE*PVEN(JL,JK)-ZDERATE*ZVU(JL,IK))*ZMFA
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDDO
+  DO JK=3,KLEV
+    IK=JK-1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      IF( LDCUM(JL)) THEN
+        IF(JK==IDTOP(JL)) THEN
+          ZUD(JL,JK)=0.5_JPRB*(ZUU(JL,JK)+PUEN(JL,IK))
+          ZVD(JL,JK)=0.5_JPRB*(ZVU(JL,JK)+PVEN(JL,IK))
+        ELSEIF(JK>IDTOP(JL)) THEN
+          ZERATE=-PMFD(JL,JK)+PMFD(JL,IK)+PMFDDE_RATE(JL,JK)
+          ZMFA=1.0_JPRB/MIN(-RMFCMIN,PMFD(JL,JK))
+          ZUD(JL,JK)=(ZUD(JL,IK)*PMFD(JL,IK)-ZERATE*PUEN(JL,IK)+PMFDDE_RATE(JL,JK)*ZUD(JL,IK))*ZMFA
+          ZVD(JL,JK)=(ZVD(JL,IK)*PMFD(JL,IK)-ZERATE*PVEN(JL,IK)+PMFDDE_RATE(JL,JK)*ZVD(JL,IK))*ZMFA
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDDO
+
+!*    9.1          UPDATE TENDENCIES FOR U AND V IN SUBROUTINE CUDUDV
+!                  --------------------------------------------------
+
+! for explicit/semi-implicit rescale massfluxes for stability in Momentum
+!------------------------------------------------------------------------
+
+  ZMFS(:)=1.0_JPRB
+! IF(RMFSOLUV<=0.5_JPRB) THEN
+  IF(RMFSOLUV<=1.0_JPRB) THEN
+    DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        IF(LDCUM(JL).AND.JK>=KCTOP(JL)-1) THEN
+          ZMFMAX=(PAPH(JL,JK)-PAPH(JL,JK-1))*ZCONS
+          IF(PMFU(JL,JK)>ZMFMAX.AND.JK>=KCTOP(JL)) &
+           & ZMFS(JL)=MIN(ZMFS(JL),ZMFMAX/PMFU(JL,JK))  
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDIF
+  DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      ZMFUUS(JL,JK)=PMFU(JL,JK)
+      ZMFDUS(JL,JK)=PMFD(JL,JK)
+      IF(LDCUM(JL).AND.JK>=KCTOP(JL)-1) THEN
+        ZMFUUS(JL,JK)=PMFU(JL,JK)*ZMFS(JL)
+        ZMFDUS(JL,JK)=PMFD(JL,JK)*ZMFS(JL)
+      ENDIF
+    ENDDO
+  ENDDO
+
+! recompute Draught properties below for Implicit
+! based on linear flux profiles
+
+  IF(RMFSOLUV>0.0_JPRB) THEN
+
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      IF(LDCUM(JL)) THEN
+        JK=KCBOT(JL)
+        IK=JK-1
+        ZMFUUB(JL)=ZMFUUS(JL,JK)*(ZUU(JL,JK)-PUEN(JL,IK))
+        ZMFUVB(JL)=ZMFUUS(JL,JK)*(ZVU(JL,JK)-PVEN(JL,IK))
+      ENDIF
+    ENDDO
+
+    DO JK=2,KLEV
+      IK=JK-1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        IF ( LDCUM(JL).AND.JK>KCBOT(JL) ) THEN
+          IKB=KCBOT(JL)
+          ZDZ=((PAPH(JL,KLEV+1)-PAPH(JL,JK))/(PAPH(JL,KLEV+1)-PAPH(JL,IKB)))
+          IF(KTYPE(JL) == 3) THEN
+            ZDZ=ZDZ*ZDZ
+          ENDIF
+          ZMFA=1.0_JPRB/MAX(RMFCMIN,ZMFUUS(JL,JK))
+          ZUU(JL,JK)=PUEN(JL,IK)+ZMFUUB(JL)*ZDZ*ZMFA
+          ZVU(JL,JK)=PVEN(JL,IK)+ZMFUVB(JL)*ZDZ*ZMFA
+
+          ZMFDUS(JL,JK)=ZMFDUS(JL,IKB)*ZDZ
+          ZUD(JL,JK)=PUEN(JL,IK)+ZUD(JL,IKB)-PUEN(JL,IKB-1)
+          ZVD(JL,JK)=PVEN(JL,IK)+ZVD(JL,IKB)-PVEN(JL,IKB-1)
+        ENDIF
+    ! add UV perturb to correct wind bias
+        IF ( LDCUM(JL).AND.JK>=KCTOP(JL) ) THEN
+        ! ZALPHA=ATAN(PVEN(JL,IK)/(PUEN(JL,IK)+RMFCMIN))
+        ! ZALPHA=ABS(ZALPHA)
+        ! ZUU(JL,JK)=ZUU(JL,JK)+COS(ZALPHA)*MIN(ABS(ZUU(JL,JK)),RUVPER)*SIGN(1.0_JPRB,ZUU(JL,JK))
+        ! ZVU(JL,JK)=ZVU(JL,JK)+SIN(ZALPHA)*MIN(ABS(ZVU(JL,JK)),RUVPER)*SIGN(1.0_JPRB,ZVU(JL,JK))
+          ZUU(JL,JK)=ZUU(JL,JK)-MIN(ABS(ZUU(JL,JK)),RUVPER)*SIGN(1.0_JPRB,ZUU(JL,JK))
+          ZVU(JL,JK)=ZVU(JL,JK)-MIN(ABS(ZVU(JL,JK)),RUVPER)*SIGN(1.0_JPRB,ZVU(JL,JK))
+        ENDIF
+      ENDDO
+    ENDDO
+
+  ENDIF
+
+!-------------------------------------------------------------------
+! End
+! Intermediate Solution for stability in EPS: 
+! For original code replace line
+!  &, PUEN,     PVEN,     ZMFUUS,   ZMFDUS &
+!by
+!  &, PUEN,     PVEN,     PMFU,     PMFD
+
+  CALL CUDUDV &
+   & ( YDML_PHY_EC%YRECUMF, YDSPP_CONFIG,&
+   & KIDIA,    KFDIA,    KLON,     KLEV, &
+   & ITOPM2,   KTYPE,    KCBOT,    KCTOP,    LDCUM,    PTSPHY,&
+   & PAPH,     PAP,      PUEN,     PVEN,     ZMFUUS,   ZMFDUS,&
+   & PMFU,     PMFD,     ZUU,      ZUD,      ZVU,      ZVD,    PGP2DSPP,&
+   & PTENU,    PTENV     )  
+
+  IF(LMFUVDIS) THEN
+! add KE dissipation
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      ZSUM12(JL)=0.0_JPRB
+      ZSUM22(JL)=0.0_JPRB
+    ENDDO
+    DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        ZUV2(JL,JK)=0.0_JPRB
+        IF (LDCUM(JL).AND.JK>=KCTOP(JL)-1) THEN
+          ZDZ=(PAPH(JL,JK+1)-PAPH(JL,JK))
+          ZDUTEN=PTENU(JL,JK)-ZTENU(JL,JK)
+          ZDVTEN=PTENV(JL,JK)-ZTENV(JL,JK)
+          ZUV2(JL,JK)=SQRT(ZDUTEN**2+ZDVTEN**2)
+          ZSUM22(JL)=ZSUM22(JL)+ZUV2(JL,JK)*ZDZ
+          ZSUM12(JL)=ZSUM12(JL)-(PUEN(JL,JK)*ZDUTEN+PVEN(JL,JK)*ZDVTEN)*ZDZ
+        ENDIF
+      ENDDO
+    ENDDO
+    ! Store vertically integrated dissipation rate (W m-2)
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      PVDISCU(JL)=ZSUM12(JL)*ZRG
+    ENDDO
+    ! Calculate local temperature tendency (K) due to dissipation
+    DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        IF (LDCUM(JL).AND.JK>=KCTOP(JL)-1) THEN
+          ZTDIS=ZORCPD*ZSUM12(JL)*&
+         &             ZUV2(JL,JK)/MAX(1.E-15_JPRB,ZSUM22(JL))
+          PTENT(JL,JK)=PTENT(JL,JK)+ZTDIS
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDIF
+
+ENDIF
+
+!----------------------------------------------------------------------
+
+!*   10.           IN CASE THAT EITHER DEEP OR SHALLOW IS SWITCHED OFF
+!                  NEED TO SET SOME VARIABLES A POSTERIORI TO ZERO
+!                  ---------------------------------------------------
+
+IF (.NOT.LMFSCV .OR. .NOT.LMFPEN) THEN
+  DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      IF(LLO2(JL).AND.JK>=KCTOP(JL)-1) THEN
+        PMFUDE_RATE(JL,JK) =0.0_JPRB
+        PMFDDE_RATE(JL,JK) =0.0_JPRB
+      ENDIF
+    ENDDO
+  ENDDO
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    IF(LLO2(JL)) THEN
+      KCTOP(JL)=KLEV-1
+      KCBOT(JL)=KLEV-1
+    ENDIF
+  ENDDO
+ENDIF
+
+!----------------------------------------------------------------------
+
+!*   11.0          CHEMICAL TRACER TRANSPORT
+!                  -------------------------
+
+IF ( LMFTRAC .AND. KTRAC>0 ) THEN
+
+! transport switched off for mid-level convection
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  DO JL=KIDIA,KFDIA
+    !IF( LDCUM(JL).AND.KTYPE(JL)/=3 ) THEN
+     IF( LDCUM(JL).AND.KTYPE(JL)/=3.AND.KCBOT(JL)-KCTOP(JL)>=1 ) THEN
+         LLDCUM(JL)=.TRUE.
+         LLDDRAF3(JL)=LLDDRAF(JL)
+     ELSE
+         LLDCUM(JL)=.FALSE.
+         LLDDRAF3(JL)=.FALSE.
+     ENDIF
+  ENDDO
+  
+! check and correct mass fluxes for CFL criterium
+
+  ZMFS(:)=1.0_JPRB
+  IF(RMFSOLCT<=3.0_JPRB) THEN
+    DO JK=2,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        IF(LLDCUM(JL).AND.JK>=KCTOP(JL)) THEN
+          ZMFMAX=(PAPH(JL,JK)-PAPH(JL,JK-1))*0.8_JPRB*ZCONS
+          IF(PMFU(JL,JK)>ZMFMAX) &
+           & ZMFS(JL)=MIN(ZMFS(JL),ZMFMAX/PMFU(JL,JK))  
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDIF
+  DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+    DO JL=KIDIA,KFDIA
+      IF(LLDCUM(JL).AND.JK>=KCTOP(JL)-1) THEN
+        ZMFUUS(JL,JK)=PMFU(JL,JK)*ZMFS(JL)
+        ZMFUDR(JL,JK)=PMFUDE_RATE(JL,JK)*ZMFS(JL)
+        ZDMFUPC(JL,JK)=(PMFLXR(JL,JK)+PMFLXS(JL,JK))*ZMFS(JL)
+        IKB=KCBOT(JL)
+        IF (JK>IKB) THEN
+          ZDMFUPC(JL,JK)=ZDMFUPC(JL,IKB)
+        ENDIF
+      ELSE
+        ZMFUUS(JL,JK)=0._JPRB
+        ZMFUDR(JL,JK)=0._JPRB
+      ENDIF
+      IF ( LLDDRAF3(JL) .AND. JK>=IDTOP(JL)-1) THEN
+        ZMFDUS(JL,JK)=PMFD(JL,JK)*ZMFS(JL)
+        ZMFDDR(JL,JK)=PMFDDE_RATE(JL,JK)*ZMFS(JL)
+  !     ZDMFDPC(JL,JK)=ZDMFDPC(JL,JK)*ZMFS(JL)
+        ZDMFDPC(JL,JK)=0.0_JPRB
+      ELSE
+        ZMFDUS(JL,JK)=0._JPRB
+        ZMFDDR(JL,JK)=0._JPRB
+      ENDIF
+    ENDDO
+  ENDDO
+
+  IF( LMFSMOOTH ) THEN
+! smmoothing of mass fluxes (gradients) at top and bottom of draughts
+    DO JK=2,KLEV-1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        IF(LLDDRAF3(JL).AND.ZMFDUS(JL,JK)<0.0_JPRB .AND. ZMFDUS(JL,JK+1)==0.0_JPRB) THEN
+          ZERATE=MIN(0._JPRB,ZMFDUS(JL,JK)-0.5*ZMFDUS(JL,JK-1))
+          ZMFDUS(JL,JK)=ZMFDUS(JL,JK)-ZERATE
+          ZMFDDR(JL,JK)=ZMFDDR(JL,JK)-ZERATE
+          ZMFDDR(JL,JK+1)=-ZMFDUS(JL,JK)
+        ENDIF
+        IF(LLDCUM(JL).AND.JK==KCTOP(JL)) THEN
+          ZERATE=MAX(0.0_JPRB,ZMFUUS(JL,JK)-0.5_JPRB*ZMFUUS(JL,JK+1))
+          ZMFUUS(JL,JK)=ZMFUUS(JL,JK)-ZERATE
+          ZMFUDR(JL,JK)=ZMFUDR(JL,JK)+ZERATE
+          ZMFUDR(JL,JK-1)=ZMFUUS(JL,JK)
+        ENDIF
+      ENDDO
+    ENDDO
+    DO JK=KLEV-1,2,-1
+!DIR$ LOOP_INFO EST_TRIPS(16)
+      DO JL=KIDIA,KFDIA
+        IF(LLDCUM(JL)) THEN
+          IF(ZMFUDR(JL,JK)==0.0_JPRB.AND.ZMFUDR(JL,JK-1)>0.0_JPRB) THEN
+            ZMFUDR(JL,JK)=0.5_JPRB*ZMFUDR(JL,JK-1)
+          ENDIF
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDIF
+
+  IF(LMFSCAV) THEN
+    ZSCAV(:)=PSCAV(:)
+  ELSE
+    ZSCAV(:)=0.0_JPRB
+    ZDMFUPC(:,:)=0.0_JPRB
+  ENDIF
+
+  CALL CUCTRACER &
+   & ( YDML_PHY_SLIN%YRCUMFS,YDML_PHY_SLIN%YRECUMF2,YDML_PHY_EC%YRECUMF,&
+   & KIDIA,    KFDIA,    KLON,     KLEV,     KTRAC,&
+   & KCTOP,    IDTOP,   KTYPE,&
+   & LLDCUM,   LLDDRAF3,  PTSPHY,   PAPH,  PAP,&
+   & ZMFUUS,   ZMFDUS,    PMFU,     PMFD,  ZMFUDR,   ZMFDDR,&
+   & ZDMFUPC,  ZDMFDPC,&
+   & PCEN,     PTENC,     ZSCAV     )  
+
+ENDIF
+
+!----------------------------------------------------------------------
+
+!*   12.           PUT DETRAINMENT RATES FROM MFLX UNITS IN UNITS MFLX/M 
+!                  FOR ERA40, ESTIMATE VOLUME MEAN RAIN AND SNOW CONTENT
+!                  ---------------------------------------------------
+
+PDISS(:,1)=0.0_JPRB
+ZAR=1.0_JPRB/20.89_JPRB
+ZAS=1.0_JPRB/29.51_JPRB
+ZBR=1.0_JPRB/1.15_JPRB
+ZBS=1.0_JPRB/1.10_JPRB
+ZAK=1.0_JPRB/5.09E-3_JPRB
+DO JK=1,KLEV
+!DIR$ LOOP_INFO EST_TRIPS(16)
+  IK=MIN(JK+1,KLEV)
+  IKD=MAX(JK-1,1)
+  DO JL=KIDIA,KFDIA
+    PDISS(JL,JK)=0.0_JPRB
+    PRSUD(JL,JK,1)=0.0_JPRB
+    PRSUD(JL,JK,2)=0.0_JPRB
+    IF ( LDCUM(JL) .AND.JK>=KCTOP(JL)-1 ) THEN
+      PLUDELI(JL,JK,3)=PMFUDE_RATE(JL,JK)*(PQU(JL,IK)-ZQENH(JL,IK))+&
+                      &PMFDDE_RATE(JL,JK)*(ZQD(JL,IKD)-ZQENH(JL,IKD))
+      PLUDELI(JL,JK,4)=PMFUDE_RATE(JL,JK)*(PTU(JL,IK)-ZTENH(JL,IK))+&
+                      &PMFDDE_RATE(JL,JK)*(ZTD(JL,IKD)-ZTENH(JL,IKD))
+    ! Change units for detrainment as for ERA
+      ZRO=RG/(PGEOH(JL,JK)-PGEOH(JL,JK+1))  ! 1/dz
+      PMFUDE_RATE(JL,JK)=PMFUDE_RATE(JL,JK)*ZRO
+      PMFDDE_RATE(JL,JK)=PMFDDE_RATE(JL,JK)*ZRO
+      ZRO=RD*PTEN(JL,JK)*(1.0_JPRB+RETV*PQEN(JL,JK))/PAP(JL,JK)
+    ! Dissipation definition used in stoch Backscatter
+    ! PDISS(JL,JK)=MIN(PWMEAN(JL),17._JPRB)**2*PMFUDE_RATE(JL,JK)*ZRO*ZTAU(JL)
+      ZDUTEN=PTENU(JL,JK)-ZTENU(JL,JK)
+      ZDVTEN=PTENV(JL,JK)-ZTENV(JL,JK)
+    ! Dissipation used in eddy dissipation(EDR) turbulence diagnostic
+      PDISS(JL,JK)=ABS(PUEN(JL,JK)*ZDUTEN+PVEN(JL,JK)*ZDVTEN)**0.3333
+
+    ! grid-mean convective rain/snow parametrization (Geer et al. 2009) with factor 0.5 for snow
+      PRSUD(JL,JK,1)=1.E-3_JPRB*ZRO*(PMFLXR(JL,JK)*3600._JPRB*ZAR)**ZBR
+      PRSUD(JL,JK,2)=0.5*1.E-3_JPRB*ZRO*(10.0_JPRB*PMFLXS(JL,JK)*3600._JPRB*ZAS)**ZBS
+    ! possible updraught fraction for incloud values
+    ! ZFAC=PAPH(JL,NJKT5)/MIN(PAPH(JL,NJKT5),MAX(200.E2_JPRB,PAPH(JL,JK)))
+    ! ZFAC=RCUCOV*ZFAC**2
+    ! grid-mean convective rain/snow parametrization similar to that used in evaporation
+    ! i.e. Kessler but without pressure factor and factor for snow
+    ! PRSUD(JL,JK,1)=1.E-3_JPRB*ZRO*(PMFLXR(JL,JK)*ZAK)**0.888_JPRB
+    ! PRSUD(JL,JK,2)=1.E-3_JPRB*ZRO*(PMFLXS(JL,JK)*2.5*ZAK)**0.888_JPRB
+    ELSE
+      PMFU(JL,JK)=0.0_JPRB
+      PMFD(JL,JK)=0.0_JPRB
+      PLUDE(JL,JK)=0.0_JPRB
+      PLUDELI(JL,JK,1)=0.0_JPRB
+      PLUDELI(JL,JK,2)=0.0_JPRB
+      PLUDELI(JL,JK,3)=0.0_JPRB
+      PLUDELI(JL,JK,4)=0.0_JPRB
+      PSNDE(JL,JK,1)=0.0_JPRB
+      PSNDE(JL,JK,2)=0.0_JPRB
+      PTU(JL,JK)=PTEN(JL,JK)
+      PQU(JL,JK)=PQEN(JL,JK)
+      PLU(JL,JK)=0.0_JPRB
+      PENTH(JL,JK)=0.0_JPRB
+      PMFUDE_RATE(JL,JK)=0.0_JPRB
+      PMFDDE_RATE(JL,JK)=0.0_JPRB
+    ENDIF
+  ENDDO
+ENDDO
+
+!----------------------------------------------------------------------
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CUMASTRN',1,ZHOOK_HANDLE)
+END SUBROUTINE CUMASTRN

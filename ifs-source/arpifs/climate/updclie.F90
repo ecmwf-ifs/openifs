@@ -1,0 +1,1744 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE UPDCLIE(YDGEOMETRY,YDDYNA,YDSURF,YDML_AOC,YDERAD,YDEPHY,YDML_GCONF,PTSTEP)
+
+!**** *UPDCLIE*
+
+!     PURPOSE.
+!     --------
+
+!     Updates the climatological data
+!     (ECMWF version, distributed or shared memory)
+
+!**   INTERFACE.
+!     ----------
+
+!     CALL UPDCLIE(...)
+
+!        Explicit arguments:
+!        -------------------
+!        PTSTEP: TIME STEP
+
+!     METHOD.
+!     -------
+
+!     Reads the time-varying climate fields (currently SST and albedo
+!     only). Two options are possible: a) time interpolation (in which
+!     the input file contains monthly fields) whereby for a given day,
+!     the value is interpolated linearly between the 15th of the nearest
+!     months; b) no time interpolation: the most recent fields are used.
+!     Values for all months are on unit NUNITC. Special care is taken
+!     when transition between sea and sea-ice occurs.
+
+!     If the OASIS coupler is active, SST and sea ice data are taken
+!     from OASIS, and not read from the climate files.
+
+!     EXTERNALS.
+!     ----------
+
+!     UPDCAL
+
+!     AUTHORS.
+!     --------
+
+!     P. VITERBO (ECMWF) APR 94.  (based on M. DEQUE  routine UPDCLI)
+
+!     MODIFICATIONS.
+!     --------------
+!     M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     M.Hamrud      10-Jan-2004 CY28R1 Cleaning
+!     T.Stockdale   08-Feb-2005 Initial sea-ice to OASIS
+!     T.Stockdale   31-Mar-2005 Ocean surface currents from OASIS
+!     M.Hamrud      26-Apr-2006 Replace old routine by MPL_BROADCAST
+!     JJMorcrette   20060605    MODIS albedo
+!     M.Hamrud      01-Jul-2006 Revised surface fields
+!     J.J.Morcrette 20060925    DU, BC, OM, SU, VOL, SOA climatological fields
+!     S.Boussetta/  May 2009    Add variable LAI
+!       G.Balsamo
+!     K.Yessad      Oct 2009    Use DISGRID for DM-communications
+!     R.El Khatib   23-Apr-2010 Use disgrid_mod instead of disgrid
+!     G.Mozdzynski  Feb 2011    OOPS cleaning, use of derived type TGSGEOM
+!     T.Wilhelmsson 19-Aug-2011 Switch to GRIB_API
+!     T.Wilhelmsson 1-July-2013 Switch to GRIB_API_INTERFACE
+!     K.Mogensen/    04-04-2014 Optionally use flake for sst/ci
+!       S.Keeley
+!     G.Balsamo/    15-04-2014  Protect skin temperature changes over lakes
+!       E.Dutra
+!     T.Wilhelmsson Sept 2013   Geometry and setup refactoring.
+!     JJMorcrette   20130730    15-variable aerosol model + oceanic DMS
+!     K.Yessad      July 2014   Move some variables.
+!     F.Vana        05-Mar-2015 Support for single precision
+!     S.Lang        25-Sep-2015 Fix tendency coupling for restarting
+!     S.Keeley      July 2015   Change SST updates in presence of sea ice
+!     S.Saarinen    13-Oct-2016 Arrays with NGPTOTG-dim made ALLOCATABLE to
+!                               reduce large stack pressure
+!     O. Marsden    20-Feb-2018 First call logic is now kept in TMCC type
+!     R. Hogan      14-Jan-2019 Added 6-component MODIS albedo
+!     J Bidlot 13-Dec_2020: use Ocean TKE fields
+!     ------------------------------------------------------------------
+
+USE MODEL_ATMOS_OCEAN_COUPLING_MOD, ONLY : MODEL_ATMOS_OCEAN_COUPLING_TYPE
+USE MODEL_GENERAL_CONF_MOD        , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD                  , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX            , ONLY : TSURF
+USE PARKIND1                      , ONLY : JPRD, JPIM, JPRB
+USE YOMHOOK                       , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOERAD                        , ONLY : TERAD
+USE YOEPHY                        , ONLY : TEPHY
+USE YOMDYNA                       , ONLY : TDYNA
+USE YOMCST                        , ONLY : RDAY, RTT, RPI
+USE YOMCT0                        , ONLY : CNMEXP
+USE YOMCT3                        , ONLY : NSTEP
+USE YOMLUN                        , ONLY : NULOUT, NULCO, NULERR
+USE YOMMP0                        , ONLY : MYPROC
+USE YOMMSC                        , ONLY : NINTLEN, NREALEN
+USE YOMRIP0                       , ONLY : NINDAT
+USE MPL_MODULE                    , ONLY : MPL_BROADCAST, MPL_BARRIER
+USE DISGRID_MOD                   , ONLY : DISGRID_SEND, DISGRID_RECV
+USE GRIB_API_INTERFACE            , ONLY : IGRIB_OPEN_FILE, IGRIB_NEW_FROM_FILE, IGRIB_ERROR_MESSAGE,&
+ &                                         JPGRIB_END_OF_FILE, JPGRIB_SUCCESS, IGRIB_GET_VALUE, IGRIB_RELEASE,&
+ &                                         IGRIB_CLOSE_FILE, IGRIB_SET_VALUE
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TDYNA)       ,INTENT(IN)    :: YDDYNA
+TYPE(TSURF)       ,INTENT(INOUT) :: YDSURF
+TYPE(TEPHY)       ,INTENT(INOUT) :: YDEPHY
+TYPE(TERAD)       ,INTENT(INOUT) :: YDERAD
+TYPE(MODEL_ATMOS_OCEAN_COUPLING_TYPE),INTENT(INOUT):: YDML_AOC
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(INOUT):: YDML_GCONF
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTEP 
+!     ------------------------------------------------------------------
+INTEGER(KIND=JPIM) :: ILMOIS(12),IDM(3)
+INTEGER(KIND=JPIM) :: IINFO(10000,YDML_AOC%YRMCC%NCLIMR+2)
+INTEGER(KIND=JPIM) :: ILOENG(YDGEOMETRY%YRDIM%NDGLG)
+
+! From heap
+REAL(KIND=JPRB), ALLOCATABLE :: ZBUF (:), ZBC(:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZSST (:), ZICE (:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZUCURR (:), ZVCURR (:)
+REAL(KIND=JPRD), ALLOCATABLE :: ZFIELD_D (:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZINIICEG(:,:)
+
+REAL(KIND=JPRB) :: ZINIICE(YDGEOMETRY%YRGEM%NGPTOT)
+REAL(KIND=JPRB) :: ZREAL(YDGEOMETRY%YRDIM%NDLON*YDGEOMETRY%YRDIM%NDGLG)
+CHARACTER :: CLNOMF*13
+CHARACTER :: CLNOMF1*13
+CHARACTER :: CLFIELD*8
+CHARACTER :: CLEVTY*20,CLREPRT*20
+LOGICAL :: LLICEO(0:YDGEOMETRY%YRGEM%NGPTOT), &
+  & LLICEN(0:YDGEOMETRY%YRGEM%NGPTOT),LLAKE(0:YDGEOMETRY%YRGEM%NGPTOT)
+
+INTEGER(KIND=JPIM) :: IA, IA0, IADD, IAE, IAN, ICCYY0, ICCYYE,&
+  & ICLIM, ICOU, ID, IDIF, IDIFD, IDUMY, IEND,&
+  & IEXTRA, IFIRST, IGRIB, IDGNH, IFIRST1, IGRIB1,&
+  & IIM1, IIM2, IJ0, IJDCR, IJE, IJOUR,&
+  & IJT1, IJT2, IJUL, IJUL0, IJUL1, IJUL2, IJULE, IJULBC,&
+  & IM, IM0, IME, IMM0, IMME, IMOIS, IMT1,&
+  & IPAR31, IPAR139, IPAR174, IPARAM, IPARAM1, IPARAM2,&
+  & IPARAM3, IPARAM4, IPAR131, IPAR132, JGRIBC, IPARMAL,&
+  & IBL, IRET, ISTADDE,&
+  & ILEV, ILEVOML,&
+  & ITAG, ITIM, ITIME,&
+  & IYYM0, IYYMD, IZTE, J, JCL, JCL1,  JF, JGL, JBC,&
+  & JM, JROF, JSTGLO, JTIM, JY, II, ISST1, ISST2, ICSTEP, ISTEP, JL, ISECND,&
+  & ICLIMT
+
+LOGICAL :: LLFIRST, LLFOUND, LLREAD, LLFOUND1, LLREAD1, LLDONE, LLMISS
+INTEGER(KIND=JPIM),SAVE :: IDATEREF=0, IUNITC=0, IUNITC1=0
+INTEGER(KIND=JPIM) :: IDATE, IBITMAP
+
+REAL(KIND=JPRB) :: ZPOID1, ZPOID2, ZTS, ZCI, ZDSST0, ZSSTCI
+REAL(KIND=JPRB) :: ZCU, ZCV
+REAL(KIND=JPRB) :: ZRTFREEZSICE,ZRTMELTSICE,ZRCIMIN
+REAL(KIND=JPRB) :: ZR2D, ZLAT, ZLAT1, ZLAT2, ZLON, ZLON1, ZLON2,  ZW
+REAL(KIND=JPRB) :: ZSTL
+REAL(KIND=JPRB) :: ZSTL1, ZSTL2, ZSTL3, ZSTL4, ZSTLB
+REAL(KIND=JPRB) :: ZCLIMR(YDGEOMETRY%YRGEM%NGPTOT)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "surf_inq.h"
+
+#include "abor1.intfb.h"
+#include "updcal.intfb.h"
+#include "gathergpf.intfb.h"
+
+#include "fcttim.func.h"
+
+!     ------------------------------------------------------------------
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('UPDCLIE',0,ZHOOK_HANDLE)
+
+ALLOCATE (ZBUF(YDGEOMETRY%YRGEM%NGPTOTG),ZBC(YDGEOMETRY%YRGEM%NGPTOTG))
+ALLOCATE (ZSST(YDGEOMETRY%YRGEM%NGPTOTG),ZICE(YDGEOMETRY%YRGEM%NGPTOTG))
+ALLOCATE (ZUCURR(YDGEOMETRY%YRGEM%NGPTOTG),ZVCURR(YDGEOMETRY%YRGEM%NGPTOTG))
+ALLOCATE (ZFIELD_D(YDGEOMETRY%YRGEM%NGPTOTG))
+ALLOCATE (ZINIICEG(YDGEOMETRY%YRGEM%NGPTOTG,1))
+
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV, &
+  & YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP, &
+  & YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB, YDMCC=>YDML_AOC%YRMCC, &
+  & YDRIP=>YDML_GCONF%YRRIP,YGFL=>YDML_GCONF%YGFL,YDCOU=>YDML_AOC%YRCOU)
+
+ASSOCIATE(NACTAERO=>YGFL%NACTAERO, &
+ & NDGLG=>YDDIM%NDGLG, NDGNH=>YDDIM%NDGNH, NDLON=>YDDIM%NDLON, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & INVML=>YDEPHY%INVML, NALBEDOSCHEME=>YDEPHY%NALBEDOSCHEME, LECURR=>YDEPHY%LECURR, &
+ & LEFLAKE=>YDEPHY%LEFLAKE, LEOBC=>YDEPHY%LEOBC, LEOBCICE=>YDEPHY%LEOBCICE, &
+ & LEOBCMAX=>YDEPHY%LEOBCMAX, REOBCMAX=>YDEPHY%REOBCMAX, &
+ & LEOCCO=>YDEPHY%LEOCCO, LEOCLAKE=>YDEPHY%LEOCLAKE, LEOCML=>YDEPHY%LEOCML, &
+ & LOCMLTKE=>YDEPHY%LOCMLTKE, &
+ & LEOCWA=>YDEPHY%LEOCWA, LEOLAKESST=>YDEPHY%LEOLAKESST, &
+ & REASTML=>YDEPHY%REASTML, RNORTHML=>YDEPHY%RNORTHML, &
+ & RSOUTHML=>YDEPHY%RSOUTHML, RWESTML=>YDEPHY%RWESTML, YSURF=>YDEPHY%YSURF, &
+ & LPERPET=>YDERAD%LPERPET, &
+ & NGPTOT=>YDGEM%NGPTOT, NGPTOTG=>YDGEM%NGPTOTG, NHTYP=>YDGEM%NHTYP, &
+ & NLOENG=>YDGEM%NLOENG, &
+ & CLIMR=>YDMCC%CLIMR, LMCC04=>YDMCC%LMCC04, LMCCICEIC=>YDMCC%LMCCICEIC, &
+ & LMCCIEC=>YDMCC%LMCCIEC, LNEMOCOUP=>YDMCC%LNEMOCOUP, NCLIGC=>YDMCC%NCLIGC, &
+ & LNEMO1WAY=>YDMCC%LNEMO1WAY, &
+ & NCLIMR=>YDMCC%NCLIMR, NDIFC=>YDMCC%NDIFC, NJDCR=>YDMCC%NJDCR, &
+ & NJDCR1=>YDMCC%NJDCR1, NOACOMM=>YDMCC%NOACOMM, NP1=>YDMCC%NP1, NP2=>YDMCC%NP2, &
+ & NUNITC=>YDMCC%NUNITC, OCEANBC=>YDMCC%OCEANBC, ZLAKE=>YDMCC%ZLAKE, &
+ & NSSTICEOP=>YDMCC%NSSTICEOP, &
+ & NSTADD=>YDRIP%NSTADD, NSTOP=>YDRIP%NSTOP, &
+ & YSP_OMD=>YDSURF%YSP_OMD, &
+ & SD_VF=>YDSURF%SD_VF, SP_OM=>YDSURF%SP_OM, SP_RR=>YDSURF%SP_RR, &
+ & SP_SB=>YDSURF%SP_SB, SP_SL=>YDSURF%SP_SL, YSD_VF=>YDSURF%YSD_VF, &
+ & YSP_OM=>YDSURF%YSP_OM, YSP_RR=>YDSURF%YSP_RR, YSP_SB=>YDSURF%YSP_SB, &
+ & YSP_SL=>YDSURF%YSP_SL)
+!     ------------------------------------------------------------------
+
+LLFIRST=YDMCC%LFIRSTUPD
+YDMCC%LFIRSTUPD=.FALSE.
+
+!*
+!     1. SETTING CONSTANT VALUES.
+!     ---------------------------
+
+CALL SURF_INQ(YSURF,PRTFREEZSICE=ZRTFREEZSICE,PRTMELTSICE=ZRTMELTSICE, &
+  & PRCIMIN=ZRCIMIN)
+
+!*    1.1 Calendar
+
+IJ0 = NDD(NINDAT)
+IM0 = NMM(NINDAT)
+IA0 = NCCAA(NINDAT)
+CALL UPDCAL(IJ0,IM0,IA0,NSTADD,IJOUR,IMOIS,IAN,ILMOIS,NULOUT)
+
+IEXTRA = 0
+IF (LEOCLAKE) IEXTRA = 2
+IF (LEOCLAKE) THEN
+  ICLIMT = NCLIMR + 2
+ELSE
+  ICLIMT = NCLIMR
+ENDIF
+
+IF (LOCMLTKE) THEN
+  ILEVOML=YSP_OMD%NLEVS
+ELSE
+  ILEVOML=1
+ENDIF
+
+!*
+!     2. OPEN AND SCAN THE FILE, IF CLIMATE FIELDS REQUIRED
+!     -----------------------------------------------------
+
+IF (NCLIMR>=1 .AND. LLFIRST) THEN
+
+  IF (MYPROC==1) THEN
+
+  ! ONLY PROCESSOR 1 SHOULD OPEN
+
+    IF (LEOBC .OR. LEOBCICE) THEN
+
+      CLNOMF1 = 'ICMBC'
+      WRITE(NULOUT,*) 'ICMBC OPEN'
+      CALL IGRIB_OPEN_FILE(IUNITC1,CLNOMF1,'r')
+      WRITE(UNIT=NULOUT,FMT='(A)') ' READ BC FIELDS FROM GRIB.'
+
+      IJUL = RJUDAT(IAN,IMOIS,IJOUR)
+
+      LLFOUND1 = .FALSE.
+      IFIRST1 = 0
+      DO WHILE (.NOT.LLFOUND1)
+        CALL IGRIB_NEW_FROM_FILE(IUNITC1,IGRIB1,IRET)
+        CALL IGRIB_RELEASE(IGRIB1)
+        CALL IGRIB_NEW_FROM_FILE(IUNITC1,IGRIB1,IRET)
+        IF (IRET==JPGRIB_END_OF_FILE .OR. IRET/=JPGRIB_SUCCESS) THEN
+          CALL IGRIB_ERROR_MESSAGE(IRET)
+          CALL ABOR1('UPDCLIE: PROBLEM IN IGRIB_NEW_FROM_FILE')
+        ENDIF
+        CALL IGRIB_GET_VALUE(IGRIB1,'dataDate',IYYMD)
+        CALL IGRIB_RELEASE(IGRIB1)
+
+        IA = NCCAA(IYYMD)
+        IM = NMM(IYYMD)
+        ID = NDD(IYYMD)
+        IJULBC = RJUDAT(IA,IM,ID)
+
+        IFIRST1 = IFIRST1 + 1
+        IF (IJULBC==IJUL) LLFOUND1 = .TRUE.
+      ENDDO
+
+      CALL IGRIB_CLOSE_FILE(IUNITC1)
+      CALL IGRIB_OPEN_FILE(IUNITC1,CLNOMF1,'r')
+
+      JBC = 0
+      DO WHILE (JBC<IFIRST1-1)
+        DO JCL = 1, 2
+          CALL IGRIB_NEW_FROM_FILE(IUNITC1,IGRIB1)
+          CALL IGRIB_RELEASE(IGRIB1)
+        ENDDO
+        JBC = JBC + 1
+      ENDDO
+
+    ENDIF
+
+!*    2.1 OPEN CLIMATE FILE
+
+    CLNOMF = 'ICMCL'//CNMEXP(1:4)//'INIT'
+    WRITE(NULOUT,*) ' READ CLIMATE FIELDS FROM GRIB '
+    WRITE(NULOUT,*) ' INITIAL DATA TO BE READ FROM FILE ', CLNOMF
+    CALL IGRIB_OPEN_FILE(IUNITC,CLNOMF,'r')
+
+!*    2.2 READ, DECODE HEADERS, CHECK THE FIELDS AND POSITIONS THE FILE
+
+    SCAN:DO JTIM = 1, 10000
+      DO JCL = 1, NCLIMR + IEXTRA
+        CALL IGRIB_NEW_FROM_FILE(IUNITC,IGRIB,IRET)
+        IF (IRET==JPGRIB_END_OF_FILE) THEN
+          ITIM = JTIM - 1
+          EXIT SCAN
+        ELSEIF (IRET/=JPGRIB_SUCCESS) THEN
+          CALL IGRIB_ERROR_MESSAGE(IRET)
+          WRITE(NULERR,'(A,I2)') &
+            & 'UPDCLIE: PROBLEM IN IGRIB_NEW_FROM_FILE, IRET=', IRET
+          CALL ABOR1('UPDCLIE: PROBLEM IN IGRIB_NEW_FROM_FILE')
+        ENDIF
+        CALL IGRIB_GET_VALUE(IGRIB,'paramId',IPARAM)
+        CALL IGRIB_GET_VALUE(IGRIB,'dataDate',IYYMD)
+        CALL IGRIB_GET_VALUE(IGRIB,'typeOfLevel',CLEVTY)
+        CALL IGRIB_GET_VALUE(IGRIB,'gridType',CLREPRT)
+        CALL IGRIB_GET_VALUE(IGRIB,'N',IDGNH)
+        WRITE(NULOUT,'(A,I6,A,I8.8,A)') 'UPDCLIE: PARAMETER ', IPARAM, &
+          & ' FOR DATE ', IYYMD, ' FOUND IN CLIMATE FILE'
+
+!      check some parameters
+
+        IF (TRIM(CLREPRT)/='regular_gg' .AND. TRIM(CLREPRT)/='reduced_gg') THEN
+          WRITE(NULERR,*) 'UPDCLIE: UNEXPECTED DATA REPRESENTATION TYPE', &
+            & CLREPRT
+          CALL ABOR1(' UPDCLIE:INVALID DATA REPRESENTATION TYPE')
+        ENDIF
+        IF (IDGNH/=NDGNH) THEN
+          WRITE(NULERR,*) 'UPDCLIE: RESOLUTION OF MODEL ', NDGNH, ', &
+            & OF INITIAL DATA ', IDGNH
+          CALL ABOR1(' UPDCLIE : INVALID DATA RESOLUTION')
+        ENDIF
+        IF (TRIM(CLEVTY)/='surface' .AND. TRIM(CLEVTY)/='depthBelowLandLayer') THEN
+          WRITE(NULERR,*) 'UDPCLIE:  UNEXPECTED LEVEL TYPE ', CLEVTY
+          CALL ABOR1(' UPDCLIE : INVALID LEVEL TYPE')
+        ENDIF
+
+        IF (NHTYP/=0) THEN
+          CALL IGRIB_GET_VALUE(IGRIB,'pl',ILOENG)
+          DO JGL = 1, NDGLG
+            IF (NLOENG(JGL)/=ILOENG(JGL)) THEN
+              WRITE(NULERR,*) ' UPDCLIE :'
+              WRITE(NULERR,*) ' INCONSISTENT REDUCED GRID'
+              WRITE(NULERR,*) ' IN MODEL ', (NLOENG(J),J=1,NDGLG)
+              WRITE(NULERR,*) ' IN FILE  ', (ILOENG(J),J=1,NDGLG)
+              CALL ABOR1(' UPDCLIE : INCONSISTENT REDUCED GRID')
+            ENDIF
+          ENDDO
+        ENDIF
+
+        CALL IGRIB_RELEASE(IGRIB)
+
+!       record/communicate field index
+
+        IF (NCLIGC(JCL)==IPARAM) THEN
+          IINFO(JTIM,JCL) = IYYMD
+        ELSE
+          WRITE(NULERR,'("UPDCLIE: SKIPPING OVER FIELD,", "GRIB CODE=",I8)') &
+            & IPARAM
+          WRITE(NULERR,'("UPDCLIE: EXPECTED FIELD,", "GRIB CODE=",I8)') &
+            & NCLIGC(JCL)
+          CALL ABOR1(' UPDCLIE : UNEXPECTED FIELD')
+        ENDIF
+      ENDDO ! JCL
+    ENDDO SCAN
+
+!   Check fields come in a consistent order and position file at the
+!   right place
+
+ 20 ITIME = NINT(PTSTEP)
+    IF (YDDYNA%LTWOTL) THEN
+      IZTE = NINT(PTSTEP*(REAL(NSTOP,JPRB)+0.5_JPRB))
+    ELSE
+      IZTE = ITIME*NSTOP
+    ENDIF
+
+    IF (LPERPET) THEN
+      ISECND = IZTE/NINT(RDAY)
+      IZTE = IZTE - ISECND*NINT(RDAY)
+    ENDIF
+
+    ISTADDE = IZTE/NINT(RDAY)
+    CALL UPDCAL(IJ0,IM0,IA0,ISTADDE,IJE,IME,IAE,ILMOIS,NULOUT)
+    IF (LMCCIEC) THEN
+      IF (IJOUR>15) THEN
+        ICCYY0 = IAN
+        IMM0 = IMOIS
+      ELSE
+        IMM0 = 1 + MOD(IMOIS+10,12)
+        IF (IMM0==12) THEN
+          ICCYY0 = IAN - 1
+        ELSE
+          ICCYY0 = IAN
+        ENDIF
+      ENDIF
+      IF (IJE>15) THEN
+        IMME = 1 + MOD(IME,12)
+        IF (IMME==1) THEN
+          ICCYYE = IAE + 1
+        ELSE
+          ICCYYE = IAE
+        ENDIF
+      ELSE
+        ICCYYE = IAE
+        IMME = IME
+      ENDIF
+
+!     Locates the first field needed
+
+      IYYM0 = IMM0 + 100*ICCYY0
+      LLFOUND = .FALSE.
+      DO J = 1, ITIM
+        IF (IYYM0==IINFO(J,1)/100) THEN
+          IFIRST = J
+          IADD = IINFO(J,1)
+          LLFOUND = .TRUE.
+          EXIT
+        ENDIF
+      ENDDO
+      IF (.NOT.LLFOUND) CALL ABOR1(' UPDCLIE : FIRST FILE NOT FOUND')
+
+!     Check all fields in the right time order
+
+      ICOU = IFIRST
+      DO JY = ICCYY0, ICCYYE
+        IF (JY==ICCYY0) THEN
+          IIM1 = IMM0
+        ELSE
+          IIM1 = 1
+        ENDIF
+        IF (JY==ICCYYE) THEN
+          IIM2 = IMME
+        ELSE
+          IIM2 = 12
+        ENDIF
+        DO JM = IIM1, IIM2
+          IDUMY = JM + 100*JY
+          DO JCL = 1, NCLIMR + IEXTRA
+            IF (IDUMY/=IINFO(ICOU,JCL)/100) THEN
+              WRITE(NULERR,'(A,I4,A,I6.6,A)') 'UPDCLIE: FIELD ', NCLIGC(JCL), &
+                & ' NOT FOUND FOR ', IDUMY, '00'
+              CALL ABOR1(' UPDCLIE : FIELD NOT FOUND')
+            ENDIF
+          ENDDO
+          ICOU = ICOU + 1
+        ENDDO
+      ENDDO
+      IDIF = -999
+      IJDCR = -999
+
+    ELSE
+
+!     Locates the first field needed
+
+      IJUL0 = RJUDAT(IAN,IMOIS,IJOUR)
+      LLFOUND=.FALSE.
+      DO J = 1, ITIM
+        IA = NCCAA(IINFO(J,1))
+        IM = NMM(IINFO(J,1))
+        ID = NDD(IINFO(J,1))
+        IJUL = RJUDAT(IA,IM,ID)
+        IF (IJUL>IJUL0) THEN
+          IF (J==1) THEN
+            WRITE(NULERR,'(A,I8.8)') 'UPDCLIE: FIRST FILE IS FOR ', IINFO(J,1)
+            CALL ABOR1(' UPDCLIE : FIRST FILE NEEDED NOT FOUND')
+          ENDIF
+          IFIRST = J - 1
+          IADD = IINFO(IFIRST,1)
+          LLFOUND=.true.
+          EXIT
+        ENDIF
+      ENDDO
+      IF (.NOT.LLFOUND) THEN
+        CALL ABOR1(' UPDCLIE : FIRST FILE NOT FOUND WITH LMCCIEC=.false.')
+      ENDIF
+
+      ! Check all fields in the right time order
+
+      IA = NCCAA(IINFO(IFIRST,1))
+      IM = NMM(IINFO(IFIRST,1))
+      ID = NDD(IINFO(IFIRST,1))
+      IJUL1 = RJUDAT(IA,IM,ID)
+      IJDCR = IJUL1
+      IA = NCCAA(IINFO(IFIRST+1,1))
+      IM = NMM(IINFO(IFIRST+1,1))
+      ID = NDD(IINFO(IFIRST+1,1))
+      IJUL2 = RJUDAT(IA,IM,ID)
+      IDIF = IJUL2 - IJUL1
+      IF (NCLIMR>1) THEN
+        DO JCL = 2, NCLIMR + IEXTRA
+          IA = NCCAA(IINFO(IFIRST,JCL))
+          IM = NMM(IINFO(IFIRST,JCL))
+          ID = NDD(IINFO(IFIRST,JCL))
+          IJUL1 = RJUDAT(IA,IM,ID)
+          IA = NCCAA(IINFO(IFIRST+1,JCL))
+          IM = NMM(IINFO(IFIRST+1,JCL))
+          ID = NDD(IINFO(IFIRST+1,JCL))
+          IJUL2 = RJUDAT(IA,IM,ID)
+          IDIFD = IJUL2 - IJUL1
+          IF (IDIFD/=IDIF) THEN
+            WRITE(NULERR,'(A,2I20,A,I4)') 'UPDCLIE: JULIAN DAYS ', IJUL1, &
+              & IJUL2, ' FOR FIELD ', NCLIGC(JCL)
+            WRITE(NULERR,'(A,I2)') 'UPDCLIE: DIFFERENCE EXPECTED ', IDIF
+            CALL ABOR1(' UPDCLIE : IRREGULARLY SPACED FIELDS')
+          ENDIF
+        ENDDO
+      ENDIF
+      DO J = IFIRST + 1, ITIM - 1
+        DO JCL = 1, NCLIMR + IEXTRA
+          IA = NCCAA(IINFO(J,JCL))
+          IM = NMM(IINFO(J,JCL))
+          ID = NDD(IINFO(J,JCL))
+          IJUL1 = RJUDAT(IA,IM,ID)
+          IA = NCCAA(IINFO(J+1,JCL))
+          IM = NMM(IINFO(J+1,JCL))
+          ID = NDD(IINFO(J+1,JCL))
+          IJUL2 = RJUDAT(IA,IM,ID)
+          IDIFD = IJUL2 - IJUL1
+          IF (IDIFD/=IDIF) THEN
+            WRITE(NULERR,'(A,2I20,A,I4)') 'UPDCLIE: JULIAN DAYS ', IJUL1, &
+              & IJUL2, ' FOR FIELD ', NCLIGC(JCL)
+            WRITE(NULERR,'(A,I2)') 'UPDCLIE: DIFFERENCE EXPECTED ', IDIF
+            CALL ABOR1(' UPDCLIE : IRREGULARLY SPACED FIELDS')
+          ENDIF
+        ENDDO
+      ENDDO
+      IJULE = RJUDAT(IAE,IME,IJE)
+      DO JCL = 1, NCLIMR + IEXTRA
+        IA = NCCAA(IINFO(ITIM,JCL))
+        IM = NMM(IINFO(ITIM,JCL))
+        ID = NDD(IINFO(ITIM,JCL))
+        IJUL2 = RJUDAT(IA,IM,ID)
+        IDIFD = IJULE - IJUL2
+        IF (IDIFD>IDIF) THEN
+          WRITE(NULERR,'(A)') 'UPDCLIE: FILE TOO SHORTJULIAN DAYS '
+          WRITE(NULERR,'(A,I20)') 'UPDCLIE: FORECAST ENDS ', IJULE
+          WRITE(NULERR,'(A,I20)') 'UPDCLIE: CLIMATE DATA ENDS ', IJUL2
+          WRITE(NULERR,'(A,I20)') 'UPDCLIE: DIFFERENCE EXPECTED ', IDIF
+          CALL ABOR1(' UPDCLIE : IRREGULARLY SPACED FIELDS')
+        ENDIF
+      ENDDO
+    ENDIF
+
+    ! Positions the file in the first field needed
+
+    CALL IGRIB_CLOSE_FILE(IUNITC)
+    CALL IGRIB_OPEN_FILE(IUNITC,CLNOMF,'r')
+    DO JTIM = 1, 10000*(NCLIMR+IEXTRA)
+      CALL IGRIB_NEW_FROM_FILE(IUNITC,IGRIB)
+      CALL IGRIB_GET_VALUE(IGRIB,'dataDate',IYYMD)
+      IF (IYYMD==IADD) EXIT
+      CALL IGRIB_RELEASE(IGRIB)
+    ENDDO
+
+    ! Pack message
+
+    IDM(1) = IDIF
+    IDM(2) = IJDCR
+    IDM(3) = IUNITC
+
+  ENDIF ! MYPROC==1
+
+  ! Broadcast
+
+  ITAG = 19591204
+  CALL MPL_BROADCAST(IDM,KTAG=ITAG,KROOT=1,CDSTRING='UPDCLIE')
+
+  NDIFC = IDM(1)
+  NJDCR = IDM(2)
+  NUNITC = IDM(3)
+
+ENDIF ! NCLIMR>=1 && LLFIRST
+
+!*    3. READ THE FILE, IF NEEDED.
+!     -----------------------------
+
+IF (NCLIMR>=1) THEN
+
+  !* Decide if reading time
+
+  IF (LMCCIEC) THEN
+    IF (LLFIRST) THEN
+      IDATEREF = 0
+      LLREAD = .TRUE.
+      IFIRST = 2
+    ELSE
+      IDATE = IAN*10000 + IMOIS*100 + IJOUR
+      WRITE(NULOUT,*) 'IDATE=', IDATE, IDATEREF
+      IF (IJOUR==16 .AND. IDATE>IDATEREF) THEN
+        LLREAD = .TRUE.
+        IFIRST = 1
+      ELSE
+        LLREAD = .FALSE.
+        IFIRST = 1
+      ENDIF
+    ENDIF
+  ELSEIF (LLFIRST) THEN
+    LLREAD = .TRUE.
+    IFIRST = 1
+  ELSE
+    IFIRST = 1
+    IJUL = RJUDAT(IAN,IMOIS,IJOUR)
+    LLREAD = NJDCR==IJUL
+  ENDIF
+
+  IF (LEOBC .OR. LEOBCICE) THEN
+    IJUL = RJUDAT(IAN,IMOIS,IJOUR)
+    IF (LLFIRST) THEN
+      LLREAD1 = .TRUE.
+      NJDCR1 = IJUL
+    ELSE
+      LLREAD1 = NJDCR1==IJUL
+    ENDIF
+  ELSE
+    LLREAD1 = .FALSE.
+  ENDIF
+
+!*    3.1 READ, DECODE AND SELECT THE FIELDS
+
+  IF (LLREAD) THEN
+    FIRST:DO JF = 1, IFIRST
+      IF (LMCCIEC) THEN
+        NP1 = 3 - NP1
+        NP2 = 3 - NP2
+      ELSE
+        NJDCR = NJDCR + NDIFC
+      ENDIF
+      READ:DO JCL = 1, NCLIMR + IEXTRA
+        IPARAM = NCLIGC(JCL)
+        IF (MYPROC==1) THEN
+          IF (.NOT.(LLFIRST.AND.JF==1.AND.JCL==1)) THEN
+            CALL IGRIB_NEW_FROM_FILE(IUNITC,IGRIB)
+          ENDIF
+          CALL IGRIB_SET_VALUE(IGRIB,'missingValue',19591204.0_JPRB)
+          CALL GSTATS(1703,0)
+          CALL IGRIB_GET_VALUE(IGRIB,'values',ZBUF)
+          CALL GSTATS(1703,1)
+          CALL IGRIB_GET_VALUE(IGRIB,'bitmapPresent',IBITMAP)
+          IF (IBITMAP==1 .AND. IPARAM==31 .AND. .NOT.LEOCLAKE) THEN
+            DO II = 1, NGPTOTG
+              IF (ZBUF(II)==19591204.0_JPRB) ZBUF(II) = 0.0_JPRB
+            ENDDO
+          ENDIF
+          CALL IGRIB_GET_VALUE(IGRIB,'dataDate',IYYMD)
+          CALL IGRIB_RELEASE(IGRIB)
+
+          WRITE(NULOUT,'(A,I6,A,I8.8,A)') 'UPDCLIE: PARAMETER ', IPARAM, &
+            & ' FOR DATE ', IYYMD, ' READ FROM CLIMATE FILE'
+
+          IDATEREF = IYYMD
+        ENDIF ! MYPROC==1
+
+        ! DM communications.
+        IF (MYPROC==1) THEN
+          IF (JCL>NCLIMR .AND. LEOCLAKE) THEN
+            JCL1 = JCL - NCLIMR
+            CALL DISGRID_SEND(YDGEOMETRY,1,ZBUF,JCL,ZLAKE(:,NP2,JCL1))
+          ELSE
+            CALL DISGRID_SEND(YDGEOMETRY,1,ZBUF,JCL,ZCLIMR)
+            CLIMR(:,NP2,JCL) = REAL(ZCLIMR(:),JPRD)
+          ENDIF
+        ELSEIF (JCL>NCLIMR .AND. LEOCLAKE) THEN
+          JCL1 = JCL - NCLIMR
+          CALL DISGRID_RECV(YDGEOMETRY,1,1,ZLAKE(:,NP2,JCL1),JCL)
+        ELSE
+          ZCLIMR(:) = REAL(CLIMR(:,NP2,JCL),JPRB)
+          CALL DISGRID_RECV(YDGEOMETRY,1,1,ZCLIMR,JCL)
+          CLIMR(:,NP2,JCL) = REAL(ZCLIMR(:),JPRD)
+        ENDIF
+        CALL MPL_BARRIER(CDSTRING='UPDCLIE')
+
+        ! Synchronize IDATEREF
+        ITAG = 19591205
+        CALL MPL_BROADCAST(IDATEREF,KTAG=ITAG,KROOT=1,CDSTRING='UPDCLIE')
+
+      ENDDO READ
+    ENDDO FIRST
+  ENDIF ! LLREAD
+
+  IF (LLREAD1) THEN
+    NJDCR1 = NJDCR1 + 1
+    READ1:DO JCL = 1, 2
+      IF (MYPROC==1) THEN
+        WRITE(NULOUT,'(A,I8.8,A,I6)') 'UPDCLIE: READING ICMBC FOR DATE ', &
+          & IYYMD, ' PARAMETER ', IPARAM
+        CALL IGRIB_NEW_FROM_FILE(IUNITC1,IGRIB1)
+        CALL IGRIB_GET_VALUE(IGRIB1,'paramId',IPARAM)
+        CALL IGRIB_GET_VALUE(IGRIB1,'dataDate',IYYMD)
+        CALL GSTATS(1703,0)
+        CALL IGRIB_GET_VALUE(IGRIB1,'values',ZBC)
+        CALL GSTATS(1703,1)
+        CALL IGRIB_RELEASE(IGRIB1)
+      ENDIF
+      ! DM communications.
+      IF (MYPROC==1) THEN
+        CALL DISGRID_SEND(YDGEOMETRY,1,ZBC,JCL,OCEANBC(:,JCL))
+      ELSE
+        CALL DISGRID_RECV(YDGEOMETRY,1,1,OCEANBC(:,JCL),JCL)
+      ENDIF
+      CALL MPL_BARRIER(CDSTRING='UPDCLIE')
+      ! Synchronize IDATEREF
+      ITAG = 19591205
+      CALL MPL_BROADCAST(IDATEREF,KTAG=ITAG,KROOT=1,CDSTRING='UPDCLIE')
+    ENDDO READ1
+
+    IF(LEOBCMAX) THEN
+      DO JROF=1,NGPTOT
+        IF (ABS(OCEANBC(JROF,1))>REOBCMAX) THEN
+          OCEANBC(JROF,1) = 0.0_JPRB
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDIF ! LLREAD1
+
+ENDIF ! NCLIMR>=1
+
+
+!*    3.2  Read SST and ice mask from OASIS coupler, if needed
+
+!   ECMWF convention from Cy22r2 onwards is that the ice field is passed
+!   from OASIS as the fractional coverage (0.0 - 1.0). This differs
+!   from the earlier CERFACS convention, which uses discrete values of
+!   0.0, 1.0 and 2.0. Be careful not to use incompatible OASIS
+!   routines when coupling via this subroutine.
+
+IF (LMCC04 .AND. (NOACOMM/=5) .AND. (.NOT.LNEMOCOUP)) THEN
+
+!  Pass the initial ice field to OASIS, if requested
+
+  IF (LLFIRST .AND. LMCCICEIC) THEN
+! disable for restarts - not yet done
+
+    DO JSTGLO = 1, NGPTOT, NPROMA
+      IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+      IBL = (JSTGLO-1)/NPROMA + 1
+      DO JROF = 1, IEND
+        ZINIICE(JSTGLO+JROF-1) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)
+      ENDDO
+    ENDDO
+
+    CALL GATHERGPF(YDGEOMETRY,ZINIICE,ZINIICEG,1,1)
+
+    IF (MYPROC==1) THEN
+      ZREAL(:) = 0.0_JPRB
+      IF ((NOACOMM<=2) .OR. (NOACOMM==4)) OPEN (UNIT=NULCO,FILE='flxatmos',FORM='UNFORMATTED',POSITION='REWIND')
+      DO JL = 1, NGPTOTG
+        ZREAL(JL) = ZINIICEG(JL,1)
+      ENDDO
+      IF ((NOACOMM<=2) .OR. (NOACOMM==4)) THEN
+        WRITE(NULCO) 'IICEATMO'
+        WRITE(NULCO) ZREAL
+      ELSEIF (NOACOMM==3) THEN
+        CALL SVIPC_WRITE(YDCOU%NCULF(0),ZREAL,NDLON*NDGLG*NREALEN,IRET)
+        IF (IRET<=0) THEN
+          WRITE(NULERR,*) 'SVIPC retcode is ', IRET
+          CALL ABOR1('UPDCLIE: fatal error in SVIPC_WRITE')
+        ELSE
+          WRITE(NULOUT,*) 'SVIPC number of bytes written is ', IRET
+        ENDIF
+      ENDIF
+      IF ((NOACOMM==2) .OR. (NOACOMM==4)) CLOSE (NULCO)
+
+      WRITE(NULOUT,*) 'Initial sea-ice field written to coupling files'
+
+      ISTEP = NSTEP
+      IF ((NOACOMM==2) .OR. (NOACOMM==4)) THEN
+        CALL PBWRITE(YDCOU%NCULF(0),ISTEP,NINTLEN,IRET)
+        CALL PBFLUSH(YDCOU%NCULF(0))
+        IF (IRET<=0) THEN
+          WRITE(NULERR,*) 'PBWRITE retcode is ', IRET
+          CALL ABOR1('UPDCLIE: fatal error in PBWRITE')
+        ELSE
+          WRITE(NULOUT,*) 'PBWRITE number of bytes written is ', IRET
+        ENDIF
+        WRITE(NULOUT,*) 'OASIS signalled via pipes'
+      ENDIF
+    ENDIF
+
+  ENDIF
+
+!  Wait for OASIS to signal that SST fields are ready to read
+
+  IF (MYPROC==1) THEN
+    IF (LLFIRST) THEN
+      IF (NOACOMM==2) THEN
+        CALL PBREAD(YDCOU%NCULF(1),ICSTEP,NINTLEN,IRET)
+        CALL PBREAD(YDCOU%NCULF(2),ICSTEP,NINTLEN,IRET)
+      ELSEIF (NOACOMM==3) THEN
+!      Read of SST will be semaphored automatically
+      ELSEIF (NOACOMM==4) THEN
+        IA = 0
+        ISST1 = 0
+        ISST2 = 0
+        LLDONE = .FALSE.
+        DO WHILE (.NOT.LLDONE)
+          IF (ISST1==0) CALL PBREAD(YDCOU%NCULF(1),ICSTEP,NINTLEN,IRET)
+          IF (IRET>0) ISST1 = 1
+          IF (ISST2==0) CALL PBREAD(YDCOU%NCULF(2),ICSTEP,NINTLEN,IRET)
+          IF (IRET>0) ISST2 = 1
+          IF (ISST1*ISST2==0) THEN
+            IA = IA + 1
+            WRITE(NULOUT,*) 'Sleep ', IA*2, ' seconds'
+            CALL FLUSH(NULOUT)
+            CALL SLEEP(IA*2)
+            IF (IA>30) THEN
+              WRITE(NULOUT,*) 'Timed out waiting for coupler initial SST'
+              CALL ABOR1('ABORT in UPDCLIE')
+            ENDIF
+          ELSE
+            LLDONE = .TRUE.
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDIF
+  ENDIF
+
+!  Read SST and sea-ice from OASIS
+
+  IPARAM1 = 139
+  IPARAM2 = 31
+  IPARAM3 = 131
+  IPARAM4 = 132
+
+  IF (MYPROC==1) THEN
+    IF ((NOACOMM==2) .OR. (NOACOMM==4)) THEN
+      OPEN (UNIT=NULCO,FILE='sstatmos',FORM='UNFORMATTED',POSITION='REWIND')
+      READ (NULCO) CLFIELD
+      IF (CLFIELD/='SSTATMOS') CALL ABOR1('UPDCLIE: wrong field in sstatmos')
+      READ (NULCO) ZFIELD_D
+      ZSST = REAL(ZFIELD_D,JPRB)
+      READ (NULCO) CLFIELD
+      IF (CLFIELD/='ICEATMOS') CALL ABOR1('UPDCLIE: wrong field in sstatmos')
+      READ (NULCO) ZFIELD_D
+      ZICE = REAL(ZFIELD_D,JPRB)
+      IF (LECURR) THEN
+        READ (NULCO) CLFIELD
+        IF (CLFIELD/='UV_ATMOS') CALL ABOR1('UPDCLIE: wrong field in sstatmos')
+        READ (NULCO) ZFIELD_D
+        ZUCURR = REAL(ZFIELD_D,JPRB)
+        READ (NULCO) CLFIELD
+        IF (CLFIELD/='VV_ATMOS') CALL ABOR1('UPDCLIE: wrong field in sstatmos')
+        READ (NULCO) ZFIELD_D
+        ZVCURR = REAL(ZFIELD_D,JPRB)
+      ENDIF
+      CLOSE (NULCO)
+    ELSEIF (NOACOMM==3) THEN
+      CALL SVIPC_READ(YDCOU%NCULF(1),ZSST,NGPTOTG*NREALEN,IRET)
+      CALL SVIPC_READ(YDCOU%NCULF(2),ZICE,NGPTOTG*NREALEN,IRET)
+      IF (LECURR) THEN
+        CALL SVIPC_READ(YDCOU%NCULF(3),ZUCURR,NGPTOTG*NREALEN,IRET)
+        CALL SVIPC_READ(YDCOU%NCULF(4),ZVCURR,NGPTOTG*NREALEN,IRET)
+      ENDIF
+      IF (IRET<=0) THEN
+        WRITE(NULERR,*) 'SVIPC retcode is ', IRET
+        CALL ABOR1('UPDCLIE: fatal error in SVIPC_READ')
+      ELSE
+        WRITE(NULOUT,*) 'SVIPC number of bytes read is ', IRET
+      ENDIF
+    ELSE
+      WRITE(NULERR,'("UPDCLIE: Not coded for NOACOMM=",I2)') NOACOMM
+      CALL ABOR1('UPDCLIE: No code written')
+    ENDIF
+    WRITE(NULOUT,'("UPDCLIE: data read from OASIS")')
+  ENDIF
+
+  ! DM communications.
+  IF (MYPROC==1) THEN
+    CALL DISGRID_SEND(YDGEOMETRY,1,ZSST,ICLIMT+1,ZCLIMR)
+    CLIMR(:,NP2,NCLIMR+1) = REAL(ZCLIMR(:),JPRD)
+    CALL DISGRID_SEND(YDGEOMETRY,1,ZICE,ICLIMT+2,ZCLIMR)
+    CLIMR(:,NP2,NCLIMR+2) = REAL(ZCLIMR(:),JPRD)
+    IF (LECURR) THEN
+      CALL DISGRID_SEND(YDGEOMETRY,1,ZUCURR,ICLIMT+3,ZCLIMR)
+      CLIMR(:,NP2,NCLIMR+3) = REAL(ZCLIMR(:),JPRD)
+      CALL DISGRID_SEND(YDGEOMETRY,1,ZVCURR,ICLIMT+4,ZCLIMR)
+      CLIMR(:,NP2,NCLIMR+4) = REAL(ZCLIMR(:),JPRD)
+    ENDIF
+  ELSE
+    ZCLIMR(:) = REAL(CLIMR(:,NP2,NCLIMR+1),JPRB)
+    CALL DISGRID_RECV(YDGEOMETRY,1,1,ZCLIMR,ICLIMT+1)
+    CLIMR(:,NP2,NCLIMR+1) = REAL(ZCLIMR(:),JPRD)
+    ZCLIMR(:) = REAL(CLIMR(:,NP2,NCLIMR+2),JPRB)
+    CALL DISGRID_RECV(YDGEOMETRY,1,1,ZCLIMR,ICLIMT+2)
+    CLIMR(:,NP2,NCLIMR+2) = REAL(ZCLIMR(:),JPRD)
+    IF (LECURR) THEN
+      ZCLIMR(:) = REAL(CLIMR(:,NP2,NCLIMR+3),JPRB)
+      CALL DISGRID_RECV(YDGEOMETRY,1,1,ZCLIMR,ICLIMT+3)
+      CLIMR(:,NP2,NCLIMR+3) = REAL(ZCLIMR(:),JPRD)
+      ZCLIMR(:) = REAL(CLIMR(:,NP2,NCLIMR+4),JPRB)
+      CALL DISGRID_RECV(YDGEOMETRY,1,1,ZCLIMR,ICLIMT+4)
+      CLIMR(:,NP2,NCLIMR+4) = REAL(ZCLIMR(:),JPRD)
+    ENDIF
+  ENDIF
+  CALL MPL_BARRIER(CDSTRING='UPDCLIE')
+
+  NCLIGC(NCLIMR+1) = IPARAM1
+  NCLIGC(NCLIMR+2) = IPARAM2
+  IF (LECURR) THEN
+    NCLIGC(NCLIMR+3) = IPARAM3
+    NCLIGC(NCLIMR+4) = IPARAM4
+  ENDIF
+
+ENDIF
+
+IF (LMCC04 .AND. (NOACOMM==5)) THEN
+  WRITE(NULOUT,'(A)') 'UPDCLIE: updating SST and ICE from OASIS3'
+  IPARAM1 = 139
+  IPARAM2 = 31
+  IPARAM3 = 131
+  IPARAM4 = 132
+  IF (LLFIRST .AND. LMCCICEIC) CALL ABOR1('LMCCICEIC does not work with OASIS3')
+#ifdef WITH_OASIS
+  CALL GETOASIS3(NSTEP)
+#endif
+  NCLIGC(NCLIMR+1) = IPARAM1
+  NCLIGC(NCLIMR+2) = IPARAM2
+  IF (LECURR) THEN
+    NCLIGC(NCLIMR+3) = IPARAM3
+    NCLIGC(NCLIMR+4) = IPARAM4
+  ENDIF
+
+ENDIF
+
+IF (LMCC04) THEN
+  ICLIM = NCLIMR + 2
+  IF (LECURR) ICLIM = NCLIMR + 4
+ELSE
+  ICLIM = NCLIMR
+ENDIF
+
+!  SST Tendencies (non single executable case)
+
+IF (.NOT.LNEMOCOUP .OR. LNEMO1WAY) THEN
+
+  ! SST
+
+  IF (LEOBC) THEN
+    IPAR139 = 0
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==139) THEN
+         IPAR139=JCL
+         EXIT
+      ENDIF
+    ENDDO
+
+    IF (IPAR139 > 0) THEN
+       DO JROF = 1, NGPTOT
+          CLIMR(JROF,NP2,IPAR139) = CLIMR(JROF,NP2,IPAR139) + REAL(OCEANBC(JROF,1),JPRD)
+       ENDDO
+    ELSE
+       CALL ABOR1('UPDCLIE: IPAR139 = 0 WHEN LEOBC')
+    ENDIF
+
+  ENDIF
+
+  ! Ice cover
+
+  IF (LEOBCICE) THEN
+    IPAR31 = 0
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==31) THEN
+         IPAR31=JCL
+         EXIT
+      ENDIF
+    ENDDO
+
+    IF (IPAR31 > 0) THEN
+       DO JROF = 1, NGPTOT
+          CLIMR(JROF,NP2,IPAR31) = REAL(OCEANBC(JROF,2),JPRD)
+       ENDDO
+    ELSE
+       CALL ABOR1('UPDCLIE: IPAR31 = 0 WHEN LEOBCICE')
+    ENDIF
+
+  ENDIF
+
+ENDIF
+
+! Calculate weights used for time-interpolating monthly data onto current
+! forecast day
+IF (LMCCIEC) THEN
+  IF (IJOUR>15) THEN
+    IMT1 = IMOIS
+    IJT1 = 15
+    IJT2 = 15 + ILMOIS(IMT1)
+  ELSE
+    IMT1 = 1 + MOD(IMOIS+10,12)
+    IJT1 = 15 - ILMOIS(IMT1)
+    IJT2 = 15
+  ENDIF
+  ZPOID1 = REAL(IJT2-IJOUR,JPRB)/REAL(IJT2-IJT1,JPRB)
+  ZPOID2 = 1.0_JPRB - ZPOID1
+ENDIF
+
+! LAKE CORRECTION
+!  For OASIS coupling, we do the interpolation of
+!  of monthly lake data here to get bit reproducible results when restarting.
+
+! LAKE SST CORRECTION
+
+IF (LEOCLAKE .AND. (.NOT.LNEMOCOUP.OR.LNEMO1WAY)) THEN
+
+  IPAR139 = 0
+  DO JCL = 1, ICLIM
+    IF (NCLIGC(JCL)==139) THEN
+       IPAR139=JCL
+       EXIT
+    ENDIF
+    WRITE(NULOUT,*) 'NGLIGC', JCL, NCLIGC(JCL)
+  ENDDO
+  
+  IF (IPAR139 == 0) THEN
+     CALL ABOR1('UPDCLIE: IPAR139 = 0 WHEN LEOCLAKE.AND.(.NOT.LNEMOCOUP.OR.LNEMO1WAY)')
+  ENDIF
+
+  DO JSTGLO = 1, NGPTOT, NPROMA
+    IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+    IBL = (JSTGLO-1)/NPROMA + 1
+    DO JROF = 1, IEND
+      IF (LMCC04) THEN
+        IF (ZLAKE(JSTGLO+JROF-1,NP2,1)<19591204.0_JPRB) THEN
+          IF (LMCCIEC) THEN
+            CLIMR(JSTGLO+JROF-1,NP2,IPAR139) = REAL(ZLAKE(JSTGLO+JROF-1,NP1,1)*ZPOID1+ZLAKE(JSTGLO+JROF-1,NP2,1)*ZPOID2,    &
+            & JPRD)
+          ELSE
+            CLIMR(JSTGLO+JROF-1,NP2,IPAR139) = REAL(ZLAKE(JSTGLO+JROF-1,NP2,1),JPRD)
+          ENDIF
+        ENDIF
+      ELSEIF (ZLAKE(JSTGLO+JROF-1,NP2,1)<19591204.0_JPRB) THEN
+        CLIMR(JSTGLO+JROF-1,NP1,IPAR139) = REAL(ZLAKE(JSTGLO+JROF-1,NP1,1),JPRD)
+        CLIMR(JSTGLO+JROF-1,NP2,IPAR139) = REAL(ZLAKE(JSTGLO+JROF-1,NP2,1),JPRD)
+      ENDIF
+    ENDDO
+  ENDDO
+
+! LAKE SEA ICE CORRECTION
+
+  IPAR31 = 0
+  DO JCL = 1, ICLIM
+    IF (NCLIGC(JCL)==31) THEN
+       IPAR31=JCL
+       EXIT
+    ENDIF
+  ENDDO
+  
+  IF (IPAR31 == 0) THEN
+     CALL ABOR1('UPDCLIE: IPAR31 = 0 WHEN LAKE SEA ICE CORRECTION')
+  ENDIF
+
+  DO JSTGLO = 1, NGPTOT, NPROMA
+    IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+    IBL = (JSTGLO-1)/NPROMA + 1
+    DO JROF = 1, IEND
+      IF (LMCC04) THEN
+        IF (ZLAKE(JSTGLO+JROF-1,NP2,2)<19591204.0_JPRB) THEN
+          IF (LMCCIEC) THEN
+            CLIMR(JSTGLO+JROF-1,NP2,IPAR31) = REAL(ZLAKE(JSTGLO+JROF-1,NP1,2)*ZPOID1+ZLAKE(JSTGLO+JROF-1,NP2,2)*ZPOID2,JPRD)
+          ELSE
+            CLIMR(JSTGLO+JROF-1,NP2,IPAR31) = REAL(ZLAKE(JSTGLO+JROF-1,NP2,2),JPRD)
+          ENDIF
+        ENDIF
+      ELSEIF (ZLAKE(JSTGLO+JROF-1,NP2,2)<19591204.0_JPRB) THEN
+        CLIMR(JSTGLO+JROF-1,NP1,IPAR31) = REAL(ZLAKE(JSTGLO+JROF-1,NP1,2),JPRD)
+        CLIMR(JSTGLO+JROF-1,NP2,IPAR31) = REAL(ZLAKE(JSTGLO+JROF-1,NP2,2),JPRD)
+      ENDIF
+    ENDDO
+  ENDDO
+
+  ! CURRENT ARE SET TO 0.0 OVER LAKES.
+
+  IF (LECURR) THEN
+
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==131) EXIT
+    ENDDO
+    IPAR131 = JCL
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==132) EXIT
+    ENDDO
+    IPAR132 = JCL
+    DO JSTGLO = 1, NGPTOT, NPROMA
+      IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+      IBL = (JSTGLO-1)/NPROMA + 1
+      DO JROF = 1, IEND
+        IF (ZLAKE(JSTGLO+JROF-1,NP2,1)<19591204.0_JPRB) THEN
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR131) = 0.0_JPRD
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR132) = 0.0_JPRD
+        ENDIF
+      ENDDO
+    ENDDO
+
+  ENDIF
+
+ENDIF
+
+! OPTIONALLY UPDATE LAKES WITH FLAKE SST/ICE
+
+IF (LEFLAKE .AND. LEOLAKESST .AND. (.NOT.LNEMOCOUP.OR.LNEMO1WAY)) THEN
+
+  IPAR139 = 0
+  DO JCL = 1, ICLIM
+    IF (NCLIGC(JCL)==139) THEN
+       IPAR139=JCL
+       EXIT
+    ENDIF
+  ENDDO
+  
+  IPAR31 = 0
+  DO JCL = 1, ICLIM
+    IF (NCLIGC(JCL)==31) THEN
+       IPAR31=JCL
+       EXIT
+    ENDIF
+  ENDDO
+  
+  IF (IPAR139 == 0 .or. IPAR31 == 0) THEN
+     CALL ABOR1('UPDCLIE: IPAR139 = 0 or IPAR31 = 0 WHEN LEFLAKE.AND.LEOLAKESST.AND.(.NOT.LNEMOCOUP.OR.LNEMO1WAY)')
+  ENDIF
+
+  DO JSTGLO = 1, NGPTOT, NPROMA
+
+    IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+    IBL = (JSTGLO-1)/NPROMA + 1
+
+    DO JROF = 1, IEND
+      ! LAKE POINT IN FLAKE.
+      IF (SD_VF(JROF,YSD_VF%YCLK%MP,IBL)>0.5_JPRB) THEN
+        ! SST
+        CLIMR(JSTGLO+JROF-1,NP2,IPAR139) = REAL(SP_SL(JROF,YSP_SL%YLMLT%MP,IBL),JPRD)
+        ! CI OVER LAKES DERIVED FROM ICE THICKNESS
+        ! GOYETTE ET AL. (2000) ATMOS.-OCEAN 38, 481-503
+        IF (SP_SL(JROF,YSP_SL%YLICD%MP,IBL)>0.65_JPRB) THEN
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR31) = 1.0_JPRD
+        ELSEIF (SP_SL(JROF,YSP_SL%YLICD%MP,IBL)>0.05_JPRB) THEN
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR31) = REAL(1.287_JPRB*SQRT(SP_SL(JROF,YSP_SL%YLICD%MP,IBL)-0.05_JPRB),JPRD)
+        ELSE
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR31) = 0.0_JPRD
+        ENDIF
+      ENDIF
+
+    ENDDO
+
+  ENDDO
+
+  IF (LECURR) THEN
+
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==131) EXIT
+    ENDDO
+    IPAR131 = JCL
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==132) EXIT
+    ENDDO
+    IPAR132 = JCL
+
+    DO JSTGLO = 1, NGPTOT, NPROMA
+      IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+      IBL = (JSTGLO-1)/NPROMA + 1
+      DO JROF = 1, IEND
+        IF (SD_VF(JROF,YSD_VF%YCLK%MP,IBL)>0.5_JPRB) THEN
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR131) = 0.0_JPRD
+          CLIMR(JSTGLO+JROF-1,NP2,IPAR132) = 0.0_JPRD
+        ENDIF
+      ENDDO
+    ENDDO
+
+  ENDIF
+
+ENDIF
+
+
+!
+!     4. TIME INTERPOLATION AND WRITING OF CLIMATE FIELDS
+!     ---------------------------------------------------
+
+DO JSTGLO = 1, NGPTOT, NPROMA
+  IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+  IBL = (JSTGLO-1)/NPROMA + 1
+
+
+! 174, albedo
+  DO JCL = 1, ICLIM
+    IF (NCLIGC(JCL)==174) EXIT
+  ENDDO
+  IPAR174 = JCL
+  DO JROF = 1, IEND
+    IF (LMCCIEC) THEN
+      ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPAR174),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR174),JPRB)*ZPOID2
+    ELSE
+      ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR174),JPRB)
+    ENDIF
+    SD_VF(JROF,YSD_VF%YALBF%MP,IBL) = ZTS
+  ENDDO
+
+  IF (NALBEDOSCHEME == 1 .OR. NALBEDOSCHEME == 3) THEN
+!-- 4-component MODIS albedo grib codes 15, 16, 17, 18
+    DO JGRIBC = 15, 18
+      IPARMAL = -1
+      DO JCL = 1, ICLIM
+        IF (NCLIGC(JCL)==JGRIBC) THEN
+          IPARMAL = JCL
+          EXIT
+        ENDIF
+      ENDDO
+      IF (IPARMAL>0) THEN
+        DO JROF = 1, IEND
+          ! Needs to be secured for very small values)
+          IF (LMCCIEC) THEN
+            ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPARMAL),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPARMAL),JPRB)*ZPOID2
+          ELSE
+            ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPARMAL),JPRB)
+          ENDIF
+          IF (JGRIBC==15) THEN
+            SD_VF(JROF,YSD_VF%YALUVP%MP,IBL) = ZTS
+          ELSEIF (JGRIBC==16) THEN
+            SD_VF(JROF,YSD_VF%YALUVD%MP,IBL) = ZTS
+          ELSEIF (JGRIBC==17) THEN
+            SD_VF(JROF,YSD_VF%YALNIP%MP,IBL) = ZTS
+          ELSEIF (JGRIBC==18) THEN
+            SD_VF(JROF,YSD_VF%YALNID%MP,IBL) = ZTS
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDDO
+  ELSEIF (NALBEDOSCHEME == 2) THEN
+!-- MODIS albedo (2x3-components) grib codes: 210186-210191
+    DO JGRIBC=210186,210191
+      IPARMAL=-1
+      DO JCL=1,ICLIM
+        IF (NCLIGC(JCL) == JGRIBC) THEN
+          IPARMAL=JCL
+          EXIT
+        ENDIF
+      ENDDO
+      IF(IPARMAL > 0) THEN
+        DO JROF =1,IEND
+          IF (LMCCIEC) THEN
+            ZTS=CLIMR(JSTGLO+JROF-1,NP1,IPARMAL)*ZPOID1 &
+             & +CLIMR(JSTGLO+JROF-1,NP2,IPARMAL)*ZPOID2  
+          ELSE
+            ZTS=CLIMR(JSTGLO+JROF-1,NP2,IPARMAL)
+          ENDIF
+          IF     (JGRIBC == 210186) THEN
+            SD_VF(JROF,YSD_VF%YALUVI%MP,IBL)  =ZTS
+          ELSEIF (JGRIBC == 210187) THEN
+            SD_VF(JROF,YSD_VF%YALUVV%MP,IBL)  =ZTS
+          ELSEIF (JGRIBC == 210188) THEN
+            SD_VF(JROF,YSD_VF%YALUVG%MP,IBL)  =ZTS
+          ELSEIF (JGRIBC == 210189) THEN
+            SD_VF(JROF,YSD_VF%YALNII%MP,IBL)  =ZTS
+          ELSEIF (JGRIBC == 210190) THEN
+            SD_VF(JROF,YSD_VF%YALNIV%MP,IBL)  =ZTS
+          ELSEIF (JGRIBC == 210191) THEN
+            SD_VF(JROF,YSD_VF%YALNIG%MP,IBL)  =ZTS
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDIF
+
+!-- LAI Low/High grib codes 66, 67
+  DO JGRIBC = 66, 67
+    IPARMAL = -1
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==JGRIBC) THEN
+        IPARMAL = JCL
+        EXIT
+      ENDIF
+    ENDDO
+    IF (IPARMAL>0) THEN
+      DO JROF = 1, IEND
+        IF (LMCCIEC) THEN
+          ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPARMAL),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPARMAL),JPRB)*ZPOID2
+        ELSE
+          ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPARMAL),JPRB)
+        ENDIF
+
+        IF (JGRIBC==66) THEN
+          SD_VF(JROF,YSD_VF%YLAIL%MP,IBL) = ZTS
+        ELSEIF (JGRIBC==67) THEN
+          SD_VF(JROF,YSD_VF%YLAIH%MP,IBL) = ZTS
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDDO
+
+
+! For NEMO single executable coupling updates to ocean fields are now
+! done in updnemoocean.F90
+  IF (.NOT.LNEMOCOUP .OR. LNEMO1WAY) THEN
+! Fill arrays, ensuring compatibility of ice T, ice cover, SST and
+!    surface T
+
+    IPAR139 = 0
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==139) THEN
+         IPAR139=JCL
+         EXIT
+      ENDIF
+    ENDDO
+
+    IPAR31 = 0
+    DO JCL = 1, ICLIM
+      IF (NCLIGC(JCL)==31) THEN
+         IPAR31=JCL
+         EXIT
+      ENDIF
+    ENDDO
+    
+    IF (IPAR139 == 0 .or. IPAR31 == 0) THEN
+       CALL ABOR1('UPDCLIE: IPAR139 = 0 or IPAR31 = 0 WHEN .NOT.LNEMOCOUP.OR.LNEMO1WAY')
+    ENDIF
+
+    ZR2D = 180.0_JPRB/RPI
+
+    DO JROF = 1, IEND
+
+      IF (SD_VF(JROF,YSD_VF%YLSM%MP,IBL)<=0.5_JPRB) THEN
+
+!  No monthly interpolation of SST possible from OASIS
+        IF (LMCCIEC .AND. (.NOT.LMCC04) .AND. .NOT.LEOCML .AND. .NOT.LOCMLTKE) THEN
+          ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPAR139),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)*ZPOID2
+          ZCI = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPAR31),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR31),JPRB)*ZPOID2
+
+        ELSEIF (LOCMLTKE) THEN
+!         Use information from the Ocean TKE scheme
+!         Save temperature profile and update bottom of the temperature profile with new foundation SST
+
+          ! ZSTLB is the new input foundation SST and ZCI is sea ice cover:
+          IF (LMCCIEC .AND. (.NOT.LMCC04)) THEN
+            ZSTLB = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPAR139),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)*ZPOID2
+            ZCI = REAL(CLIMR(JSTGLO+JROF-1,NP1,IPAR31),JPRB)*ZPOID1 + REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR31),JPRB)*ZPOID2
+          ELSE
+            ZSTLB = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ZCI = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR31),JPRB)
+          ENDIF
+
+          IF (SD_VF(JROF,YSD_VF%YCLK%MP,IBL) == 0.0_JPRB) THEN
+            !! Only for true ocean points (no lakes)
+            !!! resetting the bottom profile Temperature to the input foundation SST !!!
+            !!! it is in degC
+            !!! and find change with respect to previous value
+            ZDSST0 = SP_OM(JROF,ILEVOML,YSP_OM%YTO%MP,IBL)
+            SP_OM(JROF,ILEVOML,YSP_OM%YTO%MP,IBL) = ZSTLB - RTT   ! K -> degC
+            ZDSST0 = SP_OM(JROF,ILEVOML,YSP_OM%YTO%MP,IBL) - ZDSST0
+
+            ! Adjust the profile with the change in foundation temperature (if any)
+            DO ILEV = 1, ILEVOML-1
+              SP_OM(JROF,ILEV,YSP_OM%YTO%MP,IBL) = SP_OM(JROF,ILEV,YSP_OM%YTO%MP,IBL) + ZDSST0 
+            ENDDO
+
+            ! ZTS is the SST that should be seen by the IFS, i.e. the temperature just below the cool skin
+            ZTS = SP_OM(JROF,1,YSP_OM%YTO%MP,IBL) + RTT   ! degC -> K
+
+            ! ZSTL1 to ZSTL4 are diagnostics to fill in the ocean soil temperature variables:
+            ZSTL1 = SP_OM(JROF,1,YSP_OM%YTO%MP,IBL) + RTT   ! degC -> K
+            ZSTL2 = SP_OM(JROF,2,YSP_OM%YTO%MP,IBL) + RTT   ! degC -> K
+            ZSTL3 = SP_OM(JROF,3,YSP_OM%YTO%MP,IBL) + RTT   ! degC -> K
+            ! ZSTL4 should be the old foundation SST
+            ZSTL4 = SP_OM(JROF,ILEVOML,YSP_OM%YTO%MP,IBL) + RTT   ! degC -> K
+
+          ELSE
+             ! For lakes use the input
+             ZTS = ZSTLB
+             DO ILEV = 1, ILEVOML
+               SP_OM(JROF,ILEV,YSP_OM%YTO%MP,IBL) = ZTS - RTT ! K -> degC
+             ENDDO
+             ZSTL1 = ZTS
+             ZSTL2 = ZTS
+             ZSTL3 = ZTS
+             ZSTL4 = ZTS
+          ENDIF
+
+
+        ELSEIF (LEOCML) THEN
+!         Use information from the Ocean KPP scheme
+
+          ZLAT1 = RNORTHML - 10.0_JPRB
+          ZLAT2 = RSOUTHML + 10.0_JPRB
+
+          IF (REASTML-RWESTML<360.0_JPRB) THEN
+            ZLON1 = REASTML - 10.0_JPRB
+            ZLON2 = RWESTML + 10.0_JPRB
+          ELSE
+            ZLON1 = REASTML
+            ZLON2 = RWESTML
+          ENDIF
+
+          ZLON = YDGSGEOM_NB%GELAM(JSTGLO+JROF-1)*ZR2D
+          IF (RWESTML<0 .AND. ZLON>180.0_JPRB) ZLON = YDGSGEOM_NB%GELAM(JSTGLO+JROF-1)*ZR2D - 360.0_JPRB
+          ZLAT = YDGSGEOM_NB%GELAT(JSTGLO+JROF-1)*ZR2D
+
+
+          IF (ZLAT<=ZLAT1 .AND. ZLAT>=ZLAT2 .AND. ZLON<=ZLON1 .AND. ZLON>=ZLON2) THEN
+            IF (.NOT.INVML) THEN
+              ZTS = SP_OM(JROF,1,YSP_OM%YTO%MP,IBL) + RTT  ! degC -> K
+              ZSTL = SP_OM(JROF,14,YSP_OM%YTO%MP,IBL) + RTT
+            ELSE
+              ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              IF (ZTS==19591204.0_JPRB) ZTS = SP_RR(JROF,YSP_RR%YT%MP,IBL)
+              ZSTL = ZTS
+              SP_OM(JROF,1,YSP_OM%YTO%MP,IBL) = ZTS - RTT
+            ENDIF
+          ELSEIF (ZLAT>ZLAT1 .AND. ZLAT<=RNORTHML .AND. ZLON<=ZLON1 .AND. ZLON>=ZLON2) THEN
+            ZW = (RNORTHML-ZLAT)/10.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLAT>=RSOUTHML .AND. ZLAT<ZLAT2 .AND. ZLON<=ZLON1 .AND. ZLON>=ZLON2) THEN
+            ZW = (ZLAT-RSOUTHML)/10.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLON>=RWESTML .AND. ZLON<ZLON2 .AND. ZLAT<=ZLAT1 .AND. ZLAT>=ZLAT2) THEN
+            ZW = (ZLON-RWESTML)/10.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLON>ZLON1 .AND. ZLON<=REASTML .AND. ZLAT<=ZLAT1 .AND. ZLAT>=ZLAT2) THEN
+            ZW = (REASTML-ZLON)/10.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLON>ZLON1 .AND. ZLON<=REASTML .AND. ZLAT>ZLAT1 .AND. ZLAT<=RNORTHML) THEN
+            ZW = (REASTML-ZLON)*(RNORTHML-ZLAT)/100.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLON>ZLON1 .AND. ZLON<=REASTML .AND. ZLAT<ZLAT2 .AND. ZLAT>=RSOUTHML) THEN
+            ZW = (REASTML-ZLON)*(ZLAT-RSOUTHML)/100.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLON<ZLON2 .AND. ZLON>=RWESTML .AND. ZLAT<ZLAT2 .AND. ZLAT>=RSOUTHML) THEN
+            ZW = (ZLON-RWESTML)*(ZLAT-RSOUTHML)/100.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (ZLON<ZLON2 .AND. ZLON>=RWESTML .AND. ZLAT>ZLAT1 .AND. ZLAT<=RNORTHML) THEN
+            ZW = (ZLON-RWESTML)*(RNORTHML-ZLAT)/100.0_JPRB
+            IF (.NOT.INVML) THEN
+              ZTS = ZW*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = ZW*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + (1.0_JPRB-ZW)*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ELSE
+              ZTS = (1.0_JPRB-ZW)*(SP_OM(JROF,1,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+              ZSTL = (1.0_JPRB-ZW)*(SP_OM(JROF,14,YSP_OM%YTO%MP,IBL)+RTT) + ZW*REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            ENDIF
+          ELSEIF (.NOT.INVML) THEN
+            ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+            IF (ZTS==19591204.0_JPRB) ZTS = SP_RR(JROF,YSP_RR%YT%MP,IBL)
+            ZSTL = ZTS
+            SP_OM(JROF,1,YSP_OM%YTO%MP,IBL) = ZTS - RTT
+          ELSE
+            ZTS = SP_OM(JROF,1,YSP_OM%YTO%MP,IBL) + RTT    ! degC -> K
+            ZSTL = SP_OM(JROF,14,YSP_OM%YTO%MP,IBL) + RTT
+          ENDIF
+          ZCI = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR31),JPRB)
+        ELSE
+          ZTS = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR139),JPRB)
+          ZCI = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR31),JPRB)
+        ENDIF
+!    DEFINE LOGICALS FOR RESOLVED LAKES
+        LLAKE(JROF) = (SD_VF(JROF,YSD_VF%YCLK%MP,IBL)>0.5_JPRB)
+!    DEFINE LOGICALS FOR OLD AND NEW SEA-ICE
+        LLICEO(JROF) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)>ZRCIMIN
+        LLICEN(JROF) = ZCI>ZRCIMIN
+
+        IF (LLICEN(JROF)) THEN
+          SD_VF(JROF,YSD_VF%YCI%MP,IBL) = ZCI
+        ELSE
+          SD_VF(JROF,YSD_VF%YCI%MP,IBL) = 0.
+        ENDIF
+!TEST FOR MISSING DATA IN SST
+        LLMISS = (ZTS==19591204.0_JPRB)
+
+!UPDATE ICE and OCEAN TEMPERATURES
+!---------------------------------
+        IF (LLICEN(JROF) .AND. LLICEO(JROF)) THEN
+! SEA-ICE TO SEA-ICE
+          IF (.NOT.LLAKE(JROF)) THEN
+            IF (LLMISS) ZTS = SP_RR(JROF,YSP_RR%YT%MP,IBL)
+
+            SELECT CASE (NSSTICEOP) ! INTEGER NUMBER CORRESPONDING TO SSTICEOPT CHOICE IN SSA
+            CASE (9) ! SST already corrected in the analysis - trust SST field
+              ZSSTCI = MAX(ZTS,ZRTFREEZSICE)
+            CASE (1) !'T0220' - use weighted average of sst and ZRTFREEZSICE weight=(tanh((icecover-0.2)*20)+1)/2
+              ZSSTCI = ZRTFREEZSICE*0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.2_JPRB)*20.0_JPRB)+1.0_JPRB)            &
+                     & + MAX(ZTS,ZRTFREEZSICE)                                                                              &
+                     & *(1.0_JPRB-0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.2_JPRB)*20.0_JPRB)+1.0_JPRB))
+            CASE (0) !'orig' - SST is freezing temperature of ice if any ice present
+              IF (LLICEN(JROF)) THEN
+                ZSSTCI = ZRTFREEZSICE
+              ELSE
+                ZSSTCI = ZTS
+              ENDIF
+            CASE (2) !'T0310' use weighted average of sst and ZRTFREEZSICE weight=(tanh((icecover-0.3)*10)+1)/2
+              ZSSTCI = ZRTFREEZSICE*0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.3_JPRB)*10.0_JPRB)+1.0_JPRB)            &
+                     & + MAX(ZTS,ZRTFREEZSICE)                                                                              &
+                     & *(1.0_JPRB-0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.3_JPRB)*10.0_JPRB)+1.0_JPRB))
+            CASE (3) !'L20' for ice concentration greater than 20% reset to -1.8C else linear weight sst/ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)>0.2_JPRB) ZSSTCI = ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)<=0.2_JPRB) ZSSTCI = ZRTFREEZSICE*SD_VF(JROF,YSD_VF%YCI%MP,IBL)              &
+                & + MAX(ZTS,ZRTFREEZSICE)*(1_JPRB-SD_VF(JROF,YSD_VF%YCI%MP,IBL))
+            CASE (4) !'L50' for ice concentration greater than 50% reset to -1.8C else linear weight sst/ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)>0.5_JPRB) ZSSTCI = ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)<=0.5_JPRB) ZSSTCI = ZRTFREEZSICE*SD_VF(JROF,YSD_VF%YCI%MP,IBL)              &
+                & + MAX(ZTS,ZRTFREEZSICE)*(1_JPRB-SD_VF(JROF,YSD_VF%YCI%MP,IBL))
+            CASE DEFAULT
+              CALL ABOR1('UPDCLIE: UNKNOWN NSSTICEOP')
+            ENDSELECT
+
+            IF (LEOCWA .OR. LEOCCO) THEN
+              ZDSST0 = ZSSTCI - SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+            ELSE
+              ZDSST0 = 0.0_JPRB
+            ENDIF
+
+            IF (LLMISS) ZDSST0 = 0.0_JPRB
+
+            SD_VF(JROF,YSD_VF%YSST%MP,IBL) = ZSSTCI
+
+          ELSE
+!         if sea ice present but a lake point then:
+            SD_VF(JROF,YSD_VF%YSST%MP,IBL) = ZRTFREEZSICE
+          ENDIF
+
+          SP_SB(JROF,1,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,1,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,2,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          SP_SB(JROF,3,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,3,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          SP_SB(JROF,4,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,4,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+! RESTORE SKIN TEMPERATURE ONLY ON OCEAN IF FLAKE IS ACTIVE
+          IF (.NOT.(LEFLAKE)) THEN
+            SP_RR(JROF,YSP_RR%YT%MP,IBL) = SP_SB(JROF,1,YSP_SB%YT%MP,IBL)
+          ELSEIF (.NOT.LLAKE(JROF)) THEN
+            SP_RR(JROF,YSP_RR%YT%MP,IBL) = SP_SB(JROF,1,YSP_SB%YT%MP,IBL)
+          ENDIF
+        ELSEIF (LLICEN(JROF) .AND. .NOT.LLICEO(JROF)) THEN
+! SEA TO SEA-ICE
+          IF (.NOT.LLAKE(JROF)) THEN
+            IF (LLMISS) ZTS = SP_RR(JROF,YSP_RR%YT%MP,IBL)
+
+            SELECT CASE (NSSTICEOP) ! INTEGER NUMBER CORRESPONDING TO SSTICEOPT CHOICE IN SSA
+            CASE (9) ! SST already corrected in the analysis - trust SST field
+              ZSSTCI = MAX(ZTS,ZRTFREEZSICE)
+            CASE (1) !'T0220' - use weighted average of sst and ZRTFREEZSICE weight=(tanh((icecover-0.2)*20)+1)/2
+              ZSSTCI = ZRTFREEZSICE*0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.2_JPRB)*20.0_JPRB)+1.0_JPRB)            &
+                     & + MAX(ZTS,ZRTFREEZSICE)                                                                              &
+                     & *(1.0_JPRB-0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.2_JPRB)*20.0_JPRB)+1.0_JPRB))
+            CASE (0) !'orig' - SST is freezing temperature of ice if any ice present
+              IF (LLICEN(JROF)) THEN
+                ZSSTCI = ZRTFREEZSICE
+              ELSE
+                ZSSTCI = ZTS
+              ENDIF
+            CASE (2) !'T0310' use weighted average of sst and ZRTFREEZSICE weight=(tanh((icecover-0.3)*10)+1)/2
+              ZSSTCI = ZRTFREEZSICE*0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.3_JPRB)*10.0_JPRB)+1.0_JPRB)            &
+                     & + MAX(ZTS,ZRTFREEZSICE)                                                                              &
+                     & *(1.0_JPRB-0.5_JPRB*(TANH((SD_VF(JROF,YSD_VF%YCI%MP,IBL)-0.3_JPRB)*10.0_JPRB)+1.0_JPRB))
+            CASE (3) !'L20' for ice concentration greater than 20% reset to -1.8C else linear weight sst/ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)>0.2_JPRB) ZSSTCI = ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)<=0.2_JPRB) ZSSTCI = ZRTFREEZSICE*SD_VF(JROF,YSD_VF%YCI%MP,IBL)              &
+                & + MAX(ZTS,ZRTFREEZSICE)*(1_JPRB-SD_VF(JROF,YSD_VF%YCI%MP,IBL))
+            CASE (4) !'L50' for ice concentration greater than 50% reset to -1.8C else linear weight sst/ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)>0.5_JPRB) ZSSTCI = ZRTFREEZSICE
+              IF (SD_VF(JROF,YSD_VF%YCI%MP,IBL)<=0.5_JPRB) ZSSTCI = ZRTFREEZSICE*SD_VF(JROF,YSD_VF%YCI%MP,IBL)              &
+                & + MAX(ZTS,ZRTFREEZSICE)*(1_JPRB-SD_VF(JROF,YSD_VF%YCI%MP,IBL))
+            CASE DEFAULT
+              CALL ABOR1('UPDCLIE: UNKNOWN NSSTICEOP')
+            ENDSELECT
+
+            IF (LEOCWA .OR. LEOCCO) THEN
+              ZDSST0 = ZSSTCI - SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+            ELSE
+              ZDSST0 = 0.0_JPRB
+            ENDIF
+
+            IF (LLMISS) ZDSST0 = 0.0_JPRB
+
+            SD_VF(JROF,YSD_VF%YSST%MP,IBL) = ZSSTCI
+          ELSE
+            SD_VF(JROF,YSD_VF%YSST%MP,IBL) = ZRTFREEZSICE
+          ENDIF
+
+          SP_SB(JROF,1,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,2,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,3,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,4,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,1,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,1,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,2,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          SP_SB(JROF,3,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,3,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          SP_SB(JROF,4,YSP_SB%YT%MP,IBL) = SD_VF(JROF,YSD_VF%YCI%MP,IBL)*SP_SB(JROF,4,YSP_SB%YTL%MP,IBL)                    &
+          & + (1.-SD_VF(JROF,YSD_VF%YCI%MP,IBL))*SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+! RESTORE SKIN TEMPERATURE ONLY ON OCEAN IF FLAKE IS ACTIVE
+          IF (.NOT.(LEFLAKE)) THEN
+            SP_RR(JROF,YSP_RR%YT%MP,IBL) = SP_SB(JROF,1,YSP_SB%YT%MP,IBL)
+          ELSEIF (.NOT.LLAKE(JROF)) THEN
+            SP_RR(JROF,YSP_RR%YT%MP,IBL) = SP_SB(JROF,1,YSP_SB%YT%MP,IBL)
+          ENDIF
+
+        ELSE
+!    SEA TO SEA OR SEA-ICE TO SEA
+!       calculate SKIN TEMPERATURE INCREMENT TO BE OF THE SAME AMOUNT AS SST (on ocean)
+          IF (LEOCWA .OR. LEOCCO) THEN
+            ZDSST0 = ZTS - SD_VF(JROF,YSD_VF%YSST%MP,IBL)
+          ELSE
+            ZDSST0 = 0.0_JPRB
+          ENDIF
+          IF (LLMISS) THEN
+            ZDSST0 = 0.0_JPRB 
+            ZTS = SP_RR(JROF,YSP_RR%YT%MP,IBL)
+          ENDIF
+
+          SD_VF(JROF,YSD_VF%YSST%MP,IBL) = ZTS
+
+! RESTORE SKIN TEMPERATURE ONLY ON OCEAN IF FLAKE IS ACTIVE
+          IF (.NOT.(LEFLAKE)) THEN
+            SP_RR(JROF,YSP_RR%YT%MP,IBL) = SP_RR(JROF,YSP_RR%YT%MP,IBL) + ZDSST0
+          ELSEIF (.NOT.LLAKE(JROF)) THEN
+            SP_RR(JROF,YSP_RR%YT%MP,IBL) = SP_RR(JROF,YSP_RR%YT%MP,IBL) + ZDSST0
+          ENDIF
+          IF (LOCMLTKE) THEN
+            ! For Ocean TKE
+            SP_SB(JROF,1,YSP_SB%YT%MP,IBL) = ZSTL1
+            SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = ZSTL2
+            SP_SB(JROF,3,YSP_SB%YT%MP,IBL) = ZSTL3
+            SP_SB(JROF,4,YSP_SB%YT%MP,IBL) = ZSTL4
+          ELSE IF (LEOCML) THEN
+            ! For KPP
+            SP_SB(JROF,1,YSP_SB%YT%MP,IBL) = ZSTL
+            SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = ZSTL
+            SP_SB(JROF,3,YSP_SB%YT%MP,IBL) = ZSTL
+            SP_SB(JROF,4,YSP_SB%YT%MP,IBL) = ZSTL
+          ELSE
+            SP_SB(JROF,1,YSP_SB%YT%MP,IBL) = ZTS
+            SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = ZTS
+            SP_SB(JROF,3,YSP_SB%YT%MP,IBL) = ZTS
+            SP_SB(JROF,4,YSP_SB%YT%MP,IBL) = ZTS
+          ENDIF
+          SP_SB(JROF,1,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,2,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,3,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+          SP_SB(JROF,4,YSP_SB%YTL%MP,IBL) = ZRTFREEZSICE
+        ENDIF
+      ENDIF  ! end loop of sea points
+    ENDDO
+    IF (LECURR .AND. LMCC04) THEN
+      DO JCL = 1, ICLIM
+        IF (NCLIGC(JCL)==131) EXIT
+      ENDDO
+      IPAR131 = JCL
+      DO JCL = 1, ICLIM
+        IF (NCLIGC(JCL)==132) EXIT
+      ENDDO
+      IPAR132 = JCL
+      DO JROF = 1, IEND
+        IF ((SD_VF(JROF,YSD_VF%YLSM%MP,IBL)<=0.5_JPRB) .AND. .NOT.LLICEN(JROF)) THEN
+          ZCU = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR131),JPRB)
+          SD_VF(JROF,YSD_VF%YUCUR%MP,IBL) = ZCU
+          ZCV = REAL(CLIMR(JSTGLO+JROF-1,NP2,IPAR132),JPRB)
+          SD_VF(JROF,YSD_VF%YVCUR%MP,IBL) = ZCV
+        ELSE
+          SD_VF(JROF,YSD_VF%YUCUR%MP,IBL) = 0.0_JPRB
+          SD_VF(JROF,YSD_VF%YVCUR%MP,IBL) = 0.0_JPRB
+        ENDIF
+      ENDDO
+    ENDIF
+
+  ENDIF ! Not coupled to NEMO
+
+ENDDO ! Loop over NPROMA blocks
+
+
+DEALLOCATE (ZBUF,ZBC)
+DEALLOCATE (ZSST,ZICE)
+DEALLOCATE (ZUCURR,ZVCURR)
+DEALLOCATE (ZFIELD_D)
+DEALLOCATE (ZINIICEG)
+
+WRITE(NULOUT,*) 'UPDCLIE finished'
+CALL FLUSH(NULOUT)
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('UPDCLIE',1,ZHOOK_HANDLE)
+END SUBROUTINE UPDCLIE
+

@@ -1,0 +1,146 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SPEC2GRID(YDGEOMETRY,YDSP,YDGP)
+
+!   Purpose
+!   -------
+!     Spectral transform from spectral fields to grid point fields.
+
+!   Author
+!   ------
+!     Y. Tremolet
+
+!   Modifications
+!   -------------
+!     Original   19-Jan-04
+!     Y.Tremolet 21-Aug-04 Remove unnecessary copies
+!     Y.Tremolet 05-Apr-05 Fix for 2D fields
+!     F.Bouttier 31-Jul-12 Fix for some LELAM & 2D/3D combinations
+! ------------------------------------------------------------------
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1, ONLY: JPIM, JPRB
+USE YOMHOOK , ONLY: LHOOK, DR_HOOK, JPHOOK
+USE YOMCT0  , ONLY: LELAM
+USE GRIDPOINT_FIELDS_MIX, ONLY : ASSIGNMENT(=), GRIDPOINT_FIELD, HUGIFY_ENDGRID
+USE SPECTRAL_FIELDS_MOD, ONLY : ASSIGNMENT(=), SPECTRAL_FIELD
+
+IMPLICIT NONE
+TYPE(GEOMETRY)       ,INTENT(IN)    :: YDGEOMETRY
+TYPE(SPECTRAL_FIELD) ,INTENT(IN)    :: YDSP
+TYPE(GRIDPOINT_FIELD),INTENT(INOUT) :: YDGP
+
+LOGICAL :: LLWIND, LL2D, LL3D
+INTEGER(KIND=JPIM) :: IVSETSC2(1)
+INTEGER(KIND=JPIM) :: JJ,JF
+REAL(KIND=JPRB), ALLOCATABLE :: ZSP(:,:)
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "inv_trans.h"
+#include "einv_trans.h"
+#include "abor1.intfb.h"
+
+! ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SPEC2GRID',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP)
+ASSOCIATE(NRESOL=>YDDIM%NRESOL, &
+ & NBSETLEV=>YDMP%NBSETLEV, NBSETSP=>YDMP%NBSETSP)
+IF (YDSP%NS3D/=YDGP%NG3D) CALL ABOR1('SPEC2GRID: Error nb 3D fields')
+IF (YDSP%NS2G/=YDGP%NG2D) CALL ABOR1('SPEC2GRID: Error nb 2D fields')
+
+! If spectral vor and div and GP U and V convert winds,
+! otherwise treat all fields as scalar fields.
+! This could be improved a lot...
+LLWIND=  (ASSOCIATED(YDSP%DIV).AND.ASSOCIATED(YDSP%VOR)) &
+ & .AND. (ASSOCIATED(YDGP%U).AND.ASSOCIATED(YDGP%V))
+LL2D = (YDSP%NS2G>0 .AND. YDGP%NG2D>0)
+LL3D = (YDSP%NS3D>0 .AND. YDGP%NG3D>0)
+
+IF (LL2D) THEN
+  IVSETSC2(1)=NBSETSP
+  ALLOCATE(ZSP(1:YDSP%NS2G,YDSP%NSPEC2))
+  DO JF=1,YDSP%NS2D
+    DO JJ=1,YDSP%NSPEC2
+      ZSP(JF,JJ)=YDSP%SP2D(JJ,JF)
+    ENDDO
+  ENDDO
+  IF (LLWIND) THEN
+    IF (LELAM) THEN
+      CALL EINV_TRANS(PSPVOR=YDSP%VOR,  PSPDIV=YDSP%DIV,  &
+                 & PGPUV =YDGP%WIND, KVSETUV=NBSETLEV, &
+                 & PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                 & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA, &
+                 & PSPSC2=ZSP, PGP2=YDGP%GP2D, KVSETSC2=IVSETSC2)
+    ELSE
+      CALL INV_TRANS(PSPVOR=YDSP%VOR,  PSPDIV=YDSP%DIV,  &
+                 & PGPUV =YDGP%WIND, KVSETUV=NBSETLEV, &
+                 & PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                 & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA, &
+                 & PSPSC2=ZSP, PGP2=YDGP%GP2D, KVSETSC2=IVSETSC2)
+    ENDIF
+  ELSE
+    IF (LL3D) THEN
+      IF (LELAM) THEN
+        CALL EINV_TRANS(PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                 & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA, &
+                 & PSPSC2=ZSP, PGP2=YDGP%GP2D, KVSETSC2=IVSETSC2)
+      ELSE
+        CALL INV_TRANS(PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                 & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA, &
+                 & PSPSC2=ZSP, PGP2=YDGP%GP2D, KVSETSC2=IVSETSC2)
+      ENDIF
+    ELSE
+      IF (LELAM) THEN
+        CALL EINV_TRANS(KRESOL=NRESOL, KPROMA=YDGP%NPROMA, &
+                   & PSPSC2=ZSP, PGP2=YDGP%GP2D, KVSETSC2=IVSETSC2)
+      ELSE
+        CALL INV_TRANS(KRESOL=NRESOL, KPROMA=YDGP%NPROMA, &
+                   & PSPSC2=ZSP, PGP2=YDGP%GP2D, KVSETSC2=IVSETSC2)
+      ENDIF
+    ENDIF
+  ENDIF
+  DEALLOCATE(ZSP)
+ELSE
+  IF (LLWIND) THEN
+    IF (LELAM) THEN
+      CALL EINV_TRANS(PSPVOR=YDSP%VOR,  PSPDIV=YDSP%DIV,  &
+                 & PGPUV =YDGP%WIND, KVSETUV=NBSETLEV, &
+                 & PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                 & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA)
+    ELSE
+      CALL INV_TRANS(PSPVOR=YDSP%VOR,  PSPDIV=YDSP%DIV,  &
+                 & PGPUV =YDGP%WIND, KVSETUV=NBSETLEV, &
+                 & PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                 & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA)
+    ENDIF
+  ELSE
+    IF(ASSOCIATED(YDSP%SCAL))THEN
+      IF (SIZE(YDSP%SCAL)>1) THEN
+        IF (LELAM) THEN
+          CALL EINV_TRANS(PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                   & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA)
+        ELSE
+          CALL INV_TRANS(PSPSC3A=YDSP%SCAL , PGP3A  =YDGP%SCAL, &
+                   & KVSETSC3A=NBSETLEV, KRESOL=NRESOL, KPROMA=YDGP%NPROMA)
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+ENDIF
+
+CALL HUGIFY_ENDGRID(YDGP)
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SPEC2GRID',1,ZHOOK_HANDLE)
+END SUBROUTINE SPEC2GRID

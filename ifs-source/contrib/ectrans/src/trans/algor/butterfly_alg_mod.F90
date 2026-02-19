@@ -1,0 +1,1222 @@
+! (C) Copyright 2000- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+MODULE BUTTERFLY_ALG_MOD 
+USE PARKIND1, ONLY : JPRD, JPIM, JPRB, JPIB
+USE INTERPOL_DECOMP_MOD
+USE SHAREDMEM_MOD
+
+use, intrinsic :: ieee_exceptions
+
+IMPLICIT NONE
+
+PRIVATE
+PUBLIC NODE_TYPE,LEV_STRUCT,BUTTERFLY_STRUCT,CONSTRUCT_BUTTERFLY,MULT_BUTV,MULT_BUTM,CLONE,&
+ & PACK_BUTTERFLY_STRUCT,UNPACK_BUTTERFLY_STRUCT
+
+! Butterfly package.
+
+! Butterfly algorithm for matrix multiplication
+! Coded from: "An algorithm for the rapid evaluation of special function transform" by
+! Michael O'Neill, Franco Woolfe and Vladimir Rohklin, Appl.Comput.Harmon.Anal. 2009?
+! referred to in the following as ONWR
+
+TYPE NODE_TYPE
+INTEGER(KIND=JPIM) :: ILEV    =0   ! Level of this node
+INTEGER(KIND=JPIM) :: IFCOL   =0   ! First column
+INTEGER(KIND=JPIM) :: ILCOL   =0   ! Last column
+INTEGER(KIND=JPIM) :: IFROW   =0   ! first row
+INTEGER(KIND=JPIM) :: ILROW   =0   ! Last row
+INTEGER(KIND=JPIM) :: ICOLS   =0   ! Number of columns
+INTEGER(KIND=JPIM) :: IROWS   =0   ! Number of rows
+INTEGER(KIND=JPIM) :: IRANK   =0   ! Rank of interpolative decomposition
+INTEGER(KIND=JPIM) :: IOFFBETA=0   ! Offset in "beta" work space
+INTEGER(KIND=JPIM),POINTER :: ICLIST(:) => NULL() ! List of columns in B (column skeleton matrix)
+REAL(KIND=JPRB),POINTER :: PNONIM(:)  => NULL() ! Non-identety part of interpolation matrix
+REAL(KIND=JPRB),POINTER :: B(:,:)  => NULL()  ! Column skeleton matrix
+REAL(KIND=JPRD),POINTER :: DB(:,:)  => NULL()  ! Column skeleton matrix, as part of pre-computations only
+END TYPE NODE_TYPE
+
+TYPE LEV_STRUCT
+INTEGER(KIND=JPIM) :: IJ      =0  ! Number of row boxes at this level
+INTEGER(KIND=JPIM) :: IK      =0  ! Number of column boxes at this level
+INTEGER(KIND=JPIM) :: IBETALEN=0  ! Workspace needed at this level of interim results "beta"
+TYPE(NODE_TYPE),POINTER :: NODE(:,:) => NULL() ! Box info
+END TYPE LEV_STRUCT
+
+TYPE BUTTERFLY_STRUCT
+INTEGER(KIND=JPIM)  :: M_ORDER     =0 ! M of original matrix
+INTEGER(KIND=JPIM)  :: N_ORDER     =0 ! N of original matrix
+INTEGER(KIND=JPIM)  :: N_CMAX      =0 ! Max number of columns in each submatrix at level 0
+INTEGER(KIND=JPIM)  :: N_LEVELS    =0 ! Max level in dyadic hierarchy
+INTEGER(KIND=JPIM)  :: IBETALEN_MAX=0 ! Max workspace for one level of interim results "beta"
+TYPE(LEV_STRUCT),POINTER :: SLEV(:) => NULL() ! Level structure (dimensioned 0:n_levels)
+END TYPE BUTTERFLY_STRUCT
+
+TYPE CLONE
+REAL(KIND=JPRB) , ALLOCATABLE :: COMMSBUF(:) ! for communicating packed bufferfly_structs
+END TYPE CLONE                          ! between MPI tasks
+
+#ifdef WITH_IEEE_HALT
+LOGICAL, PARAMETER :: LL_IEEE_HALT = .TRUE.
+#else
+LOGICAL, PARAMETER :: LL_IEEE_HALT = .FALSE.
+#endif
+
+LOGICAL, PARAMETER :: LLDOUBLE = (JPRB == JPRD)
+
+CONTAINS
+!================================================================================
+SUBROUTINE CONSTRUCT_BUTTERFLY(PEPS,KCMAX,KM,KN,PMAT,YD_STRUCT)
+IMPLICIT NONE
+
+! Constuct butterfly
+
+REAL(KIND=JPRD),INTENT(IN)    :: PEPS  ! Precision
+INTEGER(KIND=JPIM),INTENT(IN) :: KCMAX ! Max number of columns in each submatrix at level 0
+INTEGER(KIND=JPIM),INTENT(IN) :: KM    ! Number of rows in matrix pmat
+INTEGER(KIND=JPIM),INTENT(IN) :: KN    ! Number of columns in matrix pmat
+REAL(KIND=JPRD),INTENT(IN)    :: PMAT(:,:)  ! original matrix
+TYPE(BUTTERFLY_STRUCT),INTENT(INOUT) :: YD_STRUCT ! Structure needed to apply butterfly
+
+REAL(KIND=JPRD),ALLOCATABLE :: ZSUB(:,:),ZBCOMB(:,:)
+INTEGER(KIND=JPIM) :: ILEVELS,JL,JJ,JK,IM,II,JR,IJ,IK
+INTEGER(KIND=JPIM) :: IROWS,ICOLS,IRANK,ICLIST(KN)
+INTEGER(KIND=JPIM) :: ILM1,IJL,IKL,IJR,IKR,IRANKL,IRANKR,IOFFROW,IBLEV,IBLEVM1
+INTEGER(KIND=JPIM) :: IFR,ILR,IFC,IROFF,IRSTRIDE,IOFFBETA
+INTEGER(KIND=JPIM) :: ILEN,I,J,J1,J2,JIJ,JIK
+REAL(KIND=JPRD)    :: ZNORMS(KN)
+TYPE(NODE_TYPE),POINTER :: YNODEL,YNODER,YNODE 
+TYPE(NODE_TYPE),POINTER :: YBNODEL,YBNODER,YBNODE 
+TYPE(LEV_STRUCT) :: YTEMPB(0:1)
+
+!--------------------------------------------------------------------------------
+
+
+! ONWR 5.4.1
+YD_STRUCT%M_ORDER = KM
+YD_STRUCT%N_ORDER = KN
+YD_STRUCT%N_CMAX  = KCMAX
+
+!Find number of levels
+ILEVELS = 0
+DO
+  IF(2**ILEVELS >= (YD_STRUCT%N_ORDER+YD_STRUCT%N_CMAX-1) /YD_STRUCT%N_CMAX ) EXIT
+  ILEVELS = ILEVELS+1
+ENDDO
+YD_STRUCT%N_LEVELS = ILEVELS
+ALLOCATE(YD_STRUCT%SLEV(0:YD_STRUCT%N_LEVELS))
+
+! Number of boxes at each level
+IJ = 1
+IK = (KN-1)/KCMAX+1
+DO JL=0,YD_STRUCT%N_LEVELS
+  YD_STRUCT%SLEV(JL)%IJ = IJ
+  YD_STRUCT%SLEV(JL)%IK = IK
+  IJ = IJ*2
+  IK = MAX((IK+1)/2,1)
+ENDDO
+
+DO JL=0,YD_STRUCT%N_LEVELS
+  ALLOCATE(YD_STRUCT%SLEV(JL)%NODE(YD_STRUCT%SLEV(JL)%IJ,YD_STRUCT%SLEV(JL)%IK))
+  CALL GSTATS(1253,0)
+  !$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JJ,JK,YNODE,ILM1,IJL,IKL,IJR,IKR,IRSTRIDE)
+  DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+    DO JK=1,YD_STRUCT%SLEV(JL)%IK
+      YNODE => YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+      YNODE%ILEV = JL
+      IF(JL == 0) THEN
+        YNODE%IFCOL = 1+(JK-1)*KCMAX
+        YNODE%ILCOL = MIN(JK*KCMAX,KN)
+        YNODE%ICOLS = YNODE%ILCOL - YNODE%IFCOL+1
+        YNODE%IFROW = 1
+        YNODE%ILROW = KM
+      ELSE
+        YNODE%IFCOL = -99
+        YNODE%ILCOL = -99
+        YNODE%ICOLS = -99
+        ILM1 = JL-1
+        IJL  = (JJ+1)/2
+        IKL  = 2*JK-1
+        IJR  = (JJ+1)/2
+        IKR  = 2*JK
+        IRSTRIDE = (YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IROWS+1)/2
+        IF(MOD(JJ,2) == 1) THEN
+          YNODE%IFROW = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IFROW
+          YNODE%ILROW = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IFROW+IRSTRIDE -1
+        ELSE
+          YNODE%IFROW = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IFROW+IRSTRIDE
+          YNODE%ILROW = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%ILROW
+        ENDIF
+      ENDIF
+      YNODE%IROWS = YNODE%ILROW - YNODE%IFROW+1
+      YNODE%IROWS = MAX(YNODE%IROWS,0)
+    ENDDO
+  ENDDO
+  !$OMP END PARALLEL DO
+  CALL GSTATS(1253,1)
+ENDDO
+
+
+! ONWR 5.4.2
+
+DO JL=0,YD_STRUCT%N_LEVELS
+  IBLEV = MOD(JL,2)
+  IF(JL > 0) THEN
+    IBLEVM1 = MOD(JL-1,2)
+  ELSE
+    IBLEVM1 = -1
+  ENDIF
+  ALLOCATE(YTEMPB(IBLEV)%NODE(YD_STRUCT%SLEV(JL)%IJ,YD_STRUCT%SLEV(JL)%IK))
+  CALL GSTATS(1253,0)
+  !$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JJ,JK,YNODE,YBNODE,IROWS,ICOLS,&
+  !$OMP& ZSUB,ILM1,IJL,IKL,IJR,IKR,YNODEL,YBNODEL,IRANKL,YNODER,YBNODER,IRANKR,IOFFROW,ZBCOMB)
+  DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+    DO JK=1,YD_STRUCT%SLEV(JL)%IK
+      YNODE => YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+      YBNODE => YTEMPB(IBLEV)%NODE(JJ,JK)
+      IF(JL == 0) THEN
+        IROWS=YNODE%IROWS
+        ICOLS=YNODE%ICOLS
+        ALLOCATE(ZSUB(IROWS,ICOLS))
+        CALL EXTRACT_SUB(YNODE,PMAT,ZSUB)
+        CALL COMPRESS_MAT(YNODE,YBNODE,PEPS,IROWS,ICOLS,ZSUB)
+        DEALLOCATE(ZSUB)
+      ELSE
+        ILM1 = JL-1
+        IJL  = (JJ+1)/2
+        IKL  = 2*JK-1
+        IJR  = (JJ+1)/2
+        IKR  = 2*JK
+        YNODEL => YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)
+        YBNODEL =>  YTEMPB(IBLEVM1)%NODE(IJL,IKL)
+        IRANKL = YNODEL%IRANK
+        IF(IKR <= YD_STRUCT%SLEV(ILM1)%IK) THEN
+          YNODER => YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)
+          YBNODER =>  YTEMPB(IBLEVM1)%NODE(IJR,IKR)
+          IRANKR = YNODER%IRANK
+        ELSE
+          YNODER => YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)
+          IRANKR = 0
+        ENDIF
+        IROWS  = YNODE%IROWS
+        ICOLS  = IRANKL+IRANKR
+        YNODE%ICOLS=ICOLS
+        IOFFROW = YNODE%IFROW-&
+         & YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IFROW
+        ALLOCATE(ZBCOMB(IROWS,ICOLS))
+        CALL COMBINE_B(YBNODEL%DB,IRANKL,&
+         &             YBNODER%DB,IRANKR,&
+         &             IROWS,IOFFROW,ZBCOMB)
+        CALL COMPRESS_MAT(YNODE,YBNODE,PEPS,IROWS,ICOLS,ZBCOMB)
+        DEALLOCATE(ZBCOMB)
+      ENDIF
+    ENDDO
+  ENDDO
+  !$OMP END PARALLEL DO
+  CALL GSTATS(1253,1)
+  IF(IBLEVM1 >= 0) THEN
+!Deallocate Bs no longer needed
+    DO JJ=1,YD_STRUCT%SLEV(JL-1)%IJ
+      DO JK=1,YD_STRUCT%SLEV(JL-1)%IK
+        DEALLOCATE(YTEMPB(IBLEVM1)%NODE(JJ,JK)%DB)
+      ENDDO
+    ENDDO
+    DEALLOCATE(YTEMPB(IBLEVM1)%NODE)
+  ENDIF
+! Permanently store B for last level
+  IF(JL == YD_STRUCT%N_LEVELS) THEN
+    DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+      DO JK=1,YD_STRUCT%SLEV(JL)%IK
+        YNODE => YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+        ALLOCATE(YNODE%DB(YNODE%IROWS,YNODE%IRANK))
+        YNODE%DB(:,:) = YTEMPB(IBLEV)%NODE(JJ,JK)%DB(:,:)
+        DEALLOCATE(YTEMPB(IBLEV)%NODE(JJ,JK)%DB)
+      ENDDO
+    ENDDO
+    DEALLOCATE(YTEMPB(IBLEV)%NODE)
+  ENDIF
+ENDDO
+
+CALL GSTATS(1901,0)
+! Compute work space 
+YD_STRUCT%IBETALEN_MAX = 0
+DO JL=0,YD_STRUCT%N_LEVELS
+  IOFFBETA = 0
+  DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+    DO JK=1,YD_STRUCT%SLEV(JL)%IK
+      YNODE => YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+      IF( ASSOCIATED(YNODE%DB) ) THEN
+        ALLOCATE(YNODE%B(SIZE(YNODE%DB(:,1)),SIZE(YNODE%DB(1,:))))
+        YNODE%B(:,:) = YNODE%DB(:,:)
+        DEALLOCATE(YNODE%DB)
+      ENDIF
+      YNODE%IOFFBETA = IOFFBETA
+      IOFFBETA = IOFFBETA+YNODE%IRANK
+    ENDDO
+  ENDDO
+  YD_STRUCT%SLEV(JL)%IBETALEN = IOFFBETA
+  YD_STRUCT%IBETALEN_MAX = MAX(YD_STRUCT%IBETALEN_MAX,YD_STRUCT%SLEV(JL)%IBETALEN)
+ENDDO
+
+CALL GSTATS(1901,1)
+
+RETURN
+
+END SUBROUTINE CONSTRUCT_BUTTERFLY
+!=============================================================================
+SUBROUTINE PACK_BUTTERFLY_STRUCT(YD_STRUCT,YD_CLONE)
+IMPLICIT NONE
+! Pack butterfly struct into array
+TYPE(BUTTERFLY_STRUCT),INTENT(IN) :: YD_STRUCT ! Structure needed to apply butterfly
+TYPE(CLONE), TARGET, INTENT(OUT) :: YD_CLONE            ! for communicating packed bufferfly_structs
+
+INTEGER(KIND=JPIM) :: ILEN,I,JL,JIK,JIJ,J,J1,J2
+!--------------------------------------------------------------------------------
+
+ILEN=0
+ILEN=ILEN+5
+DO JL=0,YD_STRUCT%N_LEVELS
+  ILEN=ILEN+3
+  IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE) )THEN
+    DO JIK=1,YD_STRUCT%SLEV(JL)%IK
+      DO JIJ=1,YD_STRUCT%SLEV(JL)%IJ
+        ILEN=ILEN+9
+        ILEN=ILEN+1
+        IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST) )THEN
+          ILEN=ILEN+SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST)
+        ENDIF
+        ILEN=ILEN+1
+        IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM) )THEN
+          ILEN=ILEN+SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM)
+        ENDIF
+        ILEN=ILEN+2
+        IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B) )THEN
+          ILEN=ILEN+SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B)
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDIF
+ENDDO
+ALLOCATE(YD_CLONE%COMMSBUF(ILEN))
+I=0
+YD_CLONE%COMMSBUF(I+1)=YD_STRUCT%M_ORDER
+YD_CLONE%COMMSBUF(I+2)=YD_STRUCT%N_ORDER
+YD_CLONE%COMMSBUF(I+3)=YD_STRUCT%N_CMAX
+YD_CLONE%COMMSBUF(I+4)=YD_STRUCT%N_LEVELS
+YD_CLONE%COMMSBUF(I+5)=YD_STRUCT%IBETALEN_MAX
+I=I+5
+DO JL=0,YD_STRUCT%N_LEVELS
+  YD_CLONE%COMMSBUF(I+1)=YD_STRUCT%SLEV(JL)%IJ
+  YD_CLONE%COMMSBUF(I+2)=YD_STRUCT%SLEV(JL)%IK
+  YD_CLONE%COMMSBUF(I+3)=YD_STRUCT%SLEV(JL)%IBETALEN
+  I=I+3
+  IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE) )THEN
+    DO JIK=1,YD_STRUCT%SLEV(JL)%IK
+      DO JIJ=1,YD_STRUCT%SLEV(JL)%IJ
+        YD_CLONE%COMMSBUF(I+1)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ILEV
+        YD_CLONE%COMMSBUF(I+2)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IFCOL
+        YD_CLONE%COMMSBUF(I+3)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ILCOL
+        YD_CLONE%COMMSBUF(I+4)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IFROW
+        YD_CLONE%COMMSBUF(I+5)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ILROW
+        YD_CLONE%COMMSBUF(I+6)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICOLS
+        YD_CLONE%COMMSBUF(I+7)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IROWS
+        YD_CLONE%COMMSBUF(I+8)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IRANK
+        YD_CLONE%COMMSBUF(I+9)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IOFFBETA
+        I=I+9
+        YD_CLONE%COMMSBUF(I+1)=0
+        I=I+1
+        IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST) )THEN
+          J=SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST)
+          YD_CLONE%COMMSBUF(I)=J
+          YD_CLONE%COMMSBUF(I+1:I+J)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST(:)
+          I=I+J
+        ENDIF
+        YD_CLONE%COMMSBUF(I+1)=0
+        I=I+1
+        IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM) )THEN
+          J=SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM)
+          YD_CLONE%COMMSBUF(I)=J
+          YD_CLONE%COMMSBUF(I+1:I+J)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM(:)
+          I=I+J
+        ENDIF
+        YD_CLONE%COMMSBUF(I+1)=0
+        YD_CLONE%COMMSBUF(I+2)=0
+        I=I+2
+        IF( ASSOCIATED(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B) )THEN
+          J1=SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B,DIM=1)
+          J2=SIZE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B,DIM=2)
+          YD_CLONE%COMMSBUF(I-1)=J1
+          YD_CLONE%COMMSBUF(I  )=J2
+          DO J=1,J2
+            YD_CLONE%COMMSBUF(I+1:I+J1)=YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B(:,J)
+            I=I+J1
+          ENDDO
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDIF
+ENDDO
+IF( I /= ILEN )THEN
+  CALL ABOR1('PACK_BUTTERFLY_STRUCT: PACKED LENGTH /= PRECOMPUTED LENGTH')
+ENDIF
+
+END SUBROUTINE PACK_BUTTERFLY_STRUCT
+!=====================================================================================
+SUBROUTINE UNPACK_BUTTERFLY_STRUCT(YD_STRUCT,YD_CLONE,YDMEMBUF)
+IMPLICIT NONE
+! Construct butterfly struct from packed array
+TYPE(BUTTERFLY_STRUCT),INTENT(OUT) :: YD_STRUCT      ! Structure needed to apply butterfly
+TYPE(CLONE), TARGET, OPTIONAL,INTENT(IN) :: YD_CLONE          ! for communicating packed bufferfly_structs
+TYPE(SHAREDMEM),OPTIONAL,INTENT(INOUT) :: YDMEMBUF   ! Memory buffer
+INTEGER(KIND=JPIM) :: ILEN,I,JL,JIK,JIJ,J,J1,J2,II
+REAL(KIND=JPRB),POINTER :: ZBUF(:)
+LOGICAL :: LLMEMBUF
+!--------------------------------------------------------------------------------
+IF(PRESENT(YDMEMBUF)) THEN
+  LLMEMBUF = .TRUE.
+ELSE
+  IF(.NOT.PRESENT(YD_CLONE))  CALL ABOR1('UNPACK_BUTTERFLY_STRUCT: YD_CLONE ARGUMENT MISSING')
+  LLMEMBUF = .FALSE.
+ENDIF
+I=0
+IF(LLMEMBUF) THEN
+  CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,5,ZBUF,ADVANCE=.TRUE.)
+ELSE
+  ZBUF => YD_CLONE%COMMSBUF(I+1:I+5)
+ENDIF
+YD_STRUCT%M_ORDER     = NINT(ZBUF(1),JPRB)
+YD_STRUCT%N_ORDER     = NINT(ZBUF(2),JPRB)
+YD_STRUCT%N_CMAX      = NINT(ZBUF(3),JPRB)
+YD_STRUCT%N_LEVELS    = NINT(ZBUF(4),JPRB)
+YD_STRUCT%IBETALEN_MAX = NINT(ZBUF(5),JPRB)
+I=I+5
+
+ALLOCATE(YD_STRUCT%SLEV(0:YD_STRUCT%N_LEVELS))
+DO JL=0,YD_STRUCT%N_LEVELS
+  IF(LLMEMBUF) THEN
+    CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,3,ZBUF,ADVANCE=.TRUE.)
+  ELSE
+    ZBUF => YD_CLONE%COMMSBUF(I+1:I+3)
+  ENDIF
+  YD_STRUCT%SLEV(JL)%IJ      =NINT(ZBUF(1),JPRB)
+  YD_STRUCT%SLEV(JL)%IK      =NINT(ZBUF(2),JPRB)
+  YD_STRUCT%SLEV(JL)%IBETALEN=NINT(ZBUF(3),JPRB)
+  I=I+3
+  ALLOCATE(YD_STRUCT%SLEV(JL)%NODE(YD_STRUCT%SLEV(JL)%IJ,YD_STRUCT%SLEV(JL)%IK))
+  DO JIK=1,YD_STRUCT%SLEV(JL)%IK
+    DO JIJ=1,YD_STRUCT%SLEV(JL)%IJ
+      IF(LLMEMBUF) THEN
+        CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,10,ZBUF,ADVANCE=.TRUE.)
+      ELSE
+        ZBUF => YD_CLONE%COMMSBUF(I+1:I+10)
+      ENDIF
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ILEV    = NINT(ZBUF(1),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IFCOL   = NINT(ZBUF(2),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ILCOL   = NINT(ZBUF(3),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IFROW   = NINT(ZBUF(4),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ILROW   = NINT(ZBUF(5),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICOLS   = NINT(ZBUF(6),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IROWS   = NINT(ZBUF(7),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IRANK   = NINT(ZBUF(8),JPRB)
+      YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%IOFFBETA= NINT(ZBUF(9),JPRB)
+      J = NINT(ZBUF(10))
+      I=I+10
+      ALLOCATE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST(J))
+      IF( J > 0 )THEN
+        IF(LLMEMBUF) THEN
+          CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,J,ZBUF,ADVANCE=.TRUE.)
+        ELSE
+          ZBUF => YD_CLONE%COMMSBUF(I+1:I+J)
+        ENDIF
+        DO II=1,J
+           YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%ICLIST(II)=NINT(ZBUF(II),JPRB)
+        END DO
+        I=I+J
+      ENDIF
+      IF(LLMEMBUF) THEN
+        CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,1,ZBUF,ADVANCE=.TRUE.)
+      ELSE
+        ZBUF => YD_CLONE%COMMSBUF(I+1:I+1)
+      ENDIF
+      J=NINT(ZBUF(1),JPRB)
+      I=I+1
+      IF( J > 0 )THEN
+        IF(LLMEMBUF) THEN
+          CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,J,YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM,ADVANCE=.TRUE.)
+        ELSE
+          ALLOCATE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM(J))
+          YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%PNONIM(:)=YD_CLONE%COMMSBUF(I+1:I+J)
+        ENDIF
+        I=I+J
+      ENDIF
+      IF(LLMEMBUF) THEN
+        CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,2,ZBUF,ADVANCE=.TRUE.)
+      ELSE
+        ZBUF => YD_CLONE%COMMSBUF(I+1:I+2)
+      ENDIF
+      J1=NINT(ZBUF(1),JPRB)
+      J2=NINT(ZBUF(2),JPRB)
+      I=I+2
+      IF( J1 > 0 .AND. J2 > 0 )THEN
+        IF(LLMEMBUF) THEN
+          CALL SHAREDMEM_ASSOCIATE(YDMEMBUF,J1,J2,YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B,ADVANCE=.TRUE.)
+          I=I+J1*J2
+        ELSE
+          ALLOCATE(YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B(J1,J2))
+          DO J=1,J2
+            YD_STRUCT%SLEV(JL)%NODE(JIJ,JIK)%B(:,J)=YD_CLONE%COMMSBUF(I+1:I+J1)
+            I=I+J1
+          ENDDO
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDDO
+ENDDO
+IF(.NOT.LLMEMBUF) THEN
+  IF( I /= SIZE(YD_CLONE%COMMSBUF) )THEN
+    CALL ABOR1('UNPACK_BUTTERFLY_STRUCT: UNPACKED LENGTH /= ALLOCATED LENGTH')
+  ENDIF
+ENDIF
+END SUBROUTINE UNPACK_BUTTERFLY_STRUCT
+!===========================================================================
+SUBROUTINE EXTRACT_SUB(YDNODE,PMAT,PSUB)
+IMPLICIT NONE
+TYPE(NODE_TYPE),INTENT(IN) :: YDNODE
+REAL(KIND=JPRD),INTENT(IN) :: PMAT(:,:)
+REAL(KIND=JPRD),INTENT(OUT) :: PSUB(:,:)
+
+INTEGER(KIND=JPIM) :: ICOL,IROW,JCOL,JROW
+!--------------------------------------------------------------------
+
+ICOL = 0
+DO JCOL=YDNODE%IFCOL,YDNODE%ILCOL
+  ICOL = ICOL+1
+  IROW = 0
+  DO JROW=YDNODE%IFROW,YDNODE%ILROW
+    IROW = IROW+1
+    PSUB(IROW,ICOL) = PMAT(JROW,JCOL)
+  ENDDO
+ENDDO
+
+END SUBROUTINE EXTRACT_SUB
+!===================================================================
+SUBROUTINE COMBINE_B(PBL,KRANKL,PBR,KRANKR,KROWS,KOFFROW,PBCOMB)
+IMPLICIT NONE
+REAL(KIND=JPRD),INTENT(IN) :: PBL(:,:)
+INTEGER(KIND=JPIM),INTENT(IN) :: KRANKL
+REAL(KIND=JPRD),INTENT(IN) :: PBR(:,:)
+INTEGER(KIND=JPIM),INTENT(IN) :: KRANKR
+INTEGER(KIND=JPIM),INTENT(IN) :: KROWS
+INTEGER(KIND=JPIM),INTENT(IN) :: KOFFROW
+REAL(KIND=JPRD),INTENT(OUT) :: PBCOMB(:,:)
+
+INTEGER(KIND=JPIM) :: JCOL,JM
+!--------------------------------------------------------------------
+DO JCOL=1,KRANKL
+  DO JM=1,KROWS
+   PBCOMB(JM,JCOL) = PBL(KOFFROW+JM,JCOL)
+ ENDDO
+ENDDO
+DO JCOL=1,KRANKR
+  DO JM=1,KROWS
+    PBCOMB(JM,KRANKL+JCOL) = PBR(KOFFROW+JM,JCOL) 
+  ENDDO
+ENDDO
+
+END SUBROUTINE COMBINE_B
+!===================================================================
+SUBROUTINE COMPRESS_MAT(YDNODE,YDBNODE,PEPS,KROWS,KCOLS,PSUB)
+IMPLICIT NONE
+TYPE(NODE_TYPE),INTENT(INOUT) :: YDNODE
+TYPE(NODE_TYPE),INTENT(INOUT) :: YDBNODE
+REAL(KIND=JPRD),INTENT(IN)    :: PEPS
+INTEGER(KIND=JPIM),INTENT(IN) :: KROWS,KCOLS
+REAL(KIND=JPRD),INTENT(IN)    :: PSUB(:,:)
+
+INTEGER(KIND=JPIM) :: JR,IRANK,ICLIST(KCOLS),JN,JM,II
+REAL(KIND=JPRD)    :: ZNORMS(KCOLS)
+REAL(KIND=JPRD) :: ZSUB(KROWS,KCOLS),ZPNONIM(KROWS,KCOLS)
+REAL(KIND=JPRD),ALLOCATABLE :: ZP(:,:)
+REAL(KIND=JPRD),ALLOCATABLE :: ZB(:,:)
+!--------------------------------------------------------------------
+
+II = 0
+DO JN=1,KCOLS
+  DO JM=1,KROWS
+    II = II+1
+    ZSUB(JM,JN) = PSUB(JM,JN)
+  ENDDO
+ENDDO
+
+CALL COMPUTE_ID(PEPS,KROWS,KCOLS,ZSUB,IRANK,ICLIST,ZPNONIM)
+YDNODE%IRANK = IRANK
+ALLOCATE(YDNODE%PNONIM(IRANK*(KCOLS-IRANK)))
+ALLOCATE(YDNODE%ICLIST(KCOLS))
+ALLOCATE(YDBNODE%DB(KROWS,IRANK))
+YDNODE%ICLIST(:) = ICLIST(1:KCOLS)
+II = 0
+DO JN=1,KCOLS-IRANK
+  DO JM=1,IRANK
+    II = II+1
+    YDNODE%PNONIM(II) = REAL(ZPNONIM(JM,JN), JPRB)
+  ENDDO
+ENDDO
+DO JR=1,IRANK
+  YDBNODE%DB(:,JR) = PSUB(:,ICLIST(JR))
+ENDDO
+
+END SUBROUTINE COMPRESS_MAT
+!====================================================================
+SUBROUTINE MULT_BUTV(CDTRANS,YD_STRUCT,PVECIN,PVECOUT)
+IMPLICIT NONE
+! Multiply vector by matrix represented by buttervfly
+
+TYPE(BUTTERFLY_STRUCT),INTENT(IN) :: YD_STRUCT ! Structure from constucT-butterfly
+CHARACTER(LEN=1),INTENT(IN)   :: CDTRANS       ! 'N' normal matmul, 'T' with transpose of matrix
+REAL(KIND=JPRB),INTENT(IN)    :: PVECIN(:)     ! Input vector
+REAL(KIND=JPRB),INTENT(OUT)   :: PVECOUT(:)    ! Output vector
+
+REAL(KIND=JPRB),ALLOCATABLE   :: ZBETA(:,:)
+INTEGER(KIND=JPIM) :: JL,JJ,JK,ILEVS,IFR,ILR,IROWS
+INTEGER(KIND=JPIM) :: ILM1,IJL,IKL,IJR,IKR,IRANKL,IRANKR
+INTEGER(KIND=JPIM) :: IBETALV,IBTST,IBTEN,IBETALVM1,IBTSTL,IBTENL,IBTSTR,IBTENR
+REAL(KIND=JPRB) :: ZVECOUT(SIZE(PVECOUT))
+LOGICAL :: LLTRANSPOSE
+TYPE(NODE_TYPE),POINTER :: YNODEL,YNODER,YNODE 
+!----------------------------------------------------------------------------------
+LLTRANSPOSE = (CDTRANS == 'T' .OR. CDTRANS == 't') 
+
+ILEVS = YD_STRUCT%N_LEVELS
+ALLOCATE(ZBETA(YD_STRUCT%IBETALEN_MAX,0:1)) ! Work space for "beta"
+
+! ONWR 5.4.3
+IF(LLTRANSPOSE) THEN
+  DO JL=ILEVS,0,-1
+    IBETALV = MOD(JL,2)
+    DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+      DO JK=1,YD_STRUCT%SLEV(JL)%IK
+        YNODE =>  YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+        IBTST = YNODE%IOFFBETA+1
+        IBTEN = YNODE%IOFFBETA+YNODE%IRANK
+        IF(JL == 0) THEN
+          IFR = YNODE%IFCOL
+          ILR = YNODE%ILCOL
+          CALL MULT_P_TR(YNODE,ZBETA(IBTST:IBTEN,IBETALV),PVECOUT(IFR:ILR))
+        ELSE
+          IF(JL == ILEVS) THEN
+            IFR = YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IFROW
+            ILR = YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%ILROW
+            IROWS=YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IROWS
+            IF (LLDOUBLE) THEN
+              CALL DGEMV('T',IROWS,YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IRANK,&
+               & 1.0_JPRD,YNODE%B,IROWS,PVECIN(IFR:ILR),1,&
+               & 0.0_JPRD,ZBETA(IBTST:IBTEN,IBETALV),1)
+            ELSE
+              CALL SGEMV('T',IROWS,YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IRANK,&
+               & 1.0_JPRB,YNODE%B,IROWS,PVECIN(IFR:ILR),1,&
+               & 0.0_JPRB,ZBETA(IBTST:IBTEN,IBETALV),1)
+            ENDIF
+          ENDIF
+          ILM1 = JL-1
+          IBETALVM1=MOD(ILM1,2)
+          IJL  = (JJ+1)/2
+          IKL  = 2*JK-1
+          IJR  = (JJ+1)/2
+          IKR  = 2*JK
+          IRANKL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IRANK
+          IF(IKR <= YD_STRUCT%SLEV(ILM1)%IK) THEN
+            IRANKR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IRANK
+          ELSE
+            IRANKR = 0
+          ENDIF
+          IBTSTL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+1
+          IBTENL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+IRANKL
+          IBTSTR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+1
+          IBTENR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+IRANKR
+          CALL MULT_P_TR(YNODE,ZBETA(IBTST:IBTEN,IBETALV),ZVECOUT(1:IRANKL+IRANKR))  
+          IF(MOD(JJ,2) == 1) THEN
+            ZBETA(IBTSTL:IBTENL,IBETALVM1)= ZVECOUT(1:IRANKL)
+            IF(IRANKR > 0) THEN
+              ZBETA(IBTSTR:IBTENR,IBETALVM1)=ZVECOUT(IRANKL+1:IRANKL+IRANKR)
+            ENDIF
+          ELSE
+            ZBETA(IBTSTL:IBTENL,IBETALVM1)=ZBETA(IBTSTL:IBTENL,IBETALVM1)+ &
+             & ZVECOUT(1:IRANKL)
+            IF(IRANKR > 0) THEN
+              ZBETA(IBTSTR:IBTENR,IBETALVM1)=ZBETA(IBTSTR:IBTENR,IBETALVM1) + &
+               &  ZVECOUT(IRANKL+1:IRANKL+IRANKR)
+            ENDIF
+          ENDIF
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDDO
+ELSE
+  DO JL=0,ILEVS
+    IBETALV = MOD(JL,2)
+    DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+      DO JK=1,YD_STRUCT%SLEV(JL)%IK
+        YNODE =>  YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+        IBTST = YNODE%IOFFBETA+1
+        IBTEN = YNODE%IOFFBETA+YNODE%IRANK
+        IF(JL == 0) THEN    ! ONWR (115)
+          IFR = YNODE%IFCOL
+          ILR = YNODE%ILCOL
+          CALL MULT_P(YNODE,PVECIN(IFR:ILR),ZBETA(IBTST:IBTEN,IBETALV) )     
+        ELSE                ! ONWR (116)
+          ILM1 = JL-1
+          IBETALVM1=MOD(ILM1,2)
+          IJL  = (JJ+1)/2
+          IKL  = 2*JK-1
+          IJR  = (JJ+1)/2
+          IKR  = 2*JK
+          IRANKL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IRANK
+          IF(IKR <= YD_STRUCT%SLEV(ILM1)%IK) THEN
+            IRANKR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IRANK
+          ELSE
+            IRANKR = 0
+          ENDIF
+          IBTSTL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+1
+          IBTENL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+IRANKL
+          IBTSTR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+1
+          IBTENR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+IRANKR
+          CALL MULT_P(YNODE,ZBETA(IBTSTL:IBTENR,IBETALVM1),ZBETA(IBTST:IBTEN,IBETALV))     
+        ENDIF
+        IF(JL == ILEVS) THEN ! ONWR (117)
+          IFR = YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IFROW
+          ILR = YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%ILROW
+          IROWS = YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IROWS
+          IF (LLDOUBLE) THEN
+            CALL DGEMV('N',IROWS,YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IRANK,&
+             & 1.0_JPRD,YNODE%B,IROWS,ZBETA(IBTST:IBTEN,IBETALV),1,&
+             & 0.0_JPRD,PVECOUT(IFR:ILR),1)
+          ELSE
+            CALL SGEMV('N',IROWS,YD_STRUCT%SLEV(ILEVS)%NODE(JJ,JK)%IRANK,&
+             & 1.0_JPRB,YNODE%B,IROWS,ZBETA(IBTST:IBTEN,IBETALV),1,&
+             & 0.0_JPRB,PVECOUT(IFR:ILR),1)
+          ENDIF
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDDO
+ENDIF
+END SUBROUTINE MULT_BUTV
+!====================================================================
+SUBROUTINE MULT_BUTM(CDTRANS,YD_STRUCT,KF,PVECIN,PVECOUT,KWV)
+IMPLICIT NONE
+
+! Multiply matrix by matrix represented by butterfly
+
+CHARACTER(LEN=1),INTENT(IN)   :: CDTRANS       ! 'N' normal matmul, 'T' with transpose of matrix
+TYPE(BUTTERFLY_STRUCT),INTENT(IN) :: YD_STRUCT ! Structure from constucT-butterfly
+INTEGER(KIND=JPIM),INTENT(IN) :: KF            ! Number of fields
+INTEGER(KIND=JPIM),OPTIONAL,INTENT(IN) :: KWV           ! zonal wave number m (special_case)
+REAL(KIND=JPRB),INTENT(IN)    :: PVECIN(:,:)     ! Input vector
+REAL(KIND=JPRB),INTENT(OUT)   :: PVECOUT(:,:)    ! Output vector
+
+INTEGER(KIND=JPIM) :: JL,JJ,JK,ILEVS,IFR,ILR,IROWS,JF
+INTEGER(KIND=JPIM) :: ILM1,IJL,IKL,IJR,IKR,IRANKL,IRANKR,IROUT,IRIN
+INTEGER(KIND=JPIM) :: IRANK,IM,IN,JN,JM,IDX,IKWV,II
+INTEGER(KIND=JPIM) :: IBETALV,IBTST,IBTEN,IBETALVM1,IBTSTL,IBTENL,IBTSTR,IBTENR,ILBETA
+REAL(KIND=JPRB) :: ZVECIN(YD_STRUCT%N_ORDER,KF),ZVECOUT(YD_STRUCT%N_ORDER,KF)
+REAL(KIND=JPRB),ALLOCATABLE   :: ZBETA(:,:,:)
+LOGICAL :: LLTRANSPOSE
+LOGICAL :: LL_HALT_INVALID
+
+! IKWV==0 only, LLTRANSPOSE = true only
+REAL(KIND=JPRD),ALLOCATABLE   :: ZPNONIM_D(:,:)
+REAL(KIND=JPRD),ALLOCATABLE   :: ZBETA_D(:,:), ZB_D(:,:)
+REAL(KIND=JPRD),ALLOCATABLE   :: ZOUT_D(:,:), ZIN_D(:,:)
+
+TYPE(NODE_TYPE),POINTER :: YNODEL,YNODER,YNODE 
+
+IKWV=10
+IF( PRESENT(KWV) ) THEN
+  IKWV=KWV
+ENDIF
+
+!----------------------------------------------------------------------------------
+LLTRANSPOSE = (CDTRANS == 'T' .OR. CDTRANS == 't') 
+IROUT=SIZE(PVECOUT(:,1))
+IRIN=SIZE(PVECIN(:,1))
+
+ILEVS = YD_STRUCT%N_LEVELS
+ILBETA = YD_STRUCT%IBETALEN_MAX
+ALLOCATE(ZBETA(ILBETA,KF,0:1)) ! Work space for "beta"
+
+! ONWR 5.4.3
+IF(LLTRANSPOSE) THEN
+   IF( IKWV == 0 ) THEN
+      ALLOCATE(ZBETA_D(ILBETA,KF))
+      ALLOCATE(ZOUT_D(YD_STRUCT%N_ORDER,KF))
+      ALLOCATE(ZIN_D(IRIN,KF))
+   ENDIF
+
+  DO JL=ILEVS,0,-1
+    IBETALV = MOD(JL,2)
+    DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+      DO JK=1,YD_STRUCT%SLEV(JL)%IK
+        YNODE =>  YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+        IBTST = YNODE%IOFFBETA+1
+        IBTEN = YNODE%IOFFBETA+YNODE%IRANK
+        IF(JL == 0) THEN
+          IFR = YNODE%IFCOL
+          ILR = YNODE%ILCOL
+          IN = YNODE%ICOLS-YNODE%IRANK
+          IM = YNODE%IRANK
+          IF( IM <=0 )  CALL ABOR1('mult_butm: IM<=0 not allowed')
+          IF(IN>0) THEN
+            IF (LLDOUBLE.OR.(IKWV == 0)) THEN
+               IF(.not.LLDOUBLE) THEN
+                  ALLOCATE(ZPNONIM_D(IM,IN))
+                  II=0  
+                  DO JN=1,IN
+                     DO JM=1,IM
+                        II = II+1
+                        ZPNONIM_D(JM,JN) = REAL(YNODE%PNONIM(II),JPRD)
+                     ENDDO
+                  ENDDO
+                  ZBETA_D(1:IM,1:KF)=REAL(ZBETA(IBTST:IBTST+IM-1,1:KF,IBETALV),JPRD)
+                  CALL DGEMM('T','N',IN,KF,IM,1.0_JPRD,&
+                       & ZPNONIM_D,IM,ZBETA_D,ILBETA,0.0_JPRD,&
+                       & ZOUT_D,YD_STRUCT%N_ORDER)
+                  ZVECOUT(YNODE%IRANK+1:YNODE%IRANK+IN,1:KF) = REAL(ZOUT_D(1:IN,1:KF),JPRB)
+                  DEALLOCATE(ZPNONIM_D)
+               ELSE
+                  CALL DGEMM('T','N',IN,KF,IM,1.0_JPRD,&
+                       & YNODE%PNONIM(1),IM,ZBETA(IBTST,1,IBETALV),ILBETA,0.0_JPRD,&
+                       & ZVECOUT(YNODE%IRANK+1,1),YD_STRUCT%N_ORDER)
+               ENDIF
+            ELSE
+               IF (LL_IEEE_HALT) THEN
+                  call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+                  if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+               ENDIF
+               CALL SGEMM('T','N',IN,KF,IM,1.0_JPRB,&
+                    & YNODE%PNONIM(1),IM,ZBETA(IBTST,1,IBETALV),ILBETA,0.0_JPRB,&
+                    & ZVECOUT(YNODE%IRANK+1,1),YD_STRUCT%N_ORDER)
+               if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+            ENDIF
+          ENDIF
+          DO JF=1,KF
+            DO JN=1,YNODE%IRANK
+              IDX = YNODE%ICLIST(JN)
+              PVECOUT(IFR+IDX-1,JF) = ZBETA(IBTST+JN-1,JF,IBETALV)
+            ENDDO
+            DO JN=YNODE%IRANK+1,YNODE%ICOLS
+              IDX = YNODE%ICLIST(JN)
+              PVECOUT(IFR+IDX-1,JF) = ZVECOUT(JN,JF)
+            ENDDO
+          ENDDO
+        ELSE
+          IF(JL == ILEVS) THEN
+            IFR = YNODE%IFROW
+            ILR = YNODE%ILROW
+            IROWS =YNODE%IROWS
+            IRANK = YNODE%IRANK
+            IF (LLDOUBLE.OR.(IKWV == 0)) THEN
+               IF(.not.LLDOUBLE) THEN
+                  ALLOCATE(ZB_D(IROWS,IRANK))
+                  ZB_D(1:IROWS,1:IRANK) = REAL(YNODE%B(1:IROWS,1:IRANK),JPRD)
+                  ZIN_D(1:ILR-IFR+1,1:KF) = REAL(PVECIN(IFR:ILR,1:KF),JPRD)
+                  
+                  CALL DGEMM('T','N',IRANK,KF,IROWS,1.0_JPRD,&
+                       & ZB_D,IROWS,ZIN_D,IRIN,0.0_JPRD,&
+                       & ZBETA_D,ILBETA)
+                  
+                  ZBETA(IBTST:IBTST+IRANK-1,1:KF,IBETALV)=REAL(ZBETA_D(1:IRANK,1:KF),JPRB)
+                  DEALLOCATE(ZB_D)
+                  
+               ELSE
+                  CALL DGEMM('T','N',IRANK,KF,IROWS,1.0_JPRD,&
+                       & YNODE%B,IROWS,PVECIN(IFR,1),IRIN,0.0_JPRD,&
+                       & ZBETA(IBTST,1,IBETALV),ILBETA)
+               END IF
+            ELSE
+               IF (LL_IEEE_HALT) THEN
+                  call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+                  if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+               ENDIF
+               CALL SGEMM('T','N',IRANK,KF,IROWS,1.0_JPRB,&
+                    & YNODE%B,IROWS,PVECIN(IFR,1),IRIN,0.0_JPRB,&
+                    & ZBETA(IBTST,1,IBETALV),ILBETA)
+               if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+            ENDIF
+          ENDIF
+          ILM1 = JL-1
+          IBETALVM1=MOD(ILM1,2)
+          IJL  = (JJ+1)/2
+          IKL  = 2*JK-1
+          IJR  = (JJ+1)/2
+          IKR  = 2*JK
+          IRANKL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IRANK
+          IBTSTL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+1
+          IBTENL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+IRANKL
+          IF(IKR <= YD_STRUCT%SLEV(ILM1)%IK) THEN
+            IRANKR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IRANK
+            IBTSTR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+1
+            IBTENR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+IRANKR
+          ELSE
+            IRANKR = 0
+          ENDIF
+          IN = YNODE%ICOLS-YNODE%IRANK
+          IM = YNODE%IRANK
+          IF( IM <=0 )  CALL ABOR1('mult_butm: IM<=0 not allowed')
+          IF(IN>0) THEN
+             IF (LLDOUBLE.OR.(IKWV == 0)) THEN
+                IF(.not.LLDOUBLE) THEN
+                   ALLOCATE(ZPNONIM_D(IM,IN))
+                   II=0  
+                   DO JN=1,IN
+                      DO JM=1,IM
+                         II = II+1
+                         ZPNONIM_D(JM,JN) = REAL(YNODE%PNONIM(II),JPRD)
+                      ENDDO
+                   ENDDO
+                   ZBETA_D(1:IM,1:KF)=REAL(ZBETA(IBTST:IBTST+IM-1,1:KF,IBETALV),JPRD)
+                   
+                   CALL DGEMM('T','N',IN,KF,IM,1.0_JPRD,&
+                        & ZPNONIM_D,IM,ZBETA_D,ILBETA,0.0_JPRD,&
+                        & ZOUT_D,YD_STRUCT%N_ORDER)
+                   
+                   ZVECOUT(YNODE%IRANK+1:YNODE%IRANK+IN,1:KF) = REAL(ZOUT_D(1:IN,1:KF),JPRB)
+                   DEALLOCATE(ZPNONIM_D)
+                ELSE
+                   CALL DGEMM('T','N',IN,KF,IM,1.0_JPRD,&
+                        & YNODE%PNONIM(1),IM,ZBETA(IBTST,1,IBETALV),ILBETA,0.0_JPRD,&
+                        & ZVECOUT(YNODE%IRANK+1,1),YD_STRUCT%N_ORDER)
+                ENDIF
+            ELSE
+               IF (LL_IEEE_HALT) THEN
+                  call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+                  if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+               ENDIF
+               CALL SGEMM('T','N',IN,KF,IM,1.0_JPRB,&
+                    & YNODE%PNONIM(1),IM,ZBETA(IBTST,1,IBETALV),ILBETA,0.0_JPRB,&
+                    & ZVECOUT(YNODE%IRANK+1,1),YD_STRUCT%N_ORDER)
+               if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+            ENDIF
+          ENDIF
+          DO JF=1,KF
+            DO JN=1,YNODE%IRANK
+              IDX = YNODE%ICLIST(JN)
+              ZVECIN(IDX,JF) = ZBETA(IBTST+JN-1,JF,IBETALV)
+            ENDDO
+            DO JN=YNODE%IRANK+1,YNODE%ICOLS
+              IDX = YNODE%ICLIST(JN)
+              ZVECIN(IDX,JF) = ZVECOUT(JN,JF)
+            ENDDO
+          ENDDO
+          
+          DO JF=1,KF
+            IF(MOD(JJ,2) == 1) THEN
+              ZBETA(IBTSTL:IBTENL,JF,IBETALVM1)= ZVECIN(1:IRANKL,JF)
+              IF(IRANKR > 0) THEN
+                ZBETA(IBTSTR:IBTENR,JF,IBETALVM1)=ZVECIN(IRANKL+1:IRANKL+IRANKR,JF)
+              ENDIF
+            ELSE
+              ZBETA(IBTSTL:IBTENL,JF,IBETALVM1)=ZBETA(IBTSTL:IBTENL,JF,IBETALVM1)+ &
+               & ZVECIN(1:IRANKL,JF)
+              IF(IRANKR > 0) THEN
+                ZBETA(IBTSTR:IBTENR,JF,IBETALVM1)=ZBETA(IBTSTR:IBTENR,JF,IBETALVM1) + &
+                 &  ZVECIN(IRANKL+1:IRANKL+IRANKR,JF)
+              ENDIF
+            ENDIF
+          ENDDO
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDDO
+
+  IF( IKWV == 0 ) THEN
+    DEALLOCATE(ZBETA_D)
+    DEALLOCATE(ZOUT_D)
+    DEALLOCATE(ZIN_D)
+  ENDIF
+
+ELSE
+  DO JL=0,ILEVS
+    IBETALV = MOD(JL,2)
+    DO JJ=1,YD_STRUCT%SLEV(JL)%IJ
+      DO JK=1,YD_STRUCT%SLEV(JL)%IK
+        YNODE =>  YD_STRUCT%SLEV(JL)%NODE(JJ,JK)
+        IBTST = YNODE%IOFFBETA+1
+        IBTEN = YNODE%IOFFBETA+YNODE%IRANK
+        IF(JL == 0) THEN
+          IFR = YNODE%IFCOL
+          ILR = YNODE%ILCOL
+          IRANK = YNODE%IRANK
+          IM = IRANK
+          IN = YNODE%ICOLS-IRANK
+          DO JF=1,KF
+            DO JN=1,YNODE%ICOLS
+              IDX = YNODE%ICLIST(JN)
+              IF(JN <= IRANK) THEN
+                ZBETA(IBTST+JN-1,JF,IBETALV) = PVECIN(IFR+IDX-1,JF)
+              ELSE
+                ZVECIN(JN,JF) = PVECIN(IFR+IDX-1,JF)
+              ENDIF
+            ENDDO
+          ENDDO
+          IF( IRANK <=0 )  CALL ABOR1('mult_butm: IRANK<=0 not allowed')
+          IF(YNODE%ICOLS > IRANK) THEN
+            IF (LLDOUBLE) THEN
+              CALL DGEMM('N','N',IRANK,KF,IN,1.0_JPRD,&
+               & YNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1,1),YD_STRUCT%N_ORDER,1.0_JPRD,&
+               & ZBETA(IBTST,1,IBETALV),ILBETA)
+            ELSE
+               IF (LL_IEEE_HALT) THEN
+                  call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+                  if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+               ENDIF
+               CALL SGEMM('N','N',IRANK,KF,IN,1.0_JPRB,&
+                    & YNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1,1),YD_STRUCT%N_ORDER,1.0_JPRB,&
+                    & ZBETA(IBTST,1,IBETALV),ILBETA)
+               if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+            ENDIF
+          ENDIF
+        ELSE
+          ILM1 = JL-1
+          IBETALVM1=MOD(ILM1,2)
+          IJL  = (JJ+1)/2
+          IKL  = 2*JK-1
+          IJR  = (JJ+1)/2
+          IKR  = 2*JK
+          IRANKL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IRANK
+          IBTSTL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+1
+          IBTENL = YD_STRUCT%SLEV(ILM1)%NODE(IJL,IKL)%IOFFBETA+IRANKL
+          IF(IKR <= YD_STRUCT%SLEV(ILM1)%IK) THEN
+            IRANKR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IRANK
+            IBTSTR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+1
+            IBTENR = YD_STRUCT%SLEV(ILM1)%NODE(IJR,IKR)%IOFFBETA+IRANKR
+          ELSE
+            IRANKR = 0
+            IBTENR = IBTENL 
+          ENDIF
+          IRANK = YNODE%IRANK
+          IM = IRANK
+          IN = YNODE%ICOLS-IRANK
+          DO JF=1,KF
+            DO JN=1,YNODE%ICOLS
+              IDX = YNODE%ICLIST(JN)
+              IF(JN <= IRANK) THEN
+                ZBETA(IBTST+JN-1,JF,IBETALV) = ZBETA(IBTSTL+IDX-1,JF,IBETALVM1)
+              ELSE
+                ZVECIN(JN,JF) = ZBETA(IBTSTL+IDX-1,JF,IBETALVM1)
+              ENDIF
+            ENDDO
+          ENDDO
+          IF( IRANK <=0 )  CALL ABOR1('mult_butm: IRANK<=0 not allowed')
+          IF(YNODE%ICOLS > IRANK) THEN
+            IF (LLDOUBLE) THEN
+              CALL DGEMM('N','N',IRANK,KF,IN,1.0_JPRD,&
+               & YNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1,1),YD_STRUCT%N_ORDER,1.0_JPRD,&
+               & ZBETA(IBTST,1,IBETALV),ILBETA)
+            ELSE
+               IF (LL_IEEE_HALT) THEN
+                  call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+                  if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+               ENDIF
+               CALL SGEMM('N','N',IRANK,KF,IN,1.0_JPRB,&
+                    & YNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1,1),YD_STRUCT%N_ORDER,1.0_JPRB,&
+                    & ZBETA(IBTST,1,IBETALV),ILBETA)
+               if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+            ENDIF
+          ENDIF
+        ENDIF
+        IF( IRANK <=0 )  CALL ABOR1('mult_butm: IRANK<=0 not allowed')
+        IF(JL == ILEVS) THEN
+          IFR = YNODE%IFROW
+          ILR = YNODE%ILROW
+          IROWS = YNODE%IROWS
+          IF (LLDOUBLE) THEN
+            CALL DGEMM('N','N',IROWS,KF,YNODE%IRANK,1.0_JPRD,&
+             & YNODE%B,IROWS,ZBETA(IBTST,1,IBETALV),YD_STRUCT%IBETALEN_MAX,0.0_JPRD,&
+             & PVECOUT(IFR,1),IROUT)
+          ELSE
+             IF (LL_IEEE_HALT) THEN
+                call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+                if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+             ENDIF
+             CALL SGEMM('N','N',IROWS,KF,YNODE%IRANK,1.0_JPRB,&
+                  & YNODE%B,IROWS,ZBETA(IBTST,1,IBETALV),YD_STRUCT%IBETALEN_MAX,0.0_JPRB,&
+                  & PVECOUT(IFR,1),IROUT)
+             if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+          ENDIF
+        ENDIF
+      ENDDO
+    ENDDO
+  ENDDO
+ENDIF
+DEALLOCATE(ZBETA)
+END SUBROUTINE MULT_BUTM
+!=====================================================================
+SUBROUTINE MULT_P(YDNODE,PVECIN,PVECOUT)
+! Multiply vector by projection matrix
+IMPLICIT NONE
+TYPE(NODE_TYPE),INTENT(INOUT) :: YDNODE
+REAL(KIND=JPRB),INTENT(IN)    :: PVECIN(:)
+REAL(KIND=JPRB),INTENT(OUT)   :: PVECOUT(:)
+
+REAL(KIND=JPRB) :: ZVECIN(YDNODE%ICOLS), ZVECOUT(SIZE(PVECOUT))
+INTEGER(KIND=JPIM) :: JK,JN,IDX,IRANK,IM,IN
+!---------------------------------------------------------
+
+IRANK = YDNODE%IRANK
+DO JN=1,YDNODE%ICOLS
+  IDX = YDNODE%ICLIST(JN)
+  IF(JN <= IRANK) THEN
+    ZVECOUT(JN) = PVECIN(IDX)
+  ELSE
+    ZVECIN(JN) = PVECIN(IDX)
+  ENDIF
+ENDDO
+
+IF(YDNODE%ICOLS > IRANK) THEN
+  IM = IRANK
+  IN = YDNODE%ICOLS-IRANK
+  IF (JPRB == JPRD) THEN
+     CALL DGEMV('N',IM,IN,1.0_JPRB,YDNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1),1,1.0_JPRB,ZVECOUT,1)
+     PVECOUT(:)=ZVECOUT(:)
+  ELSE
+     CALL SGEMV('N',IM,IN,1.0_JPRB,YDNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1),1,1.0_JPRB,PVECOUT,1)
+  ENDIF
+ENDIF
+
+END SUBROUTINE MULT_P
+!=====================================================================
+SUBROUTINE MULT_PM(YDNODE,KF,KLBETA,PVECIN,PVECOUT)
+IMPLICIT NONE
+! Multiply matrix by projection matrix
+TYPE(NODE_TYPE),INTENT(INOUT) :: YDNODE
+INTEGER(KIND=JPIM),INTENT(IN) :: KF 
+INTEGER(KIND=JPIM),INTENT(IN) :: KLBETA
+REAL(KIND=JPRB),INTENT(IN)    :: PVECIN(:,:)
+REAL(KIND=JPRB),INTENT(OUT)   :: PVECOUT(:,:)
+
+REAL(KIND=JPRB) :: ZVECIN(YDNODE%ICOLS,KF), ZVECOUT(SIZE(PVECOUT(:,1)),KF)
+INTEGER(KIND=JPIM) :: JK,JN,IDX,IRANK,IM,IN,JF
+
+LOGICAL :: LL_HALT_INVALID
+!---------------------------------------------------------
+
+IRANK = YDNODE%IRANK
+IM = IRANK
+IN = YDNODE%ICOLS-IRANK
+DO JF=1,KF
+  DO JN=1,YDNODE%ICOLS
+    IDX = YDNODE%ICLIST(JN)
+    IF(JN <= IRANK) THEN
+      ZVECOUT(JN,JF) = PVECIN(IDX,JF)
+    ELSE
+      ZVECIN(JN,JF) = PVECIN(IDX,JF)
+    ENDIF
+  ENDDO
+ENDDO
+IF(YDNODE%ICOLS > IRANK) THEN
+  IF (JPRB == JPRD) THEN
+    CALL DGEMM('N','N',IRANK,KF,IN,1.0_JPRD,&
+     & YDNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1,1),YDNODE%ICOLS,1.0_JPRD,&
+     & PVECOUT,IRANK)
+  ELSE
+     IF (LL_IEEE_HALT) THEN
+        call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+        if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+     ENDIF
+     CALL SGEMM('N','N',IRANK,KF,IN,1.0_JPRB,&
+          & YDNODE%PNONIM(1),IRANK,ZVECIN(IRANK+1,1),YDNODE%ICOLS,1.0_JPRB,&
+          & PVECOUT,IRANK)
+     if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+  ENDIF
+ENDIF
+END SUBROUTINE MULT_PM
+!==================================================================
+SUBROUTINE MULT_P_TR(YDNODE,PVECIN,PVECOUT)
+! Multiply vector by transposed procetion matrix
+IMPLICIT NONE
+TYPE(NODE_TYPE),INTENT(INOUT) :: YDNODE
+REAL(KIND=JPRB),INTENT(IN)    :: PVECIN(:)
+REAL(KIND=JPRB),INTENT(OUT)   :: PVECOUT(:)
+
+REAL(KIND=JPRB) :: ZVECOUT(YDNODE%ICOLS), ZVECIN(SIZE(PVECIN))
+INTEGER(KIND=JPIM) :: JK,JN,IDX,IRANK,IM,IN
+!---------------------------------------------------------
+
+IRANK = YDNODE%IRANK
+IN = YDNODE%ICOLS-IRANK
+IF(IN>0) THEN
+  IM = IRANK
+  IF (JPRB == JPRD) THEN
+     ZVECIN(:) = PVECIN(:)
+     CALL DGEMV('T',IM,IN,1.0_JPRD,YDNODE%PNONIM,IRANK,ZVECIN,1,0.0_JPRD,ZVECOUT(IRANK+1),1)
+  ELSE
+     CALL SGEMV('T',IM,IN,1.0_JPRB,YDNODE%PNONIM,IRANK,PVECIN,1,0.0_JPRB,ZVECOUT(IRANK+1),1)
+  ENDIF
+ENDIF
+DO JK=1,IRANK
+   IDX = YDNODE%ICLIST(JK)
+   PVECOUT(IDX) = PVECIN(JK)
+ENDDO
+DO JN=IRANK+1,YDNODE%ICOLS
+  IDX = YDNODE%ICLIST(JN)
+  PVECOUT(IDX) = ZVECOUT(JN)
+ENDDO
+
+END SUBROUTINE MULT_P_TR
+!==================================================================
+SUBROUTINE MULT_P_TRM(YDNODE,KF,PVECIN,PVECOUT)
+! Multiply matrix by transposed procetion matrix
+IMPLICIT NONE
+TYPE(NODE_TYPE),INTENT(INOUT) :: YDNODE
+INTEGER(KIND=JPIM),INTENT(IN) :: KF 
+REAL(KIND=JPRB),INTENT(IN)    :: PVECIN(:,:)
+REAL(KIND=JPRB),INTENT(OUT)   :: PVECOUT(:,:)
+
+REAL(KIND=JPRB) :: ZVECOUT(YDNODE%ICOLS,KF), ZVECIN(SIZE(PVECIN(:,1)),KF)
+INTEGER(KIND=JPIM) :: JK,JN,IDX,IRANK,IM,IN,JF
+
+LOGICAL :: LL_HALT_INVALID
+
+!------------------------------------------------------------------
+
+IN = YDNODE%ICOLS-YDNODE%IRANK
+IM = YDNODE%IRANK
+IF(IN>0) THEN
+   IF (JPRB == JPRD) THEN
+      ZVECIN(:,:) = PVECIN(:,:)
+      CALL DGEMM('T','N',IN,KF,IM,1.0_JPRD,&
+           & YDNODE%PNONIM(1),IM,ZVECIN,IM,0.0_JPRD,&
+           & ZVECOUT(YDNODE%IRANK+1,1),YDNODE%ICOLS)
+   ELSE
+      IF (LL_IEEE_HALT) THEN
+         call ieee_get_halting_mode(ieee_invalid,LL_HALT_INVALID)
+         if (LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.false.)
+      ENDIF
+      CALL SGEMM('T','N',IN,KF,IM,1.0_JPRB,&
+           & YDNODE%PNONIM(1),IM,PVECIN,IM,0.0_JPRB,&
+           & ZVECOUT(YDNODE%IRANK+1,1),YDNODE%ICOLS)
+      if (LL_IEEE_HALT .and. LL_HALT_INVALID) call ieee_set_halting_mode(ieee_invalid,.true.)
+   ENDIF
+ENDIF
+DO JF=1,KF
+  DO JK=1,YDNODE%IRANK
+    IDX = YDNODE%ICLIST(JK)
+    PVECOUT(IDX,JF) = PVECIN(JK,JF)
+  ENDDO
+  DO JN=YDNODE%IRANK+1,YDNODE%ICOLS
+    IDX = YDNODE%ICLIST(JN)
+    PVECOUT(IDX,JF) = ZVECOUT(JN,JF)
+  ENDDO
+ENDDO
+END SUBROUTINE MULT_P_TRM
+!====================================================================
+END MODULE BUTTERFLY_ALG_MOD
+

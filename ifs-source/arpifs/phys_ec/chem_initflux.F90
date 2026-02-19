@@ -1,0 +1,228 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE CHEM_INITFLUX(YDSURF, YDMODEL,KIDIA, KFDIA, KLEV, KLON, KTRAC,  &
+    & PSD_VF,  KAERO, KCHEM, PCEN, PTENC, PCFLX, PDDVLC, PSCAV,&
+    & PCHEMDV,  KFLDX , KLEVX, PGELAM, PGELAT,PTL, PRSF1L, PDELP, PAPHIF, PLSM, PEXTRA)
+
+!**   INTERFACE.
+!     ----------
+!          *CHEM_INIFLUX  IS CALLED FROM *CALLPAR VIA CHEMINI_LAYER*.
+
+! INPUTS:
+!  -------
+! PBLH(KLON)          : Boundary layer Height
+! PAPHIF(KLON,KLEV)   : Geopotential on full levels 
+! *PGELAM*            : Longitude in radians  
+! *PGELAT*            : Lattitude in radians 
+
+! INPUTS/OUTPUTS:
+! PTENC  (KLON,KLEV,NCHEM)     : TENDENCY OF CONCENTRATION OF TRACERS BECAUSE OF EMISSION(kg/kg s-1)
+! PFLUX(KLON)                  : Surface emissions in kg/m2 
+!
+!-----------------------------------------------------------------------
+
+!     Externals.
+!     ---------
+
+
+!     Author
+!    --------
+!         2014-1-6, J. Flemming  
+
+!     Modifications :
+!    ----------------
+!     2016-11-25 ANNA AGUSTI-PANAREDA : remove clipping of negative fluxes (not suitable for CO2,CH4 tracers)
+!     2019-10-25 Johannes Flemming : introduce diurnal cycle and injection height for emissions 
+!-----------------------------------------------------------------------
+
+USE TYPE_MODEL         , ONLY : MODEL
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCHEM  , ONLY : IEXTR_EM,IEXTR_DD
+USE YOMCST   , ONLY : RD
+
+
+IMPLICIT NONE
+
+TYPE(TSURF), INTENT(INOUT) :: YDSURF
+TYPE(MODEL) ,INTENT(INOUT) :: YDMODEL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFLDX
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVX
+! General array of 2D flux fields
+REAL(KIND=JPRB), INTENT(IN), TARGET :: PSD_VF(KLON,YDSURF%YSD_VFD%NDIM)
+REAL(KIND=JPRB), INTENT(IN) ::   PGELAM(KLON)
+REAL(KIND=JPRB), INTENT(IN) ::   PGELAT(KLON)
+REAL(KIND=JPRB), INTENT(IN)   :: PLSM(KLON) 
+REAL(KIND=JPRB) ,INTENT(IN)   :: PDELP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PAPHIF(KLON,KLEV) 
+REAL(KIND=JPRB), INTENT(IN) ::   PCEN(KLON,KLEV,KTRAC)
+REAL(KIND=JPRB), INTENT(INOUT) ::   PTENC(KLON,KLEV,KTRAC)
+REAL(KIND=JPRB), INTENT(IN) ::   PTL(KLON)  ! Lowest level t
+REAL(KIND=JPRB), INTENT(IN) ::   PRSF1L(KLON)  ! lowest level p
+REAL(KIND=JPRB), INTENT(INOUT) ::   PCFLX(KLON,KTRAC) 
+REAL(KIND=JPRB), INTENT(INOUT) ::   PDDVLC(KLON,KTRAC) 
+REAL(KIND=JPRB), INTENT(INOUT) ::   PSCAV(KTRAC)
+REAL(KIND=JPRB), INTENT(INOUT) ::   PCHEMDV(KLON,YDMODEL%YRML_GCONF%YGFL%NCHEM_DV)
+REAL(KIND=JPRB),INTENT(INOUT) :: PEXTRA(KLON,KLEVX,KFLDX)
+INTEGER(KIND=JPIM), INTENT(IN) :: KTRAC
+INTEGER(KIND=JPIM), INTENT(IN) :: KCHEM(YDMODEL%YRML_GCONF%YGFL%NCHEM),  KAERO(YDMODEL%YRML_GCONF%YGFL%NAERO)
+INTEGER(KIND=JPIM) :: JL, JEXT, JN, ICHEMDV, ICHEMFLXO, ICHEMWDFLX, ICHEMDDFLX
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB) :: ZDVMAX
+REAL(KIND=JPRB) , DIMENSION (KLON) :: ZDDF, ZRHO, ZDIURNDD
+
+! Pointers to various sections of PSD_VF
+REAL(KIND=JPRB) , POINTER :: ZCHEMDV(:)
+!
+!-----------------------------------------------------------------------
+#include "compo_diurnal.intfb.h"
+!-----------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('CHEM_INITFLUX',0,ZHOOK_HANDLE)
+ASSOCIATE(YDCOMPO=>YDMODEL%YRML_CHEM%YRCOMPO, &
+ & YDEAERATM=>YDMODEL%YRML_PHY_RAD%YREAERATM, &
+ & YDCHEM=>YDMODEL%YRML_CHEM%YRCHEM,YDRIP=>YDMODEL%YRML_GCONF%YRRIP, &
+ & YDPHY2=>YDMODEL%YRML_PHY_MF%YRPHY2,YGFL=>YDMODEL%YRML_GCONF%YGFL,YDERIP=>YDMODEL%YRML_PHY_RAD%YRERIP)
+ASSOCIATE(NACTAERO=>YGFL%NACTAERO, NGHG=>YGFL%NGHG, NCHEM=>YGFL%NCHEM, NCHEM_DV=>YGFL%NCHEM_DV, &
+ & YCHEM=>YGFL%YCHEM, YAERO_DESC=>YDEAERATM%YAERO_DESC, &
+ & LCHEM_CONVSCAV=>YDCHEM%LCHEM_CONVSCAV, LCHEM_DDFLX=>YDCOMPO%LCHEM_DDFLX, & 
+ & LCOMPO_DDFLX_DIR=>YDCOMPO%LCOMPO_DDFLX_DIR, LCHEM_DIA=>YDCOMPO%LCHEM_DIA, &
+ & LCOMPO_DCDD=>YDCOMPO%LCOMPO_DCDD, &
+ & RSTATI=>YDRIP%RSTATI,RSIDECM=>YDERIP%RSIDECM,RCODECM=>YDERIP%RCODECM, &
+ & YSD_VF=>YDSURF%YSD_VF, YSD_VFD=>YDSURF%YSD_VFD, &
+ & TSPHY=>YDPHY2%TSPHY)
+
+IF (LCOMPO_DCDD) THEN 
+  CALL COMPO_DIURNAL( YDRIP, KIDIA, KFDIA, KLON, 'Sine', PGELAM, PGELAT, ZDIURNDD, &
+                    & PAMPLITUDE=0.7_JPRB, PHOURPEAK=12.0_JPRB, PLSM = PLSM )
+ELSE
+  ZDIURNDD(KIDIA:KFDIA)=1.0_JPRB
+ENDIF 
+
+! check flux output
+ICHEMFLXO=0
+ICHEMDDFLX=0
+ICHEMWDFLX=0
+DO JEXT=1,NCHEM
+  IF (YCHEM(JEXT)%IGRBFLXO > 0 ) THEN
+    ICHEMFLXO=ICHEMFLXO+1
+    IF (.NOT. YSD_VF%YCHEMFLXO(ICHEMFLXO)%LSET) THEN
+      CALL ABOR1('NOT ALL CHEM FLUXES FOR OUTPUT SET UP')
+    ENDIF
+  ENDIF
+  IF (YCHEM(JEXT)%IGRBWDFLX > 0 ) THEN
+    ICHEMWDFLX=ICHEMWDFLX+1
+    IF (.NOT. YSD_VF%YCHEMWDFLX(ICHEMWDFLX)%LSET) THEN
+      CALL ABOR1('NOT ALL CHEM WD FLUXES FOR OUTPUT SET UP')
+    ENDIF
+  ENDIF
+  IF (YCHEM(JEXT)%IGRBDDFLX > 0 ) THEN
+    ICHEMDDFLX=ICHEMDDFLX+1
+    IF (.NOT. YSD_VF%YCHEMDDFLX(ICHEMDDFLX)%LSET) THEN
+      CALL ABOR1('NOT ALL CHEM DD FLUXES FOR OUTPUT SET UP')
+    ENDIF
+  ENDIF
+ENDDO
+
+IF (LCHEM_DIA) THEN 
+  DO JEXT=1,NCHEM
+   IF (.FALSE.) THEN
+!DEC$ IVDEP
+    DO JL=KIDIA,KFDIA  
+      PEXTRA(JL,JEXT,IEXTR_EM)= PEXTRA(JL,JEXT,IEXTR_EM) - PCFLX(JL,KCHEM(JEXT)) * TSPHY
+    ENDDO
+   ENDIF
+  ENDDO   
+ENDIF
+
+! add deposition fluxes (flux = dv * conc(lowest level)*density)
+ICHEMDV=0
+
+! calculate density in lowest layer
+ZRHO(:)=1.0_JPRB
+DO JL=KIDIA,KFDIA
+    ZRHO(JL) = PRSF1L(JL) / ( RD * PTL (JL) )
+ENDDO
+
+! limit max der dep velocity based on 30 m box height (it is 10-15 m) 
+DO JEXT=1,NCHEM
+! negative flux is from surface to atmopshere 
+  IF (YCHEM(JEXT)%IGRIBDV > 0 ) THEN
+    ICHEMDV=ICHEMDV+1
+    ZCHEMDV => PSD_VF(1:KLON,YSD_VF%YCHEMDV(ICHEMDV)%MP)
+    IF (LCHEM_DDFLX) THEN 
+      IF (LCOMPO_DDFLX_DIR) THEN 
+        ZDVMAX=10000.0_JPRB/TSPHY
+        DO JL=KIDIA,KFDIA
+          PDDVLC(JL,KCHEM(JEXT)) =ZDIURNDD(JL)*ZCHEMDV(JL)
+        ENDDO
+      ELSE
+        ZDVMAX=30.0_JPRB/TSPHY
+        DO JL=KIDIA,KFDIA
+          ZDDF(JL) = MIN(ZDVMAX,ZDIURNDD(JL)*ZCHEMDV(JL)) * PCEN(JL,KLEV,KCHEM(JEXT)) * ZRHO (JL) 
+          PCFLX(JL,KCHEM(JEXT)) =  PCFLX(JL,KCHEM(JEXT)) +  ZDDF(JL)   
+          PDDVLC(JL,KCHEM(JEXT)) = 0.0_JPRB 
+        ENDDO
+        IF (LCHEM_DIA) THEN 
+        ! only approximate, or LCOMPO_DDFLX_DIR, should be calculated using direct flux output from diffusion 
+!DEC$ IVDEP
+          DO JL=KIDIA,KFDIA  
+            ZDDF(JL) = MIN(ZDVMAX,ZDIURNDD(JL)*ZCHEMDV(JL)) * PCEN(JL,KLEV,KCHEM(JEXT)) * ZRHO (JL) 
+            PEXTRA(JL,JEXT,IEXTR_DD) = PEXTRA(JL,JEXT,IEXTR_DD) -  ZDDF(JL) * TSPHY  
+           ENDDO  
+        ENDIF
+      ENDIF   
+    ELSE
+! LCHEM_DDFLX = false
+      DO JL=KIDIA,KFDIA
+        PCHEMDV(JL,ICHEMDV) =ZDIURNDD(JL)* ZCHEMDV(JL)
+      ENDDO
+    ENDIF
+  ENDIF
+ENDDO
+
+
+! Initialise scavenging coefficients
+IF (KTRAC>0) THEN
+
+  PSCAV(:)=0.0_JPRB
+
+ ! Initialize here for other soluble tracers
+
+
+ ! Aerosol part
+  DO JN=1,NACTAERO
+    JEXT=KAERO(JN) 
+    PSCAV(JEXT)=YAERO_DESC(JN)%RSCAVIN
+  ENDDO
+
+! test set scavenging (no removal) for convective scheme 
+  IF (LCHEM_CONVSCAV) THEN
+    DO JEXT=1,NCHEM
+      IF ((TRIM(YCHEM(JEXT)%CNAME) == 'HNO3' ) .OR.&
+      &   (TRIM(YCHEM(JEXT)%CNAME) == 'H2O2' ) .OR.&
+      &   (TRIM(YCHEM(JEXT)%CNAME) == 'SO4' ) .OR.&
+      &   (TRIM(YCHEM(JEXT)%CNAME) == 'NO3_A' ) .OR.&
+      &   (TRIM(YCHEM(JEXT)%CNAME) == 'NH3' )) PSCAV(KCHEM(JEXT)) =  0.5_JPRB 
+    ENDDO
+  ENDIF
+
+ENDIF
+!-----------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CHEM_INITFLUX',1,ZHOOK_HANDLE)
+
+END SUBROUTINE CHEM_INITFLUX

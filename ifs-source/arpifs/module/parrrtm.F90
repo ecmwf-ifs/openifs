@@ -1,0 +1,119 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+MODULE PARRRTM
+
+USE PARKIND1  ,ONLY : JPIM
+
+IMPLICIT NONE
+
+SAVE
+
+!     ------------------------------------------------------------------
+!     Parameters relevant to AER's RRTM-LW radiation scheme
+
+!     19980714  JJMorcrette
+!     20110322  JJMorcrette : additional comments
+!     20110603  JJMorcrette reduced number of g-points
+!     ------------------------------------------------------------------
+
+!-- basic spectral information unrelated to number of g-points
+! JPG    : maximum possible number of g-points in each band of RRTM_LW
+! JPBAND : number of longwave spectral bands
+! JPXSEC : number of cross-sections for active trace gases
+! JPINPX : maximum dimension of the array of active trace gases 
+! JPGPT  : total number of g-points in the (operational) spectrally-reduced RRTM_LW
+
+INTEGER(KIND=JPIM), PARAMETER :: JPG    = 16
+INTEGER(KIND=JPIM), PARAMETER :: JPBAND = 16
+INTEGER(KIND=JPIM), PARAMETER :: JPXSEC = 4
+INTEGER(KIND=JPIM), PARAMETER :: JPINPX = 35
+INTEGER(KIND=JPIM), PARAMETER :: JPGMAX = 256
+
+!-- configuration for EPS with 70 g-points
+
+!INTEGER(KIND=JPIM), PARAMETER :: JPGPT  = 70
+
+!INTEGER(KIND=JPIM), PARAMETER :: NG1  = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NG2  = 7
+!INTEGER(KIND=JPIM), PARAMETER :: NG3  = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG4  = 7
+!INTEGER(KIND=JPIM), PARAMETER :: NG5  = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG6  = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NG7  = 6
+!INTEGER(KIND=JPIM), PARAMETER :: NG8  = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NG9  = 6
+!INTEGER(KIND=JPIM), PARAMETER :: NG10 = 3
+!INTEGER(KIND=JPIM), PARAMETER :: NG11 = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NG12 = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NG13 = 2
+!INTEGER(KIND=JPIM), PARAMETER :: NG14 = 1
+!INTEGER(KIND=JPIM), PARAMETER :: NG15 = 1
+!INTEGER(KIND=JPIM), PARAMETER :: NG16 = 1
+
+!INTEGER(KIND=JPIM), PARAMETER :: NGS1  = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NGS2  = 11
+!INTEGER(KIND=JPIM), PARAMETER :: NGS3  = 19
+!INTEGER(KIND=JPIM), PARAMETER :: NGS4  = 26
+!INTEGER(KIND=JPIM), PARAMETER :: NGS5  = 34
+!INTEGER(KIND=JPIM), PARAMETER :: NGS6  = 38
+!INTEGER(KIND=JPIM), PARAMETER :: NGS7  = 44
+!INTEGER(KIND=JPIM), PARAMETER :: NGS8  = 48
+!INTEGER(KIND=JPIM), PARAMETER :: NGS9  = 54
+!INTEGER(KIND=JPIM), PARAMETER :: NGS10 = 57
+!INTEGER(KIND=JPIM), PARAMETER :: NGS11 = 61
+!INTEGER(KIND=JPIM), PARAMETER :: NGS12 = 65
+!INTEGER(KIND=JPIM), PARAMETER :: NGS13 = 67
+!INTEGER(KIND=JPIM), PARAMETER :: NGS14 = 68
+!INTEGER(KIND=JPIM), PARAMETER :: NGS15 = 69
+
+
+!-- configuration with 140 g-points
+
+!INTEGER(KIND=JPIM), PARAMETER :: JPGPTF = 140
+!INTEGER(KIND=JPIM), PARAMETER :: JPGPTR = 140
+!INTEGER(KIND=JPIM), PARAMETER :: JPGPT  = 140
+
+!INTEGER(KIND=JPIM), PARAMETER :: NG1  = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG2  = 14
+!INTEGER(KIND=JPIM), PARAMETER :: NG3  = 16
+!INTEGER(KIND=JPIM), PARAMETER :: NG4  = 14
+!INTEGER(KIND=JPIM), PARAMETER :: NG5  = 16
+!INTEGER(KIND=JPIM), PARAMETER :: NG6  = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG7  = 12
+!INTEGER(KIND=JPIM), PARAMETER :: NG8  = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG9  = 12
+!INTEGER(KIND=JPIM), PARAMETER :: NG10 = 6
+!INTEGER(KIND=JPIM), PARAMETER :: NG11 = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG12 = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NG13 = 4
+!INTEGER(KIND=JPIM), PARAMETER :: NG14 = 2
+!INTEGER(KIND=JPIM), PARAMETER :: NG15 = 2
+!INTEGER(KIND=JPIM), PARAMETER :: NG16 = 2
+
+!INTEGER(KIND=JPIM), PARAMETER :: NGS1  = 8
+!INTEGER(KIND=JPIM), PARAMETER :: NGS2  = 22
+!INTEGER(KIND=JPIM), PARAMETER :: NGS3  = 38
+!INTEGER(KIND=JPIM), PARAMETER :: NGS4  = 52
+!INTEGER(KIND=JPIM), PARAMETER :: NGS5  = 68
+!INTEGER(KIND=JPIM), PARAMETER :: NGS6  = 76
+!INTEGER(KIND=JPIM), PARAMETER :: NGS7  = 88
+!INTEGER(KIND=JPIM), PARAMETER :: NGS8  = 96
+!INTEGER(KIND=JPIM), PARAMETER :: NGS9  = 108
+!INTEGER(KIND=JPIM), PARAMETER :: NGS10 = 114
+!INTEGER(KIND=JPIM), PARAMETER :: NGS11 = 122
+!INTEGER(KIND=JPIM), PARAMETER :: NGS12 = 130
+!INTEGER(KIND=JPIM), PARAMETER :: NGS13 = 134
+!INTEGER(KIND=JPIM), PARAMETER :: NGS14 = 136
+!INTEGER(KIND=JPIM), PARAMETER :: NGS15 = 138
+
+!     ------------------------------------------------------------------
+END MODULE PARRRTM

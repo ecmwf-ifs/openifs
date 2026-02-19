@@ -1,0 +1,38 @@
+# (C) Copyright 1989- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+# 
+# (C) Copyright 1989- Meteo-France.
+# 
+
+# This file gets automatically imported upon a
+#
+#    find_package( ifs )
+#
+# Defines:
+# - IFS_EXECUTABLE                :  Full path to ifsMASTER
+# - IFS_BLACKLIST_LIBRARY_PATH    :  Path to extra blacklist library directory
+# - IFS_CYCLE                     :  Version of IFS in the form CY<MAJOR>R<MINOR>
+# - PREC                          :  IFS build precision (SP or DP)
+
+if( @PNAME@_IS_BUILD_DIR_EXPORT )
+  set( IFS_EXECUTABLE             @IFS_EXECUTABLE@ )
+  set( SCM_EXECUTABLE             @SCM_EXECUTABLE@ )
+  set( IFS_BIN_DIR                @CMAKE_BINARY_DIR@/bin )
+  set( IFS_BLACKLIST_LIBRARY_PATH @IFS_BLACKLIST_LIBRARY_PATH@ )
+  set( IFS_CYCLE                  @IFS_CYCLE@ )
+  set( IFS_PRECISION              @PREC@ )
+  set( PREC                       ${IFS_PRECISION} ) # Deprecated, use IFS_PRECISION instead
+endif()
+
+set( ifs_FOUND 1 )
+set( ifs_HAVE_OOPS @HAVE_OOPS@ )
+set( ifs_HAVE_MGRIDS @HAVE_MGRIDS@ )
+set( @PROJECT_NAME@_HAVE_OOPS @HAVE_OOPS@ )
+set( ifs_HAVE_FORECAST_ONLY @HAVE_FORECAST_ONLY@ )
+set( ifs_HAVE_OPENIFS_ONLY @HAVE_OPENIFS_ONLY@ )
+

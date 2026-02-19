@@ -1,0 +1,21 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE IO_SERV_SYNC(YDIOS,KTYPE,CDNAME,LDSTOP,PTSTEP)
+use parkind1, only:&
+ & jpim,&
+ & jprb
+use yomio_serv, only:&
+ & io_serv
+TYPE (IO_SERV), INTENT (INOUT) :: YDIOS
+INTEGER (KIND=JPIM), INTENT (IN) :: KTYPE
+CHARACTER (LEN=*), INTENT (IN) :: CDNAME
+LOGICAL, OPTIONAL, INTENT (IN) :: LDSTOP
+REAL (KIND=JPRB), INTENT (IN), OPTIONAL :: PTSTEP
+call abor1("io_serv_sync.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE IO_SERV_SYNC

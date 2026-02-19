@@ -1,0 +1,273 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE LWB &
+ & ( KIDIA, KFDIA, KLON  , KLEV  , KMODE,&
+ & PDT0 , PTAVE, PTL,&
+ & PB   , PBINT, PBSUR , PBTOP , PDBSL,&
+ & PGA  , PGB  , PGASUR, PGBSUR, PGATOP, PGBTOP    &
+ & )  
+
+!**** *LWB*   - COMPUTES BLACK-BODY FUNCTIONS FOR LONGWAVE CALCULATIONS
+
+!     PURPOSE.
+!     --------
+!           COMPUTES PLANCK FUNCTIONS
+
+!**   INTERFACE.
+!     ----------
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!     ==== INPUTS ===
+! PDT0   : (KLON)            ; SURFACE TEMPERATURE DISCONTINUITY
+! PTAVE  : (KLON,KLEV)       ; TEMPERATURE
+! PTL    : (KLON,KLEV+1)     ; HALF LEVEL TEMPERATURE
+!     ==== OUTPUTS ===
+! PB     : (KLON,NSIL,KLEV+1); SPECTRAL HALF LEVEL PLANCK FUNCTION
+! PBINT  : (KLON,KLEV+1)     ; HALF LEVEL PLANCK FUNCTION
+! PBSUR  : (KLON,NSIL)       ; SURFACE SPECTRAL PLANCK FUNCTION
+! PBTOP  : (KLON,NSIL)       ; TOP SPECTRAL PLANCK FUNCTION
+! PDBSL  : (KLON,NSIL,KLEV*2); SUB-LAYER PLANCK FUNCTION GRADIENT
+! PGA    : (KLON,8,2,KLEV)   ; dB/dT-weighted LAYER PADE APPROXIMANTS
+! PGB    : (KLON,8,2,KLEV)   ; dB/dT-weighted LAYER PADE APPROXIMANTS
+! PGASUR, PGBSUR (KLON,8,2)  ; SURFACE PADE APPROXIMANTS
+! PGATOP, PGBTOP (KLON,8,2)  ; T.O.A. PADE APPROXIMANTS
+
+!        IMPLICIT ARGUMENTS :   NONE
+!        --------------------
+
+!     METHOD.
+!     -------
+
+!          1. COMPUTES THE PLANCK FUNCTION ON ALL LEVELS AND HALF LEVELS
+!     FROM A POLYNOMIAL DEVELOPMENT OF PLANCK FUNCTION
+
+!     EXTERNALS.
+!     ----------
+
+!          NONE
+
+!     REFERENCE.
+!     ----------
+
+!        SEE RADIATION'S PART OF THE MODEL'S DOCUMENTATION AND
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS           "
+
+!     AUTHOR.
+!     -------
+!      JEAN-JACQUES MORCRETTE  *ECMWF*
+!      ORIGINAL : 89-07-14
+
+!     MODIFICATIONS.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Janiskova   12-Dec-2005 cleaning and removing divisions
+!-----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOELW    , ONLY : MXIXT    ,NSIL     ,NIPD     ,PDGA     ,&
+ & PDGB     ,TINTP    ,TSTAND   ,TSTP     ,XP  
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KMODE 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDT0(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTAVE(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTL(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB(KLON,NSIL,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBINT(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBSUR(KLON,NSIL) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBTOP(KLON,NSIL) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PDBSL(KLON,NSIL,KLEV*2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGA(KLON,NIPD,2,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGB(KLON,NIPD,2,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGASUR(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGBSUR(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGATOP(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGBTOP(KLON,NIPD,2) 
+
+!-----------------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: INDB(KLON)   , INDS(KLON)
+REAL(KIND=JPRB) :: ZBLAY(KLON,KLEV), ZBLEV(KLON,KLEV+1)&
+ & ,  ZTI(KLON)       , ZTI2(KLON)  
+
+INTEGER(KIND=JPIM) :: ILEV2, INDSU, INDT, INDTO, INDTP, INUE, INUS,&
+ & IXTOX, IXTX, JF, JG, JK, JK1, JK2, JL, JNU  
+
+REAL(KIND=JPRB) :: ZDST1, ZDSTO1, ZDSTOX, ZDSTX
+REAL(KIND=JPRB) :: ZITSTAND, ZITSTP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LWB',0,ZHOOK_HANDLE)
+
+ZITSTAND = 1.0_JPRB/TSTAND
+ZITSTP = 1.0_JPRB/TSTP
+
+!*         1.0     PLANCK FUNCTIONS AND GRADIENTS
+!                  ------------------------------
+
+ILEV2=2*KLEV
+INUS=1
+INUE=NSIL
+IF (KMODE == 2) THEN
+  INUS=3
+  INUE=4
+ENDIF
+
+DO JK = 1 , KLEV+1
+  DO JL = KIDIA,KFDIA
+    PBINT(JL,JK) = 0.0_JPRB
+  ENDDO
+ENDDO
+
+DO JNU=1,NSIL
+  DO JL=KIDIA,KFDIA
+    PBSUR(JL,JNU)=0.0_JPRB
+    PBTOP(JL,JNU)=0.0_JPRB
+  ENDDO
+  DO JK=1,KLEV
+    DO JL=KIDIA,KFDIA
+      PB(JL,JNU,JK)=0.0_JPRB
+    ENDDO
+  ENDDO
+  DO JK=1,ILEV2
+    DO JL=KIDIA,KFDIA
+      PDBSL(JL,JNU,JK)=0.0_JPRB
+    ENDDO
+  ENDDO
+ENDDO
+
+DO JNU=INUS,INUE
+
+!*         1.1   LEVELS FROM SURFACE TO KLEV
+!                ----------------------------
+
+  DO JK = 1 , KLEV
+    DO JL = KIDIA,KFDIA
+      ZTI(JL)=(PTL(JL,JK)-TSTAND)*ZITSTAND
+      ZBLEV(JL,JK) = XP(1,JNU)+ZTI(JL)*(XP(2,JNU)+ZTI(JL)*(XP(3,JNU)&
+       & +ZTI(JL)*(XP(4,JNU)+ZTI(JL)*(XP(5,JNU)+ZTI(JL)*(XP(6,JNU)&
+       & )))))  
+      PBINT(JL,JK)=PBINT(JL,JK)+ZBLEV(JL,JK)
+      PB(JL,JNU,JK)= ZBLEV(JL,JK)
+
+      ZTI2(JL)=(PTAVE(JL,JK)-TSTAND)*ZITSTAND
+      ZBLAY(JL,JK)=XP(1,JNU)+ZTI2(JL)*(XP(2,JNU)+ZTI2(JL)*(XP(3,JNU)&
+       & +ZTI2(JL)*(XP(4,JNU)+ZTI2(JL)*(XP(5,JNU)+ZTI2(JL)*(XP(6,&
+       & JNU)&
+       & )))))  
+    ENDDO
+  ENDDO
+
+!*         1.2   TOP OF THE ATMOSPHERE AND SURFACE
+!                ---------------------------------
+
+  DO JL = KIDIA,KFDIA
+    ZTI(JL)=(PTL(JL,KLEV+1)-TSTAND)*ZITSTAND
+    ZTI2(JL) = (PTL(JL,1) + PDT0(JL) - TSTAND) * ZITSTAND
+    ZBLEV(JL,KLEV+1) = XP(1,JNU)+ZTI(JL)*(XP(2,JNU)+ZTI(JL)*(XP(3,JNU)&
+     & +ZTI(JL)*(XP(4,JNU)+ZTI(JL)*(XP(5,JNU)+ZTI(JL)*(XP(6,JNU)&
+     & )))))  
+    PBSUR(JL,JNU) = XP(1,JNU)+ZTI2(JL)*(XP(2,JNU)+ZTI2(JL)*(XP(3,JNU)&
+     & +ZTI2(JL)*(XP(4,JNU)+ZTI2(JL)*(XP(5,JNU)+ZTI2(JL)*(XP(6,JNU)&
+     & )))))  
+    PBINT(JL,KLEV+1) = PBINT(JL,KLEV+1)+ZBLEV(JL,KLEV+1)
+    PB(JL,JNU,KLEV+1)= ZBLEV(JL,KLEV+1)
+    PBTOP(JL,JNU) = ZBLEV(JL,KLEV+1)
+  ENDDO
+
+!*         1.3   GRADIENTS IN SUB-LAYERS
+!                -----------------------
+
+  DO JK = 1 , KLEV
+    JK2 = 2 * JK
+    JK1 = JK2 - 1
+    DO JL = KIDIA,KFDIA
+      PDBSL(JL,JNU,JK1) = ZBLAY(JL,JK  ) - ZBLEV(JL,JK)
+      PDBSL(JL,JNU,JK2) = ZBLEV(JL,JK+1) - ZBLAY(JL,JK)
+    ENDDO
+  ENDDO
+
+ENDDO
+
+!*         2.0   CHOOSE THE RELEVANT SETS OF PADE APPROXIMANTS
+!                ---------------------------------------------
+
+DO JL=KIDIA,KFDIA
+  ZDSTO1 = (PTL(JL,KLEV+1)-TINTP(1)) * ZITSTP
+  IXTOX = MAX( 1, MIN( MXIXT, INT( ZDSTO1 + 1.0_JPRB ) ) )
+  ZDSTOX = (PTL(JL,KLEV+1)-TINTP(IXTOX))*ZITSTP
+  IF (ZDSTOX < 0.5_JPRB) THEN
+    INDTO=IXTOX
+  ELSE
+    INDTO=IXTOX+1
+  ENDIF
+  INDB(JL)=INDTO
+  ZDST1 = (PTL(JL,1)-TINTP(1)) * ZITSTP
+  IXTX = MAX( 1, MIN( MXIXT, INT( ZDST1 + 1.0_JPRB ) ) )
+  ZDSTX = (PTL(JL,1)-TINTP(IXTX))*ZITSTP
+  IF (ZDSTX < 0.5_JPRB) THEN
+    INDT=IXTX
+  ELSE
+    INDT=IXTX+1
+  ENDIF
+  INDS(JL)=INDT
+ENDDO
+
+DO JF=1,2
+  DO JG=1,NIPD
+    DO JL=KIDIA,KFDIA
+      INDSU=INDS(JL)
+      PGASUR(JL,JG,JF)=PDGA(INDSU,2*JG-1,JF)
+      PGBSUR(JL,JG,JF)=PDGB(INDSU,2*JG-1,JF)
+      INDTP=INDB(JL)
+      PGATOP(JL,JG,JF)=PDGA(INDTP,2*JG-1,JF)
+      PGBTOP(JL,JG,JF)=PDGB(INDTP,2*JG-1,JF)
+    ENDDO
+  ENDDO
+ENDDO
+
+DO JK=1,KLEV
+  DO JL=KIDIA,KFDIA
+    ZDST1 = (PTAVE(JL,JK)-TINTP(1)) * ZITSTP
+    IXTX = MAX( 1, MIN( MXIXT, INT( ZDST1 + 1.0_JPRB ) ) )
+    ZDSTX = (PTAVE(JL,JK)-TINTP(IXTX))*ZITSTP
+    IF (ZDSTX < 0.5_JPRB) THEN
+      INDT=IXTX
+    ELSE
+      INDT=IXTX+1
+    ENDIF
+    INDB(JL)=INDT
+  ENDDO
+
+  DO JF=1,2
+    DO JL=KIDIA,KFDIA
+      INDT=INDB(JL)
+      DO JG=1,NIPD
+        PGA(JL,JG,JF,JK)=PDGA(INDT,2*JG,JF)
+        PGB(JL,JG,JF,JK)=PDGB(INDT,2*JG,JF)
+      ENDDO
+    ENDDO
+  ENDDO
+
+ENDDO
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LWB',1,ZHOOK_HANDLE)
+END SUBROUTINE LWB

@@ -1,0 +1,43 @@
+# Source common environment variables
+. ../common/env_vars
+
+# Pre-empt some common namelist settings.
+# NAMRIP:
+CSTOP="'t36'"
+TSTEP="2400.000000"
+
+# Include common namelists
+. ../common/namelists
+
+cat >> fort.4 << EOF
+&NAMGFL
+YQ_NL%LGP=true,
+YQ_NL%LSP=false,
+YO3_NL%LGP=false,
+YQ_NL%LGPINGP=true,
+YR_NL%NREQIN=-1,
+YS_NL%NREQIN=-1,
+/
+ &NAERAD
+ NRPROMA=-8,
+ CRTABLEDIR="/home/rd/rdx/data/ifs/",
+ LAER3D=.false.,
+ /
+ &NAMMCC
+  LMCCEC=true,
+  LMCCIEC=false,
+ /
+ &NAMFPC
+    CFPFMT='MODEL',
+    NFP3DFS=2,
+    MFP3DFS=130,133,
+    NRFP3S=-99,
+    NFP2DF=1,
+    MFP2DF=152,
+    NFP3DFP=1,
+    MFP3DFP=130,
+    RFP3P=100000.,85000.,70000.,50000.,
+    NFPPHY=0,
+    MFPPHY=129,136,137,139,
+ /
+EOF

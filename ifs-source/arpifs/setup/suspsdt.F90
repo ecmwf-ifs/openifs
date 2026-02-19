@@ -1,0 +1,689 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUSPSDT(YDGEOMETRY,YDRIP,YDCONF,YDSPPT)
+
+!**** *SUSPSDT*  - Initialize stochastically perturbed parametrization tendency scheme
+!                     (SPPT a.k.a. stochastic physics with a spectral pattern generator)
+!
+!     Purpose.
+!     --------
+!           Initialize stochastically perturbed parametrization tendency scheme
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUSPSDT
+
+!        Explicit arguments :
+!        --------------------
+!        None
+
+!        Implicit arguments :
+!        --------------------
+!        MODULE YOMSPSDT
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!        M. Leutbecher,  ECMWF
+!        2009-01-02   *Original*
+
+!     Modifications.
+!     --------------
+!        2009-01-03   M Leutbecher:     Refinements
+!        2009-11-05   M Leutbecher:     Supersaturation treatment and multi-scale version
+!        2012-07-31   F Bouttier:       Support for LAM geometry
+!        K. Yessad (July 2014): Move some variables.
+!        2014-03-05   M Leutbecher:     Changed defaults
+!        2015-10-23   S Lang      :     Added LSPPTGFIX
+!        2015-10-23   S Lang      :     Introduced frequency for resetting the seed
+!        2016-Jan     SJ Lock     :     Generalising SPPT for indepdendent patterns ("iSPPT")
+!        2016-Jul     SJ Lock     :     Enabling iSPPT option: MPSDT(i)=0
+!        2016-Oct     SJ Lock     :     Enabled option to remove clear-skies radiation from perturbed tendencies
+!        2017-Feb      S Lang     :     Added modification to cycle pattern in data assimilation
+!        2017-Mar     SJ Lock     :     Changed defaults
+!        2017-Oct     SJ Lock     :     Options to reduce frequency of pattern updates
+!        2019-Mar:     S Lang     :     Added option to shift seed
+!        2022-May      S Lang     :     Enabled option to remove cloud sat adjustement from perturbed tendencies
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD        , ONLY : GEOMETRY
+USE PARKIND1            , ONLY : JPIM, JPRB, JPRD
+USE YOMHOOK             , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMGRIB             , ONLY : NENSFNB
+USE YOMCST              , ONLY : RA
+USE YOMLUN              , ONLY : NULOUT, NULNAM
+USE YOMSPSDT            , ONLY : TSPPT_CONFIG, TSPPT_DATA, NMAXSCALES_SDT, NMAXINDPAT_SDT, NWRMAX_SDT
+USE YOMCT3              , ONLY : NSTEP
+USE YOMRIP              , ONLY : TRIP
+USE YOM_YGFL            , ONLY : YGFL
+USE SPECTRAL_ARP_MOD    , ONLY : ALLOCATE_ARP, SET_ARP2D, EVOLVE_ARP, SUM_ARPS
+USE SPECTRAL_FIELDS_MOD , ONLY : SPECTRAL_NORM
+USE GRIDPOINT_FIELDS_MIX, ONLY : ALLOCATE_GRID
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)     , INTENT(INOUT) :: YDGEOMETRY
+TYPE(TRIP)         , INTENT(INOUT) :: YDRIP
+TYPE(TSPPT_CONFIG) , INTENT(OUT)   :: YDCONF
+TYPE(TSPPT_DATA)   , INTENT(OUT)   :: YDSPPT
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+INTEGER(KIND=JPIM), DIMENSION(:),     ALLOCATABLE:: IGRIBSP, IGRIBGP
+REAL(KIND=JPRB),    DIMENSION(:),     ALLOCATABLE:: ZCHI
+REAL(KIND=JPRB),    DIMENSION(:,:),   ALLOCATABLE:: ZPHI2D
+REAL(KIND=JPRB),    DIMENSION(:,:,:), ALLOCATABLE:: ZSDEV2D
+INTEGER(KIND=JPIM) :: JN, JSCALE, JPATT, INWAVE, I2D, J2D
+INTEGER(KIND=JPIM) :: ISEED, ISEED_SDT
+REAL(KIND=JPRB)    :: ZXWC_KAPPA_T(NMAXSCALES_SDT)
+REAL(KIND=JPRB)    :: ZSDEV_SDT(NMAXSCALES_SDT,NMAXINDPAT_SDT)
+REAL(KIND=JPRB)    :: ZTAU_SDT(NMAXSCALES_SDT)
+REAL(KIND=JPRB)    :: ZGAMMAN, ZPHI,  ZCONSTF0
+REAL(KIND=JPRB)    :: ZDSIGMA_M3, ZDPRESS_M3
+
+!for namelist namspsdt:
+LOGICAL            :: LSPSDT, LCLIP_SPEC_SDT, LCLIP_GRID_SDT, LQPERTLIMIT2, &
+                    & LTAPER_BL0, LTAPER_ST0, &
+                    & LUSESETRAN_SDT, LRESETSEED_SDT, LABSTIMSEED_SDT,&
+                    & LWRITE_ARP, LRDPATINIT_SDT, LWRPATTRUN_SDT, LSPPTGFIX, &
+                    & LRADCLR_SDT, LSATADJ_SDT
+
+LOGICAL, DIMENSION(NMAXINDPAT_SDT) ::  LTAPER_BLI, LTAPER_STI
+LOGICAL                            ::  LLSPPT1
+
+INTEGER(KIND=JPIM) :: NSCALES_SDT, NSEED_SDT, SHIFTSEED_SDT, &
+                    & NCLIP_KIND_SDT, NQSAT_SDT, NWRPATTRUN_SDT, &
+                    & NWAV_TESTSPEC_SDT, RESETSEEDFRQ_SDT, NPATFR
+
+INTEGER(KIND=JPIM), DIMENSION(NWRMAX_SDT) :: NHOUR_PATTRUN
+INTEGER(KIND=JPIM), DIMENSION(NWRMAX_SDT) :: NSTEP_PATTRUN
+
+INTEGER(KIND=JPIM), DIMENSION(NMAXINDPAT_SDT) :: MPSDT
+INTEGER(KIND=JPIM), DIMENSION(4000) ::  NWN_TESTSPEC_SDT
+
+REAL(KIND=JPRB), DIMENSION(NMAXSCALES_SDT) :: TAU_SDT, XLCOR_SDT, SDEV_SDT, &
+                    & SDEV2_SDT, SDEV3_SDT, SDEV4_SDT, SDEV5_SDT, SDEV6_SDT
+REAL(KIND=JPRB)    :: XCLIPM_SDT(NMAXINDPAT_SDT), XCLIP_RATIO_SDT(NMAXINDPAT_SDT), &
+                    & ZSDEVTOT_SDT, &
+                    & XMEANRED_THICKNESS_SDT, &
+                    & XSIGMATOP , XSIGMABOT, XPRESSTOP_ST0 , XPRESSBOT_ST0, &
+                    & XSPPTGFIXRLX
+
+CHARACTER(LEN=256) :: CIPATINIT_SDT, COPATTRUN_SDT, COPATSP_SDT, COPATGP_SDT, CLTEMP, &
+                    & CSPEC_SHAPE_SDT
+CHARACTER(LEN=256), DIMENSION(NMAXINDPAT_SDT) :: CLPSDT
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "fcttim.func.h"
+#include "namspsdt.nam.h"
+#include "posnam.intfb.h"
+#include "setran.intfb.h"
+#include "read_spec_grib.intfb.h"
+#include "write_spec_grib.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUSPSDT',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, YDMP=>YDGEOMETRY%YRMP)
+ASSOCIATE(NSMAX=>YDDIM%NSMAX, &
+ & TDT=>YDRIP%TDT, TSTEP=>YDRIP%TSTEP)
+
+!     ------------------------------------------------------------------
+
+!     -----------------------------------------------------------------
+!*    1. Set default values for SPPT scheme
+!     -----------------------------------------------------------------
+LSPSDT         = .FALSE.
+LSPPTGFIX      = .FALSE.
+LRADCLR_SDT    = .FALSE.
+LSATADJ_SDT    = .FALSE.
+LCLIP_SPEC_SDT = .TRUE.
+LCLIP_GRID_SDT = .TRUE.
+LQPERTLIMIT2   = .TRUE.
+
+LWRITE_ARP     = .FALSE.
+COPATSP_SDT    = 'sppt_pattern_sp'
+COPATGP_SDT    = 'sppt_pattern_gp'
+
+XMEANRED_THICKNESS_SDT = 200.E2_JPRB
+NQSAT_SDT      = 3
+
+!
+!   default settings for patterns
+!
+LUSESETRAN_SDT = .TRUE.
+LRESETSEED_SDT = .FALSE.
+RESETSEEDFRQ_SDT = 1_JPIM
+NPATFR           = 1_JPIM
+LABSTIMSEED_SDT = .FALSE.
+CLPSDT(1:6)     = (/ "RAD", "VDF", "CON", "CLD", "NGW", "MOX" /)
+MPSDT(1:6)     = (/  1,     1,     1,     1,     1,     1    /)
+NSEED_SDT      = NENSFNB+1000
+SHIFTSEED_SDT  = 0_JPIM
+
+NSCALES_SDT     = 1
+CSPEC_SHAPE_SDT = 'WeaverCourtier'
+!                         6 h,         3d,           30d,          90d,          365d
+SDEV_SDT( 1:5)       = (/ 0.42_JPRB,   0.14_JPRB,    0.048_JPRB,   0.05_JPRB,    0.025_JPRB /)
+TAU_SDT(  1:5)       = (/ 2.16E4_JPRB, 2.592E5_JPRB, 2.592E6_JPRB, 7.776E6_JPRB, 3.1536E7_JPRB /)
+XLCOR_SDT(1:5)       = (/ 500.E3_JPRB, 1000.E3_JPRB, 2000.E3_JPRB, 2000.E3_JPRB, 2000.E3_JPRB /)
+
+SDEV2_SDT = SDEV_SDT   !Multiple 1D arrays used to initialise YDSPPT%SDEV_SDT(:,:)
+SDEV3_SDT = SDEV_SDT   ! in order to avoid using 2d arrays in scripts
+SDEV4_SDT = SDEV_SDT
+SDEV5_SDT = SDEV_SDT
+SDEV6_SDT = SDEV_SDT
+
+NCLIP_KIND_SDT       = 1
+XCLIP_RATIO_SDT(1:6) = 1.8_JPRB      ! used if NCLIP_KIND_SDT=0
+XCLIPM_SDT(1:6)      = 1.0_JPRB      ! used if NCLIP_KIND_SDT=1
+
+LRDPATINIT_SDT  = .FALSE.
+LWRPATTRUN_SDT  = .FALSE.
+NWRPATTRUN_SDT  = 1
+NHOUR_PATTRUN(1:NWRMAX_SDT) = -1000 ! in VAREPS this is the hour since initialization of this leg
+NSTEP_PATTRUN(1:NWRMAX_SDT) = -1000
+CIPATINIT_SDT   = 'sppt_pattern_0'
+COPATTRUN_SDT   = 'sppt_pattern_trun'
+
+LTAPER_BL0      = .TRUE.
+LTAPER_BLI(:)   = .TRUE.
+XSIGMATOP       = 0.95_JPRB
+XSIGMABOT       = 1.0_JPRB
+
+LTAPER_ST0      = .FALSE.
+LTAPER_STI(:)   = .TRUE.
+XPRESSTOP_ST0   = 50.E2_JPRB
+XPRESSBOT_ST0   = 100.E2_JPRB
+
+XSPPTGFIXRLX    = 0.8_JPRB
+
+NWAV_TESTSPEC_SDT  = 1
+!ALLOCATE(NWN_TESTSPEC_SDT(NSMAX+1))
+NWN_TESTSPEC_SDT(:)= 20
+
+
+!     -----------------------------------------------------------------
+!*    2. Read Namelist
+!     -----------------------------------------------------------------
+CALL POSNAM(NULNAM,'NAMSPSDT')
+READ(NULNAM,NAMSPSDT)
+
+YDCONF%LSPSDT                 = LSPSDT
+YDCONF%LSPPT1                 = LSPSDT      !=> "Standard SPPT" (default): MPSDT=(1,1,1,1,1,1)
+YDCONF%LRADCLR_SDT            = LRADCLR_SDT
+YDCONF%LSATADJ_SDT            = LSATADJ_SDT
+YDCONF%LSPPTGFIX              = LSPPTGFIX
+YDCONF%SDEV_SDT(:,1)          = SDEV_SDT
+YDCONF%SDEV_SDT(:,2)          = SDEV2_SDT
+YDCONF%SDEV_SDT(:,3)          = SDEV3_SDT
+YDCONF%SDEV_SDT(:,4)          = SDEV4_SDT
+YDCONF%SDEV_SDT(:,5)          = SDEV5_SDT
+YDCONF%SDEV_SDT(:,6)          = SDEV6_SDT
+YDCONF%TAU_SDT                = TAU_SDT
+YDCONF%XLCOR_SDT              = XLCOR_SDT
+YDCONF%NSCALES_SDT            = NSCALES_SDT
+YDCONF%CSPEC_SHAPE_SDT        = CSPEC_SHAPE_SDT
+YDCONF%LCLIP_SPEC_SDT         = LCLIP_SPEC_SDT
+YDCONF%LCLIP_GRID_SDT         = LCLIP_GRID_SDT
+YDCONF%NCLIP_KIND_SDT         = NCLIP_KIND_SDT
+YDCONF%XCLIP_RATIO_SDT        = XCLIP_RATIO_SDT
+YDCONF%XCLIPM_SDT             = XCLIPM_SDT
+YDCONF%LQPERTLIMIT2           = LQPERTLIMIT2
+YDCONF%NQSAT_SDT              = NQSAT_SDT
+YDCONF%XMEANRED_THICKNESS_SDT = XMEANRED_THICKNESS_SDT
+YDCONF%LTAPER_BL0             = LTAPER_BL0
+YDCONF%LTAPER_BLI             = LTAPER_BLI
+YDCONF%XSIGMATOP              = XSIGMATOP
+YDCONF%XSIGMABOT              = XSIGMABOT
+YDCONF%LTAPER_ST0             = LTAPER_ST0
+YDCONF%LTAPER_STI             = LTAPER_STI
+YDCONF%XPRESSTOP_ST0          = XPRESSTOP_ST0
+YDCONF%XPRESSBOT_ST0          = XPRESSBOT_ST0
+YDCONF%LUSESETRAN_SDT         = LUSESETRAN_SDT
+YDCONF%LRESETSEED_SDT         = LRESETSEED_SDT
+YDCONF%RESETSEEDFRQ_SDT       = RESETSEEDFRQ_SDT
+YDCONF%LABSTIMSEED_SDT        = LABSTIMSEED_SDT
+YDCONF%NPATFR                 = NPATFR
+YDCONF%LWRITE_ARP             = LWRITE_ARP
+YDCONF%LRDPATINIT_SDT         = LRDPATINIT_SDT
+YDCONF%LWRPATTRUN_SDT         = LWRPATTRUN_SDT
+YDCONF%NHOUR_PATTRUN(1:NWRMAX_SDT) = NHOUR_PATTRUN(1:NWRMAX_SDT)
+YDCONF%NSTEP_PATTRUN(1:NWRMAX_SDT) = NSTEP_PATTRUN(1:NWRMAX_SDT)
+YDCONF%NWRPATTRUN_SDT         = NWRPATTRUN_SDT
+YDCONF%NWAV_TESTSPEC_SDT      = NWAV_TESTSPEC_SDT
+YDCONF%NWN_TESTSPEC_SDT       = NWN_TESTSPEC_SDT
+
+YDCONF%XSPPTGFIXRLX           = XSPPTGFIXRLX
+
+YDSPPT%MPSDT                  = MPSDT
+
+!     -----------------------------------------------------------------
+!*    3. Set derived variables
+!     -----------------------------------------------------------------
+
+IF (YDCONF%LSPSDT) THEN   !SPPT active
+  ! Count number of independent patterns required
+  I2D=0
+  LLSPPT1=YDCONF%LSPPT1
+  DO J2D=1, NMAXINDPAT_SDT
+    IF (YDSPPT%MPSDT(J2D) > (I2D+1) .OR. YDSPPT%MPSDT(J2D) < 0) THEN
+      CALL ABOR1('    SUSPSDT: MPSDT(I) must be >= 0 and must fill consecutive integers, e.g. (1,0,2,1,3,4)')
+    ELSEIF (YDSPPT%MPSDT(J2D) == (I2D+1)) THEN
+     I2D=I2D+1
+    ENDIF
+    IF (YDSPPT%MPSDT(J2D) /= 1) THEN
+      LLSPPT1=.FALSE.
+    ENDIF
+  ENDDO
+  YDSPPT%N2D=I2D
+  YDCONF%LSPPT1=LLSPPT1   ! .T. => "Standard SPPT": MPSDT == (1,1,1,1,1,1)
+  !
+  ALLOCATE(IGRIBSP(YDCONF%NSCALES_SDT))
+  DO JSCALE=1, YDCONF%NSCALES_SDT
+    YDCONF%XWC_KAPPA_T( JSCALE )= 0.5_JPRB * (YDCONF%XLCOR_SDT( JSCALE )/RA)**2
+    IGRIBSP(JSCALE)= 213000+JSCALE
+  ENDDO
+  DO J2D=1,YDSPPT%N2D
+    ZSDEVTOT_SDT=0._JPRB
+    DO JSCALE=1, YDCONF%NSCALES_SDT
+      ZSDEVTOT_SDT=ZSDEVTOT_SDT + YDCONF%SDEV_SDT(JSCALE,J2D)**2
+    ENDDO
+    ZSDEVTOT_SDT=SQRT(ZSDEVTOT_SDT)
+    YDCONF%SDEVTOT_SDT(J2D)=ZSDEVTOT_SDT
+  ENDDO
+  !
+  IF (YDCONF%NCLIP_KIND_SDT==1) THEN
+    DO J2D=1,YDSPPT%N2D
+      YDCONF%XCLIP_RATIO_SDT(J2D)=YDCONF%XCLIPM_SDT(J2D)/YDCONF%SDEVTOT_SDT(J2D)
+    ENDDO
+  ENDIF
+  !
+  IF (YDCONF%LWRPATTRUN_SDT) THEN
+    DO JPATT=1, YDCONF%NWRPATTRUN_SDT
+      YDCONF%NSTEP_PATTRUN(JPATT) = NINT(YDCONF%NHOUR_PATTRUN(JPATT)*3600/TDT)
+    ENDDO
+  ENDIF
+  !
+  IF (YDCONF%NPATFR<0) THEN
+    YDCONF%NPATFR=NINT(-YDCONF%NPATFR*3600/TDT)
+  ENDIF
+  IF (YDCONF%NPATFR==0) THEN
+    YDCONF%NPATFR=1
+  ENDIF
+
+  !
+  !     tapering in boundary layer
+  !
+  ZDSIGMA_M3 = 1._JPRB/(YDCONF%XSIGMABOT-YDCONF%XSIGMATOP)**3
+
+  YDCONF%XTAPER3 =  2._JPRB                      *ZDSIGMA_M3
+  YDCONF%XTAPER2 = -3._JPRB*(YDCONF%XSIGMATOP+YDCONF%XSIGMABOT)*ZDSIGMA_M3
+  YDCONF%XTAPER1 =  6._JPRB* YDCONF%XSIGMATOP*YDCONF%XSIGMABOT *ZDSIGMA_M3
+  YDCONF%XTAPER0 =  YDCONF%XSIGMABOT**2 * &
+       &  (YDCONF%XSIGMABOT - 3._JPRB*YDCONF%XSIGMATOP) *ZDSIGMA_M3
+  !
+  !     tapering above tropopause
+  !
+  ZDPRESS_M3=1./(YDCONF%XPRESSBOT_ST0-YDCONF%XPRESSTOP_ST0)**3
+
+  YDCONF%XTAPER3_ST0 = -2._JPRB*ZDPRESS_M3
+  YDCONF%XTAPER2_ST0 =  3._JPRB*(YDCONF%XPRESSTOP_ST0+YDCONF%XPRESSBOT_ST0)*ZDPRESS_M3
+  YDCONF%XTAPER1_ST0 = -6._JPRB* YDCONF%XPRESSTOP_ST0*YDCONF%XPRESSBOT_ST0 *ZDPRESS_M3
+  YDCONF%XTAPER0_ST0 =  1._JPRB -YDCONF%XPRESSBOT_ST0**2 * &
+             &  (YDCONF%XPRESSBOT_ST0-3._JPRB*YDCONF%XPRESSTOP_ST0) *ZDPRESS_M3
+
+  !KEYMASK switches for use in CALLPAR (DO NOT CHANGE!)
+  IF (.NOT. ASSOCIATED(YDCONF%LACTIVEQ_SDT)) ALLOCATE(YDCONF%LACTIVEQ_SDT)
+  IF (.NOT. ASSOCIATED(YDCONF%LACTIVEO_SDT)) ALLOCATE(YDCONF%LACTIVEO_SDT)
+  YDCONF%LACTIVEQ_SDT = .TRUE.     ! .T.: Q arrays are active
+  YDCONF%LACTIVEO_SDT = .FALSE.    ! .F.: all others (O3, A, Qx) are inactive
+
+ENDIF
+!     -----------------------------------------------------------------
+!*    4. Write settings to NULOUT
+!     -----------------------------------------------------------------
+WRITE(NULOUT,'('' >> Sub SUSPSDT '')')
+WRITE(NULOUT,'(''      stochastically perturbed parametrization tendency scheme (SPPT), LSPSDT= '',L1)') YDCONF%LSPSDT
+IF (YDCONF%LSPSDT) THEN
+  WRITE(NULOUT,'(''      Constrain glob av pert. tendencies to unpert. ones LSPPTGFIX= '',L1)') YDCONF%LSPPTGFIX
+  WRITE(NULOUT,'(''      LSPPTGFIX relaxation factor XSPPTGFIXRLX= '',E14.5)') YDCONF%XSPPTGFIXRLX
+  !Clear-skies radiation:
+  WRITE(NULOUT,'(''      Perturb clear-skies radiation tendencies, LRADCLR_SDT: '',L1)') YDCONF%LRADCLR_SDT
+  !Saturation adjustment
+  WRITE(NULOUT,'(''      Perturb saturation adjustment tendencies, LSATADJ_SDT: '',L1)') YDCONF%LSATADJ_SDT
+  !Number of independent patterns:
+  WRITE(NULOUT,'(''      Independent patterns: total, N2D='',I3)') YDSPPT%N2D
+  IF (YDSPPT%N2D > NMAXINDPAT_SDT) THEN
+    WRITE(NULOUT,'(''NMAXINDPAT_SDT='',I2)') NMAXINDPAT_SDT
+    CALL ABOR1('    SUSPSDT: YDSPPT%N2D > NMAXINDPAT_SDT')
+  ENDIF
+
+  WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+  WRITE(NULOUT,'(''      Pattern number for each process:'')')
+  DO J2D=1,NMAXINDPAT_SDT
+    WRITE(NULOUT,'(''      MPSDT( '',A3,'' ) ='',I3)') CLPSDT(J2D),YDSPPT%MPSDT(J2D)
+  ENDDO
+  WRITE(NULOUT,'(''      "Standard SPPT" (.F. => MPSDT /= 111111): LSPPT1='',L1)') YDCONF%LSPPT1
+
+  WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+  WRITE(NULOUT,'(''      NSCALES_SDT='',I2)') YDCONF%NSCALES_SDT
+  IF (YDCONF%NSCALES_SDT > NMAXSCALES_SDT) THEN
+    WRITE(NULOUT,'(''NMAXSCALES_SDT='',I2)') NMAXSCALES_SDT
+    CALL ABOR1('    SUSPSDT: NSCALES_SDT > NMAXSCALES_SDT')
+  ENDIF
+
+  WRITE(NULOUT,'(''      SCALE'',4A14)') 'SDEV_SDT','TAU_SDT','XLCOR_SDT','XWC_KAPPA_T'
+  DO J2D=1,YDSPPT%N2D
+    WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+    WRITE(NULOUT,'(''        Pattern '',I3,'':'')') J2D
+    DO JSCALE=1, YDCONF%NSCALES_SDT
+      WRITE(NULOUT,'(''      '',I5,4E14.5)') JSCALE,&
+         & YDCONF%SDEV_SDT(JSCALE,J2D), YDCONF%TAU_SDT(JSCALE),&
+         & YDCONF%XLCOR_SDT(JSCALE), YDCONF%XWC_KAPPA_T(JSCALE)
+    ENDDO
+    WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+    WRITE(NULOUT,'(''        SDEVTOT_SDT='',E20.14)') YDCONF%SDEVTOT_SDT(J2D)
+  ENDDO
+
+  WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+  WRITE(NULOUT,'(''      CSPEC_SHAPE_SDT='',A)') TRIM(YDCONF%CSPEC_SHAPE_SDT)
+  IF (YDCONF%CSPEC_SHAPE_SDT=='testSpectrum') THEN
+    WRITE(NULOUT,'(''  testSpectrum: NWAV_TESTSPEC_SDT='',I5)') YDCONF%NWAV_TESTSPEC_SDT
+    WRITE(NULOUT,'(10X,10I5)') YDCONF%NWN_TESTSPEC_SDT(1:YDCONF%NWAV_TESTSPEC_SDT)
+  ENDIF
+
+  WRITE(NULOUT,'(''      LCLIP_SPEC_SDT='',L1,'', LCLIP_GRID_SDT='',L1)')&
+       &                 YDCONF%LCLIP_SPEC_SDT, YDCONF%LCLIP_GRID_SDT
+
+  IF (YDCONF%LRDPATINIT_SDT) THEN
+    WRITE(NULOUT,'(''      LRDPATINIT_SDT='',L1,'', CIPATINIT_SDT='',A)')&
+         &                 YDCONF%LRDPATINIT_SDT, TRIM(CIPATINIT_SDT)//"*"
+  ELSE
+    WRITE(NULOUT,'(''      LRDPATINIT_SDT='',L1)') YDCONF%LRDPATINIT_SDT
+  ENDIF
+  IF (YDCONF%LWRPATTRUN_SDT) THEN
+    WRITE(NULOUT,'(''      LWRPATTRUN_SDT='',L1,'', COPATTRUN_SDT='',A)')&
+       &                 YDCONF%LWRPATTRUN_SDT, TRIM(COPATTRUN_SDT)//"*"
+  ELSE
+    WRITE(NULOUT,'(''      LWRPATTRUN_SDT='',L1)') YDCONF%LWRPATTRUN_SDT
+  ENDIF
+
+  WRITE(NULOUT,'(''      LQPERTLIMIT2='',L1,'', NQSAT_SDT='',I5)')&
+       &  LQPERTLIMIT2, NQSAT_SDT
+  WRITE(NULOUT,'(''      XMEANRED_THICKNESS_SDT='',E14.5)') &
+       &  XMEANRED_THICKNESS_SDT
+  DO J2D=1,YDSPPT%N2D
+    WRITE(NULOUT,'(''      XCLIP_RATIO_SDT( pattern'',I3,'') ='',F12.5)') J2D,YDCONF%XCLIP_RATIO_SDT(J2D)
+  ENDDO
+  WRITE(NULOUT,'(''      NPATFR='',I6)') YDCONF%NPATFR
+  WRITE(NULOUT,'(''      LUSESETRAN_SDT='',L1,'', LRESETSEED_SDT='',L1)') &
+       & YDCONF%LUSESETRAN_SDT, YDCONF%LRESETSEED_SDT
+  WRITE(NULOUT,'(''      RESETSEEDFRQ_SDT='',I12)')  YDCONF%RESETSEEDFRQ_SDT
+  WRITE(NULOUT,'(''      LABSTIMSEED_SDT='',L1)')  YDCONF%LABSTIMSEED_SDT
+  IF (YDCONF%LABSTIMSEED_SDT.AND..NOT.YDCONF%LUSESETRAN_SDT) THEN
+    CALL ABOR1('RANDOM SEED SETUP DOES NOT MAKE SENSE')
+  ENDIF
+  WRITE(NULOUT,'(''  SHIFTSEED_SDT='',I12)')  SHIFTSEED_SDT
+  WRITE(NULOUT,'(''      NSEED_SDT='',I12)')  NSEED_SDT
+  WRITE(NULOUT,'(''     LWRITE_ARP='',L1)')  YDCONF%LWRITE_ARP
+
+  IF (YDCONF%LWRPATTRUN_SDT) THEN
+    WRITE(NULOUT,'(''        NWRMAX_SDT='',I8,'', NWRPATTRUN_SDT='',I8)') &
+         & NWRMAX_SDT, YDCONF%NWRPATTRUN_SDT
+    IF (YDCONF%NWRPATTRUN_SDT > NWRMAX_SDT) THEN
+      CALL ABOR1('    NWRPATTRUN_SDT > NWRMAX_SDT')
+    ENDIF
+    DO JPATT=1,YDCONF%NWRPATTRUN_SDT
+      WRITE(NULOUT,'(''        NHOUR_PATTRUN(xx)='',I8,'', NSTEP_PATTRUN(xx)='',I8)') &
+           & YDCONF%NHOUR_PATTRUN(JPATT), YDCONF%NSTEP_PATTRUN(JPATT)
+    ENDDO
+  ENDIF
+
+  WRITE(NULOUT,'(''      LWRITE_ARP='',L1)')  YDCONF%LWRITE_ARP
+  IF (YDCONF%LWRITE_ARP) THEN
+    WRITE(NULOUT,'(''      COPATSP_SDT='',A)') TRIM(COPATSP_SDT)//"_*"
+    WRITE(NULOUT,'(''      COPATGP_SDT='',A)') TRIM(COPATGP_SDT)//"_*"
+  ENDIF
+
+  WRITE(NULOUT,'(''      LTAPER_BL0='',L1)')  YDCONF%LTAPER_BL0
+  IF (YDCONF%LTAPER_BL0) THEN
+    DO J2D=1,YDSPPT%N2D
+      WRITE(NULOUT,'(''      LTAPER_BLI( pattern'',I3,'') ='',L1)') J2D,YDCONF%LTAPER_BLI(J2D)
+    ENDDO
+    WRITE(NULOUT,'(''      XSIGMATOP='',F12.5,'', XSIGMABOT='',F12.5)')&
+         & YDCONF%XSIGMATOP, YDCONF%XSIGMABOT
+    IF (YDCONF%XSIGMATOP > YDCONF%XSIGMABOT) THEN
+      CALL ABOR1('SUSPSDT: XSIGMATOP > XSIGMABOT is not allowed for tapering.')
+    ENDIF
+    WRITE(NULOUT,'(''      XTAPER3='',E14.5,'', XTAPER2='',E14.5)')&
+         & YDCONF%XTAPER3, YDCONF%XTAPER2
+    WRITE(NULOUT,'(''      XTAPER1='',E14.5,'', XTAPER0='',E14.5)')&
+         & YDCONF%XTAPER1, YDCONF%XTAPER0
+  ENDIF
+  WRITE(NULOUT,'(''      LTAPER_ST0='',L1)')  YDCONF%LTAPER_ST0
+  IF (YDCONF%LTAPER_ST0) THEN
+    DO J2D=1,YDSPPT%N2D
+      WRITE(NULOUT,'(''      LTAPER_STI( pattern'',I3,'') ='',L1)') J2D,YDCONF%LTAPER_STI(J2D)
+    ENDDO
+    WRITE(NULOUT,'(''      XPRESSTOP_ST0='',F12.5,'', XPRESSBOT_ST0='',F12.5)')&
+         & YDCONF%XPRESSTOP_ST0, YDCONF%XPRESSBOT_ST0
+    IF (YDCONF%XPRESSTOP_ST0 > YDCONF%XPRESSBOT_ST0) THEN
+      CALL ABOR1('SUSPSDT: XPRESSTOP_ST0 > XPRESSBOT_ST0 is not allowed for tapering.')
+    ENDIF
+    WRITE(NULOUT,'(''      XTAPER3_ST0='',E14.5,'', XTAPER2_ST0='',E14.5)')&
+         & YDCONF%XTAPER3_ST0, YDCONF%XTAPER2_ST0
+    WRITE(NULOUT,'(''      XTAPER1_ST0='',E14.5,'', XTAPER0_ST0='',E14.5)')&
+         & YDCONF%XTAPER1_ST0, YDCONF%XTAPER0_ST0
+  ENDIF
+  WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+
+ELSE
+  YDCONF%LQPERTLIMIT2   =.FALSE.
+  WRITE(NULOUT,'(''      LQPERTLIMIT2='',L1)')  YDCONF%LQPERTLIMIT2
+ENDIF
+
+!Switch for SPPT perturbations of CHEM tendencies (activated via namgfl.nam.h / sugfl1.F90)
+!**Note: chem/aerosol perturbations are ONLY active if both LSPSDT and LSPPTGFL are active
+WRITE(NULOUT,'(''      SPPT perturbations to CHEM tendencies (LSPPTGFL), '',L1)') YDCONF%LSPSDT .AND. YGFL%LSPPTGFL
+WRITE(NULOUT,'(''      ---------------------------------------------------------------------'')')
+
+!     -----------------------------------------------------------------
+!*    5. Initialize spectral AR(1) process
+!     -----------------------------------------------------------------
+!
+IF (YDCONF%LSPSDT) THEN
+  ALLOCATE(IGRIBGP(1))
+  IGRIBGP=101
+
+  ALLOCATE(ZCHI(0:NSMAX))
+  ALLOCATE(ZSDEV2D(0:NSMAX,YDCONF%NSCALES_SDT,YDSPPT%N2D))
+  ALLOCATE(ZPHI2D( 0:NSMAX,YDCONF%NSCALES_SDT))
+
+  ZSDEV_SDT(1:YDCONF%NSCALES_SDT,1:YDSPPT%N2D) = YDCONF%SDEV_SDT(1:YDCONF%NSCALES_SDT,1:YDSPPT%N2D)
+  ZTAU_SDT(1:YDCONF%NSCALES_SDT)     = YDCONF%TAU_SDT(1:YDCONF%NSCALES_SDT)
+  ZXWC_KAPPA_T(1:YDCONF%NSCALES_SDT) = YDCONF%XWC_KAPPA_T(1:YDCONF%NSCALES_SDT)
+
+  DO JSCALE=1, YDCONF%NSCALES_SDT
+    ZCHI    =  0._JPRB
+    SELECT CASE (YDCONF%CSPEC_SHAPE_SDT)
+    !CASE ('PowerLaw')
+    !  DO IN=1,NSMAX
+    !    ZCHI(IN)=IN**REXPONENT ! set mean spectral power as a function of n
+    !  ENDDO
+    CASE ('testSpectrum')
+      IF (YDCONF%NWAV_TESTSPEC_SDT>NSMAX+1) THEN
+        CALL ABOR1('suspsdt: NWAV_TESTSPEC_SDT>NSMAX+1')
+      ENDIF
+      DO JN=1,YDCONF%NWAV_TESTSPEC_SDT
+        INWAVE=YDCONF%NWN_TESTSPEC_SDT(JN)
+        IF ((INWAVE>=0).AND.(INWAVE<=NSMAX)) THEN
+          ZCHI(INWAVE)=SQRT(1._JPRB/REAL(2*INWAVE+1,KIND=JPRB))
+        ELSE
+          WRITE(NULOUT,'(''  testSpectrum: wavenumber '',I5,'' omitted.'')')
+        ENDIF
+      ENDDO
+    CASE ('WeaverCourtier1')
+      DO JN=1,NSMAX
+        ZCHI(JN)=EXP(-0.5* ZXWC_KAPPA_T(JSCALE) * REAL(JN*(JN+1),KIND=JPRB))
+      ENDDO
+    CASE ('WeaverCourtier')
+      DO JN=0,NSMAX
+        ZCHI(JN)=EXP(-0.5* ZXWC_KAPPA_T(JSCALE) * REAL(JN*(JN+1),KIND=JPRB))
+      ENDDO
+    CASE DEFAULT
+      WRITE(NULOUT,'(''CSPEC_SHAPE_SDT='',A)') TRIM(CSPEC_SHAPE_SDT)
+      CALL ABOR1('SUSPSDT: unknown shape of variance spectrum.')
+    END SELECT
+
+    ZGAMMAN  =  0._JPRB
+    DO JN=1,NSMAX
+      ZGAMMAN= ZGAMMAN + (2*JN+1)*ZCHI(JN)**2
+    ENDDO
+    ZPHI    =  EXP(-TDT*YDCONF%NPATFR/TAU_SDT(JSCALE))
+    DO J2D=1,YDSPPT%N2D
+      ZCONSTF0= SQRT(0.5_JPRB*(1.0_JPRB - ZPHI*ZPHI))*ZSDEV_SDT(JSCALE,J2D)/SQRT(ZGAMMAN)
+      ZSDEV2D(:,JSCALE,J2D) = ZCONSTF0*ZCHI(:)
+    ENDDO
+    ZPHI2D(:, JSCALE) = ZPHI
+  ENDDO
+
+  IF (ASSOCIATED(YDSPPT%NSEED_SDT))  DEALLOCATE(YDSPPT%NSEED_SDT)
+  IF (ASSOCIATED(YDSPPT%YSPSDT_AR1)) DEALLOCATE(YDSPPT%YSPSDT_AR1)
+  IF (ASSOCIATED(YDSPPT%YGPSDT))     DEALLOCATE(YDSPPT%YGPSDT)
+  IF (ASSOCIATED(YDSPPT%YGPSDT0))     DEALLOCATE(YDSPPT%YGPSDT0)
+  IF (ASSOCIATED(YDSPPT%YGPSDT1))     DEALLOCATE(YDSPPT%YGPSDT1)
+  ALLOCATE(YDSPPT%NSEED_SDT(YDSPPT%N2D))
+  ALLOCATE(YDSPPT%YSPSDT_AR1(YDSPPT%N2D))
+  ALLOCATE(YDSPPT%YGPSDT (YDSPPT%N2D))
+  ALLOCATE(YDSPPT%YGPSDT0(YDSPPT%N2D))
+  ALLOCATE(YDSPPT%YGPSDT1(YDSPPT%N2D))
+
+  IF (YDCONF%LRDPATINIT_SDT) THEN
+    IF (ASSOCIATED(YDCONF%CIPATINIT_SDT)) DEALLOCATE(YDCONF%CIPATINIT_SDT)
+    ALLOCATE(YDCONF%CIPATINIT_SDT(YDSPPT%N2D))
+  ENDIF
+  IF (YDCONF%LWRPATTRUN_SDT) THEN
+    IF (ASSOCIATED(YDCONF%COPATTRUN_SDT)) DEALLOCATE(YDCONF%COPATTRUN_SDT)
+    ALLOCATE(YDCONF%COPATTRUN_SDT(YDSPPT%N2D))
+  ENDIF
+  IF (YDCONF%LWRITE_ARP) THEN
+    IF (ASSOCIATED(YDCONF%COPATSP_SDT))   DEALLOCATE(YDCONF%COPATSP_SDT)
+    IF (ASSOCIATED(YDCONF%COPATGP_SDT))   DEALLOCATE(YDCONF%COPATGP_SDT)
+    ALLOCATE(YDCONF%COPATSP_SDT(YDSPPT%N2D))
+    ALLOCATE(YDCONF%COPATGP_SDT(YDSPPT%N2D))
+  ENDIF
+
+  DO J2D=1,YDSPPT%N2D
+    IF (YDCONF%LRDPATINIT_SDT) THEN
+      IF (YDSPPT%N2D == 1) THEN
+        WRITE(CLTEMP,"(A)") TRIM(CIPATINIT_SDT)
+        YDCONF%CIPATINIT_SDT(J2D) = TRIM(CLTEMP)
+      ELSE
+        CALL ABOR1('    SUSPSDT: NO OPTION YET FOR LRDPATINIT_SDT WHEN N2D>1!')
+      ENDIF
+      WRITE(NULOUT,'(''        CIPATINIT_SDT('',I1,'') ='',A)') J2D, YDCONF%CIPATINIT_SDT(J2D)
+    ENDIF
+    IF (YDCONF%LWRPATTRUN_SDT) THEN
+      IF (YDSPPT%N2D == 1) THEN
+        WRITE(CLTEMP,"(A)") TRIM(COPATTRUN_SDT)
+        YDCONF%COPATTRUN_SDT(J2D) = TRIM(CLTEMP)
+      ELSE
+        CALL ABOR1('    SUSPSDT: NO OPTION YET FOR LWRPATTRUN_SDT WHEN N2D>1!')
+      ENDIF
+      WRITE(NULOUT,'(''        COPATTRUN_SDT('',I1,'') ='',A)') J2D, YDCONF%COPATTRUN_SDT(J2D)
+    ENDIF
+    IF (YDCONF%LWRITE_ARP) THEN
+      WRITE(CLTEMP,"(A,I1)") TRIM(COPATSP_SDT)//"_P", J2D
+      YDCONF%COPATSP_SDT(J2D) = TRIM(CLTEMP)
+      WRITE(CLTEMP,"(A,I1)") TRIM(COPATGP_SDT)//"_P", J2D
+      YDCONF%COPATGP_SDT(J2D) = TRIM(CLTEMP)
+      WRITE(NULOUT,'(''        COPATSP_SDT('',I1,'') ='',A)') J2D, YDCONF%COPATSP_SDT(J2D)
+      WRITE(NULOUT,'(''        COPATGP_SDT('',I1,'') ='',A)') J2D, YDCONF%COPATGP_SDT(J2D)
+    ENDIF
+
+    YDSPPT%NSEED_SDT(J2D) = (J2D-1)*2**(J2D+4) + NSEED_SDT + SHIFTSEED_SDT
+    IF (YDCONF%LUSESETRAN_SDT) THEN
+      CALL SETRAN(YDSPPT%NSEED_SDT(J2D), KOUTSEED=ISEED, LDABSTIME=YDCONF%LABSTIMSEED_SDT,PTSTEP=TSTEP)
+    ELSE
+      ISEED=YDSPPT%NSEED_SDT(J2D)
+    ENDIF
+
+    CALL ALLOCATE_ARP(YDGEOMETRY, YDSPPT%YSPSDT_AR1(J2D), 0, YDCONF%NSCALES_SDT, 0, IGRIBSP, ISEED,&
+                     & LDCLIP=YDCONF%LCLIP_SPEC_SDT, LDSUM=.TRUE.)
+    CALL ALLOCATE_GRID(YDGEOMETRY, YDSPPT%YGPSDT (J2D), 0, 1, IGRIBGP )
+    CALL ALLOCATE_GRID(YDGEOMETRY, YDSPPT%YGPSDT0(J2D), 0, 1, IGRIBGP )
+    CALL ALLOCATE_GRID(YDGEOMETRY, YDSPPT%YGPSDT1(J2D), 0, 1, IGRIBGP )
+
+    CALL SET_ARP2D(YDSPPT%YSPSDT_AR1(J2D), ZSDEV2D(:,:,J2D), ZPHI2D )
+
+    IF (YDCONF%LRDPATINIT_SDT) THEN
+      CALL READ_SPEC_GRIB(YDMP, YDCONF%CIPATINIT_SDT(J2D), YDSPPT%YSPSDT_AR1(J2D)%SF)
+    ELSE
+      CALL EVOLVE_ARP(YDSPPT%YSPSDT_AR1(J2D), LDINIT=.TRUE.)
+    ENDIF
+
+    CALL SUM_ARPS(YDSPPT%YSPSDT_AR1(J2D))
+
+    IF (YDCONF%LWRITE_ARP) THEN
+      CALL WRITE_SPEC_GRIB(YDGEOMETRY,YDRIP,YDCONF%COPATSP_SDT(J2D),YDSPPT%YSPSDT_AR1(J2D)%SF)
+    ENDIF
+
+    WRITE(NULOUT,'(''      SPECTRAL NORMS: Pattern '',I2,'' from seed '',I15)') J2D, YDSPPT%NSEED_SDT(J2D)
+    WRITE(CLTEMP,"(A,I3,A)") "      SUSPSDT, YSPSDT_AR1(",J2D, ",...), "
+    CALL SPECTRAL_NORM(YDSPPT%YSPSDT_AR1(J2D)%SF,    TRIM(CLTEMP))
+    CALL SPECTRAL_NORM(YDSPPT%YSPSDT_AR1(J2D)%SFSUM, '      SUSPSDT, YSPSDT_AR1(SUM,...),')
+  ENDDO
+
+  DEALLOCATE(IGRIBSP,IGRIBGP)
+  DEALLOCATE(ZSDEV2D, ZPHI2D, ZCHI)
+ELSE
+  YDSPPT%YSPSDT_AR1     => NULL()
+  YDSPPT%NSEED_SDT      => NULL()
+  YDCONF%CIPATINIT_SDT  => NULL()
+  YDCONF%COPATTRUN_SDT  => NULL()
+  YDCONF%COPATSP_SDT    => NULL()
+  YDCONF%COPATGP_SDT    => NULL()
+
+  ALLOCATE(IGRIBGP(0))
+  IF (ASSOCIATED(YDSPPT%YGPSDT))  DEALLOCATE(YDSPPT%YGPSDT)
+  IF (ASSOCIATED(YDSPPT%YGPSDT0)) DEALLOCATE(YDSPPT%YGPSDT0)
+  IF (ASSOCIATED(YDSPPT%YGPSDT1)) DEALLOCATE(YDSPPT%YGPSDT1)
+  ALLOCATE(YDSPPT%YGPSDT (1))
+  ALLOCATE(YDSPPT%YGPSDT0(1))
+  ALLOCATE(YDSPPT%YGPSDT1(1))
+  CALL ALLOCATE_GRID(YDGEOMETRY, YDSPPT%YGPSDT (1), 0, 0, IGRIBGP )
+  CALL ALLOCATE_GRID(YDGEOMETRY, YDSPPT%YGPSDT0(1), 0, 0, IGRIBGP )
+  CALL ALLOCATE_GRID(YDGEOMETRY, YDSPPT%YGPSDT1(1), 0, 0, IGRIBGP )
+  DEALLOCATE(IGRIBGP)
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUSPSDT',1,ZHOOK_HANDLE)
+END SUBROUTINE SUSPSDT

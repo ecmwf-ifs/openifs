@@ -1,0 +1,36 @@
+#! /usr/bin/env bash
+
+# Install a Python version in .bootstrap/venv that contains all necessary 
+# modules (click pyyaml) and pull all data to .bootstrap/cache.
+
+set -e
+
+# Get path to the repo root.
+BIN_PATH=$(dirname -- "${BASH_SOURCE[0]}")
+ROOT_PATH=$(realpath "${BIN_PATH}/../")
+BOOTSTRAP_PATH=${ROOT_PATH}/.bootstrap
+
+VERSION_CHECK=$(python3 -c "import sys; print((sys.version_info.major,sys.version_info.minor) >= (3, 8))")
+
+if [ ${VERSION_CHECK} == "False" ]
+then
+  echo "At least Python 3.8 is required!"
+  exit 1
+fi
+
+python3 -m venv ${BOOTSTRAP_PATH}/venv || true
+
+PYTHON_PATH=${BOOTSTRAP_PATH}/venv/bin/python3
+
+if [ ! -f "${PYTHON_PATH}" ]
+then
+  echo "Setup of virtual environment failed."
+  exit 1
+fi
+
+
+${PYTHON_PATH} -m pip install --upgrade pip
+${PYTHON_PATH} -m pip install click pyyaml
+
+${PYTHON_PATH} ${BIN_PATH}/storage.py cache --force \
+  ${ROOT_PATH}/storage.yaml ${BOOTSTRAP_PATH}/cache

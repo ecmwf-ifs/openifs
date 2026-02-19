@@ -1,0 +1,157 @@
+SUBROUTINE SRTM_KGB23
+
+!     Originally by J.Delamere, Atmospheric & Environmental Research.
+!     Revision: 2.4
+!     BAND 16:  8050-12850 cm-1 (low - H2O; high - nothing)
+!     Reformatted for F90 by JJMorcrette, ECMWF
+!     G.Mozdzynski March 2011 read constants from files
+!     T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!      F. Vana  05-Mar-2015  Support for single precision
+!     ------------------------------------------------------------------
+
+USE PARKIND1  , ONLY : JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN    , ONLY : NULRAD
+USE YOMMP0    , ONLY : NPROC, MYPROC
+USE MPL_MODULE, ONLY : MPL_BROADCAST
+USE YOMTAG    , ONLY : MTAGRAD
+USE YOESRTA23 , ONLY : KA, SELFREF, FORREF, SFLUXREF, RAYL, GIVFAC, LAYREFFR  ,&
+   &   KA_D
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+! KURUCZ
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "abor1.intfb.h"
+
+IF (LHOOK) CALL DR_HOOK('SRTM_KGB23',0,ZHOOK_HANDLE)
+
+IF( MYPROC==1 )THEN
+  READ(NULRAD,ERR=1001) KA_D
+  KA = REAL(KA_D,JPRB)
+ENDIF
+IF( NPROC>1 )THEN
+  CALL MPL_BROADCAST (KA,MTAGRAD,1,CDSTRING='SRTM_KGB23:')
+ENDIF
+
+SFLUXREF = (/ &
+ & 53.2101_JPRB , 51.4143_JPRB, 49.3348_JPRB, 45.4612_JPRB    , &
+ & 40.8294_JPRB , 35.1801_JPRB, 28.6947_JPRB, 21.5751_JPRB    , &
+ & 14.6388_JPRB , 1.59111_JPRB, 1.31860_JPRB, 1.04018_JPRB    , &
+ & 0.762140_JPRB,0.484214_JPRB,0.182275_JPRB, 2.54948E-02_JPRB /)  
+
+!     Rayleigh extinction coefficient at all v 
+RAYL = (/ &
+ & 5.94837E-08_JPRB,5.70593E-08_JPRB,6.27845E-08_JPRB,5.56602E-08_JPRB, &
+ & 5.25571E-08_JPRB,4.73388E-08_JPRB,4.17466E-08_JPRB,3.98097E-08_JPRB, &
+ & 4.00786E-08_JPRB,3.67478E-08_JPRB,3.45186E-08_JPRB,3.46156E-08_JPRB, &
+ & 3.32155E-08_JPRB,3.23642E-08_JPRB,2.72590E-08_JPRB,2.96813E-08_JPRB /)  
+
+!     Average Giver et al. correction factor for this band.
+GIVFAC = 1.029_JPRB
+
+LAYREFFR = 6
+
+!     ------------------------------------------------------------------
+
+!     The array KA contains absorption coefs at the 16 chosen g-values 
+!     for a range of pressure levels> ~100mb, temperatures, and binary
+!     species parameters (see taumol.f for definition).  The first 
+!     index in the array, JS, runs from 1 to 9, and corresponds to 
+!     different values of the binary species parameter.  For instance, 
+!     JS=1 refers to dry air, JS = 2 corresponds to the paramter value 1/8, 
+!     JS = 3 corresponds to the parameter value 2/8, etc.  The second index
+!     in the array, JT, which runs from 1 to 5, corresponds to different
+!     temperatures.  More specifically, JT = 3 means that the data are for
+!     the reference temperature TREF for this  pressure level, JT = 2 refers
+!     to TREF-15, JT = 1 is for TREF-30, JT = 4 is for TREF+15, and JT = 5
+!     is for TREF+30.  The third index, JP, runs from 1 to 13 and refers
+!     to the JPth reference pressure level (see taumol.f for these levels
+!     in mb).  The fourth index, IG, goes from 1 to 16, and indicates
+!     which g-interval the absorption coefficients are for.
+!     -----------------------------------------------------------------
+
+FORREF(:, 1) = (/ 0.315770E-07_JPRB, 0.671978E-07_JPRB, 0.440649E-06_JPRB /)
+FORREF(:, 2) = (/ 0.313674E-06_JPRB, 0.285252E-06_JPRB, 0.421024E-05_JPRB /)
+FORREF(:, 3) = (/ 0.135818E-05_JPRB, 0.145071E-05_JPRB, 0.611285E-05_JPRB /)
+FORREF(:, 4) = (/ 0.534065E-05_JPRB, 0.586268E-05_JPRB, 0.933970E-05_JPRB /)
+FORREF(:, 5) = (/ 0.964007E-05_JPRB, 0.107110E-04_JPRB, 0.104486E-04_JPRB /)
+FORREF(:, 6) = (/ 0.302775E-04_JPRB, 0.357530E-04_JPRB, 0.340724E-04_JPRB /)
+FORREF(:, 7) = (/ 0.102437E-03_JPRB, 0.108475E-03_JPRB, 0.105245E-03_JPRB /)
+FORREF(:, 8) = (/ 0.146054E-03_JPRB, 0.141490E-03_JPRB, 0.133071E-03_JPRB /)
+FORREF(:, 9) = (/ 0.163978E-03_JPRB, 0.150208E-03_JPRB, 0.142864E-03_JPRB /)
+FORREF(:,10) = (/ 0.220412E-03_JPRB, 0.182943E-03_JPRB, 0.150941E-03_JPRB /)
+FORREF(:,11) = (/ 0.228877E-03_JPRB, 0.197679E-03_JPRB, 0.163220E-03_JPRB /)
+FORREF(:,12) = (/ 0.234177E-03_JPRB, 0.217734E-03_JPRB, 0.185038E-03_JPRB /)
+FORREF(:,13) = (/ 0.257187E-03_JPRB, 0.241570E-03_JPRB, 0.221178E-03_JPRB /)
+FORREF(:,14) = (/ 0.272455E-03_JPRB, 0.270637E-03_JPRB, 0.256269E-03_JPRB /)
+FORREF(:,15) = (/ 0.339445E-03_JPRB, 0.300268E-03_JPRB, 0.286574E-03_JPRB /)
+FORREF(:,16) = (/ 0.338841E-03_JPRB, 0.355428E-03_JPRB, 0.353794E-03_JPRB /)
+
+!     -----------------------------------------------------------------
+!     The array SELFREF contains the coefficient of the water vapor
+!     self-continuum (including the energy term).  The first index
+!     refers to temperature in 7.2 degree increments.  For instance,
+!     JT = 1 refers to a temperature of 245.6, JT = 2 refers to 252.8,
+!     etc.  The second index runs over the g-channel (1 to 16).
+
+SELFREF(:, 1) = (/ &
+ & 0.100945E-04_JPRB, 0.801113E-05_JPRB, 0.635771E-05_JPRB, 0.504554E-05_JPRB, 0.400419E-05_JPRB, &
+ & 0.317777E-05_JPRB, 0.252191E-05_JPRB, 0.200141E-05_JPRB, 0.158834E-05_JPRB, 0.126052E-05_JPRB /)  
+SELFREF(:, 2) = (/ &
+ & 0.107573E-04_JPRB, 0.999809E-05_JPRB, 0.929245E-05_JPRB, 0.863661E-05_JPRB, 0.802706E-05_JPRB, &
+ & 0.746053E-05_JPRB, 0.693399E-05_JPRB, 0.644460E-05_JPRB, 0.598976E-05_JPRB, 0.556702E-05_JPRB /)  
+SELFREF(:, 3) = (/ &
+ & 0.350389E-04_JPRB, 0.319234E-04_JPRB, 0.290850E-04_JPRB, 0.264989E-04_JPRB, 0.241428E-04_JPRB, &
+ & 0.219962E-04_JPRB, 0.200404E-04_JPRB, 0.182586E-04_JPRB, 0.166351E-04_JPRB, 0.151560E-04_JPRB /)  
+SELFREF(:, 4) = (/ &
+ & 0.122993E-03_JPRB, 0.110885E-03_JPRB, 0.999691E-04_JPRB, 0.901277E-04_JPRB, 0.812551E-04_JPRB, &
+ & 0.732559E-04_JPRB, 0.660443E-04_JPRB, 0.595426E-04_JPRB, 0.536809E-04_JPRB, 0.483963E-04_JPRB /)  
+SELFREF(:, 5) = (/ &
+ & 0.206434E-03_JPRB, 0.187435E-03_JPRB, 0.170185E-03_JPRB, 0.154522E-03_JPRB, 0.140301E-03_JPRB, &
+ & 0.127388E-03_JPRB, 0.115664E-03_JPRB, 0.105019E-03_JPRB, 0.953540E-04_JPRB, 0.865783E-04_JPRB /)  
+SELFREF(:, 6) = (/ &
+ & 0.590645E-03_JPRB, 0.533109E-03_JPRB, 0.481177E-03_JPRB, 0.434305E-03_JPRB, 0.391998E-03_JPRB, &
+ & 0.353812E-03_JPRB, 0.319346E-03_JPRB, 0.288238E-03_JPRB, 0.260160E-03_JPRB, 0.234817E-03_JPRB /)  
+SELFREF(:, 7) = (/ &
+ & 0.163029E-02_JPRB, 0.148773E-02_JPRB, 0.135763E-02_JPRB, 0.123891E-02_JPRB, 0.113057E-02_JPRB, &
+ & 0.103170E-02_JPRB, 0.941483E-03_JPRB, 0.859153E-03_JPRB, 0.784023E-03_JPRB, 0.715462E-03_JPRB /)  
+SELFREF(:, 8) = (/ &
+ & 0.204528E-02_JPRB, 0.189258E-02_JPRB, 0.175128E-02_JPRB, 0.162053E-02_JPRB, 0.149954E-02_JPRB, &
+ & 0.138758E-02_JPRB, 0.128398E-02_JPRB, 0.118812E-02_JPRB, 0.109941E-02_JPRB, 0.101733E-02_JPRB /)  
+SELFREF(:, 9) = (/ &
+ & 0.210589E-02_JPRB, 0.197078E-02_JPRB, 0.184434E-02_JPRB, 0.172601E-02_JPRB, 0.161528E-02_JPRB, &
+ & 0.151164E-02_JPRB, 0.141466E-02_JPRB, 0.132390E-02_JPRB, 0.123896E-02_JPRB, 0.115947E-02_JPRB /)  
+SELFREF(:,10) = (/ &
+ & 0.245098E-02_JPRB, 0.233745E-02_JPRB, 0.222918E-02_JPRB, 0.212592E-02_JPRB, 0.202745E-02_JPRB, &
+ & 0.193353E-02_JPRB, 0.184397E-02_JPRB, 0.175856E-02_JPRB, 0.167710E-02_JPRB, 0.159941E-02_JPRB /)  
+SELFREF(:,11) = (/ &
+ & 0.267460E-02_JPRB, 0.253325E-02_JPRB, 0.239936E-02_JPRB, 0.227255E-02_JPRB, 0.215244E-02_JPRB, &
+ & 0.203868E-02_JPRB, 0.193093E-02_JPRB, 0.182888E-02_JPRB, 0.173222E-02_JPRB, 0.164067E-02_JPRB /)  
+SELFREF(:,12) = (/ &
+ & 0.304510E-02_JPRB, 0.283919E-02_JPRB, 0.264720E-02_JPRB, 0.246820E-02_JPRB, 0.230130E-02_JPRB, &
+ & 0.214568E-02_JPRB, 0.200059E-02_JPRB, 0.186531E-02_JPRB, 0.173918E-02_JPRB, 0.162157E-02_JPRB /)  
+SELFREF(:,13) = (/ &
+ & 0.338445E-02_JPRB, 0.314719E-02_JPRB, 0.292655E-02_JPRB, 0.272139E-02_JPRB, 0.253060E-02_JPRB, &
+ & 0.235319E-02_JPRB, 0.218822E-02_JPRB, 0.203482E-02_JPRB, 0.189217E-02_JPRB, 0.175952E-02_JPRB /)  
+SELFREF(:,14) = (/ &
+ & 0.388649E-02_JPRB, 0.357018E-02_JPRB, 0.327961E-02_JPRB, 0.301269E-02_JPRB, 0.276750E-02_JPRB, &
+ & 0.254226E-02_JPRB, 0.233535E-02_JPRB, 0.214528E-02_JPRB, 0.197068E-02_JPRB, 0.181029E-02_JPRB /)  
+SELFREF(:,15) = (/ &
+ & 0.412547E-02_JPRB, 0.387413E-02_JPRB, 0.363810E-02_JPRB, 0.341646E-02_JPRB, 0.320831E-02_JPRB, &
+ & 0.301285E-02_JPRB, 0.282930E-02_JPRB, 0.265693E-02_JPRB, 0.249506E-02_JPRB, 0.234305E-02_JPRB /)  
+SELFREF(:,16) = (/ &
+ & 0.534327E-02_JPRB, 0.482967E-02_JPRB, 0.436544E-02_JPRB, 0.394583E-02_JPRB, 0.356655E-02_JPRB, &
+ & 0.322373E-02_JPRB, 0.291387E-02_JPRB, 0.263378E-02_JPRB, 0.238062E-02_JPRB, 0.215179E-02_JPRB /)  
+     
+!     -----------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SRTM_KGB23',1,ZHOOK_HANDLE)
+RETURN
+
+1001 CONTINUE
+CALL ABOR1("SRTM_KGB23:ERROR READING FILE RADSRTM")
+
+END SUBROUTINE SRTM_KGB23

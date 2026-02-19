@@ -1,0 +1,99 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE WRIFDH(YDDIMV,YDLDDH,PDAT_TOT,KLEN_TOT,KPODDH,CDNOMA,PDAT,KLEN)
+!-----------------------------------------------------------------------
+!**** WRIFDH * INTERFACE LFA-(ECMWF-FILE-TYPE) D'ECRITURE DE DDH SUR FICHIER.
+!              DIAGNOSTICS PAR DOMAINES HORIZONTAUX
+!-----------------------------------------------------------------------
+!     BUT
+!     ---
+!     TRANSFERT DES RESULTATS OBTENUS POUR UN DOMAINE IDENTIFIE
+!     PAR PDHNOM SUR UN FICHIER LFA
+
+!     ARGUMENTS D'ENTREE
+!     ------------------
+!     KPODDH   UNITE LOGIQUE DU FICHIER DE SORTIE
+!     CDNOMA   NOM DE L'ARTICLE ECRIT
+!     PDAT     TABLEAU DES REELS A ECRIRE
+!     KLEN     LONGUEUR DU TABLEAU PDAT
+
+!     ARGUMENTS DE SORTIE
+!     -------------------
+!     FICHIER LFA COMPLETE
+
+!     ORIGINAL
+!     --------
+!     94-01-01, P. Viterbo.
+
+!     MODIFICATIONS
+!     -------------
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!   2006-08-22, J.M. Piriou: write DDH on LFA files.
+
+!-----------------------------------------------------------------------
+
+USE YOMDIMV  , ONLY : TDIMV
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLDDH  , ONLY : TLDDH
+
+IMPLICIT NONE
+
+! DUMMY
+TYPE(TDIMV), INTENT(IN) :: YDDIMV
+TYPE(TLDDH) ,INTENT(INOUT):: YDLDDH
+
+INTEGER(KIND=JPIM), INTENT(IN)    :: KLEN
+INTEGER(KIND=JPIM), INTENT(IN)    :: KLEN_TOT
+INTEGER(KIND=JPIM), INTENT(IN)    :: KPODDH
+CHARACTER(LEN=16), INTENT(IN)     :: CDNOMA
+REAL(KIND=JPRB), INTENT(IN)       :: PDAT(KLEN)
+REAL(KIND=JPRB), INTENT(IN)       :: PDAT_TOT(KLEN_TOT)
+
+! LOCAL
+INTEGER(KIND=JPIM) :: INUM,ICV,JCV
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB) :: ZDAT_TOT(KLEN_TOT)
+
+#include "addpgr.intfb.h"
+
+IF (LHOOK) CALL DR_HOOK('WRIFDH',0,ZHOOK_HANDLE)
+ASSOCIATE(NFLEVG=>YDDIMV%NFLEVG, &
+ & LHDLFA=>YDLDDH%LHDLFA)
+IF(LHDLFA) THEN
+  IF(CDNOMA(4:4) == 'T' .OR. CDNOMA(4:4) == 'P' .OR. KLEN==-999) THEN
+    ! CAS PARTICULIER DES TENDANCES.
+    ! CELLES-CI ONT ETE GEREES PAR LES DDH JUSQU'A CE STADE
+    ! DANS LES MEMES TABLEAUX QUE LES FLUX,
+    ! D'OU DES 0 EN LEUR SEIN, TOUS LES NFLEVG.
+    ! AVANT D'ECRIRE LES DONNEES SUR FICHIER ON COPIE
+    ! DONC SUR UN TABLEAU TEMPORAIRE, AFIN DE PURGER LES 0 NON DESIRES.
+    ICV=0
+    DO JCV=1,KLEN_TOT
+      IF(MODULO(JCV,NFLEVG+1) /= 0) THEN
+        ICV=ICV+1
+        ZDAT_TOT(ICV)=PDAT_TOT(JCV)
+      ENDIF
+    ENDDO
+    CALL LFAECRR(KPODDH,CDNOMA(4:16),ZDAT_TOT,ICV)
+  ELSE
+    ! CAS GENERAL: VARIABLES, FLUX.
+    CALL LFAECRR(KPODDH,CDNOMA(4:16),PDAT_TOT,KLEN_TOT)
+  ENDIF
+ELSE
+  READ(CDNOMA,'(I3,A13)') INUM
+  CALL ADDPGR(CDNOMA(4:16),INUM,PDAT,KLEN)
+ENDIF
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('WRIFDH',1,ZHOOK_HANDLE)
+END SUBROUTINE WRIFDH

@@ -1,0 +1,375 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#ifdef RS6K
+@PROCESS NOCHECK
+#endif
+SUBROUTINE CPGLAG(YDGEOMETRY,YDGMV,YDML_DIAG,YDML_GCONF,YDML_DYN,&
+ & KGPCOMP,KSTGLO,LDCONFX,&
+ & PGMV,PGMVS,PB2,PGFLT1,PGMVT1,PGMVT1S,PGFL,&
+ & PGMVTNDSL,PGFLTNDSL,YDDDH,PGPSTRESS,PTRAJEC,PTRAJEC_OOPS)
+
+!**** *CPGLAG* - Grid point calculations - lagged part.
+
+!     Purpose.
+!     --------
+!           Grid point calculations lagged part.
+
+!**   Interface.
+!     ----------
+!        *CALL* *CPGLAG*
+
+!        Explicit arguments :
+!        --------------------
+
+!        KGPCOMP       : number of elements of arrays for which computations
+!                        are performed (used in message passing version)
+!        KSTGLO        : global offset.
+!        LDCONFX       : (see in CPG)
+!        PGMV          : "t-dt" and "t" GMV upper air variables.
+!        PGMVS         : "t-dt" and "t" GMV surface variables.
+!        PB2           : "SLB2" second buffer.
+!        PGFLT1        : "t+dt" GFL variables.
+!        PGMVT1        : "t+dt" GMV upper air variables.
+!        PGMVT1S       : "t+dt" GMV surface variables.
+!        PGFL          : "t-dt" and "t" GFL variables.
+!        PGMVTNDSL     : GMV SL tendency for DDH  
+!        PGFLTNDSL     : GFL SL tendency for DDH
+!        YDDDH         : DDH structure
+!        PGPSTRESS     : (optional) non-linear stress contribution
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by GP_MODEL.
+
+!     Reference.
+!     ----------
+!        ARPEGE documentation vol 2 ch 1 and vol 3 ch 6
+
+!     Author.
+!     -------
+!      Mats Hamrud  *ECMWF*
+!      Original : 92-02-01
+
+! Modifications
+! -------------
+!   N. Wedi and K. Yessad (Nov 2007): ND4SYS to improve NH model stability.
+!   K. Yessad (Dec 2008): remove dummy CDLOCK + cleanings
+!   K. Yessad (Dec 2009): prune lpc_old.
+!   F. Voitus (Feb 2012): introduce ddh diagnostic for semi-lagrangian advection
+!   K. Yessad (Oct 2011): in-line GPENDTR
+!   F. Vana   19-03-2012: storing t+dt trajectories of T and q
+!   N. Wedi   (Nov 2011): add LGPSTRESS option
+!   K. Yessad (Nov 2012): simplify testings.
+!   T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!   F. Vana  28-Nov-2013 : Redesigned trajectory handling
+!   K. Yessad (July 2014): Move some variables.
+!   K. Yessad (June 2017): Introduce NHQE model.
+!     ------------------------------------------------------------------
+
+USE MODEL_DIAGNOSTICS_MOD  , ONLY : MODEL_DIAGNOSTICS_TYPE
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE MODEL_DYNAMICS_MOD     , ONLY : MODEL_DYNAMICS_TYPE
+USE GEOMETRY_MOD           , ONLY : GEOMETRY
+USE YOMGMV                 , ONLY : TGMV
+USE PARKIND1               , ONLY : JPIM, JPRB
+USE YOMHOOK                , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE SC2PRG_MOD             , ONLY : SC2PRG
+USE YOMCT3                 , ONLY : NSTEP
+USE YOMCST                 , ONLY : RD
+USE YOMTRAJ                , ONLY : TRAJ_TYPE, LPRTTRAJ, LTRAJSAVE, LTRAJSLAG
+USE YOMTRAJ_OOPS           , ONLY : TRAJ_TYPE_OOPS, LTRAJSAVE_OOPS, LTRAJSLAG_OOPS
+USE YOMLUN                 , ONLY : NULOUT
+USE DDH_MIX                , ONLY : TYP_DDH
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)               ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGMV)                   ,INTENT(INOUT) :: YDGMV
+TYPE(MODEL_DIAGNOSTICS_TYPE) ,INTENT(INOUT) :: YDML_DIAG
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(INOUT) :: YDML_GCONF
+TYPE(MODEL_DYNAMICS_TYPE)    ,INTENT(INOUT) :: YDML_DYN
+INTEGER(KIND=JPIM)           ,INTENT(IN)    :: KGPCOMP
+INTEGER(KIND=JPIM)           ,INTENT(IN)    :: KSTGLO
+LOGICAL                      ,INTENT(IN)    :: LDCONFX
+REAL(KIND=JPRB)              ,INTENT(INOUT) :: PGMV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%NDIMGMV)
+REAL(KIND=JPRB)              ,INTENT(INOUT) :: PGMVS(YDGEOMETRY%YRDIM%NPROMA,YDGMV%NDIMGMVS)
+REAL(KIND=JPRB)              ,INTENT(IN)    :: PB2(YDGEOMETRY%YRDIM%NPROMA,YDML_DYN%YRPTRSLB2%NFLDSLB2)
+REAL(KIND=JPRB)              ,INTENT(IN)    :: PGFLT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_GCONF%YGFL%NDIM1)
+REAL(KIND=JPRB)              ,INTENT(INOUT) :: PGMVT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%YT1%NDIM)
+REAL(KIND=JPRB)              ,INTENT(INOUT) :: PGMVT1S(YDGEOMETRY%YRDIM%NPROMA,YDGMV%YT1%NDIMS)
+REAL(KIND=JPRB)              ,INTENT(INOUT) :: PGFL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_GCONF%YGFL%NDIM)
+REAL(KIND=JPRB)              ,INTENT(IN)    :: PGMVTNDSL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG, &
+ &                                                       2+YDML_GCONF%YRDIMF%NFTHER)
+REAL(KIND=JPRB)              ,INTENT(IN)    :: PGFLTNDSL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_GCONF%YGFL%NUMFLDS)
+TYPE(TRAJ_TYPE)              ,OPTIONAL,INTENT(INOUT) :: PTRAJEC
+TYPE(TRAJ_TYPE_OOPS)         ,OPTIONAL,INTENT(INOUT) :: PTRAJEC_OOPS
+TYPE(TYP_DDH)                ,INTENT(INOUT) :: YDDDH
+REAL(KIND=JPRB)     ,OPTIONAL, INTENT(IN) :: PGPSTRESS(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,3)
+
+!     ------------------------------------------------------------------
+INTEGER(KIND=JPIM) :: IEND, IST, JLEV, JROF, IBL
+
+LOGICAL :: LLLSTEP, LLSTR, LLTF1
+REAL(KIND=JPRB) :: ZEPS
+
+REAL(KIND=JPRB), POINTER :: ZT0DIV(:,:), ZT0NHX(:,:), ZT0SPDL(:,:), ZT0SPDM(:,:)
+REAL(KIND=JPRB), POINTER :: ZT0SPL(:), ZT0SPM(:), ZT0TL(:,:), ZT0TM(:,:)
+REAL(KIND=JPRB), POINTER :: ZT1NHX(:,:), ZT1SP(:), ZT1SPD(:,:), ZT1SVD(:,:)
+REAL(KIND=JPRB), POINTER :: ZT1T(:,:), ZT1U(:,:), ZT1V(:,:), ZT9NHX(:,:)
+REAL(KIND=JPRB), POINTER :: ZPG1(:,:), ZPI1(:,:), ZPIL(:,:), ZPIM(:,:)
+REAL(KIND=JPRB), POINTER :: ZPL1(:,:), ZPLL(:,:), ZPLM(:,:), ZPQ1(:,:)
+REAL(KIND=JPRB), POINTER :: ZPQL(:,:), ZPQM(:,:), ZPR1(:,:), ZPS1(:,:)
+REAL(KIND=JPRB), POINTER :: ZSLB2SPSI(:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+REAL(KIND=JPRB) :: ZOROGL_SR(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) :: ZOROGM_SR(YDGEOMETRY%YRDIM%NPROMA)
+
+REAL(KIND=JPRB) :: ZGMVNHXT1B(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZR1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZRD_R
+
+!     ------------------------------------------------------------------
+
+#include "gnhx.intfb.h"
+#include "gnhqe_nhx.intfb.h"
+#include "gprcp.intfb.h"
+#include "gptf1.intfb.h"
+#include "cpdyddhlag.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('CPGLAG',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, &
+ & YDGSGEOM=>YDGEOMETRY%YRGSGEOM, YDOROG=>YDGEOMETRY%YROROG, YDLDDH=>YDML_DIAG%YRLDDH, &
+ & YGFL=>YDML_GCONF%YGFL,YDDIMF=>YDML_GCONF%YRDIMF, &
+ & YDDYN=>YDML_DYN%YRDYN, YDDYNA=>YDML_DYN%YRDYNA, YDPTRSLB2=>YDML_DYN%YRPTRSLB2)
+
+ASSOCIATE(NDIM=>YGFL%NDIM, NDIM1=>YGFL%NDIM1, NUMFLDS=>YGFL%NUMFLDS, &
+ & YG=>YGFL%YG, YI=>YGFL%YI, YL=>YGFL%YL, YQ=>YGFL%YQ, YR=>YGFL%YR, YS=>YGFL%YS, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & NFTHER=>YDDIMF%NFTHER, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & LGPSTRESS=>YDDYN%LGPSTRESS, NCURRENT_ITER=>YDDYN%NCURRENT_ITER, &
+ & NSITER=>YDDYN%NSITER, &
+ & RSTRET=>YDGEM%RSTRET, &
+ & NDIMGMV=>YDGMV%NDIMGMV, NDIMGMVS=>YDGMV%NDIMGMVS, YT0=>YDGMV%YT0, &
+ & YT1=>YDGMV%YT1, YT9=>YDGMV%YT9, &
+ & LRSLDDH=>YDLDDH%LRSLDDH, &
+ & MSLB2PDSI=>YDPTRSLB2%MSLB2PDSI, MSLB2SPSI=>YDPTRSLB2%MSLB2SPSI, &
+ & MSLB2TSI=>YDPTRSLB2%MSLB2TSI, MSLB2USI=>YDPTRSLB2%MSLB2USI, &
+ & MSLB2VDSI=>YDPTRSLB2%MSLB2VDSI, MSLB2VSI=>YDPTRSLB2%MSLB2VSI, &
+ & NFLDSLB2=>YDPTRSLB2%NFLDSLB2)
+
+CALL SC2PRG(MSLB2SPSI ,PB2     ,ZSLB2SPSI)
+CALL SC2PRG(YG%MP1    ,PGFLT1  ,ZPG1)
+CALL SC2PRG(YI%MP1    ,PGFLT1  ,ZPI1)
+CALL SC2PRG(YI%MPL    ,PGFL    ,ZPIL)
+CALL SC2PRG(YI%MPM    ,PGFL    ,ZPIM)
+CALL SC2PRG(YL%MP1    ,PGFLT1  ,ZPL1)
+CALL SC2PRG(YL%MPL    ,PGFL    ,ZPLL)
+CALL SC2PRG(YL%MPM    ,PGFL    ,ZPLM)
+CALL SC2PRG(YQ%MP1    ,PGFLT1  ,ZPQ1)
+CALL SC2PRG(YQ%MPL    ,PGFL    ,ZPQL)
+CALL SC2PRG(YQ%MPM    ,PGFL    ,ZPQM)
+CALL SC2PRG(YR%MP1    ,PGFLT1  ,ZPR1)
+CALL SC2PRG(YS%MP1    ,PGFLT1  ,ZPS1)
+CALL SC2PRG(YT0%MDIV  ,PGMV    ,ZT0DIV)
+CALL SC2PRG(YT0%MNHX  ,PGMV    ,ZT0NHX)
+CALL SC2PRG(YT0%MSPDL ,PGMV    ,ZT0SPDL)
+CALL SC2PRG(YT0%MSPDM ,PGMV    ,ZT0SPDM)
+CALL SC2PRG(YT0%MSPL  ,PGMVS   ,ZT0SPL)
+CALL SC2PRG(YT0%MSPM  ,PGMVS   ,ZT0SPM)
+CALL SC2PRG(YT0%MTL   ,PGMV    ,ZT0TL)
+CALL SC2PRG(YT0%MTM   ,PGMV    ,ZT0TM)
+CALL SC2PRG(YT1%MNHX  ,PGMVT1  ,ZT1NHX)
+CALL SC2PRG(YT1%MSP   ,PGMVT1S ,ZT1SP)
+CALL SC2PRG(YT1%MSPD  ,PGMVT1  ,ZT1SPD)
+CALL SC2PRG(YT1%MSVD  ,PGMVT1  ,ZT1SVD)
+CALL SC2PRG(YT1%MT    ,PGMVT1  ,ZT1T)
+CALL SC2PRG(YT1%MU    ,PGMVT1  ,ZT1U)
+CALL SC2PRG(YT1%MV    ,PGMVT1  ,ZT1V)
+CALL SC2PRG(YT9%MNHX  ,PGMV    ,ZT9NHX)
+!     ------------------------------------------------------------------
+
+!*       1.    INITIAL COMPUTATIONS
+!              --------------------
+
+IST=1
+IEND=MIN(NPROMA,KGPCOMP-KSTGLO+1)
+IBL=(KSTGLO-1)/NPROMA+1
+
+!     ------------------------------------------------------------------
+
+!*    2.1   ADD d4 EQN NON ADVECTIVE TENDENCIES OF 'NHX'
+!           --------------------------------------------
+
+IF (YDDYNA%LNHDYN .AND. YDDYNA%LSLAG .AND. YDDYNA%NVDVAR==4 .AND. YDDYNA%ND4SYS==2 .AND.&
+ & NCURRENT_ITER==NSITER) THEN
+
+  ZOROGL_SR(IST:IEND)=YDGSGEOM(IBL)%GM(IST:IEND)*YDOROG(IBL)%OROGL(IST:IEND)
+  ZOROGM_SR(IST:IEND)=YDGSGEOM(IBL)%GM(IST:IEND)*YDOROG(IBL)%OROGM(IST:IEND)
+
+  ! * Compute a diagnostic value of NHX(t+dt) via GNHX or GNHQE_NHX.
+  IF (YDDYNA%LNHEE) THEN
+    CALL GNHX(&
+     ! --- INPUT -------------------------------------------------
+     & YDGEOMETRY,YDDYNA,NPROMA,IST,IEND,YDOROG(IBL)%OROG,ZOROGL_SR,ZOROGM_SR,&
+     & ZT1SP,ZT0SPL,ZT0SPM,&
+     & ZT1T,ZT0TL,ZT0TM,&
+     & ZPQ1,ZPQL,ZPQM,&
+     & ZPL1,ZPLL,ZPLM,&
+     & ZPI1,ZPIL,ZPIM,&
+     & ZPR1,ZPS1,ZPG1,&
+     & ZT1U,ZT1V,&
+     ! --- OUTPUT ------------------------------------------------
+     & ZGMVNHXT1B,&
+     ! --- OPTIONAL INPUT ----------------------------------------
+     & PSPD=ZT1SPD,PSPDL=ZT0SPDL,PSPDM=ZT0SPDM)
+  ELSEIF (YDDYNA%LNHQE) THEN
+    CALL GNHQE_NHX(&
+     ! --- INPUT -------------------------------------------------
+     & YDGEOMETRY,YDDYNA,NPROMA,IST,IEND,YDOROG(IBL)%OROG,ZOROGL_SR,ZOROGM_SR,&
+     & ZT1SP,ZT0SPL,ZT0SPM,&
+     & ZT1T,ZT0TL,ZT0TM,&
+     & ZPQ1,ZPQL,ZPQM,&
+     & ZPL1,ZPLL,ZPLM,&
+     & ZPI1,ZPIL,ZPIM,&
+     & ZPR1,ZPS1,ZPG1,&
+     & ZT1U,ZT1V,ZT0DIV,&
+     ! --- OUTPUT ------------------------------------------------
+     & ZGMVNHXT1B)
+  ENDIF
+
+  ! * Add non advective tendencies of NHX to the RHS of NHX and d4 eqns.
+  ZT1NHX(IST:IEND,1:NFLEVG) = ZGMVNHXT1B(IST:IEND,1:NFLEVG)
+  IF (YDDYNA%LTWOTL) THEN
+    IF( NSITER == 0 ) THEN
+      ZT1SVD(IST:IEND,1:NFLEVG)=ZT1SVD(IST:IEND,1:NFLEVG) +&
+       & ZGMVNHXT1B(IST:IEND,1:NFLEVG) - ZT0NHX(IST:IEND,1:NFLEVG)
+    ELSE
+      ZT1SVD(IST:IEND,1:NFLEVG)=ZT1SVD(IST:IEND,1:NFLEVG) +&
+       & ZGMVNHXT1B(IST:IEND,1:NFLEVG) - ZT9NHX(IST:IEND,1:NFLEVG)
+    ENDIF
+  ELSE
+    ZT1SVD(IST:IEND,1:NFLEVG) = ZT1SVD(IST:IEND,1:NFLEVG) +&
+     & ZGMVNHXT1B(IST:IEND,1:NFLEVG) - ZT9NHX(IST:IEND,1:NFLEVG)
+  ENDIF
+
+ENDIF
+
+!*    2.2   UPDATE U AND V FOR LGPSTRESS OPTION
+!           -----------------------------------
+
+! ONLY USED WITH SGS MODEL
+IF ((YDDYNA%LPC_FULL .AND. NCURRENT_ITER==NSITER).OR. .NOT.YDDYNA%LPC_FULL) THEN
+  IF( LGPSTRESS ) THEN
+    ZT1U(IST:IEND,1:NFLEVG)=ZT1U(IST:IEND,1:NFLEVG)&
+     & + PGPSTRESS(IST:IEND,1:NFLEVG,1)
+    ZT1V(IST:IEND,1:NFLEVG)=ZT1V(IST:IEND,1:NFLEVG)&
+     & + PGPSTRESS(IST:IEND,1:NFLEVG,2)
+  ENDIF
+ENDIF
+
+!*    2.3   TIME FILTER (PART 1).
+!           ---------------------
+
+IF(NSTEP < YDML_GCONF%YRRIP%NSTOP) THEN
+  LLLSTEP=.FALSE.
+ELSE
+  LLLSTEP=.TRUE.
+ENDIF
+LLTF1=.FALSE.
+IF (NCURRENT_ITER == 0) THEN
+  LLTF1=.TRUE.
+ENDIF
+CALL GPTF1(YDGEOMETRY,YDGMV,YDML_GCONF,YDDYN,YDDYNA,LLTF1,IST,IEND,LLLSTEP,PGMV(1,1,1),PGMVS(1,1),PGFL(1,1,1))
+
+!*    2.4   Store trajectory of T and Q at t+dt 
+!           -----------------------------------
+
+IF(PRESENT(PTRAJEC))THEN
+  IF (YDDYNA%LSPRT .AND. LTRAJSAVE .AND. LTRAJSLAG) THEN
+    PTRAJEC%SLAG(IBL)%PTT15(IST:IEND,1:NFLEVG)=ZT1T(IST:IEND,1:NFLEVG)
+    PTRAJEC%SLAG(IBL)%PQT15(IST:IEND,1:NFLEVG)=ZPQ1(IST:IEND,1:NFLEVG)
+    IF (LPRTTRAJ.AND.PTRAJEC%SLAG(IBL)%LASTCHUNK)  WRITE(NULOUT,*)'GREPTRAJ ADD TRAJEC%SLAG in CPGLAG'
+  ENDIF
+ELSE
+  IF (YDDYNA%LSPRT .AND. LTRAJSAVE_OOPS .AND. LTRAJSLAG_OOPS) THEN
+    PTRAJEC_OOPS%SLAG(IBL)%PTT15(IST:IEND,1:NFLEVG)=ZT1T(IST:IEND,1:NFLEVG)
+    PTRAJEC_OOPS%SLAG(IBL)%PQT15(IST:IEND,1:NFLEVG)=ZPQ1(IST:IEND,1:NFLEVG)
+    IF (PTRAJEC_OOPS%SLAG(IBL)%LASTCHUNK)  WRITE(NULOUT,*)'GREPTRAJ ADD TRAJEC%SLAG in CPGLAG'
+  ENDIF
+ENDIF
+
+!*    2.5  TRANSFER FROM BUFFER TO T+DT ARRAYS
+!          -----------------------------------
+
+ZT1U(IST:IEND,1:NFLEVG)=ZT1U(IST:IEND,1:NFLEVG)+PB2(IST:IEND,MSLB2USI:MSLB2USI+NFLEVG-1)
+ZT1V(IST:IEND,1:NFLEVG)=ZT1V(IST:IEND,1:NFLEVG)+PB2(IST:IEND,MSLB2VSI:MSLB2VSI+NFLEVG-1)
+ZT1T(IST:IEND,1:NFLEVG)=ZT1T(IST:IEND,1:NFLEVG)+PB2(IST:IEND,MSLB2TSI:MSLB2TSI+NFLEVG-1)
+IF(YDDYNA%LNHEE) THEN
+  ZT1SPD(IST:IEND,1:NFLEVG)=ZT1SPD(IST:IEND,1:NFLEVG)&
+   &+PB2(IST:IEND,MSLB2PDSI:MSLB2PDSI+NFLEVG-1)
+ENDIF
+IF(YDDYNA%LNHDYN) THEN
+  ZT1SVD(IST:IEND,1:NFLEVG)=ZT1SVD(IST:IEND,1:NFLEVG)&
+   &+PB2(IST:IEND,MSLB2VDSI:MSLB2VDSI+NFLEVG-1)
+ENDIF
+
+ZT1SP(IST:IEND)=ZT1SP(IST:IEND)+ZSLB2SPSI(IST:IEND)
+
+IF (YDDYNA%LSPRT) THEN
+  CALL GPRCP(NPROMA,IST,IEND,NFLEVG,PR=ZR1,PGFL=PGFLT1(1,1,1),KGFLTYP=1)
+  ZRD_R = 1.0_JPRB/RD
+  ZT1T(IST:IEND,1:NFLEVG)=ZR1(IST:IEND,1:NFLEVG)*ZT1T(IST:IEND,1:NFLEVG)*ZRD_R
+ENDIF
+
+!*    2.6  DIVIDE U AND V BY MAP FACTOR
+!          ----------------------------
+
+ZEPS=100.0_JPRB*TINY(1.0_JPRB)
+LLSTR=(ABS(RSTRET-1.0_JPRB)>ZEPS)
+
+IF(LLSTR) THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=IST,IEND
+      ZT1U(JROF,JLEV)=ZT1U(JROF,JLEV)/YDGSGEOM(IBL)%GM(JROF)
+      ZT1V(JROF,JLEV)=ZT1V(JROF,JLEV)/YDGSGEOM(IBL)%GM(JROF)
+    ENDDO
+  ENDDO
+ENDIF
+
+!*    2.7  DDH
+!          ---
+
+IF (YDDYNA%LSLAG.AND.LRSLDDH.AND.(.NOT.LDCONFX)) THEN
+  CALL CPDYDDHLAG(YDGEOMETRY,YDML_DIAG,YDML_GCONF,YDDYNA%LNHDYN, &
+   & IST,IEND,KSTGLO,NCURRENT_ITER,PGMVTNDSL(1,1,1),PGFLTNDSL(1,1,1),YDDDH)
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CPGLAG',1,ZHOOK_HANDLE)
+END SUBROUTINE CPGLAG
+!   R. El Khatib 27-02-2019 Use pointer function SC2PRG to avoid bounds violation

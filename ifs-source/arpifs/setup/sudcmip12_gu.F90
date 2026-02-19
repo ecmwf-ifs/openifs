@@ -1,0 +1,156 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUDCMIP12_GU(YDGEOMETRY,YDDIMF,YDSPEC,KTESTCASE,PQ)
+
+!     Purpose.
+!     --------
+!           uuper air grid point fields for DCMIP12 test cases
+
+!        Explicit arguments :
+!        --------------------
+
+
+!     Author.
+!     -------
+!        S.Malardel *ECMWF*
+
+!     Modifications.
+!     --------------
+
+USE GEOMETRY_MOD, ONLY : GEOMETRY
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN    , ONLY : NULOUT, NULERR
+USE YOMDIMF   , ONLY : TDIMF
+USE YOMCST    , ONLY : RPI, RA, RD, RG, ROMEGA, RCPD, RATM
+USE SPECTRAL_FIELDS_MOD, ONLY : ASSIGNMENT(=), SPECTRAL_FIELD
+USE INTDYN_MOD, ONLY : YYTXYB
+IMPLICIT NONE
+
+TYPE(GEOMETRY),     INTENT(IN)     :: YDGEOMETRY
+TYPE(TDIMF)        ,INTENT(INOUT)  :: YDDIMF
+TYPE(SPECTRAL_FIELD),INTENT(INOUT) :: YDSPEC
+INTEGER(KIND=JPIM), INTENT(IN)     :: KTESTCASE
+REAL(KIND=JPRB),    INTENT(INOUT)  :: PQ(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+
+! Tropical cyclone
+REAL(KIND=JPRB) ::    ZPRESH(YDGEOMETRY%YRGEM%NGPTOT,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) ::    ZPRESF (YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) ::    ZXYB(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG,YYTXYB%NDIM)
+
+REAL(KIND=JPRB) ::    ZTEMP(YDGEOMETRY%YRDIMV%NFLEVL,YDGEOMETRY%YRDIM%NSPEC2)
+REAL(KIND=JPRB) ::    ZLNSP(YDGEOMETRY%YRDIM%NSPEC2),ZSPOROG(YDGEOMETRY%YRDIM%NSPEC2)
+REAL(KIND=JPRB) ::    ZT(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) ::    ZPSP(YDGEOMETRY%YRGEM%NGPTOT),ZGPOROG(YDGEOMETRY%YRGEM%NGPTOT)
+REAL(KIND=JPRB) ::    ZPHI(YDGEOMETRY%YRGEM%NGPTOT,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) ::    ZPHIF(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) ::    ZRDGAZ(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) ::    ZZZ
+
+REAL(KIND=JPRB) ::    ZQT,ZZQ1,ZZQ2,ZZT,ZQ0
+
+!     ------------------------------------------------------------------
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+INTEGER(KIND=JPIM) :: JLEV, JWORD
+! baroclinic case
+REAL(KIND=JPRB) :: ZPHIW,ZVPW,ZVP00
+
+!     ------------------------------------------------------------------
+
+!#include "abor1.intfb.h"
+#include "gphpre.intfb.h"
+#include "speree.intfb.h"
+#include "gpgeo.intfb.h"
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUDCMIP12_GU',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, YDDIMV=>YDGEOMETRY%YRDIMV, YDGEM=>YDGEOMETRY%YRGEM, &
+ & YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB, YDVAB=>YDGEOMETRY%YRVAB, YDVETA=>YDGEOMETRY%YRVETA, &
+ & YDCVER=>YDGEOMETRY%YRCVER,YDVERT_GEOM=>YDGEOMETRY%YRVERT_GEOM)
+ASSOCIATE(NSPEC2=>YDDIM%NSPEC2, &
+ & NFLEVG=>YDDIMV%NFLEVG, NFLEVL=>YDDIMV%NFLEVL, &
+ & NGPTOT=>YDGEM%NGPTOT)
+!==================================================================
+! Case 4.2:  Baroclinic waves (moist) 
+!==================================================================
+IF((KTESTCASE == 42) .OR. (KTESTCASE == 43)) THEN
+ZPHIW=2._JPRB*RPI/9._JPRB
+ZQ0=0.021_JPRB
+ZVP00 = 1.E5_JPRB
+ZVPW = 34000._JPRB
+
+DO JWORD = 1,NGPTOT
+  DO JLEV = 1, NFLEVG
+      PQ(JWORD,JLEV) = ZQ0 * EXP(-(YDGSGEOM_NB%GELAT(JWORD)/ZPHIW)**4)&
+ &                     *EXP(-((YDVETA%VETAF(JLEV)-1._JPRB)*ZVP00/ZVPW)**2)
+  ENDDO
+ENDDO
+
+  WRITE(NULOUT,'(''END OF GFL setup in sugridug2 for NTESTCASE=42/43'')')
+ENDIF
+
+IF ((KTESTCASE == 51) .OR. (KTESTCASE == 52)) THEN
+! Tropical Cyclone
+
+!!! TC Characteristics
+
+ZQ0=21.E-3_JPRB
+ZQT=1.E-11_JPRB
+ZZQ1=3000._JPRB
+ZZQ2=8000._JPRB
+ZZT=15000._JPRB
+
+!! compute the necessary pressure information before interpolation
+
+! Get surface pressure and T from spectral space
+  ZLNSP(:)=YDSPEC%SP(:)
+  ZTEMP(:,:)=YDSPEC%T(:,:)
+  ZSPOROG(:)=YDSPEC%OROG(:)
+  CALL SPEREE(YDGEOMETRY,1,1,ZLNSP,ZPSP)
+  CALL SPEREE(YDGEOMETRY,1,1,ZSPOROG,ZGPOROG)
+  CALL SPEREE(YDGEOMETRY,NFLEVL,NFLEVG,ZTEMP,ZT)
+  DO JWORD = 1,NGPTOT
+    ZPRESH(JWORD,NFLEVG) = EXP( ZPSP(JWORD) )
+    ZPHI(JWORD,NFLEVG) = ZGPOROG(JWORD)
+  ENDDO
+
+  CALL GPHPRE (NGPTOT,NFLEVG,1,NGPTOT,YDVAB,YDCVER,ZPRESH,PXYB=ZXYB,PRESF=ZPRESF)
+
+! compute geopotentiel
+  ZRDGAZ = RD
+  CALL GPGEO (NGPTOT,1,NGPTOT,NFLEVG,&
+              & ZPHI, ZPHIF,&
+              & ZT,ZRDGAZ,ZXYB(1,1,YYTXYB%M_LNPR),&
+              & ZXYB(1,1,YYTXYB%M_ALPH),YDVERT_GEOM)
+
+DO JWORD = 1,NGPTOT
+DO JLEV = 1, NFLEVG
+
+ZZZ = ZPHIF(JWORD,JLEV )/RG
+
+IF (ZZZ<ZZT) THEN
+PQ(JWORD,JLEV ) = ZQ0*EXP(-(ZZZ/ZZQ1))*EXP(-(ZZZ/ZZQ2)**2)
+ELSE
+PQ(JWORD,JLEV ) = ZQT
+ENDIF
+
+ENDDO
+ENDDO
+
+  WRITE(NULOUT,'(''END OF GFL setup in sugridug2 for NTESTCASE=51/52'')')
+ENDIF
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUDCMIP12_GU',1,ZHOOK_HANDLE)
+END SUBROUTINE SUDCMIP12_GU

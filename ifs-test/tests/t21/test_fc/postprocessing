@@ -1,0 +1,3 @@
+echo "No sanity checks implemented"
+
+./ifs-check-bitid

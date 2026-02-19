@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+# (C) Copyright 2020- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+# Usage:
+#   test-install.sh [CMAKE_ARGUMENTS]
+
+SOURCE=@CMAKE_CURRENT_SOURCE_DIR@/test_install
+BUILD=@CMAKE_CURRENT_BINARY_DIR@/test_install
+
+# Error handling
+function test_failed {
+  EXIT_CODE=$?
+  { set +ex; } 2>/dev/null
+  if [ $EXIT_CODE -ne 0 ]; then
+    echo "+++++++++++++++++"
+    echo "Test failed"
+    echo "+++++++++++++++++"
+  fi
+  exit $EXIT_CODE
+}
+trap test_failed EXIT
+set -e -o pipefail
+set -x
+
+# Start with clean build
+rm -rf $BUILD
+
+if [ -z ${fiat_ROOT+x} ]; then
+  export fiat_DIR=@PROJECT_BINARY_DIR@
+else
+  echo "fiat_ROOT=$fiat_ROOT"
+fi
+
+export ecbuild_DIR=@ecbuild_DIR@
+
+# Build
+mkdir -p $BUILD && cd $BUILD
+cmake $SOURCE \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DECBUILD_2_COMPAT=OFF \
+  "$@"
+
+make VERBOSE=1
+
+bin/main_dp
+bin/main_sp
+
+{ set +ex; } 2>/dev/null
+echo "+++++++++++++++++"
+echo "Test passed"
+echo "+++++++++++++++++"
+

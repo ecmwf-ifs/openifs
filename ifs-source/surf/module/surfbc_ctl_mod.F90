@@ -1,0 +1,420 @@
+! (C) Copyright 1999- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE SURFBC_CTL_MOD
+CONTAINS
+SUBROUTINE SURFBC_CTL(KIDIA, KFDIA, KLON, KTILES,KLEVSN, &
+ & PTVL, PCO2TYP, PTVH, PSOTY, PSDOR, PCVLC, PCVHC, PCURC, PLAILC, PLAIHC, PLAILI, PLAIHI, &
+ & PLSM, PCI, PCLAKE, PHLICE, PGEMU, PSNM1M, PWLM1M, PRSNM1M, &  
+ & LDLAND, LDSICE, LDLAKE, LDNH, LDOCN_KPP, &      
+ & KTVL, KCO2TYP, KTVH, KSOTY, &
+ & PCVL, PCVH, PCUR, PLAIL, PLAIH, PWLMX, PFRTI, &
+ & YDSOIL, YDVEG, YDFLAKE, YDOCEAN_ML)  
+
+USE PARKIND1,     ONLY : JPIM, JPRB
+USE YOMHOOK,      ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_SOIL,     ONLY : TSOIL
+USE YOS_VEG,      ONLY : TVEG
+USE YOS_FLAKE,    ONLY : TFLAKE
+USE YOS_OCEAN_ML, ONLY : TOCEAN_ML
+USE ABORT_SURF_MOD  
+
+!     ------------------------------------------------------------------
+!**   *SURFBC* - CREATES BOUNDARY CONDITIONS CHARACTERIZING THE SURFACE
+
+!     PURPOSE
+!     -------
+!     CREATES AUXILIARY FIELDS NEEDED BY SURFEXCDRIVER, SURFTSTP, AND SURFRAD
+
+!     INTERFACE
+!     ---------
+!     *SURFBC* IS CALLED BY *CALLPAR* AND *RADPAR*
+
+!     INPUT PARAMETERS (INTEGER):
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILES*       TILE INDEX
+!     *KLEVSN*       NUMBER OF SNOW LAYERS
+!     *PTVL*         LOW VEGETATION TYPE (REAL)
+!     *PCO2TYP*      TYPE OF PHOTOSYNTHETIC PATHWAY FOR LOW VEGETATION (C3/C4)
+!     *PTVH*         HIGH VEGETATION TYPE (REAL)
+!     *PSOTY*        SOIL TYPE (REAL)                               (1-7)
+!     *PSDOR*        STANDARD DEV. OF OROGRAPHY                     (m)
+
+!     INPUT PARAMETERS (REAL):
+!     *PCVLC*        LOW VEGETATION COVER  (CLIMATE)                (0-1)
+!     *PCVHC*        HIGH VEGETATION COVER (CLIMATE)                (0-1)
+!     *PCURC*        URBAN COVER (CLIMATE)                          (0-1)
+!     *PLAILC*        LOW LAI (FROM CLIMATE FILE)                   m2/m2
+!     *PLAIHC*        HIGH LAI (FROM CLIMATE FILE)                  m2/m2
+
+!     *PLAILI*        LOW LAI (Interactive)                         m2/m2
+!     *PLAIHI*        HIGH LAI (Interactive)                        m2/m2
+
+!     *PLSM*         LAND-SEA MASK                                  (0-1)
+!     *PCI*          SEA-ICE FRACTION                               (0-1)
+!     *PCLAKE*       LAKE FRACTION                                  (0-1)
+!     *PHLICE*       LAKE ICE THICKNESS                               m
+!     *PGEMU*        COSINE OF LATITUDE
+!     *PSNM1M*       SNOW MASS (per unit area)                      kg/m**2
+!     *PWLM1M*       INTERCEPTION RESERVOIR CONTENTS                kg/m**2
+!     *PRSNM1M*      SNOW DENSITY                                   kg/m**3
+
+!     OUTPUT PARAMETERS (LOGICAL):
+!     *LDLAND*       LAND INDICATOR
+!     *LDSICE*       SEA-ICE INDICATOR
+!     *LDLAKE*       LAKE INDICATOR
+!     *LDNH*         NORTHERN HEMISPHERE INDICATOR
+!     *LDOCM_KPP*    OCEAN INDICATOR
+
+!     OUTPUT PARAMETERS (REAL):
+!     *PCVL*         LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!     *PCVH*         HIGH VEGETATION COVER (CORRECTED)              (0-1)
+!     *PCUR*         URBAN COVER (CORRECTED)                        (0-1)
+!     *PLAIL*         LOW LAI  (CORRECTED)                         (m2/m2)
+!     *PLAIH*         HIGH LAI (CORRECTED)                         (m2/m2)
+!     *PWLMX*        MAXIMUM SKIN RESERVOIR CAPACITY                kg/m**2
+!     *PFRTI*        TILE FRACTIONS                                 (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+
+!     OUTPUT PARAMETERS (INTEGER):
+!     *KTVL*         LOW VEGETATION COVER
+!     *KCO2TYP*      TYPE OF PHOTOSYNTHETIC PATHWAY (C3/C4)
+!     *KTVH*         HIGH VEGETATION COVER
+!     *KSOTY*        SOIL TYPE                                      (1-7)
+
+!     METHOD
+!     ------
+!     IT IS NOT ROCKET SCIENCE, BUT CHECK DOCUMENTATION
+
+!     Modifications
+!     P. VITERBO       E.C.M.W.F.         18-02-99
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     P. Viterbo    24-05-2004      Change surface units
+!     P. Viterbo   ECMWF   03-12-2004  Include user-defined RTHRFRTI
+!     G. Balsamo   ECMWF   15-01-2007  Add soil type
+!     E. Dutra/G. Balsamo  01-05-2008  Add lake tile / Allow sub-grid lake tile 
+!     Y. Takaya    ECMWF   07-10-2008  Add ocean mixed layer grids
+!     E. Dutra             21/11/2008  Couple snow deck with lake ice (recalculation of tile fractions )
+!     S. Boussetta/G.Balsamo May 2009 Add lai
+!     S. Boussetta/G.Balsamo 04-06-2009 2009 Added exp function for crops RCOV
+!     E. Dutta             16-11-2009  snow 2009 cleaning
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL
+!     G.Balsamo              Jan 2015 Add subgrid lake ice fraction
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+! Declaration of arguments
+
+INTEGER(KIND=JPIM), INTENT(IN)  :: KIDIA
+INTEGER(KIND=JPIM), INTENT(IN)  :: KFDIA
+INTEGER(KIND=JPIM), INTENT(IN)  :: KLON
+INTEGER(KIND=JPIM), INTENT(IN)  :: KTILES
+INTEGER(KIND=JPIM), INTENT(IN)  :: KLEVSN
+
+REAL(KIND=JPRB),    INTENT(IN)  :: PTVL(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PCO2TYP(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PTVH(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PSOTY(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PSDOR(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PCVLC(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PCVHC(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PCURC(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PLAILC(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PLAIHC(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PLAILI(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PLAIHI(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PLSM(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PCI(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PGEMU(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PSNM1M(:,:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PWLM1M(:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PRSNM1M(:,:)
+REAL(KIND=JPRB),    INTENT(IN)  :: PCLAKE(:) 
+REAL(KIND=JPRB),    INTENT(IN)  :: PHLICE(:)
+
+LOGICAL,   INTENT(OUT) :: LDLAND(:)
+LOGICAL,   INTENT(OUT) :: LDSICE(:)
+LOGICAL,   INTENT(OUT) :: LDNH(:)
+LOGICAL,   INTENT(OUT) :: LDLAKE(:)  
+LOGICAL,   INTENT(OUT) :: LDOCN_KPP(:) 
+
+INTEGER(KIND=JPIM), INTENT(OUT) :: KTVL(:)
+INTEGER(KIND=JPIM), INTENT(OUT) :: KCO2TYP(:)
+INTEGER(KIND=JPIM), INTENT(OUT) :: KTVH(:)
+INTEGER(KIND=JPIM), INTENT(OUT) :: KSOTY(:)
+
+REAL(KIND=JPRB),    INTENT(OUT) :: PCVL(:)
+REAL(KIND=JPRB),    INTENT(OUT) :: PCVH(:)
+REAL(KIND=JPRB),    INTENT(OUT) :: PCUR(:)
+REAL(KIND=JPRB),    INTENT(OUT) :: PLAIL(:)
+REAL(KIND=JPRB),    INTENT(OUT) :: PLAIH(:)
+REAL(KIND=JPRB),    INTENT(OUT) :: PWLMX(:)
+REAL(KIND=JPRB),    INTENT(OUT) :: PFRTI(:,:)
+
+TYPE(TSOIL),        INTENT(IN)  :: YDSOIL
+TYPE(TVEG),         INTENT(IN)  :: YDVEG
+TYPE(TFLAKE),       INTENT(IN)  :: YDFLAKE
+TYPE(TOCEAN_ML),    INTENT(IN)  :: YDOCEAN_ML
+
+REAL(KIND=JPRB) ::    ZCVW(KLON)   ,ZCVS(KLON) , ZFRAUX(KLON)
+REAL(KIND=JPRB) ::    ZLICE(KLON), ZPCVL,ZPCVH,ZPCVB,ZPCVLK
+REAL(KIND=JPRB) ::    ZTHRESH, ZEPS, ZSUM(KLON), ZSUM2(KLON)
+
+INTEGER(KIND=JPIM) :: IK, JK, JL,JT
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!         Convert types to integer
+
+IF (LHOOK) CALL DR_HOOK('SURFBC_CTL_MOD:SURFBC_CTL',0,ZHOOK_HANDLE)
+ASSOCIATE(LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEOCML=>YDOCEAN_ML%LEOCML, &
+ & LESN09=>YDSOIL%LESN09, RCIMIN=>YDSOIL%RCIMIN, RQSNCR=>YDSOIL%RQSNCR, &
+ & RTHRFRTI=>YDSOIL%RTHRFRTI, RWLMAX=>YDSOIL%RWLMAX, &
+ & LECTESSEL=>YDVEG%LECTESSEL, LELAIV=>YDVEG%LELAIV, RLAIINT=>YDVEG%RLAIINT, &
+ & RVCOV=>YDVEG%RVCOV, RVLAI=>YDVEG%RVLAI)
+DO JL=KIDIA,KFDIA
+  KTVL(JL)=NINT(PTVL(JL))
+  KCO2TYP(JL)=NINT(PCO2TYP(JL))
+  KTVH(JL)=NINT(PTVH(JL))
+  KSOTY(JL)=NINT(PSOTY(JL))
+ENDDO
+
+!*      FIND LAKE POINTS WITH ICE COVER AND CALCULATE FROZEN FRACTION (0-10cm)
+DO JL=KIDIA,KFDIA
+  IF (PHLICE(JL)>RH_ICE_MIN_FLK) THEN
+    ZLICE(JL)=MAX(0._JPRB,MIN(1.0_JPRB,PHLICE(JL)*10.0_JPRB))
+  ELSE
+    ZLICE(JL)=0._JPRB
+  ENDIF
+ENDDO
+ 
+!         Overwrite LAI fields with look-up table values if LELAIV = .F.
+
+IF(LELAIV)THEN
+
+  IF (RLAIINT > 0._JPRB ) THEN 
+    DO JL=KIDIA,KFDIA  
+      PLAIL(JL)=PLAILI(JL)
+      PLAIH(JL)=PLAIHI(JL)
+    ENDDO
+  ELSE
+    DO JL=KIDIA,KFDIA
+      PLAIL(JL)=PLAILC(JL)
+      PLAIH(JL)=PLAIHC(JL)
+    ENDDO
+  ENDIF
+ELSE
+  DO JL=KIDIA,KFDIA
+    PLAIL(JL)=RVLAI(KTVL(JL))
+    PLAIH(JL)=RVLAI(KTVH(JL))
+  ENDDO
+ENDIF
+
+!         Correct fractions dependent on type
+DO JL=KIDIA,KFDIA
+  PCVL(JL)=PCVLC(JL)*RVCOV(KTVL(JL))
+!  IF ((KTVL(JL)==1_JPIM).OR.(KTVL(JL)==10_JPIM)) THEN
+!    PCVL(JL)=PCVLC(JL)*(1.0_JPRB-EXP(-0.6_JPRB*PLAIL(JL)))
+!  ELSE
+!    PCVL(JL)=PCVLC(JL)*RVCOV(KTVL(JL))
+!  ENDIF
+  PCVH(JL)=PCVHC(JL)*RVCOV(KTVH(JL))
+  IF (PCURC(JL).LT.0.0_JPRB.OR.PCURC(JL).GT.1.0_JPRB) THEN
+   PCUR(JL)=0.0_JPRB
+  ELSE
+   PCUR(JL)=PCURC(JL)
+  ENDIF
+ENDDO
+
+!         Miscellaneous fields needed elsewhere
+DO JL=KIDIA,KFDIA
+  LDLAND(JL)=PLSM(JL) > 0.5_JPRB
+  LDLAKE(JL)= (LEFLAKE .AND. LDLAND(JL)).OR.(LEFLAKE .AND. (PCLAKE(JL) > 0.5_JPRB))  !all land points and resolved lakes are going in the lake calculations
+! LDLAKE(JL)= LEFLAKE !all points including ocean
+! LDLAKE(JL)= LEFLAKE .AND. PCLAKE(JL) > 0.001_JPRB   !unresolved lake
+! LDLAKE(JL)= LEFLAKE .AND. ((LDLAND(JL).AND. (PLSM(JL) <= 0.999_JPRB ))&       !all land point with subgrid water greater than 0.001
+!  &                                     .OR. (PCLAKE(JL) > 0.001_JPRB))        !plus all lakes (resolved and unresolved)
+! LDLAKE(JL)= LEFLAKE .AND. PCLAKE(JL) > 0.5_JPRB*(1.0_JPRB - PLSM(JL) ) 
+! LDLAKE(JL)= LEFLAKE .AND. PCLAKE(JL) > 0.5_JPRB !resolved lakes only
+  LDSICE(JL)=( .NOT.LDLAND(JL) .AND. .NOT.LDLAKE(JL) ) .AND.PCI(JL) > RCIMIN   
+  LDNH(JL)=PGEMU(JL) > 0.0_JPRB
+  IF (.NOT.LESN09) THEN 
+    ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,SUM(PSNM1M(JL,:))*RQSNCR))
+  ELSE
+    ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,(100.0_JPRB*SUM(PSNM1M(JL,:)/PRSNM1M(JL,:))*RQSNCR)))
+! tanh formulations:
+!   ZCVS(JL)=MAX(0._JPRB,MIN(1._JPRB, TANH(100.0_JPRB*SUM(PSNM1M(JL,:)/PRSNM1M(JL,:))*RQSNCR)   ) )
+!   IF (ZCVS(JL) >= 0.99_JPRB) ZCVS(JL)=1._JPRB
+
+  ENDIF
+!   IF (ZCVS(JL) < 0.5) THEN
+!     ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,SQRT(MAX(0._JPRB,SUM(PSNM1M(JL,:)/PRSNM1M(JL,:)))/0.2_JPRB)))
+!   ENDIF
+  PWLMX(JL)=RWLMAX*(1.0_JPRB-PCVL(JL)-PCVH(JL)&
+   & +PCVL(JL)*PLAIL(JL)&
+   & +PCVH(JL)*PLAIH(JL))
+  ZCVW(JL)=MAX(0._JPRB,MIN(1.0_JPRB,PWLM1M(JL)/PWLMX(JL)))
+  LDOCN_KPP(JL) = LEOCML .AND. ( .NOT. LDLAND(JL) .AND. .NOT. LDLAKE(JL) ) 
+ENDDO
+
+!        Define surface fractions
+DO JT=1,KTILES
+  DO JL=KIDIA,KFDIA
+    PFRTI(JL,JT)=0.0_JPRB
+  ENDDO
+ENDDO
+
+IF (LEFLAKE) THEN
+ DO JL=KIDIA,KFDIA
+    IF (.NOT. LDLAND(JL) .AND. .NOT. LDLAKE(JL) ) THEN 
+      IF (LDSICE(JL)) THEN
+        PFRTI(JL,2)=MIN(MAX(RCIMIN,PCI(JL)),1.0_JPRB)
+        PFRTI(JL,1)=1.0_JPRB-PFRTI(JL,2)
+      ELSE
+        PFRTI(JL,1)=1.0_JPRB
+      ENDIF
+    ELSE
+      IF ( LDLAKE(JL) .AND. .NOT. LDLAND(JL) ) THEN
+        ZPCVLK=1.0_JPRB
+      ELSEIF (LDLAKE(JL)) THEN
+        ZPCVLK=PCLAKE(JL)
+      ELSE
+        ZPCVLK=0.0_JPRB
+      ENDIF
+      
+      IF (KTILES .GT. 9 .AND. ZPCVLK+PCUR(JL) .GT. 1.0_JPRB) THEN
+       PCUR(JL)=1.0_JPRB-ZPCVLK
+      ENDIF
+
+      ZPCVL=PCVL(JL)*(1.0_JPRB-ZPCVLK)
+      ZPCVH=PCVH(JL)*(1.0_JPRB-ZPCVLK)
+      ZPCVB=1.0_JPRB-ZPCVL-ZPCVH-ZPCVLK
+      PFRTI(JL,3)=ZCVW(JL)*(1.0_JPRB-ZCVS(JL))*(ZPCVL+ZPCVH+ZPCVB)
+      PFRTI(JL,4)=ZPCVL*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+      PFRTI(JL,5)=ZCVS(JL)*(ZPCVB+ZPCVL)
+      PFRTI(JL,6)=ZPCVH*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+      PFRTI(JL,7)=ZCVS(JL)*ZPCVH
+      PFRTI(JL,8)=ZPCVB*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+      IF (LDLAKE(JL) .AND. (PHLICE(JL)>RH_ICE_MIN_FLK)) THEN
+         PFRTI(JL,9)=ZPCVLK*ZLICE(JL)
+         PFRTI(JL,1)=ZPCVLK*(1.0_JPRB-ZLICE(JL))
+      ELSE
+         PFRTI(JL,9)=ZPCVLK
+      ENDIF
+     
+      IF (KTILES .GT. 9) THEN !URBAN
+       ZPCVL=PCVL(JL)*(1.0_JPRB-ZPCVLK-PCUR(JL))
+       ZPCVH=PCVH(JL)*(1.0_JPRB-ZPCVLK-PCUR(JL))
+       ZPCVB=1.0_JPRB-ZPCVL-ZPCVH-ZPCVLK-PCUR(JL)
+       PFRTI(JL,3)=ZCVW(JL)*(1.0_JPRB-ZCVS(JL))*(ZPCVL+ZPCVH+ZPCVB+PCUR(JL))
+       PFRTI(JL,4)=ZPCVL*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+       PFRTI(JL,5)=ZCVS(JL)*(ZPCVB+ZPCVL)
+       PFRTI(JL,6)=ZPCVH*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+       PFRTI(JL,7)=ZCVS(JL)*(ZPCVH+PCUR(JL))
+       PFRTI(JL,8)=ZPCVB*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+       PFRTI(JL,10)=PCUR(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+      ENDIF 
+
+    ENDIF
+ ENDDO
+ELSE
+! For bit-reproducibility the code needs to be duplicated
+ DO JL=KIDIA,KFDIA
+  IF (.NOT. LDLAND(JL)) THEN
+    IF (LDSICE(JL)) THEN
+      PFRTI(JL,2)=MAX(RCIMIN,PCI(JL))
+      PFRTI(JL,1)=1.0_JPRB-PFRTI(JL,2)
+    ELSE
+      PFRTI(JL,1)=1.0_JPRB
+    ENDIF
+  ELSE
+    PFRTI(JL,5)=ZCVS(JL)*(1.0_JPRB-PCVH(JL))
+    PFRTI(JL,7)=ZCVS(JL)*PCVH(JL)
+    PFRTI(JL,3)=(1.0_JPRB-ZCVS(JL))*ZCVW(JL)
+    PFRTI(JL,4)=PCVL(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+    PFRTI(JL,6)=PCVH(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+    PFRTI(JL,8)=(1.0_JPRB-PCVL(JL)-PCVH(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+    IF (KTILES .GT. 9) THEN !URBAN
+     PFRTI(JL,5)=ZCVS(JL)*(1.0_JPRB-(PCVH(JL)*(1.0_JPRB-PCUR(JL))+PCUR(JL)))
+     PFRTI(JL,7)=ZCVS(JL)*(PCVH(JL)*(1.0_JPRB-PCUR(JL))+PCUR(JL))
+     PFRTI(JL,4)=PCVL(JL)*(1.0_JPRB-PCUR(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+     PFRTI(JL,6)=PCVH(JL)*(1.0_JPRB-PCUR(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+     PFRTI(JL,8)=(1.0_JPRB-(PCVL(JL)*(1.0_JPRB-PCUR(JL)))-(PCVH(JL)*(1.0_JPRB-PCUR(JL))) - &
+     & PCUR(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+     PFRTI(JL,10)=PCUR(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
+    ENDIF
+  ENDIF
+ ENDDO
+ENDIF
+
+! FRACTIONS OF TILES ABOVE A THRESHOLD, NORMALIZED TO SUM 1
+
+IF (RTHRFRTI > 0._JPRB) THEN
+  ZFRAUX(KIDIA:KFDIA)=0._JPRB
+
+  DO JT=1,KTILES
+    DO JL=KIDIA,KFDIA
+      IF (PFRTI(JL,JT) < RTHRFRTI) THEN
+        PFRTI(JL,JT)=0._JPRB
+      ENDIF
+      ZFRAUX(JL)=ZFRAUX(JL)+PFRTI(JL,JT)
+    ENDDO
+  ENDDO
+  DO JT=1,KTILES
+    DO JL=KIDIA,KFDIA
+      PFRTI(JL,JT)=PFRTI(JL,JT)/ZFRAUX(JL)
+    ENDDO
+  ENDDO
+ENDIF
+
+! check correctness of tile fraction computation
+ZSUM(:)=0.0_JPRB
+ZSUM2(:)=0.0_JPRB
+ZEPS=0.01_JPRB
+ZTHRESH=1._JPRB+ZEPS
+DO IK=1,KTILES
+  DO JK=KIDIA,KFDIA
+    ZSUM(JK)=ZSUM(JK)+PFRTI(JK,IK)
+    ZSUM2(JK)=1._JPRB-PCVL(JK)-PCVH(JK)
+  ENDDO
+  IF( ANY(PFRTI(KIDIA:KFDIA,IK) < 0._JPRB) ) THEN
+    DO JK=KIDIA,KFDIA
+      IF( PFRTI(JK,IK) < 0._JPRB ) THEN
+        WRITE(*,'(A,I6,A,F8.4)') 'PROBLEM TILE:',IK,' FRACTION:',PFRTI(JK,IK)
+      ENDIF
+    ENDDO
+    CALL ABORT_SURF('SURFBC: TILING FRACTION IS NEGATIVE!')
+  ENDIF
+ENDDO
+IF( ANY(ZSUM(KIDIA:KFDIA) > ZTHRESH) .or. ANY(ZSUM2(KIDIA:KFDIA) < 0._JPRB) ) THEN
+  WRITE(*,'(A,F8.4,A,F8.4,A)') ' TILING FRACTION PROBLEM MAX MIN ',&
+     & MAXVAL(ZSUM),' ',MINVAL(ZSUM)
+  DO JK=KIDIA,KFDIA
+    IF( ZSUM(JK) > ZTHRESH .or. ZSUM2(JK) < 0._JPRB ) THEN
+      DO IK=1,KTILES
+        WRITE(*,'(A,I6,A,6F8.4,4I6)') 'PROBLEM TILE:',IK,' FRACTION:',PFRTI(JK,IK), &
+       & PCVL(JK), PCVH(JK) ,PLAIL(JK), PLAIH(JK), PWLMX(JK), &
+       & KTVL(JK)   ,KCO2TYP(JK),  KTVH(JK)   ,KSOTY(JK)
+      ENDDO
+    ENDIF
+  ENDDO
+  CALL ABORT_SURF('SURFBC: TILING FRACTION IS WRONG!')
+ENDIF
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SURFBC_CTL_MOD:SURFBC_CTL',1,ZHOOK_HANDLE)
+
+END SUBROUTINE SURFBC_CTL
+END MODULE SURFBC_CTL_MOD

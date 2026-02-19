@@ -1,0 +1,5 @@
+DIFF=$(grep 'CURRENT NUMBER OF THREADS[ 0-9]*$' NODE.001_01 | tr -s " " | cut -d" " -f6)
+if [[ -n "$IFS_TEST_PARALLEL_OVERRIDE-}" ]] || (($(bc <<< "$NTHREAD==2"))); then : ; else echo "Test failed: The number of threads was incorrect"; exit 1; fi
+if (($(bc <<< "$DIFF==$NTHREAD"))); then echo "Passed"; else echo "Test failed: The number of threads was incorrect"; exit 1; fi
+
+./ifs-check-bitid

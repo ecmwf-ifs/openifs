@@ -1,0 +1,294 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE FILEDATE(CDFILESH,CDFILEGG,KUNIT,KUDATE,KUSSSS,KDATEF)
+
+!**** *FILEDATE*   - Routine to extract the date of a file
+
+!     Purpose.
+!     --------
+!           To extract the date of a file
+!**   Interface.
+!     ----------
+!        *CALL* *FILEDATE*
+
+!        Explicit arguments :
+!        --------------------
+!        CDFILESH : File name for spectral fields
+!        CDFILEGG : File name for gridpoint fields (optional)
+!        KUNIT    : Logical unit number for an input file
+!        KUDATE : date in file
+!        KUSSSS : time in file
+!        KDATEF : raw date in file
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Ryad El Khatib *METEO-FRANCE*
+!      Original : 09-Apr-2015 from suarg
+
+!     Modifications.
+!     --------------
+!      R. El Khatib 08-Dec-2015 KSTEP as argument
+!      R. El Khatib : 23-Aug-2016 KDATEF in output argument
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMARG   , ONLY : NGRIBFILE
+USE YOMLUN   , ONLY : NULOUT
+USE YOMMP0   , ONLY : MYPROC
+USE IOSTREAM_MIX , ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST,  &
+ & CLOSE_IOSTREAM, TYPE_IOSTREAM , TYPE_IOREQUEST, IO_INQUIRE, &
+ & CLOSE_IOREQUEST
+USE GRIB_API_INTERFACE , ONLY : IGRIB_GET_VALUE
+USE MPL_MODULE, ONLY : MPL_BROADCAST
+USE FA_MOD   , ONLY : JD_YEA, JD_MON, JD_DAY, JD_SEM, JD_SET, JD_SIZ
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+!     ------------------------------------------------------------------
+
+CHARACTER(LEN=*), INTENT(IN) :: CDFILESH
+CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: CDFILEGG
+INTEGER(KIND=JPIM), INTENT(IN), OPTIONAL :: KUNIT
+INTEGER(KIND=JPIM), INTENT(OUT) :: KUDATE
+INTEGER(KIND=JPIM), INTENT(OUT) :: KUSSSS
+INTEGER(KIND=JPIM), INTENT(OUT), OPTIONAL :: KDATEF(:)
+
+INTEGER(KIND=JPIM) :: IABORT, INBARI, INC, IREP, ISDAY, ISSSS, IUDATE, IUSSSS
+INTEGER(KIND=JPIM) :: IYEAR, IMONTH, IDAY, IHOUR, IMIN, INDICATOR, ISTART
+INTEGER(KIND=JPIM) :: IDATEF(JD_SIZ), ILMO(12)
+
+CHARACTER (LEN = 16) :: CLLEC
+
+LOGICAL :: LLEXIST, LLGGEXIST, LLSPEXIST
+
+REAL(KIND=JPRB) :: ZINC
+
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "updcal.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('FILEDATE',0,ZHOOK_HANDLE)
+!     ------------------------------------------------------------------
+
+IF (NGRIBFILE==0) THEN
+
+  IF (MYPROC==1) THEN
+
+    IF (.NOT.(PRESENT(KUNIT))) THEN
+      CALL ABOR1 ('FILEDATE : KUNIT IS REQUIRED FOR FA FILE')
+    ENDIF
+  ! Information from FA files
+
+    INQUIRE(FILE=CDFILESH,EXIST=LLEXIST)
+    IF (LLEXIST) THEN
+      CLLEC='CADRE LECTURE   '
+      INBARI=0
+      CALL FAITOU(IREP,KUNIT,.TRUE.,CDFILESH,'OLD',.TRUE.,&
+       & .TRUE.,1,1,INBARI,CLLEC)
+      CALL LFIMST(IREP,KUNIT,.FALSE.)
+      CALL FADIEX(IREP,KUNIT,IDATEF)
+      CALL FAIRME(IREP,KUNIT,'UNKNOWN')
+      IF (PRESENT(KDATEF)) THEN
+        IF (SIZE(KDATEF)==SIZE(IDATEF)) THEN
+          KDATEF(:)=IDATEF(:)
+        ELSE
+          CALL ABOR1 ('FILEDATE INTERNAL ERROR : SIZES OF KDATEF AND IDATEF MISMATCH')
+        ENDIF
+      ENDIF
+      ISSSS = IDATEF (JD_SEM)+IDATEF (JD_SET)
+      ISDAY=3600*24
+      KUSSSS=MOD(ISSSS,ISDAY)
+      ZINC=REAL(ISSSS,JPRB)/REAL(ISDAY,JPRB)
+      INC=INT(ZINC)
+      IF (INC /= 0) THEN
+        CALL UPDCAL(IDATEF(JD_DAY),IDATEF(JD_MON),IDATEF(JD_YEA),INC,&
+         & IDATEF(JD_DAY),IDATEF(JD_MON),IDATEF(JD_YEA),ILMO,NULOUT)  
+      ENDIF
+      KUDATE=IDATEF(JD_YEA)*10000+IDATEF(JD_MON)*100+IDATEF(JD_DAY)
+    ELSE
+      WRITE(NULOUT,*) 'FILEDATE : INPUT FILE NOT FOUND : ',CDFILESH
+      CALL ABOR1 ('FILEDATE : INPUT FILE NOT FOUND')
+    ENDIF
+
+  ENDIF ! MYPROC
+
+  WRITE(UNIT=NULOUT,FMT='('' FILEDATE RETURNS : KUDATE = '',I8,'' KUSSSS = '',I6)') KUDATE, KUSSSS  
+
+ELSE
+
+  IF (PRESENT(KDATEF)) THEN
+    IF (SIZE(KDATEF) <= 7) CALL ABOR1 ('FILEDATE INTERNAL ERROR : KDATEF TOO SHORT')
+  ENDIF
+  IF (SIZE(IDATEF) <= 7) CALL ABOR1 ('FILEDATE INTERNAL ERROR : IDATEF TOO SHORT')
+
+! Information from GRIB files
+
+! Information on spectral data          
+  INQUIRE(FILE=CDFILESH,EXIST=LLSPEXIST)
+  IF (LLSPEXIST) THEN
+    CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CDFILESH),CDMODE='r',KIOMASTER=1)
+    CALL SETUP_IOREQUEST(YL_IOREQUEST,'SPECTRAL_FIELDS',LDGRIB=.TRUE.,&
+     & LDINTONLY=.TRUE.,KCHUNKSIZE=1)
+    CALL IO_INQUIRE(YL_IOSTREAM,YL_IOREQUEST,&
+     & KDATE=IUDATE,KTIME=IUSSSS)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'year',IYEAR)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'month',IMONTH)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'day',IDAY)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'hour',IHOUR)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'minute',IMIN)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'indicatorOfUnitOfTimeRange',INDICATOR)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'startStep',ISTART)
+    CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+    CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+    KUDATE=IUDATE
+    KUSSSS=IUSSSS
+    IDATEF(1)=IYEAR
+    IDATEF(2)=IMONTH
+    IDATEF(3)=IDAY
+    IDATEF(4)=IHOUR
+    IDATEF(5)=IMIN
+    IDATEF(6)=INDICATOR
+    IDATEF(7)=ISTART
+  ENDIF
+
+  ! Information on gridpoint data         
+
+  INQUIRE(FILE=CDFILEGG,EXIST=LLGGEXIST)
+  IF (LLGGEXIST) THEN
+    CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CDFILEGG),CDMODE='r',KIOMASTER=1)
+    CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,&
+    & LDINTONLY=.TRUE.,KCHUNKSIZE=1)
+    CALL IO_INQUIRE(YL_IOSTREAM,YL_IOREQUEST,&
+    & KDATE=IUDATE,KTIME=IUSSSS)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'year',IYEAR)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'month',IMONTH)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'day',IDAY)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'hour',IHOUR)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'minute',IMIN)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'indicatorOfUnitOfTimeRange',INDICATOR)
+    CALL IGRIB_GET_VALUE(YL_IOREQUEST%IGRIB_HANDLE,'startStep',ISTART)
+    CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+    CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+  ENDIF
+
+  ! Cross-check information of files         
+  IF (LLSPEXIST.AND.LLGGEXIST) THEN
+    IABORT=0
+    IF (KUDATE /= IUDATE) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME DATE !'
+      WRITE(NULOUT,*) ' IN SP FILE : ',KUDATE
+      WRITE(NULOUT,*) ' IN GG FILE : ',IUDATE
+      IABORT=1 
+    ENDIF
+    IF (KUSSSS /= IUSSSS) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME TIME !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', KUSSSS
+      WRITE(NULOUT,*) ' IN GG FILE : ', IUSSSS
+      IABORT=1
+    ENDIF
+    IF (IDATEF(1) /= IYEAR) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME YEAR !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(1)
+      WRITE(NULOUT,*) ' IN GG FILE : ', IYEAR
+      IABORT=1
+    ENDIF
+    IF (IDATEF(2) /= IMONTH) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME MONTH !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(2)
+      WRITE(NULOUT,*) ' IN GG FILE : ', IMONTH
+      IABORT=1
+    ENDIF
+    IF (IDATEF(3) /= IDAY) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME DAY !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(3)
+      WRITE(NULOUT,*) ' IN GG FILE : ', IDAY
+      IABORT=1
+    ENDIF
+    IF (IDATEF(4) /= IHOUR) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME HOUR !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(4)
+      WRITE(NULOUT,*) ' IN GG FILE : ', IHOUR
+      IABORT=1
+    ENDIF
+    IF (IDATEF(5) /= IMIN) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME MINUTE !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(5)
+      WRITE(NULOUT,*) ' IN GG FILE : ', IMIN
+      IABORT=1
+    ENDIF
+    IF (IDATEF(6) /= INDICATOR) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME INDICATOR OF UNIT OF TIME RANGE !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(6)
+      WRITE(NULOUT,*) ' IN GG FILE : ', INDICATOR
+      IABORT=1
+    ENDIF
+    IF (IDATEF(7) /= ISTART) THEN
+      WRITE(NULOUT,*) ' NOT THE SAME START STEP !'
+      WRITE(NULOUT,*) ' IN SP FILE : ', IDATEF(7)
+      WRITE(NULOUT,*) ' IN GG FILE : ', ISTART
+      IABORT=1
+    ENDIF
+    IF (IABORT == 1) THEN
+      CALL ABOR1('FILEDATE: ABOR1 CALLED')
+    ENDIF
+  ELSEIF (.NOT.(LLSPEXIST.AND.LLGGEXIST)) THEN
+    WRITE(NULOUT,*) ' >>> NO INPUT FILE AT ALL !'
+    WRITE(NULOUT,*) CDFILESH
+    WRITE(NULOUT,*) CDFILEGG
+    CALL ABOR1('FILEDATE: ABOR1 CALLED')
+  ENDIF
+
+  IF (SIZE(IDATEF) > 7) IDATEF(8:)=0
+
+  WRITE(UNIT=NULOUT,FMT='('' FILEDATE RETURNS : KUDATE = '',I8,'' KUSSSS = '',I6)') &
+   & KUDATE, KUSSSS
+
+  IF (PRESENT(KDATEF)) THEN
+    KDATEF(1:7) = IDATEF(1:7)
+    IF (SIZE(KDATEF) > 7) KDATEF(8:)=0
+  ENDIF
+
+ENDIF ! NGRIBFILE
+
+CALL MPL_BROADCAST (KUDATE, KTAG=0, KROOT=1, CDSTRING='FILEDATE:')
+CALL MPL_BROADCAST (KUSSSS, KTAG=1, KROOT=1, CDSTRING='FILEDATE:')
+IF (PRESENT(KDATEF)) THEN
+  CALL MPL_BROADCAST (KDATEF, KTAG=2, KROOT=1, CDSTRING='FILEDATE:')
+ENDIF
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('FILEDATE',1,ZHOOK_HANDLE)
+END SUBROUTINE FILEDATE

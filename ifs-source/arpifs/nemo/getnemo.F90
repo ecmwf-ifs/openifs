@@ -1,0 +1,245 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE GETNEMO(YDGEOMETRY,YDMCC,YDEPHY,KGPTOT,KSTEP)
+!
+!**** *GETNEMO*  - Retrieve SST, ICE ETC FROM NEMO.
+!
+!     Purpose.
+!     --------
+!       Interpolate NEMO data onto the reduced gaussian
+!       grid and copy to CLIMR data structure
+!
+!**   Interface.
+!     ----------
+!       *CALL*  *GETNEMO*
+!
+!     Input:
+!     -----
+!
+!     Output:
+!     ------
+!
+!     Method:
+!     ------
+!       
+!     Externals:
+!     ---------
+!
+!     Reference:
+!     ---------
+!
+!     Author:
+!     -------
+!       K. Mogensen, ECMWF
+!
+!     Modifications.
+!     --------------
+!       S. Keeley + K. Mogensen Januar 2012 update to support LIM2.
+!       K. Mogensen March 2014. Apply a maximum seaice of 1.0 to
+!                               avoid problems in surf.
+!       T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!     F. Vana  05-Mar-2015  Support for single precision
+!     -----------------------------------------------------------
+   
+USE PARKIND1 , ONLY : JPRD, JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN   , ONLY : NULOUT
+USE MPL_MODULE, ONLY : MPL_COMM
+USE YOMMP0   , ONLY : MYPROC, NPROC
+USE YOMMCC   , ONLY : TMCC
+USE YOEPHY   , ONLY : TEPHY
+USE CPLNG
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE IOSTREAM_MIX, ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST, IO_PUT,&
+   & CLOSE_IOSTREAM, CLOSE_IOREQUEST, TYPE_IOSTREAM, TYPE_IOREQUEST
+USE YOM_GRIB_CODES
+USE YOMCT3,  ONLY : NSTEP
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    , INTENT(IN) :: YDGEOMETRY
+TYPE(TEPHY)        ,INTENT(INOUT):: YDEPHY
+TYPE(TMCC)         ,INTENT(INOUT):: YDMCC
+INTEGER(KIND=JPIM), INTENT(IN) :: KGPTOT
+INTEGER(KIND=JPIM), INTENT(IN) :: KSTEP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+INTEGER(KIND=JPIM) :: JL
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+INTEGER(KIND=JPIM) :: IFIELDS, ISTEP, JSTGLO, IEND, IST, IBL, JROF
+INTEGER(KIND=JPIM), DIMENSION(:), ALLOCATABLE :: IGRIB2D,ILEVS2D
+REAL(KIND=JPRB), DIMENSION(:,:,:), ALLOCATABLE :: ZFIELD
+CHARACTER(LEN=128) :: CDNAME 
+!     -----------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('GETNEMO',0,ZHOOK_HANDLE)
+ASSOCIATE(LECURR=>YDEPHY%LECURR, CLIMR=>YDMCC%CLIMR,  &
+ & LMCCDYNSEAICE=>YDMCC%LMCCDYNSEAICE, NCLIMR=>YDMCC%NCLIMR, NP2=>YDMCC%NP2, &
+ & LNEMOLIMTLVL=>YDMCC%LNEMOLIMTLVL, CPLNG_FLD=>YDMCC%CPLNG_FLD, &
+ & LNEMOOUTGRB=>YDMCC%LNEMOOUTGRB)
+
+! Regrid the NEMO SST, ice and surface currents.
+
+#ifdef WITH_NEMO
+IF(KSTEP==0) THEN
+
+   WRITE(NULOUT,*)
+   WRITE(NULOUT,*)'INITIAL FIELDS RETRIEVED FROM NEMO.'
+   WRITE(NULOUT,*)
+
+ELSE
+
+   WRITE(NULOUT,*)
+   WRITE(NULOUT,*)'COUPLING FIELDS RETRIEVED FROM NEMO.'
+   WRITE(NULOUT,*)
+
+ENDIF
+
+IF (LMCCDYNSEAICE) THEN
+      
+   CALL NEMOGCMCOUP_LIM2_GET( MYPROC-1, NPROC, MPL_COMM, KGPTOT, &
+      &                       CPLNG_FLD(YDMCC%IP_A_SST)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_ICE_TEMP)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_ICE_ALBEDO)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_ICE_FRAC)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_ICE_THICKNESS)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_SNOW_THICKNESS)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_CURR_U)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_CURR_V)%D(:,1,1), &
+      &                       CPLNG_FLD(YDMCC%IP_A_ICE_TEMP_LVLS)%D(:,:,1),  &
+      &                       LNEMOLIMTLVL )
+   DO JL=1,KGPTOT
+      CLIMR(JL,NP2,NCLIMR+1)=CPLNG_FLD(YDMCC%IP_A_SST)%D(JL,1,1)
+      CLIMR(JL,NP2,NCLIMR+2)=MIN(CPLNG_FLD(YDMCC%IP_A_ICE_FRAC)%D(JL,1,1),1.0_JPRD)
+   ENDDO
+   
+ELSE
+      
+   CALL NEMOGCMCOUP_GET( MYPROC-1, NPROC, MPL_COMM, KGPTOT, &
+      &                  CPLNG_FLD(YDMCC%IP_A_SST)%D(:,1,1), &
+      &                  CPLNG_FLD(YDMCC%IP_A_ICE_FRAC)%D(:,1,1), &
+      &                  CPLNG_FLD(YDMCC%IP_A_CURR_U)%D(:,1,1), &
+      &                  CPLNG_FLD(YDMCC%IP_A_CURR_V)%D(:,1,1) )
+   
+   DO JL=1,KGPTOT
+      CLIMR(JL,NP2,NCLIMR+1)=CPLNG_FLD(YDMCC%IP_A_SST)%D(JL,1,1)
+      CLIMR(JL,NP2,NCLIMR+2)=MIN(CPLNG_FLD(YDMCC%IP_A_ICE_FRAC)%D(JL,1,1),1.0_JPRD)
+   ENDDO
+   
+ENDIF
+#else
+CALL ABOR1('ININEMO: COMPILED WITHOUT WITH_NEMO')
+#endif
+
+IF (LECURR) THEN
+   DO JL=1,KGPTOT
+      CLIMR(JL,NP2,NCLIMR+3)=CPLNG_FLD(YDMCC%IP_A_CURR_U)%D(JL,1,1)
+      CLIMR(JL,NP2,NCLIMR+4)=CPLNG_FLD(YDMCC%IP_A_CURR_V)%D(JL,1,1)
+   ENDDO
+ENDIF
+
+IF (LNEMOOUTGRB) THEN
+   WRITE(CDNAME,'(A,I8.8,A)')'ocean_coupling_fields_',KSTEP,'.grib'
+   ISTEP=NSTEP
+   IF (NSTEP<0) THEN
+      NSTEP=0
+   ENDIF
+   IF (LMCCDYNSEAICE) THEN
+      IF (LNEMOLIMTLVL) THEN
+         IFIELDS=11
+      ELSE
+         IFIELDS=8
+      ENDIF
+   ELSE
+      IFIELDS=4
+   ENDIF
+   ALLOCATE(IGRIB2D(IFIELDS))
+   ALLOCATE(ILEVS2D(IFIELDS))
+   ALLOCATE(ZFIELD(YDGEOMETRY%YRDIM%NPROMA,IFIELDS,YDGEOMETRY%YRDIM%NGPBLKS))
+   IGRIB2D(1)=NGRBSSTK
+   ILEVS2D(1)=1
+   IGRIB2D(2)=NGRBCI
+   ILEVS2D(2)=1
+   IGRIB2D(3)=NGRBUCUR
+   ILEVS2D(3)=1
+   IGRIB2D(4)=NGRBVCUR
+   ILEVS2D(4)=1
+   DO JSTGLO=1,KGPTOT,YDGEOMETRY%YRDIM%NPROMA
+      IEND=MIN(YDGEOMETRY%YRDIM%NPROMA,KGPTOT-JSTGLO+1)
+      IST=1
+      IBL=(JSTGLO-1)/YDGEOMETRY%YRDIM%NPROMA+1
+      DO JROF=1,IEND
+         ZFIELD(JROF,1,IBL)=CPLNG_FLD(YDMCC%IP_A_SST)%D(JSTGLO+JROF-1,1,1)
+         ZFIELD(JROF,2,IBL)=CPLNG_FLD(YDMCC%IP_A_ICE_FRAC)%D(JSTGLO+JROF-1,1,1)
+         ZFIELD(JROF,3,IBL)=CPLNG_FLD(YDMCC%IP_A_CURR_U)%D(JSTGLO+JROF-1,1,1)
+         ZFIELD(JROF,4,IBL)=CPLNG_FLD(YDMCC%IP_A_CURR_V)%D(JSTGLO+JROF-1,1,1)
+      ENDDO
+   ENDDO
+   IF (LMCCDYNSEAICE) THEN 
+      IGRIB2D(5)=NGRBICETK
+      ILEVS2D(5)=1
+      IGRIB2D(6)=NGRBISTL1
+      ILEVS2D(6)=1
+      IGRIB2D(7)=NGRBAL ! Should be ice albedo rather than just albedo, but these outputs are for debugging only.
+      ILEVS2D(7)=1
+      IGRIB2D(8)=NGRBSD
+      ILEVS2D(8)=1
+      DO JSTGLO=1,KGPTOT,YDGEOMETRY%YRDIM%NPROMA
+         IEND=MIN(YDGEOMETRY%YRDIM%NPROMA,KGPTOT-JSTGLO+1)
+         IST=1
+         IBL=(JSTGLO-1)/YDGEOMETRY%YRDIM%NPROMA+1
+         DO JROF=1,IEND
+            ZFIELD(JROF,5,IBL)=CPLNG_FLD(YDMCC%IP_A_ICE_THICKNESS)%D(JSTGLO+JROF-1,1,1)
+            ZFIELD(JROF,6,IBL)=CPLNG_FLD(YDMCC%IP_A_ICE_TEMP)%D(JSTGLO+JROF-1,1,1)
+            ZFIELD(JROF,7,IBL)=CPLNG_FLD(YDMCC%IP_A_ICE_ALBEDO)%D(JSTGLO+JROF-1,1,1)
+            ZFIELD(JROF,8,IBL)=CPLNG_FLD(YDMCC%IP_A_SNOW_THICKNESS)%D(JSTGLO+JROF-1,1,1)
+         ENDDO
+      ENDDO
+      IF (LNEMOLIMTLVL) THEN
+         IGRIB2D(9)=NGRBISTL2
+         ILEVS2D(9)=1
+         IGRIB2D(10)=NGRBISTL3
+         ILEVS2D(10)=1
+         IGRIB2D(11)=NGRBISTL4
+         ILEVS2D(11)=1
+         DO JSTGLO=1,KGPTOT,YDGEOMETRY%YRDIM%NPROMA
+            IEND=MIN(YDGEOMETRY%YRDIM%NPROMA,KGPTOT-JSTGLO+1)
+            IST=1
+            IBL=(JSTGLO-1)/YDGEOMETRY%YRDIM%NPROMA+1
+            DO JL=1,3
+               DO JROF=1,IEND
+                  ZFIELD(JROF,8+JL,IBL)=CPLNG_FLD(YDMCC%IP_A_ICE_TEMP_LVLS)%D(JSTGLO+JROF-1,JL,1)
+               ENDDO
+            ENDDO
+         ENDDO
+      ENDIF
+   ENDIF
+   CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',CDNAME,CDMODE='w',KIOMASTER=1)
+   CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,&
+      & KGRIB2D=IGRIB2D,KLEVS2D=ILEVS2D,CDLEVTYPE='SFC',KPROMA&
+      &=YDGEOMETRY%YRDIM%NPROMA,KRESOL=YDGEOMETRY%YRDIM%NRESOL) !,PTSTEP=YDRIP%TSTEP)
+   CALL IO_PUT(YL_IOSTREAM,YL_IOREQUEST,PR3=ZFIELD)
+   CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+   CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+   DEALLOCATE(IGRIB2D)
+   DEALLOCATE(ILEVS2D)
+   DEALLOCATE(ZFIELD)
+   NSTEP=ISTEP
+ENDIF
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('GETNEMO',1,ZHOOK_HANDLE)
+
+!     -----------------------------------------------------------
+
+END SUBROUTINE GETNEMO
+

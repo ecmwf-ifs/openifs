@@ -1,0 +1,89 @@
+! (C) Copyright 2000- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+MODULE SPNORMC_MOD
+CONTAINS
+SUBROUTINE SPNORMC(PSM,KFLD_G,KVSET,KMASTER,KSMAX,PGM)
+
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE MPL_MODULE  ,ONLY : MPL_RECV, MPL_SEND, MPL_BARRIER
+
+USE TPM_DISTR       ,ONLY : D, NPRCIDS, NPRTRV, MYPROC, NPROC
+
+USE PE2SET_MOD      ,ONLY : PE2SET
+
+IMPLICIT NONE
+
+REAL(KIND=JPRB)    ,INTENT(IN)  :: PSM(:,:)
+INTEGER(KIND=JPIM) ,INTENT(IN)  :: KFLD_G
+INTEGER(KIND=JPIM) ,INTENT(IN)  :: KVSET(:)
+INTEGER(KIND=JPIM) ,INTENT(IN)  :: KMASTER
+INTEGER(KIND=JPIM) ,INTENT(IN)  :: KSMAX
+REAL(KIND=JPRB)    ,INTENT(OUT) :: PGM(KFLD_G,0:KSMAX)
+
+REAL(KIND=JPRB) :: ZRECVBUF(SIZE(PGM))
+INTEGER(KIND=JPIM) :: IFLDR(NPRTRV)
+
+INTEGER(KIND=JPIM) :: ISTOTAL,JFLD,ITAG,JROC,IMSGLEN,IRECVID
+INTEGER(KIND=JPIM) :: IRECVNUMP,IRECVFLD,IFLD,JMLOC,IM,IBUFLENR,IA,IB
+INTEGER(KIND=JPIM) :: IRECVSETA,IRECVSETB
+!     ------------------------------------------------------------------
+
+ISTOTAL  = SIZE(PSM)
+IBUFLENR = SIZE(ZRECVBUF)
+
+IFLDR(:) = 0
+DO JFLD=1,KFLD_G
+  IFLDR(KVSET(JFLD)) = IFLDR(KVSET(JFLD))+1
+ENDDO
+ITAG = 100
+
+IF (NPROC > 1.AND.MYPROC /= KMASTER) THEN
+  CALL MPL_SEND(PSM(:,:),KDEST=NPRCIDS(KMASTER),KTAG=ITAG,&
+   &CDSTRING='SPNORMC:')
+ENDIF
+
+IF (MYPROC == KMASTER) THEN
+  DO JROC=1,NPROC
+    IF (JROC == KMASTER) THEN
+      ZRECVBUF(1:ISTOTAL) = RESHAPE(PSM,SHAPE(ZRECVBUF(1:ISTOTAL)))
+      IRECVID = MYPROC
+      IMSGLEN = ISTOTAL
+    ELSE
+      CALL MPL_RECV(ZRECVBUF(1:IBUFLENR),KTAG=ITAG,&
+       &KFROM=IRECVID,CDSTRING='SPNORMC :')
+    ENDIF
+    CALL PE2SET(IRECVID,IA,IB,IRECVSETA,IRECVSETB)
+    IRECVNUMP = D%NUMPP(IRECVSETA)
+    IRECVFLD  = IFLDR(IRECVSETB)
+    IFLD = 0
+    DO JFLD=1,KFLD_G
+      IF(KVSET(JFLD) == IRECVSETB) THEN
+        IFLD=IFLD+1
+        DO JMLOC=1,IRECVNUMP
+          IM = D%NALLMS(D%NPTRMS(IRECVSETA)-1+JMLOC)
+          PGM(JFLD,IM) = ZRECVBUF((JMLOC-1)*IRECVFLD+IFLD)
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDDO
+ENDIF
+
+! Perform barrier synchronisation to guarantee all processors have
+! completed communication
+
+IF( NPROC > 1 )THEN
+  CALL MPL_BARRIER(CDSTRING='SPNORMC')
+ENDIF
+!     ------------------------------------------------------------------
+
+END SUBROUTINE SPNORMC
+END MODULE SPNORMC_MOD

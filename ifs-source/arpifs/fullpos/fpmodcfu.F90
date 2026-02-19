@@ -1,0 +1,140 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE FPMODCFU(YDGFP,YDCFU,KFPCOD,KFLEVG,KFLD,KFLDPTR)
+
+!**** *FPMODCFU*  - Preliminary modification of cumulated fluxes 
+!                   for Post-Processing
+!     PURPOSE.
+!     --------
+!        To prepare input fields before horizontal interpolations
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *FPMODCFU*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!        KFPCOD    - Fullpos fields code
+!        KFLEVG    - number of vertical levels in the model
+!        KFLD      - number of fields to modify
+!        KFLDPTR   - array of field pointers for extraction
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+!        NONE.
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     AUTHOR.
+!     -------
+!        RYAD EL KHATIB *METEO-FRANCE*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 96-08-06
+!    R. El Khatib : 03-04-17 Fullpos improvemnts
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        Y.Seity      15-Jan-2007 add Graupel and Hail
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMAFN, ONLY : ALL_FPDSPHY_TYPES
+USE YOMCFU   , ONLY : TCFU
+
+IMPLICIT NONE
+
+TYPE(ALL_FPDSPHY_TYPES),  INTENT(IN) :: YDGFP
+TYPE(TCFU)        , INTENT(IN)  :: YDCFU
+INTEGER(KIND=JPIM), INTENT(IN)  :: KFPCOD(:)
+INTEGER(KIND=JPIM), INTENT(IN)  :: KFLEVG
+INTEGER(KIND=JPIM), INTENT(OUT) :: KFLD
+INTEGER(KIND=JPIM), INTENT(OUT) :: KFLDPTR(YDCFU%NFDCFU)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!*    1. FIND FIELDS TO MODIFY 
+!        ---------------------
+
+IF (LHOOK) CALL DR_HOOK('FPMODCFU',0,ZHOOK_HANDLE)
+ASSOCIATE(LTFPLC=>YDCFU%LTFPLC, LTFPLS=>YDCFU%LTFPLS, NFDCFU=>YDCFU%NFDCFU)
+
+KFLD=0
+IF (ANY(KFPCOD(:)==YDGFP%CLSP%ICOD)) THEN   ! Large scale rain
+  KFLD=KFLD+1
+  IF (LTFPLS)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLSL
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLSL
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CCP%ICOD))  THEN    ! Convective rain
+  KFLD=KFLD+1
+  IF (LTFPLC)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLCL
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLCL
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CLSS%ICOD)) THEN   ! Large Scale Snow fall
+  KFLD=KFLD+1
+  IF (LTFPLS)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLSN
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLSN
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CCSF%ICOD)) THEN   ! Convective  Snow fall
+  KFLD=KFLD+1
+  IF (LTFPLC)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLCN
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLCN
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CLSG%ICOD)) THEN   ! Large Scale Graupel fall
+  KFLD=KFLD+1
+  IF (LTFPLS)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLSG
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLSG
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CCSG%ICOD)) THEN   ! Convective  Graupel fall
+  KFLD=KFLD+1
+  IF (LTFPLC)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLCG
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLCG
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CLSH%ICOD)) THEN   ! Large Scale Hail fall
+  KFLD=KFLD+1
+  IF (LTFPLS)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLSH
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLSH
+  ENDIF
+ENDIF
+IF (ANY(KFPCOD(:)==YDGFP%CCSH%ICOD)) THEN   ! Convective  Hail fall
+  KFLD=KFLD+1
+  IF (LTFPLC)THEN
+    KFLDPTR(KFLD)=KFLEVG+YDCFU%YCFUPT%MFPLCH
+  ELSE
+    KFLDPTR(KFLD)=YDCFU%YCFUPT%MFPLCH
+  ENDIF
+ENDIF
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('FPMODCFU',1,ZHOOK_HANDLE)
+END SUBROUTINE FPMODCFU

@@ -1,0 +1,34 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE ESPECRT(YDGEOMETRY,YDGFL,YGFL,KDIR,YDSP,LDINCR,YDGFL5,LDBCKGR,PSP7Q,PSP7I,PSP7L, &
+ & PGP7Q,PGP7I,PGP7L,PTRAJEC)
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YOMGFL , ONLY : TGFL
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOM_YGFL , ONLY : TYPE_GFLD
+use yomtraj , only:&
+ & traj_type
+USE SPECTRAL_FIELDS_DATA, ONLY: SPECTRAL_FIELD
+TYPE(GEOMETRY), INTENT(IN) :: YDGEOMETRY
+TYPE(TGFL), INTENT(INOUT) :: YDGFL
+TYPE(TYPE_GFLD),INTENT(IN):: YGFL
+INTEGER(KIND=JPIM),INTENT(IN) :: KDIR
+TYPE(SPECTRAL_FIELD), INTENT(INOUT) :: YDSP
+LOGICAL, OPTIONAL ,INTENT(IN) :: LDINCR
+TYPE(TGFL), OPTIONAL, INTENT(INOUT) :: YDGFL5
+LOGICAL, OPTIONAL ,INTENT(IN) :: LDBCKGR
+REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: PSP7Q(:,:)
+REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: PSP7I(:,:)
+REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: PSP7L(:,:)
+REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: PGP7Q(:,:,:)
+REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: PGP7I(:,:,:)
+REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: PGP7L(:,:,:)
+TYPE(TRAJ_TYPE), OPTIONAL, INTENT(IN) :: PTRAJEC
+call abor1("especrt.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE ESPECRT

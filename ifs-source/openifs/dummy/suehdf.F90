@@ -1,0 +1,19 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE SUEHDF(YDGEOMETRY,YDDYN,YDEDYN,YDML_GCONF)
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YOMDYN , ONLY : TDYN
+USE YEMDYN , ONLY : TEDYN
+TYPE(GEOMETRY), INTENT(INOUT) :: YDGEOMETRY
+TYPE(TDYN) ,INTENT(INOUT) :: YDDYN
+TYPE(TEDYN) ,INTENT(INOUT) :: YDEDYN
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(INOUT):: YDML_GCONF
+call abor1("suehdf.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE SUEHDF

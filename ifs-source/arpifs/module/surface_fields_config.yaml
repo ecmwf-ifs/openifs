@@ -1,0 +1,436 @@
+# (C) Copyright 1989- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+# 
+# (C) Copyright 1989- Meteo-France.
+# 
+
+# Surface field hierarchy definition
+
+# List of prognostic field groups
+prognostic:
+- type: group
+  name: SOILB
+  short: SB
+  dimension: 3
+  comment: surface snow prognostic quantities
+  variables:
+  - {name: T, comment: temperature}
+  - {name: Q, comment: liquid water content}
+  - {name: TL, comment: ice water content (for MF)}
+
+- type: group
+  name: SNOWG
+  short: SG
+  dimension: 3
+  comment: surface snow prognostic quantities
+  variables:
+  - {name: F, comment: content of surface snow}
+  - {name: A, comment: snow albedo}
+  - {name: R, comment: snow density}
+  - {name: T, comment: total albedo (diagnostic for MF for LVGSN)}
+  - {name: W, comment: Liquid water content}
+
+- type: group
+  name: LAKEB
+  short: SL
+  dimension: 2
+  comment: Lake (FLAKE Model) prognostic quantities
+  variables:
+  - {name: LICT, comment: lake ice temperature}
+  - {name: LMLT, comment: lake mixed-layer temperature}
+  - {name: LTLT, comment: lake total layer temperature}
+  - {name: LBLT, comment: lake bottom layer temperature}
+  - {name: LSHF, comment: lake shape factor}
+  - {name: LICD, comment: lake ice depth}
+  - {name: LMLD, comment: lake mixed-layer depth}
+
+- type: group
+  name: RESVR
+  short: RR
+  dimension: 2
+  comment: surface prognostic quantities (ECMWF) or surface + superficial reservoir prognostic quantities (MF)
+  variables:
+  - {name: T, comment: skin temperature (Ts)}
+  - name: W
+    comment: skin water content (Wskin) at ECMWF
+         superficial reservoir water content (Ws) at MF
+  - {name: FC, comment: skin water content (Wl) at MF}
+  - {name: IC, comment: superficial reservoir ice}
+  - {name: FP1, comment: interpolated Ts for 2nd part of 927-FULLPOS}
+
+- type: group
+  name: CLS
+  short: CL
+  dimension: 2
+  comment: surface boundary layer prognostic quantities
+  variables:
+  - {name: TCLS, comment: 2m temperature}
+  - {name: HUCLS, comment: 2m humidity}
+  - {name: UCLS, comment: 10m U-wind}
+  - {name: VCLS, comment: 10m V-wind}
+  - {name: NUCLS, comment: 10m neutral U-wind}
+  - {name: NVCLS, comment: 10m neutral V-wind}
+
+- type: group
+  name: OML
+  short: OM
+  dimension: 3
+  comment: prognostic quantities for ocean mixed layer model (KPP/TKE)
+  variables:
+  - {name: TO, comment: temperature}
+  - {name: SO, comment: salinity}
+  - {name: UO, comment: U velocity}
+  - {name: VO, comment: V velocity}
+
+- type: group
+  name: EXTRP
+  short: EP
+  dimension: 3
+  comment: extra 3-d prognostic fields
+  variables: []
+
+- type: group
+  name: XTRP2
+  short: X2
+  dimension: 2
+  comment: extra 2-d prognostic fields
+  variables: []
+
+- type: group
+  name: CANRI
+  short: CI
+  dimension: 2
+  comment: 2-d prognostic fields for CANARI
+  variables: []
+
+# List of diagnsotic field groups
+diagnostic:
+- type: group
+  name: VARSF
+  short: VF
+  dimension: 2
+  comment: climatological/geographical diagnostic fields
+  variables:
+  - {name: Z0F, comment: gravity * surface roughness length}
+  - {name: ALBF, comment: surface shortwave albedo}
+  - {name: EMISF, comment: surface longwave emissivity}
+  - {name: GETRL, comment: standard deviation of orography}
+  - {name: LSM, comment: land-sea mask}
+  - {name: VEG, comment: vegetation cover}
+  - {name: VRLAN, comment: anisotropy of the sub-grid scale orography}
+  - {name: VRLDI, comment: angle of the direction of orography with the x axis}
+  - {name: SIG, comment: characteristic orographic slope}
+  - {name: ALBSF, comment: soil shortwave albedo}
+  - {name: LAN, comment: fraction of land}
+  - {name: SST, comment: (open) sea surface temperature}
+  - {name: SSS, comment: sea surface salinity}
+  - {name: LZ0H, comment: logarithm of roughness length for heat}
+  - {name: CVL, comment: low vegetation cover}
+  - {name: CO2TYP, comment: CO2 photosynthesis type (c3/c4) for low vegetation cover}
+  - {name: CVH, comment: high vegetation cover}
+  - {name: CUR, comment: urban cover}
+  - {name: TVL, comment: low vegetation type}
+  - {name: TVH, comment: high vegetation type}
+  - {name: LAIL, comment: low vegetation LAI}
+  - {name: LAIH, comment: high vegetation LAI}
+  - {name: FWET, comment: wetland fraction}
+  - {name: SOTY, comment: soil type}
+  - {name: CLK, comment: lake cover}
+  - {name: DL, comment: lake depth}
+  - {name: CI, comment: sea ice fraction}
+  - {name: UCUR, comment: U-component of the ocean current}
+  - {name: VCUR, comment: V-component of the ocean current}
+  - {name: Z0RLF, comment: gravity * vegetation roughness length}
+  - {name: CGPP, comment: GPP bias correction factor}
+  - {name: CREC, comment: REC bias correction factor}
+  - {name: SDFOR, comment: SD filtered orography}
+  - {name: ALUVP, comment: MODIS-derived parallel albedo for shortwave radiation}
+  - {name: ALUVD, comment: MODIS-derived diffuse albedo for shortwave radiation}
+  - {name: ALNIP, comment: MODIS-derived parallel albedo for longwave radiation}
+  - {name: ALNID, comment: MODIS-derived diffuse albedo for longwave radiation}
+  - {name: FP1, comment: surface orography in the 2nd part of FULLPOS-927}
+  - {name: SO2DD, comment: sulphate dry dep velocity}
+  - {name: DMSO, comment: oceanic DMS}
+  - {name: URBF, comment: Urban fraction}
+  - {name: FCA1, comment: Fraction of calcite over dust 1st bin}
+  - {name: FCA2, comment: Fraction of calcite over dust 2nd bin}
+  - {name: AERDEP, comment: dust emission potential}
+  - {name: AERLTS, comment: dust lifting threshold speed}
+  - {name: AERSCC, comment: dust soil clay content}
+  - {name: DSF, comment: dust source function}
+  - {name: CHEMFLXO, array: true, comment: total chemistry flux (emissions + deposition)}
+  - {name: CHEMWDFLX, array: true, comment: wet deposition chemistry flux }
+  - {name: CHEMDDFLX, array: true, comment: dry deposition chemistry flux }
+  - {name: CHEMDV, array: true, comment: chemistry deposition velocity}
+  - {name: NUDM, comment: nudging mask}
+  - {name: EMIS2D, array: true, comment: 2D emission fields for composition}
+  - {name: EMIS2DAUX, array: true, comment: 2D emission auxiliary fields for composition}
+
+- type: group
+  name: VCLIN
+  short: VN
+  dimension: 2
+  comment: cloudiness diagnostic predictors
+  variables:
+  - {name: TOP, comment: index of convective cloud top}
+  - {name: BAS, comment: index of convective cloud base}
+  - {name: ACPR, comment: averaged convective precipitaion rate}
+  - {name: ACCPR, comment: accumulated total precipitaion for assimilation}
+  - {name: ACCPR5, comment: accumulated total precipitaion for assimilation (trajectory)}
+
+- type: group
+  name: VDIAGO2
+  short: V2
+  dimension: 2
+  comment: 2-D climatological/diagnostic fields for an ocean mixed layer model (KPP)
+  variables:
+  - {name: OCDEP, comment: bottom layer depth}
+  - {name: USTRC, comment: taux clim.}
+  - {name: VSTRC, comment: tauy clim.}
+
+- type: group
+  name: VDIAGO3
+  short: V3
+  dimension: 3
+  comment: 3-D climatological/diagnostic fields for an ocean mixed layer model (KPP or TKE)
+  variables:
+  - {name: DIFM, comment: viscosity}
+  - {name: DIFT, comment: diff. coef. of temp}
+  - {name: DIFS, comment: diff. coef. of salinity}
+  - {name: ADVT, comment: correction term for temp.}
+  - {name: ADVS, comment: correction term for sal.}
+  - {name: TRI0, comment: coef. for solving matrix.}
+  - {name: TRI1, comment: coef. for solving matrix.}
+  - {name: SWDK, comment: radiation term}
+  - {name: ZO, comment: depth of layer}
+  - {name: HO, comment: depth of interface layer}
+  - {name: DO, comment: layer thickness}
+  - {name: HO_INV, comment: 1 / YHO}
+  - {name: UOC, comment: U velocity clim.}
+  - {name: VOC, comment: V velocity clim.}
+  - {name: OTKE, comment: ocean turb. kin. energy}
+
+- type: group
+  name: VDIAG
+  short: VD
+  dimension: 2
+  comment: (ECMWF) diagnostic fields
+  variables:
+  - {name: LSP, comment: Large scale precipitation}
+  - {name: CP, comment: Convective precipitation}
+  - {name: SF, comment: Snowfall}
+  - {name: FZRA, comment: Freezing rain}
+  - {name: BLD, comment: Boundary layer dissipation}
+  - {name: SSHF, comment: Surface sensible heat flux}
+  - {name: SLHF, comment: Surface latent heat flux}
+  - {name: NEE, comment: Surface net ecosystem exchange of CO2}
+  - {name: GPP, comment: Surface gross primary production of CO2}
+  - {name: REC, comment: Surface ecosystem respiration of CO2}
+  - {name: MSL, comment: Mean sea level pressure}
+  - {name: SP, comment: Surface pressure}
+  - {name: TCC, comment: Total cloud cover}
+  - {name: 10U, comment: U-wind at 10 m}
+  - {name: 10V, comment: V-wind at 10 m}
+  - {name: 2T, comment: Temperature at 2 m}
+  - {name: 2D, comment: Dewpoint temperature at 2 m}
+  - {name: 2SH, comment: Specific humidity at 2 m}
+  - {name: SSR, comment: Surface solar radiation}
+  - {name: STR, comment: Surface thermal radiation}
+  - {name: TSR, comment: Top solar radiation}
+  - {name: TTR, comment: Top thermal radiation}
+  - {name: EWSS, comment: Instantaneous surface U-wind stress}
+  - {name: NSSS, comment: Instantaneous surface V-wind stress}
+  - {name: E, comment: Water evaporation}
+  - {name: PEV, comment: Potential evaporation}
+  - {name: CCC, comment: Convective cloud cover}
+  - {name: LCC, comment: Low cloud cover}
+  - {name: MCC, comment: Medium cloud cover}
+  - {name: HCC, comment: High cloud cover}
+  - {name: LGWS, comment: Zonal gravity wave stress}
+  - {name: MGWS, comment: Meridian gravity wave stress}
+  - {name: GWD, comment: Gravity wave dissipation}
+  - {name: MX2T, comment: Maximum temperature at 2 m}
+  - {name: MN2T, comment: Minimum temperature at 2 m}
+  - {name: MX2T6, array: true, comment: Bins for maximum temperature at 2 m since last 6 hours}
+  - {name: MN2T6, array: true, comment: Bins for minimum temperature at 2 m since last 6 hours}
+  - {name: RO, comment: Runoff (total)}
+  - {name: SRO, comment: Runoff surface}
+  - {name: SSRO, comment: Runoff sub-surface}
+  - {name: ALB, comment: (surface shortwave) albedo}
+  - {name: IEWSS, comment: Instantaneous surface zonal component of stress}
+  - {name: INSSS, comment: Instantaneous surface meridian component of stress}
+  - {name: ISSHF, comment: Instantaneous surface heat flux}
+  - {name: IE, comment: Instantaneous surface moisture flux}
+  - {name: INEE, comment: Instantaneous net ecosystem exchange of CO2}
+  - {name: IGPP, comment: Instantaneous gross primary production of CO2}
+  - {name: IREC, comment: Instantaneous ecosystem respiration of CO2}
+  - {name: ICH4, comment: Instantaneous wetland CH4 flux} 
+  - {name: CSF, comment: Convective snow fall}
+  - {name: LSSF, comment: Large scale snowfall}
+  - {name: MXTPR, comment: Max precip rate since last post-processing}
+  - {name: MNTPR, comment: Min precip rate since last post-processing}
+  - {name: MXTPR6, array: true, comment: Max precip rate in last 6 hours}
+  - {name: MNTPR6, array: true, comment: Min precip rate in last 6 hours}
+  - {name: TPR, comment: Total precipitation rate}
+  - {name: LSRR, comment: Large scale rain rate}
+  - {name: CRR, comment: Convective rain rate}
+  - {name: LSSFR, comment: Large scale snowfall rate}
+  - {name: CSFR, comment: Convective snowfall rate}
+  - {name: PTYPE, comment: Precipitation type}
+  - {name: ILSPF, comment: Large-scale precipitation fraction (inst.)}
+  - {name: Z0F, comment: Gravity * surface roughness length}
+  - {name: LZ0H, comment: Logarithm of z0 times heat flux}
+  - {name: VIWVE, comment: Vertical integral of eastward water vapour flux}
+  - {name: VIWVN, comment: Vertical integral of northward water vapour flux}
+  - {name: TCW, comment: Total water content in a vertical column}
+  - {name: TCWV, comment: Total water vapor content in a vertical column}
+  - {name: TCLW, comment: Total liquid water content in a vertical column}
+  - {name: TCIW, comment: Total ice water content in a vertical column}
+  - {name: TCRW, comment: Total rain water content in a vertical column}
+  - {name: TCSW, comment: Total snow water content in a vertical column}
+  - {name: TCSLW, comment: Total supercooled liquid water content in a vertical column}
+  - {name: SSRD, comment: Downward surface solar radiation}
+  - {name: STRD, comment: Downward surface thermic radiation}
+  - {name: SSRDC, comment: Clear-sky downward surface solar radiation}
+  - {name: STRDC, comment: Claer-sky downward surface thermal radiation}
+  - {name: BLH, comment: Height of boundary layer}
+  - {name: SUND, comment: Sunshine duration}
+  - {name: SPAR, comment: Surface downward PARadiation}
+  - {name: SUVB, comment: Surface downward UV-B radiation}
+  - {name: SFDIR, comment: Surface total sky direct downward SW radiation}
+  - {name: SCDIR, comment: Surface clear-sky direct downward SW radiation}
+  - {name: SDSRP, comment: Surface total-sky direct beam downward SW radiation}
+  - {name: CAPE, comment: Conv.avail.potential energy (CAPE)}
+  - {name: MUCAPE, comment: Maximum unstable CAPE}
+  - {name: MLCAPE50, comment: CAPE from 50 hPa mixed-layer}
+  - {name: MLCAPE100, comment: CAPE from 100 hPa mixed-layer}
+  - {name: PDEPL, comment: Parcel departure level-pressure for MUCAPE}
+  - {name: CAPES, comment: CAPE-Shear}
+  - {name: MXCAP6, array: true, comment: Bins for maximum CAPE in last 6 hours}
+  - {name: MXCAPS6, array: true, comment: Bins for maximum CAPE-Shear in last 6 hours}
+  - {name: TROPOTP, comment: Pressure of thermal Tropopause}
+  - {name: TSRC, comment: Top solar radiation clear sky}
+  - {name: TTRC, comment: Top thermal radiation clear sky}
+  - {name: SSRC, comment: Surface solar radiation clear sky}
+  - {name: STRC, comment: Surface thermal radiation clear sky}
+  - {name: ES, comment: Evaporation of snow}
+  - {name: SMLT, comment: Snow melt}
+  - {name: 10FG, comment: Wind gust at 10 m (max since previous pp)}
+  - {name: 10FG6, array: true, comment: Bins for wind gust at 10 m (max since last 6 hours)}
+  - {name: 10FGCV, comment: convective wind gust at 10m for current time level (m/s)}
+  - {name: I10FG, comment: Wind gust at 10 m ("instantaneous")}
+  - {name: LSPF, comment: Large scale precipitation fraction}
+  - {name: TCO3, comment: Total ozone content in a vertical column}
+  - {name: VIMD, comment: Vertically integrated mass divergence}
+  - {name: SPARC, comment: Surface clear-sky parallel radiation}
+  - {name: STINC, comment: Top of atmosphere incident solar radiation}
+  - {name: CBASE, comment: Cloud base level}
+  - {name: 0DEGL, comment: Zero deg. level}
+  - {name: M10DEGL, comment: -10 deg. level}
+  - {name: VISIH, comment: Horizontal visibility}
+  - {name: CIN, comment: CIN}
+  - {name: MLCIN50, comment: CIN from 50 hPa mixed-layer}
+  - {name: MLCIN100, comment: CIN from 100 hPa mixed-layer}
+  - {name: KINDEX, comment: Convective K-Index}
+  - {name: TTINDEX, comment: Convective TT-Index}
+  - {name: CBASEA, comment: Cloud base aviation}
+  - {name: CTOPC, comment: Cloud top convective}
+  - {name: ZTWETB0, comment: Height of 0 deg wet bulb temperature}
+  - {name: ZTWETB1, comment: Height of 1 deg wet bulb temperature}
+  - {name: TCGHG, array: true, comment: Total column greenhouse gases}
+  - {name: TCCHEM, array: true, comment: Total column chemistry}
+  # The below variables encapsulate 2D arrays!
+  - {name: AERODIAG, array: 2, comment: Per-aerosol-type diagnostics}
+  - {name: AERO_WVL_DIAG, array: 2, comment: Per-wavelength aerosol optical diagnostics}
+  - {name: 100U, comment: 100m zonal wind}
+  - {name: 100V, comment: 100m meridional wind}
+  - {name: 200U, comment: 200m zonal wind}
+  - {name: 200V, comment: 200m meridional wind}
+  - {name: ZUST, comment: Friction velocity}
+  - {name: 10NU, comment: 10m zonal neutral wind}
+  - {name: 10NV, comment: 10m meridional neutral wind}
+  - {name: DNDZN, comment: Minimum vertical refractivity gradient}
+  - {name: DNDZA, comment: Mean vertical refractivity gradient}
+  - {name: DCTB, comment: Duct base height}
+  - {name: TPLB, comment: Trapping layer base height}
+  - {name: TPLT, comment: Trapping layer top height}
+  - {name: ODSS, comment: optical depth sea salt aerosols}
+  - {name: ODDU, comment: optical depth dust aerosols}
+  - {name: ODOM, comment: optical depth organic m. aerosols}
+  - {name: ODBC, comment: optical depth black C aerosols}
+  - {name: ODSU, comment: optical depth sulphate aerosols}
+  - {name: ODNI, comment: optical depth nitrate aerosols}
+  - {name: ODAM, comment: optical depth ammonium aerosols}
+  - {name: ODSOA, comment: optical depth secondary organic aerosols}
+  - {name: ODVFA, comment: optical depth volcanic flying ash}
+  - {name: ODVSU, comment: optical depth volcanic sulphate aerosols}
+  - {name: ODTOACC, comment: optical depth total aerosol accumulated}
+  - {name: AEPM1, comment: particulate matter le 1 um}
+  - {name: AEPM25, comment: particulate matter le 2.5um}
+  - {name: AEPM10, comment: particulate matter le 10 um}
+  - {name: UVBED, comment: UV biologically effective dose}
+  - {name: UVBEDCS, comment: UV biologically effective dose clear sky}
+  - {name: LITOTI, comment: instantaneous total lightning flash density}
+  - {name: LICGI, comment: instantaneous cloud-to-ground lightning flash density}
+  - {name: LITOTA6, array: true, comment: Bins for averaged total lightning over last 6 hours}
+  - {name: LICGA6, array: true, comment: Bins for averaged cloud-to-ground lightning over last 6 hours}
+  - {name: PTYPEOCC6, array: 2, comment: Bins for accum freq of each precip type over last 6 hours}
+
+- type: group
+  name: SATSIM
+  short: SM
+  dimension: 3
+  comment: (ECMWF) simulated satellite images
+  variables:
+  - {name: CLBT, comment: Cloudy brightness temperature}
+  - {name: CSBT, comment: Clear-sky brightness temperature}
+
+- type: group
+  name: WAVES
+  short: WS
+  dimension: 2
+  comment: surface prognostic quantities over sea (used by IFS)
+  variables:
+  - {name: CHAR, comment: Charnock parameter as modified by the wave model.}
+  - {name: CHARHQ, comment: Charnock for heat and moisture from the wave model.}
+  - {name: USTOKES, comment: U-component of the surface Stokes drift.}
+  - {name: VSTOKES, comment: V-component of the surface Stokes drift.}
+  - {name: TAUOCX, comment: U-component of the Momentum flux to ocean.}
+  - {name: TAUOCY, comment: V-component of the Momentum flux to ocean.}
+  - {name: PHIOC, comment: Energy flux to ocean.}
+  - {name: WSEMEAN, comment: Windsea variance.}
+  - {name: WSFMEAN, comment: Windsea mean frequency.}
+
+- type: group
+  name: WAM
+  short: WW
+  dimension: 2
+  comment: surface prognostic quantities over sea (used by WAM)
+  variables:
+  - {name: U10N, comment: 10m neutral wind U-component passed to the wave model (WAM).}
+  - {name: V10N, comment: 10m neutral wind V-component passed to the wave model (WAM).}
+  - {name: RHO, comment: surface density passed to the wave model (WAM).}
+  - {name: ZIL, comment: ZI/L passed to the wave model (used for gustiness in WAM).}
+  - {name: CIF, comment: Sea ice fraction passed to the wave model (WAM).}
+  - {name: CLK, comment: Lake cover passed to the wave model (WAM).}
+  - {name: UCURW, comment: Ocean current    U-component passed to the wave model (WAM).}
+  - {name: VCURW, comment: Ocean current    V-component passed to the wave model (WAM).}
+
+- type: group
+  name: VEXTRA
+  short: XA
+  dimension: 3
+  comment: extra 3-d diagnostic fields
+  variables: []
+
+- type: group
+  name: VEXTR2
+  short: X2
+  dimension: 2
+  comment: extra 2-d diagnostic fields
+  variables: []

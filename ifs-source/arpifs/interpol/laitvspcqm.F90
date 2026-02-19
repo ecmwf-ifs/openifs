@@ -1,0 +1,462 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE LAITVSPCQM(YDVSLETA,KPROMA,KPROMB,KSTART,KPROF,KFLEV,&
+ & KFLDN,KFLDX,&
+ & PDLAT,PCLA,PDLO,PCLO,KL0,PVINTWS,&
+ & PXSPSL,PXF,PXSL)  
+
+!**** *LAITVSPCQM  -  semi-LAgrangian scheme:
+!                 TRI-dimensional horizontal interpolations 
+!                 cubic B-spline interpolation in the vertical
+!                 with "8 point" conserving quasi-monoton correction.
+
+!     Purpose.
+!     --------
+!       Performs tri-dimensional 12 point horizontal interpolations
+!                and cubic b-spline interpolations in the vertical
+
+!**   Interface.
+!     ----------
+!        *CALL* *LAITVSPCQM(...)
+
+!        Explicit arguments :
+!        --------------------
+
+!        INPUT:
+!          KPROMA  - horizontal dimension for grid-point quantities.
+!          KPROMB  - horizontal dimension for interpolation point
+!                    quantities.
+!          KSTART  - first element of arrays where
+!                    computations are performed.
+!          KPROF   - depth of work.
+!          KFLEV   - vertical dimension.
+!          KFLDN   - number of the first field.
+!          KFLDX   - number of the last field.
+!          PDLAT   - distance for horizontal linear interpolations in latitude
+!          PCLA    - weights for horizontal cubic interpolations in latitude
+!          PDLO    - distances for horizontal linear interpolations
+!                    in longitude (latitude rows 0, 1, 2, 3)
+!          PCLO    - weights for horizontal cubic interpolations in longitude 
+!                    (latitude rows 1, 2)
+!          KL0     - index of the four western points
+!                    of the 16 points interpolation grid.
+!          PVINTWS - weights for vertical cubic spline interpolation
+!          PXSPSL  - spline repres. of semi-lagrangian variable.
+!          PXSL    - quantity to be interpolated.
+
+!        OUTPUT:
+!          PXF     - interpolated variable.
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!        No external.
+
+!     Reference.
+!     ----------
+!     For cubic B-spline:
+!             Prenter, P.M.,"Splines and variational methods", 1975, 
+!             A Wiley-Interscience Publication, John Wiley & Sons, New York
+!     Author.
+!     -------
+!        A.UNTCH, ECMWF, after the subroutine LAITRI
+
+!     Modifications.
+!     --------------
+!        Original : OCT 2001
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        K. Yessad (Sep 2008): update comments + cleanings.
+!        F. Vana       17-Sep-2008 weights driven (horizontal) interpolation
+!     ------------------------------------------------------------------
+
+USE YOMVSLETA , ONLY : TVSLETA
+USE PARKIND1  , ONLY : JPIM, JPRB, JPIA
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(TVSLETA)     ,INTENT(IN)    :: YDVSLETA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROMA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROMB 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFLDN 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFLDX 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTART 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROF 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDLAT(KPROMB,KFLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLA(KPROMB,KFLEV,3) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDLO(KPROMB,KFLEV,0:3) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLO(KPROMB,KFLEV,3,2)
+INTEGER(KIND=JPIM),INTENT(IN)    :: KL0(KPROMB,KFLEV,0:3) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVINTWS(KPROMB,KFLEV,1:4) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PXSPSL(KPROMA*(KFLDX-KFLDN+1)) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PXF(KPROMB,KFLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PXSL(KPROMA*(KFLDX-KFLDN+1)) 
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIA) :: IV0L0, IV0L1, IV0L2, IV0L3, IV1L0, IV1L1, IV1L2, IV1L3,&
+ & IV2L0, IV2L1, IV2L2, IV2L3, IV3L0, IV3L1, IV3L2, IV3L3  
+INTEGER(KIND=JPIM) :: JLEV, JROF, ILEVQMV
+
+REAL(KIND=JPRB) :: ZSURPL(KPROMB)
+
+REAL(KIND=JPRB) :: ZCLA1, ZCLA2, ZCLA3, ZDLO0, ZDLO3,&
+ & ZLA0LO1, ZLA0LO2, ZLA1LO , ZLA1LO1, ZLA1LO2, ZLA1LO3,&
+ & ZLA2LO , ZLA2LO1, ZLA2LO2, ZLA2LO3, ZLA3LO1, ZLA3LO2,&
+ & ZLA0, ZLA1, ZLA2, ZLA3, ZCLO11, ZCLO21, ZCLO31,&
+ & ZCLO12, ZCLO22, ZCLO32,&
+ & ZF111, ZF112, ZF121, ZF122, ZF211, ZF212, ZF221, ZF222,&
+ & ZDMIN, ZDMAX, ZXF, ZMIN ,ZMAX, ZF1, ZF2  
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LAITVSPCQM',0,ZHOOK_HANDLE)
+
+!     ------------------------------------------------------------------
+
+!*       1.    INTERPOLATIONS.
+!              ---------------
+
+IV0L0=0
+IV0L1=1
+IV0L2=2
+IV0L3=3
+IV1L0=  KPROMA
+IV1L1=1+KPROMA
+IV1L2=2+KPROMA
+IV1L3=3+KPROMA
+IV2L0=IV1L0+KPROMA
+IV2L1=IV1L1+KPROMA
+IV2L2=IV1L2+KPROMA
+IV2L3=IV1L3+KPROMA
+IV3L0=IV2L0+KPROMA
+IV3L1=IV2L1+KPROMA
+IV3L2=IV2L2+KPROMA
+IV3L3=IV2L3+KPROMA
+
+ILEVQMV=10
+
+!CDIR OUTERUNROLL=4
+DO JLEV=1,KFLEV-ILEVQMV
+  DO JROF=KSTART,KPROF
+
+    ! interpolation distances in longitude (latitude rows 0, 3)
+    ZDLO0=PDLO(JROF,JLEV,0)
+    ZDLO3=PDLO(JROF,JLEV,3)
+
+    ! interpolation weights in longitude (latitude rows 1, 2)
+    ZCLO11=PCLO(JROF,JLEV,1,1)
+    ZCLO21=PCLO(JROF,JLEV,2,1)
+    ZCLO31=PCLO(JROF,JLEV,3,1)
+    ZCLO12=PCLO(JROF,JLEV,1,2)
+    ZCLO22=PCLO(JROF,JLEV,2,2)
+    ZCLO32=PCLO(JROF,JLEV,3,2)
+
+    ! interpolation weights in latitude
+    ZCLA1=PCLA(JROF,JLEV,1)
+    ZCLA2=PCLA(JROF,JLEV,2)
+    ZCLA3=PCLA(JROF,JLEV,3)
+
+    ! 32 points interpolation.
+    ! first interpolation in the vertical then in longitude and last in latitude
+
+    ZLA0LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,0)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,0)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,0)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,0)+IV3L1)  
+
+    ZLA0LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,0)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,0)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,0)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,0)+IV3L2)  
+
+    ZLA1LO =PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L0) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L0) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L0) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L0)  
+
+    ZLA1LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L1)  
+
+    ZLA1LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L2)  
+
+    ZLA1LO3=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L3) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L3) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L3) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L3)  
+
+    ZLA2LO =PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L0) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L0) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L0) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L0)  
+
+    ZLA2LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L1)  
+
+    ZLA2LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L2)  
+
+    ZLA2LO3=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L3) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L3) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L3) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L3)  
+
+    ZLA3LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,3)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,3)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,3)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,3)+IV3L1)  
+
+    ZLA3LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,3)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,3)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,3)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,3)+IV3L2)  
+
+    ! horizontal interpolation
+    ZLA0=ZLA0LO1 + ZDLO0*(ZLA0LO2-ZLA0LO1)
+    ZLA1=ZLA1LO&
+     & +ZCLO11*( ZLA1LO1-ZLA1LO )&
+     & +ZCLO21*( ZLA1LO2-ZLA1LO )&
+     & +ZCLO31*( ZLA1LO3-ZLA1LO )  
+    ZLA2=ZLA2LO&
+     & +ZCLO12*( ZLA2LO1-ZLA2LO )&
+     & +ZCLO22*( ZLA2LO2-ZLA2LO )&
+     & +ZCLO32*( ZLA2LO3-ZLA2LO )  
+    ZLA3=ZLA3LO1 + ZDLO3*(ZLA3LO2-ZLA3LO1)
+
+    PXF(JROF,JLEV) = ZLA0 &
+     & + ZCLA1 * (ZLA1-ZLA0 )&
+     & + ZCLA2 * (ZLA2-ZLA0 )&
+     & + ZCLA3 * (ZLA3-ZLA0 )  
+
+  ENDDO
+ENDDO
+
+DO JLEV=KFLEV-ILEVQMV+1,KFLEV
+  ! loop with quasi-monotone correction in the vertical in lowest ILEVQMV levels
+
+  DO JROF=KSTART,KPROF
+
+    ! interpolation distances in longitude (latitude rows 0, 3)
+    ZDLO0=PDLO(JROF,JLEV,0)
+    ZDLO3=PDLO(JROF,JLEV,3)
+
+    ! interpolation weights in longitude (latitude rows 1, 2)
+    ZCLO11=PCLO(JROF,JLEV,1,1)
+    ZCLO21=PCLO(JROF,JLEV,2,1)
+    ZCLO31=PCLO(JROF,JLEV,3,1)
+    ZCLO12=PCLO(JROF,JLEV,1,2)
+    ZCLO22=PCLO(JROF,JLEV,2,2)
+    ZCLO32=PCLO(JROF,JLEV,3,2)
+
+    ! interpolation weights in latitude
+    ZCLA1=PCLA(JROF,JLEV,1)
+    ZCLA2=PCLA(JROF,JLEV,2)
+    ZCLA3=PCLA(JROF,JLEV,3)
+
+    ! 32 points interpolation.
+    ! first interpolation in the vertical then in longitude and last in latitude
+
+    ZLA0LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,0)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,0)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,0)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,0)+IV3L1)  
+    ZF1=PXSL(KL0(JROF,JLEV,0)+IV1L1)
+    ZF2=PXSL(KL0(JROF,JLEV,0)+IV2L1)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA0LO1=MAX(ZMIN,MIN(ZMAX,ZLA0LO1))
+
+    ZLA0LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,0)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,0)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,0)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,0)+IV3L2)  
+    ZF1=PXSL(KL0(JROF,JLEV,0)+IV1L2)
+    ZF2=PXSL(KL0(JROF,JLEV,0)+IV2L2)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA0LO2=MAX(ZMIN,MIN(ZMAX,ZLA0LO2))
+
+    ZLA1LO =PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L0) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L0) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L0) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L0)  
+    ZF1=PXSL(KL0(JROF,JLEV,1)+IV1L0)
+    ZF2=PXSL(KL0(JROF,JLEV,1)+IV2L0)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA1LO =MAX(ZMIN,MIN(ZMAX,ZLA1LO ))
+
+    ZLA1LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L1)  
+    ZF1=PXSL(KL0(JROF,JLEV,1)+IV1L1)
+    ZF2=PXSL(KL0(JROF,JLEV,1)+IV2L1)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA1LO1=MAX(ZMIN,MIN(ZMAX,ZLA1LO1))
+
+    ZLA1LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L2)  
+    ZF1=PXSL(KL0(JROF,JLEV,1)+IV1L2)
+    ZF2=PXSL(KL0(JROF,JLEV,1)+IV2L2)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA1LO2=MAX(ZMIN,MIN(ZMAX,ZLA1LO2))
+
+    ZLA1LO3=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,1)+IV0L3) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,1)+IV1L3) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,1)+IV2L3) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,1)+IV3L3)  
+    ZF1=PXSL(KL0(JROF,JLEV,1)+IV1L3)
+    ZF2=PXSL(KL0(JROF,JLEV,1)+IV2L3)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA1LO3=MAX(ZMIN,MIN(ZMAX,ZLA1LO3))
+
+    ZLA2LO =PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L0) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L0) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L0) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L0)  
+    ZF1=PXSL(KL0(JROF,JLEV,2)+IV1L0)
+    ZF2=PXSL(KL0(JROF,JLEV,2)+IV2L0)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA2LO =MAX(ZMIN,MIN(ZMAX,ZLA2LO ))
+
+    ZLA2LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L1)  
+    ZF1=PXSL(KL0(JROF,JLEV,2)+IV1L1)
+    ZF2=PXSL(KL0(JROF,JLEV,2)+IV2L1)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA2LO1=MAX(ZMIN,MIN(ZMAX,ZLA2LO1))
+
+    ZLA2LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L2)  
+    ZF1=PXSL(KL0(JROF,JLEV,2)+IV1L2)
+    ZF2=PXSL(KL0(JROF,JLEV,2)+IV2L2)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA2LO2=MAX(ZMIN,MIN(ZMAX,ZLA2LO2))
+
+    ZLA2LO3=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,2)+IV0L3) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,2)+IV1L3) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,2)+IV2L3) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,2)+IV3L3)  
+    ZF1=PXSL(KL0(JROF,JLEV,2)+IV1L3)
+    ZF2=PXSL(KL0(JROF,JLEV,2)+IV2L3)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA2LO3=MAX(ZMIN,MIN(ZMAX,ZLA2LO3))
+
+    ZLA3LO1=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,3)+IV0L1) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,3)+IV1L1) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,3)+IV2L1) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,3)+IV3L1)  
+    ZF1=PXSL(KL0(JROF,JLEV,3)+IV1L1)
+    ZF2=PXSL(KL0(JROF,JLEV,3)+IV2L1)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA3LO1=MAX(ZMIN,MIN(ZMAX,ZLA3LO1))
+
+    ZLA3LO2=PVINTWS(JROF,JLEV,1)*PXSPSL(KL0(JROF,JLEV,3)+IV0L2) &
+     & +PVINTWS(JROF,JLEV,2)*PXSPSL(KL0(JROF,JLEV,3)+IV1L2) &
+     & +PVINTWS(JROF,JLEV,3)*PXSPSL(KL0(JROF,JLEV,3)+IV2L2) &
+     & +PVINTWS(JROF,JLEV,4)*PXSPSL(KL0(JROF,JLEV,3)+IV3L2)  
+    ZF1=PXSL(KL0(JROF,JLEV,3)+IV1L2)
+    ZF2=PXSL(KL0(JROF,JLEV,3)+IV2L2)
+    ZMAX=MAX(ZF1,ZF2)
+    ZMIN=MIN(ZF1,ZF2)
+    ZLA3LO2=MAX(ZMIN,MIN(ZMAX,ZLA3LO2))
+
+    ! horizontal interpolation
+    ZLA0=ZLA0LO1 + ZDLO0*(ZLA0LO2-ZLA0LO1)
+    ZLA1=ZLA1LO&
+     & +ZCLO11*( ZLA1LO1-ZLA1LO )&
+     & +ZCLO21*( ZLA1LO2-ZLA1LO )&
+     & +ZCLO31*( ZLA1LO3-ZLA1LO )  
+    ZLA2=ZLA2LO&
+     & +ZCLO12*( ZLA2LO1-ZLA2LO )&
+     & +ZCLO22*( ZLA2LO2-ZLA2LO )&
+     & +ZCLO32*( ZLA2LO3-ZLA2LO )  
+    ZLA3=ZLA3LO1 + ZDLO3*(ZLA3LO2-ZLA3LO1)
+
+    PXF(JROF,JLEV) = ZLA0 &
+     & + ZCLA1 * (ZLA1-ZLA0 )&
+     & + ZCLA2 * (ZLA2-ZLA0 )&
+     & + ZCLA3 * (ZLA3-ZLA0 )  
+
+  ENDDO
+ENDDO
+
+! 8 point quasi-monotone correction with conservation
+ZSURPL(:)=0.0_JPRB
+
+!CDIR UNROLL=8
+DO JLEV=KFLEV,1,-1
+
+  DO JROF=KSTART,KPROF
+    ZF111=PXSL(KL0(JROF,JLEV,1)+IV1L1)
+    ZF211=PXSL(KL0(JROF,JLEV,1)+IV1L2)
+    ZF121=PXSL(KL0(JROF,JLEV,2)+IV1L1)
+    ZF221=PXSL(KL0(JROF,JLEV,2)+IV1L2)
+    ZF112=PXSL(KL0(JROF,JLEV,1)+IV2L1)
+    ZF212=PXSL(KL0(JROF,JLEV,1)+IV2L2)
+    ZF122=PXSL(KL0(JROF,JLEV,2)+IV2L1)
+    ZF222=PXSL(KL0(JROF,JLEV,2)+IV2L2)
+    ZMAX=MAX(ZF111,ZF211,ZF121,ZF221,ZF112,ZF212,ZF122,ZF222)
+    ZMIN=MIN(ZF111,ZF211,ZF121,ZF221,ZF112,ZF212,ZF122,ZF222)
+
+    ZXF=PXF(JROF,JLEV)+ZSURPL(JROF)
+
+    PXF(JROF,JLEV)=MAX(ZMIN,MIN(ZMAX,ZXF))
+    ZDMAX=MAX(ZXF,ZMAX) - ZMAX
+    ZDMIN=MIN(ZXF,ZMIN) - ZMIN
+    IF(ABS(ZDMAX) >= ABS(ZDMIN)) THEN 
+      ZSURPL(JROF)=ZDMAX*YDVSLETA%VRDETAR(JLEV)
+    ELSE
+      ZSURPL(JROF)=ZDMIN*YDVSLETA%VRDETAR(JLEV)
+    ENDIF
+  ENDDO  
+ENDDO
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('LAITVSPCQM',1,ZHOOK_HANDLE)
+END SUBROUTINE LAITVSPCQM

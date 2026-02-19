@@ -1,0 +1,75 @@
+! (C) Copyright 1989- Meteo-France.
+
+      SUBROUTINE OPONE
+C
+C     OPEN FILES, FILL REST OF COMMON BLOCKS, SET UP AUXILIARY ARRAYS
+C
+C                                                                               
+C     PEDRO VITERBO         E.C.M.W.F.    03/94.                            
+C
+#include "param.h"
+#include "comddh.h"
+#include "comdat.h"
+#include "comcha.h"
+C
+      CHARACTER CLRECNM*12
+C
+C     1. OPEN, READ, DECODE, AND FINDS RECORD LENGTH OF THE END FILE
+C
+C
+C     OPEN, DECODE
+C
+      CALL REAREC(CLFNAME(1),JPLENCH,JPLENFP,JPLENIN,
+     S            CLDATA(1),NLENCHBL,DATA(1,1),NLENRBL,
+     S            NDATA(1,1),NLENIBL)
+c      write(0,*) ' blocklengths - ',nlenchbl,nlenrbl,nlenibl
+C
+C      
+C     2. FIND RECORD LENGTH, NUMBER OF SECONDS ELAPSED
+C
+C
+C     FIND RECORD LENGTH
+C
+      IBLOCK=1
+      CLRECNM='BLOCKLENGTH'
+      IDUMMY=0
+      CALL GETRECI(CLRECNM,IBLOCK,IDUMMY,
+     S CLDATA(1),NLENCHBL,NDATA(1,1),NLENIBL,NDATA(1,1),NLENIBL,
+     S 1,NBLLEN,ILEN)
+c      WRITE(0,*) ' BLOCKLENGTH =',NBLLEN
+C
+C     FIND NUMBER OF SECONDS ELAPSED
+C
+      IBLOCK=1
+      CLRECNM='ECHEANCE'
+      CALL GETREC(CLRECNM,IBLOCK,NBLLEN,
+     S    CLDATA(1),NLENCHBL,DATA(1,1),NLENRBL,NDATA(1,1),NLENIBL,
+     S    1,SECOND(1),ILEN)
+C
+C     3. OPEN, READ, AND DECODE THE BEG FILE
+C
+C
+C     OPEN, DECODE
+C
+      IF (NSTEP(2).NE.0) THEN
+         CALL REAREC(CLFNAME(2),JPLENCH,JPLENFP,JPLENIN,
+     S               CLDATA(2),NLENCHBL,DATA(1,2),NLENRBL,
+     S               NDATA(1,2),NLENIBL)
+C
+C     FIND NUMBER OF SECONDS ELAPSED
+C
+         IBLOCK=1
+         CLRECNM='ECHEANCE'
+         CALL GETREC(CLRECNM,IBLOCK,NBLLEN,
+     S    CLDATA(2),NLENCHBL,DATA(1,2),NLENIBL,NDATA(1,2),NLENIBL,
+     S    1,SECOND(2),ILEN)
+      ENDIF
+C
+      RETURN
+      END
+
+
+
+
+
+

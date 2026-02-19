@@ -1,0 +1,385 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUSPECG(YDGEOMETRY,YDGFL,YDML_GCONF,LDNHDYN,PSPA3,PSPA2,CDPATH,KFILE,LDINOR,LDSPOR)
+
+!**** *SUSPECG*  - Initialize the spectral fields from GRIB.
+
+!     Purpose.
+!     --------
+!           Initialize the spectral fields of the model from GRIB file(s)
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUSPECG(.....)*
+
+!        Explicit arguments :
+!        --------------------
+!        KFILE : an indicator for which spectral file is to be read
+!               KFILE = 0 the CFNISH file is read
+!               KFILE = 1 the CFNGSH file is read
+!               KFILE = 2 the CFNRF file is read
+!               KFILE = 6 the CFNFGI file is read
+!               KFILE = 7 the CFNANI file is read
+!               KFILE = 8 the CFNPANSH file is read
+!               KFILE =12 the CFNBGHRSH file is read
+!               PSPVOR etc. - spectral fields
+!               LDINOR - switch for initializing the orography
+!               LDSPOR - switch indicating whether spectral orography
+!                        field has been read
+
+!        Implicit arguments :
+!        --------------------
+!        The spectral fields of the model.
+!        The boundary condition fields of the model.
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Mats Hamrud *ECMWF*
+!      Original : 93-05-15 (From SUSPEC and CPREP1)
+
+!     Modifications.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Hamrud      01-Dec-2005 Generalized IO scheme
+!      J.Haseler     27-Feb-2007 LTRAJIO controls writes to trajectory
+!      E.Holm        13-Nov-2008 Add high resolution background=12, used
+!                                by rdfpinc for adding increments
+!      R. El Khatib 04-Aug-2014 Pruning of the conf. 927/928
+!      S. Massart    27-Mar-2019 Augmented control variable
+!     ------------------------------------------------------------------
+
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD           , ONLY : GEOMETRY
+USE YOMGFL                 , ONLY : TGFL
+USE PARKIND1               , ONLY : JPIM, JPRB
+USE YOMCT0                 , ONLY : L_OOPS
+USE YOMHOOK                , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN                 , ONLY : NULOUT, NULERR
+USE YOMOPH0                , ONLY : CFNANI, CFNBGHRSH, CFNFGI, CFNGSH, CFNISH, CFNRF, CFNPANSH
+USE YOM_GRIB_CODES         , ONLY : NGRBZ, NGRBLNSP
+USE YOMVAR                 , ONLY : LSPINT, LECV
+USE YOMJBECV               , ONLY : YRECVGRIB, YRECVCONFIG, YRECV5, NDIAECV, SPNORM_ECV
+USE YOMJBECPHYSECV         , ONLY : ECPHYS_UPPER_AIR_SP
+USE IOSTREAM_MIX           , ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST, IO_GET,&
+ &                                  CLOSE_IOSTREAM, TYPE_IOSTREAM , TYPE_IOREQUEST, CLOSE_IOREQUEST
+USE TRAJECTORY_MOD         , ONLY : LTRAJHR
+USE ALGORITHM_STATE_MOD    , ONLY : GET_NUPTRA
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)               ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGFL)                   ,INTENT(INOUT) :: YDGFL
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(IN)    :: YDML_GCONF
+LOGICAL                      ,INTENT(IN)    :: LDNHDYN
+REAL(KIND=JPRB),TARGET       ,INTENT(OUT)   :: PSPA3(:,:,:)
+REAL(KIND=JPRB),TARGET       ,INTENT(OUT)   :: PSPA2(:,:)
+CHARACTER(LEN=*)  ,OPTIONAL  ,INTENT(IN)    :: CDPATH
+INTEGER(KIND=JPIM),OPTIONAL  ,INTENT(IN)    :: KFILE
+LOGICAL           ,OPTIONAL  ,INTENT(IN)    :: LDINOR
+LOGICAL           ,OPTIONAL  ,INTENT(INOUT) :: LDSPOR
+
+CHARACTER (LEN = 16) ::  CLFN, CLLABEL
+CHARACTER (LEN = 1 ) ::  CLNUPTRA, CINCR
+INTEGER(KIND=JPIM), ALLOCATABLE :: IGRIB2D(:), IGRIB3D(:)
+INTEGER(KIND=JPIM) :: IFILE, I2D, JGFL, JK, I3D, ISPTOGP, IECV_2D, IECV_3D, JECV, IBOUND2D, JSP, IINCR
+LOGICAL :: LLINOR, LLSPINT, LLINCR, LLSPTOGP, LLFAIL
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB),POINTER :: ZSPA2(:,:), ZSPA3(:,:,:)
+LOGICAL, ALLOCATABLE :: LLMISSING_3D(:,:)
+
+#include "abor1.intfb.h"
+#include "suspgpg.intfb.h"
+
+!      -----------------------------------------------------------
+
+!*       1.    INITIALIZE SPECTRAL FIELDS FROM GRIB FILE.
+!              ------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUSPECG',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV, &
+  & YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP, YGFL=>YDML_GCONF%YGFL,&
+  & YDDIMF=>YDML_GCONF%YRDIMF, YDDIMECV=>YDML_GCONF%YRDIMECV)
+ASSOCIATE(NUMFLDS=>YGFL%NUMFLDS, NUMSPFLDS=>YGFL%NUMSPFLDS, YCOMP=>YGFL%YCOMP, &
+ & NRESOL=>YDDIM%NRESOL, NSPEC2=>YDDIM%NSPEC2, NPSP=>YDMP%NPSP,&
+ & NFTHER=>YDDIMF%NFTHER, NS2D=>YDDIMF%NS2D, NS3D=>YDDIMF%NS3D, &
+ & NGRBSP3=>YDDIMF%NGRBSP3,NGRBSP2=>YDDIMF%NGRBSP2, &
+ & NFLEVG=>YDDIMV%NFLEVG, NFLEVL=>YDDIMV%NFLEVL, &
+ & LECV_2D=>YDDIMECV%LECV_2D, LECV_3D=>YDDIMECV%LECV_3D, &
+ & NECVSP_2D=>YDDIMECV%NECVSP_2D, NECVSP_3D=>YDDIMECV%NECVSP_3D, &
+ & MECVGRB_2D=>YRECVGRIB%MECVGRB_2D, MECVGRB_3D=>YRECVGRIB%MECVGRB_3D)
+CALL GSTATS(18,0)
+
+IF(PRESENT(LDINOR)) THEN
+  LLINOR = LDINOR
+ELSE
+  LLINOR = .FALSE.
+ENDIF
+
+IF(PRESENT(KFILE)) THEN
+  IF(PRESENT(CDPATH)) CALL ABOR1('SUSPECG:BOTH KFILE AND CDPATH PRESENT')
+  IFILE = KFILE
+ELSE
+  IF(PRESENT(CDPATH)) THEN
+    CLFN = CDPATH
+    IFILE = -99
+  ELSE
+    CALL ABOR1('SUSPECG:NEITHER KFILE OR CDPATH PRESENT')
+  ENDIF
+ENDIF
+
+! For minimization task the ICMSH..IMIN is not needed when interpolated trajectory
+! is used (i.e. when LTRAJHR=.true.)
+
+IF(IFILE /= 1 .OR. (IFILE == 1 .AND. .NOT.LTRAJHR)) THEN
+
+  LLINCR  = (IFILE == 6 .OR. IFILE/10 == 6 .OR.IFILE == 7) ! Lower resolution spectral input
+  LLSPINT = LSPINT.AND.LLINCR          ! Gridpoint fields from L.R. spec. input
+
+  WRITE(UNIT=NULOUT,FMT='(A)')  ' READ SPECTRAL DATA FROM GRIB '
+  IF(LLINCR) WRITE(NULOUT,'(A)')' INPUT DATA AT DIFFERENT RESOLUTION'
+
+  IF (IFILE == 0) THEN
+    CLFN=CFNISH
+    WRITE(UNIT=NULOUT,FMT='(A,A)')' INITIAL DATA TO BE READ FROM FILE ',CLFN
+  ELSEIF (IFILE == 1) THEN
+    IF (L_OOPS) THEN
+      WRITE(CLNUPTRA,FMT='(I1)') GET_NUPTRA()
+      CLFN=CFNGSH(1:13)//'_'//CLNUPTRA
+    ELSE
+      CLFN=CFNGSH
+    ENDIF
+    IF(.NOT.LTRAJHR) THEN
+      WRITE(UNIT=NULOUT,FMT='(A,A)')&
+       & ' STARTING POINT FOR MINIMIZATION TO BE READ FROM FILE ',CLFN
+    ENDIF
+  ELSEIF (IFILE == 2) THEN
+    CLFN=CFNRF
+    WRITE(UNIT=NULOUT,FMT='(A,A)')' REFERENCE DATA TO BE READ FROM FILE ',CLFN
+  ELSEIF (IFILE == 6 .OR. IFILE/10 == 6) THEN
+    CLFN=CFNFGI
+    IF (IFILE >= 60) THEN
+      IINCR = IFILE - 60
+      WRITE(CINCR,FMT='(I1)') IINCR
+      CLFN=CFNFGI(1:13)//'_'//CINCR
+    ENDIF
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' LOW RESOLUTION FG TO BE READ FROM FILE ',CLFN
+  ELSEIF (IFILE == 7) THEN
+    CLFN=CFNANI
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' LOW RESOLUTION AN TO BE READ FROM FILE ',CLFN
+  ELSEIF (IFILE == 8) THEN
+    CLFN=CFNPANSH
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' PREVIOUS AN TO BE READ FROM FILE ',CLFN
+  ELSEIF (IFILE == 12) THEN
+    CLFN=CFNBGHRSH
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' HIGH RES SH BG TO BE READ FROM FILE ',CLFN
+  ELSEIF (IFILE == -99) THEN
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' DATA TO BE READ FROM FILE ',CLFN
+  ELSE
+    WRITE(NULERR,'('' INVALID ARGUMENT TO SUSPECG, KFILE='',I3)')KFILE
+    CALL ABOR1(' INVALID ARGUMENT TO SUSPECG ')
+  ENDIF
+
+  IECV_2D = 0
+  IECV_3D = 0
+  IF (IFILE == 7 .AND. LECV) THEN
+    IF (LECV_2D .AND. NECVSP_2D > 0) IECV_2D = NECVSP_2D
+    IF (LECV_3D .AND. NECVSP_3D > 0) IECV_3D = NECVSP_3D
+  ENDIF
+  ALLOCATE(IGRIB2D(NS2D+IECV_2D))
+  ALLOCATE(IGRIB3D(NS3D+NUMFLDS+IECV_3D))
+  ALLOCATE(LLMISSING_3D(NFLEVG,NS3D+NUMFLDS+IECV_3D))
+
+  !   2d variables
+
+  !     surface pressure
+
+  I2D = 1
+  IGRIB2D(I2D) = NGRBLNSP
+
+  !     orography
+  IF(PRESENT(LDSPOR)) LDSPOR = .FALSE.
+  IF( LLINOR )THEN
+    IF(PRESENT(LDSPOR))  LDSPOR = .TRUE.
+    I2D = I2D+1
+    IGRIB2D(I2D) = NGRBZ
+  ENDIF
+  IF (LECV) THEN
+    DO JECV=1, IECV_2D, 1
+      IGRIB2D(I2D+JECV) = MECVGRB_2D(JECV)
+    ENDDO
+  ENDIF
+
+
+  !   3d variables
+
+  ! GMV
+  I3D = 2+NFTHER
+  IGRIB3D(1:I3D) = NGRBSP3(1:I3D)
+  !GFL
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LSP) THEN
+      IF(YCOMP(JGFL)%NREQIN == 1) THEN
+        IGRIB3D(I3D+YCOMP(JGFL)%MPSP) = YCOMP(JGFL)%IGRBCODE
+      ELSE
+        IGRIB3D(I3D+YCOMP(JGFL)%MPSP) = -99
+      ENDIF
+    ENDIF
+  ENDDO
+  I3D = I3D+NUMSPFLDS
+  !GFL gridpoint fields possibly initialized from spectral
+  ISPTOGP=0
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LGP) THEN
+      IF(YCOMP(JGFL)%NREQIN == 1) THEN
+        IF(.NOT.YCOMP(JGFL)%LGPINGP .AND. .NOT.YCOMP(JGFL)%LTRAJIO .OR. LLSPINT) THEN
+          ISPTOGP=ISPTOGP+1
+          IGRIB3D(I3D+ISPTOGP) = YCOMP(JGFL)%IGRBCODE
+          WRITE(NULOUT,*) 'SUSPECG: GRIDPOINT FIELDS INITIALIZED FROM SPECTRAL', YCOMP(JGFL)%IGRBCODE
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDDO
+  IF (LECV) THEN
+    DO JECV=1, IECV_3D, 1
+      IGRIB3D(I3D+ISPTOGP+JECV) = MECVGRB_3D(JECV)
+    ENDDO
+  ENDIF
+
+  IF (ISPTOGP > 0) THEN
+    LLSPTOGP = .TRUE.
+  ELSE
+    LLSPTOGP = .FALSE.
+  ENDIF
+
+  WRITE(UNIT=NULOUT,FMT='('' I3D = '',I5,'', ISPTOGP = '',I5)') I3D,ISPTOGP
+  WRITE(UNIT=NULOUT,FMT='('' SUSPECG:: IGRIB3D'')')
+  DO JK=1, I3D+ISPTOGP+IECV_3D
+    WRITE(UNIT=NULOUT,FMT='(I2,1X,I10)') JK, IGRIB3D(JK)
+  ENDDO
+
+  IBOUND2D = MIN(I2D,UBOUND(PSPA2,2))
+  IF(.NOT.LLSPTOGP .AND. IECV_3D == 0 .AND. IECV_2D == 0) THEN
+    ZSPA2 => PSPA2(:,1:IBOUND2D)
+    ZSPA3 => PSPA3
+  ELSE
+    ALLOCATE(ZSPA2(NSPEC2,I2D+IECV_2D))
+    ALLOCATE(ZSPA3(NFLEVL,NSPEC2,I3D+ISPTOGP+IECV_3D))
+  ENDIF
+  CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=1)
+  CALL SETUP_IOREQUEST(YL_IOREQUEST,'SPECTRAL_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+   & KGRIB3D=IGRIB3D(1:I3D+ISPTOGP+IECV_3D),KGRIB2D=IGRIB2D(1:I2D+IECV_2D),&
+   & LDINTERP=LLINCR)
+  CALL IO_GET(YL_IOSTREAM,YL_IOREQUEST,PR2=ZSPA2,PR3=ZSPA3,LDMISSING_3D=LLMISSING_3D)
+   CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+  CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+
+  LLFAIL = .FALSE.
+  DO JGFL=1,I3D+ISPTOGP
+    DO JK=1,NFLEVG
+      IF( IGRIB3D(JGFL) > 0 .AND. LLMISSING_3D(JK,JGFL) ) THEN
+        WRITE(NULERR,*) ' MISSING GRIBCODE=',IGRIB3D(JGFL),' LEVEL=',JK
+        LLFAIL = .TRUE.
+      ENDIF
+    ENDDO    
+  ENDDO
+  ! Dont call abort in NH as SPD,SPV etc. always missing
+  IF(LLFAIL .AND. .NOT.LDNHDYN) CALL ABOR1('SUSPECG:MISSING INPUT FIELD')
+
+  ! ECV 
+  IF (NDIAECV > 0 .AND. (IECV_2D > 0 .OR. IECV_3D > 0)) THEN
+    WRITE(CLLABEL,'(A7)')'ECV FG '
+    CALL SPNORM_ECV(YDGEOMETRY,YDDIMECV,YRECV5,CLLABEL)
+  ENDIF
+  IF (IECV_2D > 0) THEN 
+    DO JECV=1, IECV_2D
+      IF (TRIM(YRECVCONFIG%YRCONFIG(JECV)%CSETDESC) ==  'EC_PHYS') THEN 
+        CALL ECPHYS_UPPER_AIR_SP(YDGEOMETRY,JECV, PSPA2=ZSPA2(:,I2D+JECV)) 
+      ELSEIF (TRIM(YRECVCONFIG%YRCONFIG(JECV)%CSETDESC) /=  'JB_HYBRID_ACV') THEN 
+        IF (NPSP == 1) THEN 
+          DO JSP = 1, NSPEC2
+            YRECV5%RSPECV2D(JECV,JSP) = YRECV5%RSPECV2D(JECV,JSP) + ZSPA2(JSP,I2D+JECV)
+          ENDDO
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDIF
+  IF (IECV_3D > 0) THEN
+    DO JECV=1, IECV_3D
+      IF (TRIM(YRECVCONFIG%YRCONFIG(JECV)%CSETDESC) ==  'EC_PHYS') THEN 
+        CALL ECPHYS_UPPER_AIR_SP(YDGEOMETRY,JECV, PSPA3=ZSPA3(:,:,I3D+ISPTOGP+JECV)) 
+      ELSEIF (TRIM(YRECVCONFIG%YRCONFIG(JECV)%CSETDESC) /=  'JB_HYBRID_ACV') THEN 
+        DO JK=1,NFLEVL
+          DO JSP = 1, NSPEC2
+            YRECV5%RSPECV3D(JECV,JK,JSP) = YRECV5%RSPECV3D(JECV,JK,JSP) &
+              & + ZSPA3(JK,JSP,I3D+ISPTOGP+JECV)
+          ENDDO
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDIF
+  IF (NDIAECV > 0 .AND. (IECV_2D > 0 .OR. IECV_3D > 0)) THEN
+    WRITE(CLLABEL,'(A7)')'ECV 4V '
+    CALL SPNORM_ECV(YDGEOMETRY,YDDIMECV,YRECV5,CLLABEL)
+  ENDIF
+
+  DEALLOCATE(IGRIB2D)
+  DEALLOCATE(IGRIB3D)
+  DEALLOCATE(LLMISSING_3D)
+
+  IF(.NOT.LLSPTOGP .AND. IECV_3D == 0 .AND. IECV_2D == 0) THEN
+    NULLIFY(ZSPA2)
+    NULLIFY(ZSPA3)
+  ELSE
+    PSPA2(:,1:IBOUND2D) = ZSPA2(:,1:IBOUND2D)
+    PSPA3(:,:,1:I3D) = ZSPA3(:,:,1:I3D)
+    ISPTOGP = 0
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LGP) THEN
+        IF(YCOMP(JGFL)%NREQIN == 1) THEN
+          IF(.NOT.YCOMP(JGFL)%LGPINGP .OR. LLSPINT) THEN
+            ISPTOGP=ISPTOGP+1
+            CALL SUSPGPG(YDGEOMETRY,YDGFL,YGFL,ZSPA3(:,:,I3D+ISPTOGP),YCOMP(JGFL)%IGRBCODE)
+            WRITE(NULOUT,FMT='('' SUSPGPG for '',I5)') YCOMP(JGFL)%IGRBCODE
+          ENDIF
+        ENDIF
+      ENDIF
+    ENDDO
+    DEALLOCATE(ZSPA2)
+    DEALLOCATE(ZSPA3)
+  ENDIF
+
+ENDIF
+
+CALL GSTATS(18,1)
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUSPECG',1,ZHOOK_HANDLE)
+END SUBROUTINE SUSPECG

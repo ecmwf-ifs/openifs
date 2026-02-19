@@ -1,0 +1,1476 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE CPEULDYN(YDGEOMETRY,YDGMV,&
+ ! --- INPUT ------------------------------------------------------------------
+ & YDEPHY,YGFL,YDML_DYN,YDPHY,KST,KPROF,PBETADT,PDT,&
+ & KIBL,&
+ & PGFL,PTSOL,PQSOL,PNHXT0,PKENE,PCTY0,&
+ & PRES0,PRDELP,PATND,PNHXT9,&
+ ! --- INPUT/OUTPUT -----------------------------------------------------------
+ & PGFLT1,PGMVT1,PGMVT1S,PGFLPC,PGMV,PGMVS,&
+ ! --- OUTPUT -----------------------------------------------------------------
+ & PB2)
+
+!**** *CPEULDYN* - dynamic grid point calculations for Eulerian advection.
+
+!     Purpose.
+!     --------
+!           Dynamic non-linear computations in grid-point space 
+!           for Eulerian advection scheme, for both hydrostatic
+!           and NH models.
+
+!**   Interface.
+!     ----------
+!        *CALL* *CPEULDYN(...)
+
+!        Explicit arguments :
+!        --------------------
+
+!        INPUT:
+!          KST         - first element of work.
+!          KPROF       - depth of work.
+!          PBETADT     - BETADT or 0 according to configuration.
+!          PDT         - SL2TL or first timestep: timestep; otherwise 2*timestep.
+!          KIBL        - index into YRCSGEOM/YRGSGEOM instances in YDGEOMETRY
+!          PGFL        - GFL variables at t.
+!          PTSOL       - surface temperature.
+!          PQSOL       - surface specific humidity.
+!          PNHXT0      - term 'X' at time t freshly diagnosed.
+!          PKENE       - kinetic energy.
+!          PCTY0       - contains vertical velocities, vertical integral of divergence at t.
+!          PRES0       - pressure at half levels at t.
+!          PRDELP      - 1/(pressure depth of layers) at t.
+!          PATND       - adiabatic Lagrangian tendencies.
+!          PNHXT9      - term 'X' at t-dt.                             
+
+!        INPUT/OUTPUT:
+!          PGFLT1      - t+dt term for GFL (as input contains the non lagged physics).
+!          PGMVT1      - GMV  (upper air) variables at t+dt.
+!          PGMVT1S     - GMVS (surface) variables at t+dt.
+!          PGFLPC      - storage array for GFL for LPC_FULL.
+!          PGMV        - GMV  (upper air) variables at t-dt and t.
+!          PGMVS       - GMVS (surface) variables at t-dt and t.
+
+!        OUTPUT:
+!          PB2         - "SLBUF2" buffer.
+
+!        Implicit arguments : none.
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!     Reference.
+!     ----------
+!        ARPEGE/ALADIN documentation
+
+!     Author.
+!     -------
+!      Mats Hamrud and Philippe Courtier  *ECMWF*  (CPDYN)
+!      Radmila Bubnova *GMAP/COMPAS - stage MRE*   (GNHDYN)
+!      Original : 93-05-05
+
+! Modifications
+! -------------
+!   N. Wedi and K. Yessad (Jan 2008): different dev for NH model and PC scheme
+!   K. Yessad (Sep 2008): LREGETA -> LREGETA+LVFE_REGETA.
+!   K. Yessad (Dec 2008): remove dummy CDLOCK
+!   K. Yessad (Nov 2009): cleanings, DT/Dt now pre-computed in CPG_GP.
+!   K. Yessad (Nov 2009): prune lpc_old.
+!   K. Yessad (Dec 2009): deep-layer NH dynamics for LGWADV=F.
+!   K. Yessad (Jan 2011): introduce INTDYN_MOD structures.
+!   K. Yessad (Nov 2011): various modifications.
+!   T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!   K. Yessad (July 2014): Move some variables.
+!   K. Yessad (Dec 2016): Prune obsolete options.
+!   K. Yessad (Mar 2017): Vertical-dependent SITRA.
+!   K. Yessad (June 2017): Introduce NHQE model.
+!   K. Yessad (Feb 2018): remove deep-layer formulations.
+! End Modifications
+!------------------------------------------------------------------
+
+USE MODEL_DYNAMICS_MOD , ONLY : MODEL_DYNAMICS_TYPE
+USE GEOMETRY_MOD       , ONLY : GEOMETRY
+USE YOMGMV             , ONLY : TGMV
+USE PARKIND1           , ONLY : JPIM, JPRB
+USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST             , ONLY : RG, RD, RETV, RA
+USE YOEPHY             , ONLY : TEPHY
+USE YOMPHY             , ONLY : TPHY
+USE YOM_YGFL           , ONLY : TYPE_GFLD
+USE YOMCT3             , ONLY : NSTEP
+USE INTDYN_MOD         , ONLY : YYTCTY0
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGMV)        ,INTENT(INOUT) :: YDGMV
+TYPE(TEPHY)       ,INTENT(INOUT) :: YDEPHY
+TYPE(MODEL_DYNAMICS_TYPE),INTENT(INOUT):: YDML_DYN
+TYPE(TPHY)        ,INTENT(INOUT) :: YDPHY
+TYPE(TYPE_GFLD)   ,INTENT(IN)    :: YGFL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KST 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROF 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBETADT
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDT 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIBL
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGFL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSOL(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQSOL(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHXT0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PKENE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCTY0(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG,YYTCTY0%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRES0(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRDELP(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PATND(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YRDYNA%YYTTND%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHXT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFLT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NDIM1) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%YT1%NDIM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVT1S(YDGEOMETRY%YRDIM%NPROMA,YDGMV%YT1%NDIMS)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFLPC(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NDIMPC) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%NDIMGMV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVS(YDGEOMETRY%YRDIM%NPROMA,YDGMV%NDIMGMVS)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2(YDGEOMETRY%YRDIM%NPROMA,YDML_DYN%YRPTRSLB2%NFLDSLB2)
+!     ------------------------------------------------------------------
+REAL(KIND=JPRB) :: ZR0   (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSID  (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIDL (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIDM (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIPR (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIPR9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIPRL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIPRM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSISP (YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) :: ZSISPL(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) :: ZSISPM(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) :: ZSIT  (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSITL (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSITM (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSIVD (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZTT0L (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZTT0M (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+
+INTEGER(KIND=JPIM) :: IPROFS, JLEV, JROF,JGFL
+
+REAL(KIND=JPRB) :: ZUADV (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZVADV (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZTADV (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSPDADV (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSVDADV (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZUM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZVM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZTM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSPDM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSVDM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSPM(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB) :: ZURES0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZVRES0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZTRES0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSPDRES0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSVDRES0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSPRES0(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB) :: ZUSI0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZVSI0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZTSI0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSPDSI0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSVDSI0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZSPSI0(YDGEOMETRY%YRDIM%NPROMA) 
+
+REAL(KIND=JPRB) :: ZSVDT0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+
+REAL(KIND=JPRB) :: ZDUDE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZDVDE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZDTDE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZDSPDDE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZDSVDDE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZDGFDE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NUMFLDS)
+
+REAL(KIND=JPRB) :: ZDTHADV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+
+REAL(KIND=JPRB) :: ZT_EVEL(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+
+REAL(KIND=JPRB) :: ZCOEJ
+REAL(KIND=JPRB) :: ZFM, ZFTEND, ZUSA, ZEPS, ZEVEL, ZED
+
+LOGICAL         :: LLDPSFI
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "gprcp.intfb.h"
+#include "gptf1pc.intfb.h"
+#include "gptf2pc.intfb.h"
+#include "siseve.intfb.h"
+#include "sidd.intfb.h"
+#include "sigam.intfb.h"
+#include "siptp.intfb.h"
+#include "sitnu.intfb.h"
+#include "silkap.intfb.h"
+#include "verder.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('CPEULDYN',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, &
+ & YDVAB=>YDGEOMETRY%YRVAB, YDVETA=>YDGEOMETRY%YRVETA,YDCVER=>YDGEOMETRY%YRCVER, &
+ & YDVFE=>YDGEOMETRY%YRVFE,YDCSGEOM=>YDGEOMETRY%YRCSGEOM(KIBL), YDGSGEOM=>YDGEOMETRY%YRGSGEOM(KIBL), &
+ & YDOROG=>YDGEOMETRY%YROROG(KIBL), YDDYN=>YDML_DYN%YRDYN,YDDYNA=>YDML_DYN%YRDYNA,YDPTRSLB2=>YDML_DYN%YRPTRSLB2, &
+ & YDEDYN=>YDML_DYN%YREDYN)
+
+ASSOCIATE(NDIM=>YGFL%NDIM, NDIM1=>YGFL%NDIM1, NDIMPC=>YGFL%NDIMPC, &
+ & NUMFLDS=>YGFL%NUMFLDS, YCOMP=>YGFL%YCOMP, YQ=>YGFL%YQ, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & LIMPF=>YDDYN%LIMPF, LSIDG=>YDDYN%LSIDG, NCURRENT_ITER=>YDDYN%NCURRENT_ITER, &
+ & SITR=>YDDYN%SITR, &
+ & LESIDG=>YDEDYN%LESIDG, &
+ & LAGPHY=>YDEPHY%LAGPHY, LEPHYS=>YDEPHY%LEPHYS, &
+ & LMPHYS=>YDPHY%LMPHYS, NDPSFI=>YDPHY%NDPSFI, &
+ & RSTRET=>YDGEM%RSTRET, &
+ & NDIMGMV=>YDGMV%NDIMGMV, NDIMGMVS=>YDGMV%NDIMGMVS, YT0=>YDGMV%YT0, &
+ & YT1=>YDGMV%YT1, YT9=>YDGMV%YT9, &
+ & MSLB2PDSI=>YDPTRSLB2%MSLB2PDSI, MSLB2SPSI=>YDPTRSLB2%MSLB2SPSI, &
+ & MSLB2TSI=>YDPTRSLB2%MSLB2TSI, MSLB2USI=>YDPTRSLB2%MSLB2USI, &
+ & MSLB2VDSI=>YDPTRSLB2%MSLB2VDSI, MSLB2VSI=>YDPTRSLB2%MSLB2VSI, &
+ & NFLDSLB2=>YDPTRSLB2%NFLDSLB2)
+!     ------------------------------------------------------------------
+
+!*       1.    INITIALISATION OF AUX QUANTITIES
+!              --------------------------------
+
+! ZFM = factor to apply on quantities to have always in buffer dt*M resp. dt*L
+!       independently of time step
+! ZFTEND = factor to apply in order to get correct tendency for first time step
+IF( NSTEP<= 0 )THEN
+  ZFM = 1.0_JPRB
+  ZFTEND = 0.5_JPRB
+ELSE
+  ZFM = 0.5_JPRB
+  ZFTEND = 1.0_JPRB
+ENDIF
+
+! put advective buffers to 0
+ZUADV = 0.0_JPRB
+ZVADV = 0.0_JPRB
+ZTADV = 0.0_JPRB
+IF(YDDYNA%LNHDYN)THEN
+  ZSPDADV = 0.0_JPRB
+  ZSVDADV = 0.0_JPRB
+ENDIF
+
+! dimension for calls to SI routines
+IPROFS=KPROF-KST+1
+
+ZUSA=1.0_JPRB/RA
+
+ZT_EVEL(KST:KPROF,0:NFLEVG)=PCTY0(KST:KPROF,0:NFLEVG,YYTCTY0%M_EVEL)
+
+!     ------------------------------------------------------------------
+
+!*       2.    VERTICAL ADVECTION.
+!              -------------------
+!     Due to stability reasons advection is evaluated 
+!     at time t in predictor and corrector as well.
+!     For advection we use notation A(t) in this routine.
+!     A(t) is computed during predictor (SI step) and
+!     than stored in GMV structure (PXRHS arrays in this routine)
+
+IF( NCURRENT_ITER == 0 )THEN
+
+  ! * GMV variables:
+
+  IF(YDCVER%LVERTFE) THEN
+
+    ! * In this case the vertical advection of a variable X is discretized
+    !   as follows:
+    !   [etadot (dX/d eta)]_l = [etadot (d prehyd/d eta)]_l
+    !    * [Delta eta]_l * [1/[Delta prehyd]_l] * [dX/d eta]_l,
+    !   where [dX/d eta]_l is computed on the full level number "l"
+    !   from [X]_l by calling the routine VERDER.
+
+    ! * remark KY: ZEPS can be replaced by a tunable variable in NAMDYN
+    !   and YOMDYN or YOMCVER.
+    ZEPS=0.25_JPRB
+
+    ! * One first computes [dX/d eta]_l (in array ZD[X]DE):
+    CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,PGMV(1,1,YT0%MU),ZDUDE)
+    CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,PGMV(1,1,YT0%MV),ZDVDE)
+    CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,PGMV(1,1,YT0%MT),ZDTDE)
+    IF (YDDYNA%LNHEE) THEN
+      CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,PGMV(1,1,YT0%MSPD),ZDSPDDE)
+    ENDIF
+    IF (YDDYNA%LNHDYN) THEN
+      IF( YDDYNA%NVDVAR == 4 )THEN
+        DO JLEV=1,NFLEVG
+          DO JROF=KST,KPROF
+            ZSVDT0(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSVD)-PNHXT0(JROF,JLEV)
+          ENDDO
+        ENDDO
+        CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,ZSVDT0,ZDSVDDE)
+      ELSE
+        CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,PGMV(1,1,YT0%MSVD),ZDSVDDE)
+      ENDIF
+    ENDIF
+
+    ! * One computes then the vertical advection, with a vertical filter
+    !   on [etadot (d prehyd/d eta)]_l in the high atmosphere.
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        IF(YDVAB%VBH(JLEV) < 1.E-5_JPRB .AND. JLEV > 1 .AND. JLEV < NFLEVG) THEN
+          ZEVEL=(1._JPRB-2*ZEPS)*ZT_EVEL(JROF,JLEV)+ZEPS*(ZT_EVEL(JROF,JLEV-1)+&
+          & ZT_EVEL(JROF,JLEV+1))
+        ELSE
+          ZEVEL=ZT_EVEL(JROF,JLEV)
+        ENDIF
+        ZED=PDT*ZEVEL*PRDELP(JROF,JLEV)/YDVETA%VFE_RDETAH(JLEV)
+        ZUADV(JROF,JLEV)=ZUADV(JROF,JLEV)-ZED*ZDUDE(JROF,JLEV)
+        ZVADV(JROF,JLEV)=ZVADV(JROF,JLEV)-ZED*ZDVDE(JROF,JLEV)
+        ZTADV(JROF,JLEV)=ZTADV(JROF,JLEV)-ZED*ZDTDE(JROF,JLEV)
+        IF(YDDYNA%LNHEE) ZSPDADV(JROF,JLEV)=ZSPDADV(JROF,JLEV)-ZED*ZDSPDDE(JROF,JLEV)
+        IF(YDDYNA%LNHDYN) ZSVDADV(JROF,JLEV)=ZSVDADV(JROF,JLEV)-ZED*ZDSVDDE(JROF,JLEV)
+      ENDDO
+    ENDDO
+
+  ELSE
+
+    ! * U,V,T:
+    DO JLEV=1,NFLEVG-1
+      DO JROF=KST,KPROF
+        ZED=PDT*0.5_JPRB*ZT_EVEL(JROF,JLEV)
+        ZUADV(JROF,JLEV)=ZUADV(JROF,JLEV)+&
+         & (PGMV(JROF,JLEV,YT0%MU)-PGMV(JROF,JLEV+1,YT0%MU))&
+         & *ZED*PRDELP(JROF,JLEV)  
+        ZUADV(JROF,JLEV+1)=ZUADV(JROF,JLEV+1)+&
+         & (PGMV(JROF,JLEV,YT0%MU)-PGMV(JROF,JLEV+1,YT0%MU))&
+         & *ZED*PRDELP(JROF,JLEV+1)  
+
+        ZVADV(JROF,JLEV)=ZVADV(JROF,JLEV)+&
+         & (PGMV(JROF,JLEV,YT0%MV)-PGMV(JROF,JLEV+1,YT0%MV))&
+         & *ZED*PRDELP(JROF,JLEV)
+        ZVADV(JROF,JLEV+1)=ZVADV(JROF,JLEV+1)+&
+         & (PGMV(JROF,JLEV,YT0%MV)-PGMV(JROF,JLEV+1,YT0%MV))&
+         & *ZED*PRDELP(JROF,JLEV+1)
+
+        ZTADV(JROF,JLEV)=ZTADV(JROF,JLEV)+&
+         & (PGMV(JROF,JLEV,YT0%MT)-PGMV(JROF,JLEV+1,YT0%MT))&
+         & *ZED*PRDELP(JROF,JLEV)  
+        ZTADV(JROF,JLEV+1)=ZTADV(JROF,JLEV+1)+&
+         & (PGMV(JROF,JLEV,YT0%MT)-PGMV(JROF,JLEV+1,YT0%MT))&
+         & *ZED*PRDELP(JROF,JLEV+1)  
+      ENDDO
+    ENDDO
+
+    IF(YDDYNA%LNHEE)THEN
+      ! * Pressure departure variable.
+      DO JLEV=1,NFLEVG-1
+        DO JROF=KST,KPROF
+          ZED=PDT*0.5_JPRB*ZT_EVEL(JROF,JLEV)
+          ZSPDADV(JROF,JLEV)=ZSPDADV(JROF,JLEV)+&
+           & (PGMV(JROF,JLEV,YT0%MSPD)-PGMV(JROF,JLEV+1,YT0%MSPD))&
+           & *ZED*PRDELP(JROF,JLEV)  
+          ZSPDADV(JROF,JLEV+1)=ZSPDADV(JROF,JLEV+1)+&
+           & (PGMV(JROF,JLEV,YT0%MSPD)-PGMV(JROF,JLEV+1,YT0%MSPD))&
+           & *ZED*PRDELP(JROF,JLEV+1)  
+        ENDDO
+      ENDDO
+    ENDIF
+
+    IF(YDDYNA%LNHDYN)THEN
+      ! * Vertical divergence variable.
+      IF( YDDYNA%NVDVAR == 4 )THEN
+        DO JLEV=1,NFLEVG-1
+          DO JROF=KST,KPROF
+            ZED=PDT*0.5_JPRB*ZT_EVEL(JROF,JLEV)
+            ZSVDADV(JROF,JLEV)=ZSVDADV(JROF,JLEV)+&
+             & (PGMV(JROF,JLEV,YT0%MSVD)-PNHXT0(JROF,JLEV)-&
+             & PGMV(JROF,JLEV+1,YT0%MSVD)+PNHXT0(JROF,JLEV+1))&
+             & *ZED*PRDELP(JROF,JLEV)  
+            ZSVDADV(JROF,JLEV+1)=ZSVDADV(JROF,JLEV+1)+&
+             & (PGMV(JROF,JLEV,YT0%MSVD)-PNHXT0(JROF,JLEV)-&
+             & PGMV(JROF,JLEV+1,YT0%MSVD)+PNHXT0(JROF,JLEV+1))&
+             & *ZED*PRDELP(JROF,JLEV+1)  
+          ENDDO
+        ENDDO
+      ELSE
+        DO JLEV=1,NFLEVG-1
+          DO JROF=KST,KPROF
+            ZED=PDT*0.5_JPRB*ZT_EVEL(JROF,JLEV)
+            ZSVDADV(JROF,JLEV)=ZSVDADV(JROF,JLEV)+&
+             & (PGMV(JROF,JLEV,YT0%MSVD)-PGMV(JROF,JLEV+1,YT0%MSVD))&
+             & *ZED*PRDELP(JROF,JLEV)  
+            ZSVDADV(JROF,JLEV+1)=ZSVDADV(JROF,JLEV+1)+&
+             & (PGMV(JROF,JLEV,YT0%MSVD)-PGMV(JROF,JLEV+1,YT0%MSVD))&
+             & *ZED*PRDELP(JROF,JLEV+1)  
+          ENDDO
+        ENDDO
+      ENDIF
+    ENDIF
+
+  ENDIF
+
+  ! * GFL variables:
+  ! GFL quantities are scalars with no thermodynamics tendency terms
+  ! Only dynamical process for them is advection (hor + ver). Advection 
+  ! in 3TL ICI scheme is always evaluated at time instant t and therefore
+  ! there is no need to iterate it here
+
+  IF(YDCVER%LVERTFE) THEN
+
+    ! * remark KY: ZEPS can be replaced by a tunable variable in NAMDYN
+    !   and YOMDYN or YOMCVER.
+    ZEPS=0.25_JPRB
+
+    ! * One first computes [dX/d eta]_l (in array ZDGFDE):
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LADV) THEN
+        CALL VERDER(NPROMA,KST,KPROF,NFLEVG,NFLEVG,YDVFE%RDERI,&
+         & PGFL(1,1,YCOMP(JGFL)%MP),ZDGFDE(1,1,YCOMP(JGFL)%MP))
+      ENDIF
+    ENDDO
+
+    ! * One computes then the vertical advection, with a vertical filter
+    !   on [etadot (d prehyd/d eta)]_l in the high atmosphere.
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        IF(YDVAB%VBH(JLEV) < 1.E-5_JPRB .AND. JLEV > 1 .AND. JLEV < NFLEVG) THEN
+          ZEVEL=(1._JPRB-2*ZEPS)*ZT_EVEL(JROF,JLEV)+ZEPS*(ZT_EVEL(JROF,JLEV-1)+&
+           & ZT_EVEL(JROF,JLEV+1))
+        ELSE
+          ZEVEL=ZT_EVEL(JROF,JLEV)
+        ENDIF
+        ZED=PDT*ZEVEL*PRDELP(JROF,JLEV)/YDVETA%VFE_RDETAH(JLEV)
+        DO JGFL=1,NUMFLDS
+          IF(YCOMP(JGFL)%LADV) THEN
+            PGFLT1(JROF,JLEV,YCOMP(JGFL)%MP1)=&
+             & PGFLT1(JROF,JLEV,YCOMP(JGFL)%MP1)-&
+             & ZED*ZDGFDE(JROF,JLEV,YCOMP(JGFL)%MP)
+          ENDIF
+        ENDDO
+      ENDDO
+    ENDDO
+
+  ELSE
+
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LADV) THEN
+        DO JLEV=1,NFLEVG-1
+          DO JROF=KST,KPROF
+            ZED=PDT*0.5_JPRB*ZT_EVEL(JROF,JLEV)
+            PGFLT1(JROF,JLEV,YCOMP(JGFL)%MP1)=&
+             & PGFLT1(JROF,JLEV,YCOMP(JGFL)%MP1)+&
+             & (PGFL(JROF,JLEV,YCOMP(JGFL)%MP)-&
+             & PGFL(JROF,JLEV+1,YCOMP(JGFL)%MP))&
+             & *ZED*PRDELP(JROF,JLEV)  
+            PGFLT1(JROF,JLEV+1,YCOMP(JGFL)%MP1)=&
+             & PGFLT1(JROF,JLEV+1,YCOMP(JGFL)%MP1)+&
+             & (PGFL(JROF,JLEV,YCOMP(JGFL)%MP)-&
+             & PGFL(JROF,JLEV+1,YCOMP(JGFL)%MP))&
+             & *ZED*PRDELP(JROF,JLEV+1)  
+          ENDDO
+        ENDDO
+      ENDIF
+    ENDDO
+
+  ENDIF
+
+  ! * Additional advection term at the bottom for case "delta m=1":
+
+  LLDPSFI=((NDPSFI == 1).AND.(LMPHYS.OR.LEPHYS).AND.(.NOT.LAGPHY))
+
+  IF (LLDPSFI.AND.YDCVER%LVERTFE) THEN
+    ! * This case is not yet coded.
+    !   The good way to code this option is probably to:
+    !   - take properly account of the "delta m=1" correction in
+    !     [etadot d prehyd/d eta] at full levels (must be done in
+    !     routine CPMVVPS but currently not yet coded for LVERTFE).
+    !   - take properly account of the surface value of X
+    !     (additionally to the upper air full level values of X),
+    !     when computing [dX/deta]_(l=nflevg) in routine VERDER.
+    CALL ABOR1(' CPEULDYN: LVERTFE with NDPSFI=1 not yet coded')
+  ENDIF
+
+  IF (LLDPSFI.AND.(.NOT.YDCVER%LVERTFE)) THEN
+
+    ! * GMV variables:
+    DO JROF=KST,KPROF
+      ZED = PDT* PRDELP(JROF,NFLEVG)* ZT_EVEL(JROF,NFLEVG)
+      ! * U_surf and V_surf are currently assumed to be zero here
+      !   (not consistent with what is done in routine GPUVS)
+      !   Must be changed in the future, using the output of routine GPUVS.
+      ZUADV(JROF,NFLEVG) =ZUADV(JROF,NFLEVG) + ZED* PGMV(JROF,NFLEVG,YT0%MU)
+      ZVADV(JROF,NFLEVG) =ZVADV(JROF,NFLEVG) + ZED* PGMV(JROF,NFLEVG,YT0%MV)
+      ! * T_surf is contained in array PTSOL.
+      ZTADV(JROF,NFLEVG) =ZTADV(JROF,NFLEVG) -&
+       & ZED* (PTSOL(JROF) - PGMV(JROF,NFLEVG,YT0%MT))  
+    ENDDO
+
+    ! * GMV NH variables: for the time being quantities are
+    !   assumed to be constant under the full layer l=L,
+    !   so there is no additional vertical advection term.
+    !   For the pressure departure variable, this assumption
+    !   is consistent with what is coded in routine GNHPREH,
+    !   but for the vertical divergence variable, this assumption
+    !   may create inconsistencies with the lower boundary condition
+    !   (gw)_surf = V_surf * grad(Phi_surf).
+
+    ! * Specific humidity:
+    DO JROF=KST,KPROF
+      ZED = PDT* PRDELP(JROF,NFLEVG)* ZT_EVEL(JROF,NFLEVG)
+      ! * Q_surf is contained in array PQSOL.
+      PGFLT1(JROF,NFLEVG,YQ%MP1) = PGFLT1(JROF,NFLEVG,YQ%MP1) -&
+       & ZED* (PQSOL(JROF) - PGFL(JROF,NFLEVG,YQ%MP))   
+    ENDDO
+
+    ! * Other GFL variables: quantity is assumed to be zero at the surface.
+    DO JGFL=1,NUMFLDS
+      IF(JGFL == YQ%MP) CYCLE
+      IF(YCOMP(JGFL)%LADV) THEN
+        DO JROF=KST,KPROF
+          ZED = PDT* PRDELP(JROF,NFLEVG)* ZT_EVEL(JROF,NFLEVG)
+          PGFLT1(JROF,NFLEVG,YCOMP(JGFL)%MP1) =&
+           & PGFLT1(JROF,NFLEVG,YCOMP(JGFL)%MP1)+&
+           & ZED*PGFL(JROF,NFLEVG,YCOMP(JGFL)%MP)  
+        ENDDO
+      ENDIF
+    ENDDO
+
+  ENDIF
+
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       3.    CASE "LSPRT".
+!              -------------
+
+! * Convert gradients of 'TV' to gradients of T if necessary.
+!   If no gradient of Q approximate (for EUL NMI)
+
+! GFL here contains  
+! quantities valid at time t    during predictor
+! quantities valid at time t+dt during corrector
+
+IF (YDDYNA%LSPRT) THEN
+  CALL GPRCP(NPROMA,KST,KPROF,NFLEVG,PGFL=PGFL,PR=ZR0)
+  DO JLEV=1,NFLEVG
+    IF(YQ%LCDERS) THEN
+      DO JROF=KST,KPROF
+        ZTT0L(JROF,JLEV)=RD*(PGMV(JROF,JLEV,YT0%MTL)&
+         & -RETV*PGMV(JROF,JLEV,YT0%MT)*PGFL(JROF,JLEV,YQ%MPL))/ZR0(JROF,JLEV)  
+        ZTT0M(JROF,JLEV)=RD*(PGMV(JROF,JLEV,YT0%MTM)&
+         & -RETV*PGMV(JROF,JLEV,YT0%MT)*PGFL(JROF,JLEV,YQ%MPM))/ZR0(JROF,JLEV)  
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        ZTT0L(JROF,JLEV)=RD*PGMV(JROF,JLEV,YT0%MTL)/ZR0(JROF,JLEV)
+        ZTT0M(JROF,JLEV)=RD*PGMV(JROF,JLEV,YT0%MTM)/ZR0(JROF,JLEV)
+      ENDDO
+    ENDIF
+  ENDDO
+ELSE
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZTT0L(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MTL)
+      ZTT0M(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MTM)
+    ENDDO
+  ENDDO
+ENDIF
+
+!     ------------------------------------------------------------------
+!*       4.    HORIZONTAL ADVECTION.
+!              ---------------------
+!     Due to stability reasons advection is evaluated 
+!     at time t in predictor and corrector as well.
+!     For advection we use notation A(t) in this routine.
+!     A(t) is computed during predictor (SI step) and
+!     than stored in GMV structure (PXRHS arrays in this routine)
+
+IF(NCURRENT_ITER==0)THEN 
+
+  ZDTHADV(KST:KPROF,1:NFLEVG)=PDT
+
+  ! * GMV hydrostatic variables:
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZUADV(JROF,JLEV)=ZUADV(JROF,JLEV)+ZDTHADV(JROF,JLEV)* (&
+       &  PGMV(JROF,JLEV,YT0%MVOR)*PGMV(JROF,JLEV,YT0%MV)&
+       &  -PGMV(JROF,JLEV,YT0%MV)*PGMV(JROF,JLEV,YT0%MVL)&
+       & -PGMV(JROF,JLEV,YT0%MU)*PGMV(JROF,JLEV,YT0%MUL) )
+      ZVADV(JROF,JLEV)=ZVADV(JROF,JLEV)+ZDTHADV(JROF,JLEV)* (&
+       & -PGMV(JROF,JLEV,YT0%MDIV)*PGMV(JROF,JLEV,YT0%MV)&
+       & -PGMV(JROF,JLEV,YT0%MU)*PGMV(JROF,JLEV,YT0%MVL)&
+       & +PGMV(JROF,JLEV,YT0%MV)*PGMV(JROF,JLEV,YT0%MUL) )
+      ZTADV(JROF,JLEV)=ZTADV(JROF,JLEV)&
+       & -ZDTHADV(JROF,JLEV)*(ZTT0L(JROF,JLEV)*PGMV(JROF,JLEV,YT0%MU)&
+       & +ZTT0M(JROF,JLEV)*PGMV(JROF,JLEV,YT0%MV))  
+    ENDDO
+  ENDDO
+
+  ! * GMV non-hydrostatic variables:
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSPDADV(JROF,JLEV)=ZSPDADV(JROF,JLEV)&
+         & -ZDTHADV(JROF,JLEV)*(PGMV(JROF,JLEV,YT0%MSPDL)*PGMV(JROF,JLEV,YT0%MU)&
+         & +PGMV(JROF,JLEV,YT0%MSPDM)*PGMV(JROF,JLEV,YT0%MV))  
+      ENDDO
+    ENDDO
+  ENDIF
+  IF(YDDYNA%LNHDYN)THEN
+    IF( YDDYNA%NVDVAR == 4 )THEN 
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          ZSVDADV(JROF,JLEV)=ZSVDADV(JROF,JLEV)&
+           & -ZDTHADV(JROF,JLEV)*((PGMV(JROF,JLEV,YT0%MSVDL)-PGMV(JROF,JLEV,YT0%MNHXL))&
+           & *PGMV(JROF,JLEV,YT0%MU)&
+           & +(PGMV(JROF,JLEV,YT0%MSVDM)-PGMV(JROF,JLEV,YT0%MNHXM))&
+           & *PGMV(JROF,JLEV,YT0%MV))  
+        ENDDO
+      ENDDO
+    ELSE
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          ZSVDADV(JROF,JLEV)=ZSVDADV(JROF,JLEV)&
+           & -ZDTHADV(JROF,JLEV)*(PGMV(JROF,JLEV,YT0%MSVDL)*PGMV(JROF,JLEV,YT0%MU)&
+           & +PGMV(JROF,JLEV,YT0%MSVDM)*PGMV(JROF,JLEV,YT0%MV))  
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  ! * GFL variables:
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LCDERS .AND. YCOMP(JGFL)%LADV) THEN
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PGFLT1(JROF,JLEV,YCOMP(JGFL)%MP1)=&
+           & PGFLT1(JROF,JLEV,YCOMP(JGFL)%MP1)-ZDTHADV(JROF,JLEV)*&
+           & (PGFL(JROF,JLEV,YCOMP(JGFL)%MPL)*PGMV(JROF,JLEV,YT0%MU)&
+           & +PGFL(JROF,JLEV,YCOMP(JGFL)%MPM)*PGMV(JROF,JLEV,YT0%MV))  
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDDO
+
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       5.      SEMI-IMPLICIT CORRECTION
+!              -----------------------------
+
+!    Predictor:
+!       SI-correction = dt (  L(t-dt) - 2*L(t) )  
+!    Corrector:
+!       SI-correction = dt (  - L(t+dt) )
+
+!    SI correction is stored in PXSI arrays.
+!              -----------------------------
+
+!        5.1     Prepare input arrays for SI calculations
+
+! * GMV variables:
+
+IF( NCURRENT_ITER == 0 )THEN
+
+  DO JLEV=1,NFLEVG
+    IF (LSIDG) THEN
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MDIV)-2.0_JPRB*&
+         & PGMV(JROF,JLEV,YT0%MDIV)
+      ENDDO
+    ELSEIF (LESIDG) THEN
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=(PGMV(JROF,JLEV,YT9%MDIV)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MDIV))&
+         & *YDGSGEOM%GMAPPA(JROF)/(YDGSGEOM%GM(JROF)*YDGSGEOM%GM(JROF))
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=(PGMV(JROF,JLEV,YT9%MDIV)-2.0_JPRB*&
+         & PGMV(JROF,JLEV,YT0%MDIV))*RSTRET*RSTRET/(YDGSGEOM%GM(JROF)*YDGSGEOM%GM(JROF))  
+      ENDDO
+    ENDIF
+    DO JROF=KST,KPROF
+      ZSITL(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MTL)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MTL)
+      ZSITM(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MTM)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MTM)
+    ENDDO
+  ENDDO
+
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIPR9(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSPD)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSPD)
+        ZSIVD(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSVD)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSVD)
+        ZSIPRL(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSPDL)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSPDL)
+        ZSIPRM(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSPDM)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSPDM)
+      ENDDO
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIPR9(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSPD)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSPD)
+        ZSIPRL(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSPDL)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSPDL)
+        ZSIPRM(JROF,JLEV)=PGMV(JROF,JLEV,YT9%MSPDM)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MSPDM)
+      ENDDO
+    ENDDO
+  ENDIF
+
+ELSE
+
+  DO JLEV=1,NFLEVG
+    IF (LSIDG) THEN
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MDIV)
+      ENDDO
+    ELSEIF (LESIDG) THEN
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MDIV)&
+         & *YDGSGEOM%GMAPPA(JROF)/(YDGSGEOM%GM(JROF)*YDGSGEOM%GM(JROF))
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=&
+         & -PGMV(JROF,JLEV,YT0%MDIV)*RSTRET*RSTRET/(YDGSGEOM%GM(JROF)*YDGSGEOM%GM(JROF))  
+      ENDDO
+    ENDIF
+    DO JROF=KST,KPROF
+      ZSITL(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MTL)
+      ZSITM(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MTM)
+    ENDDO
+  ENDDO
+
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIPR9(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSPD)
+        ZSIVD(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSVD)
+        ZSIPRL(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSPDL)
+        ZSIPRM(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSPDM)
+      ENDDO
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIPR9(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSPD)
+        ZSIPRL(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSPDL)
+        ZSIPRM(JROF,JLEV)=-PGMV(JROF,JLEV,YT0%MSPDM)
+      ENDDO
+    ENDDO
+  ENDIF
+
+ENDIF
+
+! * GMVS variables:
+IF( NCURRENT_ITER == 0 )THEN
+  DO JROF=KST,KPROF
+    ZSISPL(JROF)=PGMVS(JROF,YT9%MSPL)-2.0_JPRB*PGMVS(JROF,YT0%MSPL)
+    ZSISPM(JROF)=PGMVS(JROF,YT9%MSPM)-2.0_JPRB*PGMVS(JROF,YT0%MSPM)
+  ENDDO
+ELSE
+  DO JROF=KST,KPROF
+    ZSISPL(JROF)=-PGMVS(JROF,YT0%MSPL)
+    ZSISPM(JROF)=-PGMVS(JROF,YT0%MSPM)
+  ENDDO
+ENDIF
+
+!        5.2     Do SI calculations
+!                This should match what is in LASSIE/LANHSI/LANHQESI
+
+IF(YDDYNA%LNHEE)THEN
+
+  CALL SIPTP(YDGEOMETRY,YDDYN,NPROMA,1,ZSID(KST,1),ZSIVD(KST,1),&
+   & ZSIPR(KST,1),ZSIT(KST,1),ZSISP(KST),IPROFS)
+  CALL SIDD(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDL(KST,1),ZSIVD(KST,1),&
+   & ZSIPRL(KST,1),ZSITL(KST,1),ZSISPL(KST),IPROFS)
+  CALL SIDD(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDM(KST,1),ZSIVD(KST,1),&
+   & ZSIPRM(KST,1),ZSITM(KST,1),ZSISPM(KST),IPROFS)
+  CALL SISEVE(YDGEOMETRY,YDDYN,NPROMA,1,ZSIPR9(KST,1),ZSIVD(KST,1),IPROFS)
+  ZCOEJ=RG*RG/(RD*SITR)
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZSIVD(JROF,JLEV)=ZCOEJ*ZSIVD(JROF,JLEV)
+    ENDDO
+  ENDDO
+
+ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+
+  ZCOEJ=RG*RG/(RD*SITR)
+  CALL SITNU(YDGEOMETRY,YDDYN,NPROMA,1,ZSID(KST,1),ZSIT(KST,1),ZSISP(KST),IPROFS)
+  CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDL(KST,1),ZSITL(KST,1),ZSISPL(KST),IPROFS,NFLEVG)
+  CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDM(KST,1),ZSITM(KST,1),ZSISPM(KST),IPROFS,NFLEVG)
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZSIDL(JROF,JLEV)=ZSIDL(JROF,JLEV)+RD*SITR*ZSIPRL(JROF,JLEV)
+      ZSIDM(JROF,JLEV)=ZSIDM(JROF,JLEV)+RD*SITR*ZSIPRM(JROF,JLEV)
+    ENDDO
+  ENDDO
+  CALL SILKAP(YDGEOMETRY,YDDYN,YDDYNA%LNHQE_C2,NPROMA,1,IPROFS,ZSIPR9(KST,1),ZSIVD(KST,1),PMULFAC=ZCOEJ)
+
+ELSE
+
+  CALL SITNU(YDGEOMETRY,YDDYN,NPROMA,1,ZSID(KST,1),ZSIT(KST,1),ZSISP(KST),IPROFS)
+  CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDL(KST,1),ZSITL(KST,1),ZSISPL(KST),IPROFS,NFLEVG)
+  CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDM(KST,1),ZSITM(KST,1),ZSISPM(KST),IPROFS,NFLEVG)
+
+ENDIF
+
+IF(LIMPF)THEN
+  IF(NCURRENT_ITER==0)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIDL(JROF,JLEV)=ZSIDL(JROF,JLEV)-YDGSGEOM%RCORI(JROF)*&
+         & (PGMV(JROF,JLEV,YT9%MV)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MV))  
+        ZSIDM(JROF,JLEV)=ZSIDM(JROF,JLEV)+YDGSGEOM%RCORI(JROF)*&
+         & (PGMV(JROF,JLEV,YT9%MU)-2.0_JPRB*PGMV(JROF,JLEV,YT0%MU))  
+      ENDDO
+    ENDDO
+  ELSE
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIDL(JROF,JLEV)=ZSIDL(JROF,JLEV)-YDGSGEOM%RCORI(JROF)*(-PGMV(JROF,JLEV,YT0%MV))
+        ZSIDM(JROF,JLEV)=ZSIDM(JROF,JLEV)+YDGSGEOM%RCORI(JROF)*(-PGMV(JROF,JLEV,YT0%MU))
+      ENDDO
+    ENDDO
+  ENDIF
+ENDIF
+
+! * For "spectral RT" option, adjust semi-implicit term in
+!   T-equation to compensate for later multiplication by R/Rd
+
+IF (YDDYNA%LSPRT) THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZSIT(JROF,JLEV)=RD*ZSIT(JROF,JLEV)/ZR0(JROF,JLEV)
+    ENDDO
+  ENDDO
+ENDIF
+
+!        5.3     Fill P[X]SIC arrays
+
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    PB2(JROF,MSLB2USI-1+JLEV)=-PBETADT*ZSIDL(JROF,JLEV)*PDT*ZFM
+    PB2(JROF,MSLB2VSI-1+JLEV)=-PBETADT*ZSIDM(JROF,JLEV)*PDT*ZFM
+    PB2(JROF,MSLB2TSI-1+JLEV)=-PBETADT*ZSIT(JROF,JLEV)*PDT*ZFM
+  ENDDO
+ENDDO
+
+IF(YDDYNA%LNHEE)THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PB2(JROF,MSLB2PDSI-1+JLEV)=-PBETADT*ZSIPR(JROF,JLEV)*PDT*ZFM
+      PB2(JROF,MSLB2VDSI-1+JLEV)=-PBETADT*ZSIVD(JROF,JLEV)*PDT*ZFM
+    ENDDO
+  ENDDO
+ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PB2(JROF,MSLB2VDSI-1+JLEV)=-PBETADT*ZSIVD(JROF,JLEV)*PDT*ZFM
+    ENDDO
+  ENDDO
+ELSEIF(YDDYNA%LNHQE.AND.YDDYNA%LNHQE_SIHYD)THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PB2(JROF,MSLB2VDSI-1+JLEV)=0.0_JPRB
+    ENDDO
+  ENDDO
+ENDIF
+
+DO JROF=KST,KPROF
+  PB2(JROF,MSLB2SPSI)= -PBETADT*ZSISP(JROF)*PDT*ZFM
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*       6.    SEMI-IMPLICIT FOR PC SCHEME ONLY
+!              ---------------------------------
+
+!    Predictor:
+!       SI-PC-correction = dt  L(t)  
+!    Corrector:
+!       SI-PC-correction = dt  L(t+dt)
+
+!    SI correction is stored in ZXSI0 array.
+!    This quantity is computed to compute nonlinear residual
+!    R(t) = dt ( M(t) - L(t) ) resp. R(t+dt) = dt ( M(t+dt) - L(t+dt) ).
+
+!    During predictor R(t) is stored into GMV structure and it is used
+!    then as R(t-dt) next time step. Asseline filter was applied 
+!    to get correct value of R(t-dt).
+!              ---------------------------------
+
+IF( YDDYNA%LPC_FULL )THEN
+
+  !      6.1     Prepare input arrays for SI calculations
+
+  DO JLEV=1,NFLEVG
+    IF (LSIDG) THEN
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MDIV)
+      ENDDO
+    ELSEIF (LESIDG) THEN
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MDIV)&
+         & *YDGSGEOM%GMAPPA(JROF)/(YDGSGEOM%GM(JROF)*YDGSGEOM%GM(JROF))
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        ZSID(JROF,JLEV)=&
+         & PGMV(JROF,JLEV,YT0%MDIV)*RSTRET*RSTRET/(YDGSGEOM%GM(JROF)*YDGSGEOM%GM(JROF))  
+      ENDDO
+    ENDIF
+    DO JROF=KST,KPROF
+      ZSITL(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MTL)
+      ZSITM(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MTM)
+    ENDDO
+  ENDDO
+
+  DO JROF=KST,KPROF
+    ZSISPL(JROF)=PGMVS(JROF,YT0%MSPL)
+    ZSISPM(JROF)=PGMVS(JROF,YT0%MSPM)
+  ENDDO
+
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIPR9(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSPD)
+        ZSIVD(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSVD)
+        ZSIPRL(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSPDL)
+        ZSIPRM(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSPDM)
+      ENDDO
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIPR9(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSPD)
+        ZSIPRL(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSPDL)
+        ZSIPRM(JROF,JLEV)=PGMV(JROF,JLEV,YT0%MSPDM)
+      ENDDO
+    ENDDO
+  ENDIF
+
+  !      6.2     Do SI calculations
+  !              This should match what is in LASSIE/LANHSI/LANHQESI
+
+  IF(YDDYNA%LNHEE)THEN
+
+    CALL SIPTP(YDGEOMETRY,YDDYN,NPROMA,1,ZSID(KST,1),ZSIVD(KST,1),&
+     & ZSIPR(KST,1),ZSIT(KST,1),ZSISP(KST),IPROFS)
+    CALL SIDD(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDL(KST,1),ZSIVD(KST,1),&
+     & ZSIPRL(KST,1),ZSITL(KST,1),ZSISPL(KST),IPROFS)
+    CALL SIDD(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDM(KST,1),ZSIVD(KST,1),&
+     & ZSIPRM(KST,1),ZSITM(KST,1),ZSISPM(KST),IPROFS)
+    CALL SISEVE(YDGEOMETRY,YDDYN,NPROMA,1,ZSIPR9(KST,1),ZSIVD(KST,1),IPROFS)
+    ZCOEJ=RG*RG/(RD*SITR)
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIVD(JROF,JLEV)=ZCOEJ*ZSIVD(JROF,JLEV)
+      ENDDO
+    ENDDO
+
+  ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+
+    ZCOEJ=RG*RG/(RD*SITR)
+    CALL SITNU(YDGEOMETRY,YDDYN,NPROMA,1,ZSID(KST,1),ZSIT(KST,1),ZSISP(KST),IPROFS)
+    CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDL(KST,1),ZSITL(KST,1),ZSISPL(KST),IPROFS,NFLEVG)
+    CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDM(KST,1),ZSITM(KST,1),ZSISPM(KST),IPROFS,NFLEVG)
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIDL(JROF,JLEV)=ZSIDL(JROF,JLEV)+RD*SITR*ZSIPRL(JROF,JLEV)
+        ZSIDM(JROF,JLEV)=ZSIDM(JROF,JLEV)+RD*SITR*ZSIPRM(JROF,JLEV)
+      ENDDO
+    ENDDO
+    CALL SILKAP(YDGEOMETRY,YDDYN,YDDYNA%LNHQE_C2,NPROMA,1,IPROFS,ZSIPR9(KST,1),ZSIVD(KST,1),PMULFAC=ZCOEJ)
+
+  ELSE
+
+    CALL SITNU(YDGEOMETRY,YDDYN,NPROMA,1,ZSID(KST,1),ZSIT(KST,1),ZSISP(KST),IPROFS)
+    CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDL(KST,1),ZSITL(KST,1),ZSISPL(KST),IPROFS,NFLEVG)
+    CALL SIGAM(YDGEOMETRY,YDDYN,NPROMA,1,ZSIDM(KST,1),ZSITM(KST,1),ZSISPM(KST),IPROFS,NFLEVG)
+
+  ENDIF
+
+  IF (LIMPF) THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIDL(JROF,JLEV)=ZSIDL(JROF,JLEV)-YDGSGEOM%RCORI(JROF)*PGMV(JROF,JLEV,YT0%MV)  
+        ZSIDM(JROF,JLEV)=ZSIDM(JROF,JLEV)+YDGSGEOM%RCORI(JROF)*PGMV(JROF,JLEV,YT0%MU)  
+      ENDDO
+    ENDDO
+  ENDIF   
+
+  ! * For "spectral RT" option, adjust semi-implicit term in
+  !   T-equation to compensate for later multiplication by R/Rd
+
+  IF (YDDYNA%LSPRT) THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSIT(JROF,JLEV)=RD*ZSIT(JROF,JLEV)/ZR0(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+
+  !      6.3     Fill Z[X]SI0 arrays
+
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZUSI0(JROF,JLEV)=-PBETADT*ZSIDL(JROF,JLEV)*PDT*ZFM
+      ZVSI0(JROF,JLEV)=-PBETADT*ZSIDM(JROF,JLEV)*PDT*ZFM
+      ZTSI0(JROF,JLEV)=-PBETADT*ZSIT(JROF,JLEV)*PDT*ZFM
+    ENDDO
+  ENDDO
+    
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSPDSI0(JROF,JLEV)=-PBETADT*ZSIPR(JROF,JLEV)*PDT*ZFM
+        ZSVDSI0(JROF,JLEV)=-PBETADT*ZSIVD(JROF,JLEV)*PDT*ZFM
+      ENDDO
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD))THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSVDSI0(JROF,JLEV)=-PBETADT*ZSIVD(JROF,JLEV)*PDT*ZFM
+      ENDDO
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE.AND.YDDYNA%LNHQE_SIHYD)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSVDSI0(JROF,JLEV)=0.0_JPRB
+      ENDDO
+    ENDDO
+  ENDIF
+  DO JROF=KST,KPROF
+    ZSPSI0(JROF)= -PBETADT*ZSISP(JROF)*PDT*ZFM
+  ENDDO
+
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       7.    NONLINEAR TENDENCY AT  TIME T
+!              -----------------------------
+
+!        7.1   Momentum equation.
+
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    ZUM(JROF,JLEV)=ZFM*PDT*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDU)
+    ZVM(JROF,JLEV)=ZFM*PDT*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDV)
+  ENDDO
+ENDDO
+! Add 'ratath' and 'ratatx' curvature terms:
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    ZUM(JROF,JLEV)=ZUM(JROF,JLEV)+ZFM*PDT*(PKENE(JROF,JLEV)*YDCSGEOM%RATATX(JROF))
+    ZVM(JROF,JLEV)=ZVM(JROF,JLEV)-ZFM*PDT*(PKENE(JROF,JLEV)*YDCSGEOM%RATATH(JROF))
+  ENDDO
+ENDDO
+
+!        7.2   Continuity equation.
+
+! * Add the vertical integral of divergence with the "lrubc" and "delta m=1"
+!   contributions in the continuity equation.
+DO JROF=KST,KPROF
+  ZSPM(JROF)=-ZFM*PDT*PCTY0(JROF,NFLEVG,YYTCTY0%M_PSDVBC)/PRES0(JROF,NFLEVG)  
+ENDDO
+
+!        7.3   Temperature and NH variables equations:
+
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    ZTM(JROF,JLEV)=ZFM*PDT*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDT)
+  ENDDO
+  IF(YDDYNA%LNHEE)THEN
+    DO JROF=KST,KPROF
+      ZSPDM(JROF,JLEV)=ZFM*PDT*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDPD)
+      ZSVDM(JROF,JLEV)=ZFM*PDT*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDVD)
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE)THEN
+    DO JROF=KST,KPROF
+      ZSVDM(JROF,JLEV)=ZFM*PDT*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDVD)
+    ENDDO
+  ENDIF
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*       8.    TEMPORAL ADVANCE
+!              ----------------
+
+!     This part of code is now very similar to LATTEX_DNT resp. LATTES dataflow.
+!     Here we mix precomputed or stored quantities to produce RHS of system.
+
+!     P/C formulations is
+      
+!     (I - dt L) X(t+dt(n)) =  X(t-dt) + 2dt A(t) + 2 dt M(t)
+!                  + dt ( L(t-dt) - 2 L(t) ) +
+!                  + dt ( R(t+dt(n-1)) + R(t-dt) - 2 R(t) ) + phys_tendency  
+
+!     M = nonlinear model 
+!     L = linear model    
+!     R = (M-L) = iterated nonlinear residual
+!     X = vector of prognostic variables
+
+!     During predictor we precompute quantity PXRHS such that the scheme can be
+!     than written as
+
+!     (I - dt L) X(t+dt(n)) = PXRHS + dt ( R(t+dt(n-1))
+
+!     The problematic term here is R(t-dt). To avoid coplete computation of
+!     M(t-dt) we rather use 2 arrays in GMV structure to transfer already
+!     computed M(t) into M(t-dt). Those arrays are PXNLT9 and PCXNLT9 and
+!     they are 2 due to need to perform Asseline filter on M in a same way
+!     as it is done for X. This is to assure consistency between X and M.
+!    ---------------------------------------------------------------------
+
+! nonlinear residual R=dt(M-L)
+IF( YDDYNA%LPC_FULL )THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZURES0(JROF,JLEV)=ZUM(JROF,JLEV)-ZUSI0(JROF,JLEV)
+      ZVRES0(JROF,JLEV)=ZVM(JROF,JLEV)-ZVSI0(JROF,JLEV)
+      ZTRES0(JROF,JLEV)=ZTM(JROF,JLEV)-ZTSI0(JROF,JLEV)
+    ENDDO
+  ENDDO
+
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSPDRES0(JROF,JLEV)=ZSPDM(JROF,JLEV)-ZSPDSI0(JROF,JLEV)
+        ZSVDRES0(JROF,JLEV)=ZSVDM(JROF,JLEV)-ZSVDSI0(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ELSEIF(YDDYNA%LNHQE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        ZSVDRES0(JROF,JLEV)=ZSVDM(JROF,JLEV)-ZSVDSI0(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+  DO JROF=KST,KPROF
+    ZSPRES0(JROF)=ZSPM(JROF)-ZSPSI0(JROF)
+  ENDDO
+ENDIF ! LPC_FULL
+
+! second of time filter
+IF( YDDYNA%LPC_FULL.AND.NCURRENT_ITER == 0 )THEN
+  CALL GPTF2PC(&
+   ! --- INPUT --------------------------------------------------
+   & YDGEOMETRY,YDDYN,YDDYNA,KST,KPROF,&
+   & PGMV(1,1,YT9%MUNL),PGMV(1,1,YT9%MVNL),PGMV(1,1,YT9%MTNL),&
+   & PGMV(1,1,YT9%MSPDNL),PGMV(1,1,YT9%MVWVNL),&
+   & PGMVS(1,YT9%MSPNL2) ,PGMV(1,1,YT9%MNHXNL),&
+   & ZURES0  ,ZVRES0   ,ZTRES0  ,ZSPDRES0  ,ZSVDRES0  ,&
+   & ZSPRES0 ,PNHXT0    ,&
+   ! --- OUTPUT --------------------------------------------------
+   & PGMV(1,1,YT9%MCUNL),PGMV(1,1,YT9%MCVNL),PGMV(1,1,YT9%MCTNL),&
+   & PGMV(1,1,YT9%MCSPDNL),PGMV(1,1,YT9%MCVWVNL),&
+   & PGMVS(1,YT9%MCSPNL2),PGMV(1,1,YT9%MCNHXNL))
+ENDIF
+
+! 3D arrays
+IF( YDDYNA%LPC_FULL.AND.NCURRENT_ITER == 0 )THEN
+
+  ! right hand side of corrector step (this quantity is used
+  ! during corrector and is overwritten at the beginnig of next time step) 
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PGMV(JROF,JLEV,YT9%MCURHS) =&
+       & PGMVT1(JROF,JLEV,YT1%MU)+ZUADV(JROF,JLEV) + ZFTEND*(&
+       & 2.0_JPRB*ZUM(JROF,JLEV)&! 2 dt M(t)
+       & + PB2(JROF,MSLB2USI-1+JLEV)&! dt(L(t-dt) - 2 L(t))
+       & + PGMV(JROF,JLEV,YT9%MCUNL)&
+       & - 2.0_JPRB*ZURES0(JROF,JLEV)&! dt( R(t-dt) - 2 R(t))
+       & )
+      PGMV(JROF,JLEV,YT9%MCVRHS) =&
+       & PGMVT1(JROF,JLEV,YT1%MV)+ZVADV(JROF,JLEV) + ZFTEND*(&
+       & 2.0_JPRB*ZVM(JROF,JLEV)&! 2 dt M(t)
+       & + PB2(JROF,MSLB2VSI-1+JLEV)&! dt(L(t-dt) - 2 L(t))
+       & + PGMV(JROF,JLEV,YT9%MCVNL)&
+       & - 2.0_JPRB*ZVRES0(JROF,JLEV)&! dt( R(t-dt) - 2 R(t))
+       & )
+      PGMV(JROF,JLEV,YT9%MCTRHS) =&
+       & PGMVT1(JROF,JLEV,YT1%MT)+ZTADV(JROF,JLEV) + ZFTEND*(&
+       & 2.0_JPRB*ZTM(JROF,JLEV)&! 2 dt M(t)
+       & + PB2(JROF,MSLB2TSI-1+JLEV)&! dt(L(t-dt) - 2 L(t))
+       & + PGMV(JROF,JLEV,YT9%MCTNL)&
+       & - 2.0_JPRB*ZTRES0(JROF,JLEV)&! dt( R(t-dt) - 2 R(t))
+       & )
+    ENDDO
+  ENDDO
+
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMV(JROF,JLEV,YT9%MCSPDRHS) =&
+         & PGMVT1(JROF,JLEV,YT1%MSPD)+ZSPDADV(JROF,JLEV) + ZFTEND*(&
+         & 2.0_JPRB*ZSPDM(JROF,JLEV)&! 2 dt M(t)
+         & + PB2(JROF,MSLB2PDSI-1+JLEV)&! dt(L(t-dt) - 2 L(t))
+         & + PGMV(JROF,JLEV,YT9%MCSPDNL)&
+         & - 2.0_JPRB*ZSPDRES0(JROF,JLEV)&! dt( R(t-dt) - 2 R(t))
+         & )
+      ENDDO
+    ENDDO
+  ENDIF
+  IF(YDDYNA%LNHDYN)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMV(JROF,JLEV,YT9%MCSVDRHS) =&
+         & PGMVT1(JROF,JLEV,YT1%MSVD)+ZSVDADV(JROF,JLEV) + ZFTEND*(&
+         & 2.0_JPRB*ZSVDM(JROF,JLEV)&! 2 dt M(t)
+         & + PB2(JROF,MSLB2VDSI-1+JLEV)&! dt(L(t-dt) - 2 L(t))
+         & + PGMV(JROF,JLEV,YT9%MCVWVNL)&
+         & - 2.0_JPRB*ZSVDRES0(JROF,JLEV)&! dt( R(t-dt) - 2 R(t))
+         & )
+      ENDDO
+    ENDDO
+  ENDIF
+                        
+ENDIF ! Predictor of LPC_FULL
+
+
+! ordinary time step 
+IF( NCURRENT_ITER == 0 )THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PGMVT1(JROF,JLEV,YT1%MU)=PGMVT1(JROF,JLEV,YT1%MU)&
+       & +2.0_JPRB*ZFTEND*ZUM(JROF,JLEV)+ZUADV(JROF,JLEV)
+      PGMVT1(JROF,JLEV,YT1%MV)=PGMVT1(JROF,JLEV,YT1%MV)&
+       & +2.0_JPRB*ZFTEND*ZVM(JROF,JLEV)+ZVADV(JROF,JLEV)
+      PGMVT1(JROF,JLEV,YT1%MT)=PGMVT1(JROF,JLEV,YT1%MT)&
+       & +2.0_JPRB*ZFTEND*ZTM(JROF,JLEV)+ZTADV(JROF,JLEV)
+    ENDDO
+  ENDDO
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MSPD)=PGMVT1(JROF,JLEV,YT1%MSPD)&
+         & +2.0_JPRB*ZFTEND*ZSPDM(JROF,JLEV)+ZSPDADV(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+  IF(YDDYNA%LNHDYN)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MSVD)=PGMVT1(JROF,JLEV,YT1%MSVD)&
+         & +2.0_JPRB*ZFTEND*ZSVDM(JROF,JLEV)+ZSVDADV(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+ENDIF
+
+! 2D arrays
+IF( YDDYNA%LPC_FULL.AND.NCURRENT_ITER==0 )THEN
+  DO JROF=KST,KPROF
+    PGMVS(JROF,YT9%MCSPRHS) = PGMVT1S(JROF,YT1%MSP) + ZFTEND*(&
+     & 2.0_JPRB*ZSPM(JROF)&! 2 dt M(t)
+     & + PB2(JROF,MSLB2SPSI)&! dt(L(t-dt) - 2 L(t))
+     & + PGMVS(JROF,YT9%MCSPNL2)&
+     & - 2.0_JPRB*ZSPRES0(JROF)&! dt( R(t-dt) - 2 R(t))
+     & )
+  ENDDO
+ENDIF
+
+! first part of time filter 
+IF( YDDYNA%LPC_FULL.AND.NCURRENT_ITER == 0)THEN
+  CALL GPTF1PC(&
+   ! --- INPUT ---------------------------------------------------------
+   & YDGEOMETRY,YDDYN,YDDYNA,KST,KPROF,&
+   & PGMV(1,1,YT9%MCUNL),PGMV(1,1,YT9%MCVNL),PGMV(1,1,YT9%MCTNL),&
+   & PGMV(1,1,YT9%MCSPDNL),PGMV(1,1,YT9%MCVWVNL),&
+   & PGMVS(1,YT9%MCSPNL2),PGMV(1,1,YT9%MCNHXNL),&
+   & ZURES0  ,ZVRES0   ,ZTRES0  ,ZSPDRES0  ,ZSVDRES0  ,&
+   & ZSPRES0 ,PNHXT0    ,&
+   ! --- OUTPUT --------------------------------------------------
+   & PGMV(1,1,YT9%MUNL),PGMV(1,1,YT9%MVNL),PGMV(1,1,YT9%MTNL),&
+   & PGMV(1,1,YT9%MSPDNL),PGMV(1,1,YT9%MVWVNL),&
+   & PGMVS(1,YT9%MSPNL2) ,PGMV(1,1,YT9%MNHXNL))
+ENDIF
+
+! ordinary time step
+IF( NCURRENT_ITER==0 )THEN
+  DO JROF=KST,KPROF
+    PGMVT1S(JROF,YT1%MSP)=PGMVT1S(JROF,YT1%MSP)+2.0_JPRB*ZFTEND*ZSPM(JROF)
+  ENDDO
+ENDIF
+
+! corrector time step
+IF( YDDYNA%LPC_FULL.AND.NCURRENT_ITER > 0) THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PGMVT1(JROF,JLEV,YT1%MU)=&
+       & PGMV(JROF,JLEV,YT9%MCURHS)+ZFTEND*ZURES0(JROF,JLEV) 
+      PGMVT1(JROF,JLEV,YT1%MV)=&
+       & PGMV(JROF,JLEV,YT9%MCVRHS)+ZFTEND*ZVRES0(JROF,JLEV) 
+      PGMVT1(JROF,JLEV,YT1%MT)=&
+       & PGMV(JROF,JLEV,YT9%MCTRHS)+ZFTEND*ZTRES0(JROF,JLEV) 
+    ENDDO
+  ENDDO
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MSPD)=PGMV(JROF,JLEV,YT9%MCSPDRHS)+ZFTEND*ZSPDRES0(JROF,JLEV) 
+      ENDDO
+    ENDDO
+  ENDIF
+  IF(YDDYNA%LNHDYN)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MSVD)=PGMV(JROF,JLEV,YT9%MCSVDRHS)+ZFTEND*ZSVDRES0(JROF,JLEV) 
+      ENDDO
+    ENDDO
+  ENDIF
+  DO JROF=KST,KPROF
+    PGMVT1S(JROF,YT1%MSP)=PGMVS(JROF,YT9%MCSPRHS)+ ZFTEND*ZSPRES0(JROF)
+  ENDDO
+ENDIF
+
+! evolution of aux qantities for NH divergence variable d4
+IF (YDDYNA%LNHDYN.AND.YDDYNA%NVDVAR==4) THEN
+
+  IF (YDDYNA%LPC_FULL) THEN
+    IF( NCURRENT_ITER  == 0 )THEN
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PGMVT1(JROF,JLEV,YT1%MNHX)= - PGMV(JROF,JLEV,YT9%MCNHXNL) +&
+           & 2.0_JPRB*PNHXT0(JROF,JLEV) 
+          PGMVT1(JROF,JLEV,YT1%MSVD)=PGMVT1(JROF,JLEV,YT1%MSVD)+&
+           & 2.0_JPRB*(PNHXT0(JROF,JLEV)-PGMV(JROF,JLEV,YT9%MCNHXNL))
+        ENDDO
+      ENDDO
+    ELSE
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PGMVT1(JROF,JLEV,YT1%MNHX)=PNHXT0(JROF,JLEV)
+          PGMVT1(JROF,JLEV,YT1%MSVD)=PGMVT1(JROF,JLEV,YT1%MSVD)+&
+           & PNHXT0(JROF,JLEV)-PGMV(JROF,JLEV,YT9%MCNHXNL)
+        ENDDO
+      ENDDO
+    ENDIF
+  ELSE
+    ! normal SI step
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MNHX)= - PNHXT9(JROF,JLEV) +&
+         & 2.0_JPRB*PNHXT0(JROF,JLEV) 
+        PGMVT1(JROF,JLEV,YT1%MSVD)=PGMVT1(JROF,JLEV,YT1%MSVD)+&
+         & 2.0_JPRB*(PNHXT0(JROF,JLEV)-PNHXT9(JROF,JLEV))
+      ENDDO
+    ENDDO
+  ENDIF
+
+ENDIF
+
+! correct SI correction with factor ZFTEND since it is added to the RHS in
+! gpendtr routine
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    PB2(JROF,MSLB2USI-1+JLEV)=ZFTEND*PB2(JROF,MSLB2USI-1+JLEV)
+    PB2(JROF,MSLB2VSI-1+JLEV)=ZFTEND*PB2(JROF,MSLB2VSI-1+JLEV)
+    PB2(JROF,MSLB2TSI-1+JLEV)=ZFTEND*PB2(JROF,MSLB2TSI-1+JLEV)
+  ENDDO
+ENDDO
+IF(YDDYNA%LNHEE)THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PB2(JROF,MSLB2PDSI-1+JLEV)=ZFTEND*PB2(JROF,MSLB2PDSI-1+JLEV)
+    ENDDO
+  ENDDO
+ENDIF
+IF(YDDYNA%LNHDYN)THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PB2(JROF,MSLB2VDSI-1+JLEV)=ZFTEND*PB2(JROF,MSLB2VDSI-1+JLEV)
+    ENDDO
+  ENDDO
+ENDIF
+DO JROF=KST,KPROF
+  PB2(JROF,MSLB2SPSI)=ZFTEND*PB2(JROF,MSLB2SPSI)
+ENDDO
+
+
+! artificially add to the RHS quantity +dt L X(+) 
+! PXT1 arrays then contain explicit guess of X+
+! It could be used to call lagged physics.
+! this quantity is then sustracted in GPENDTR in order to get correct RHS.
+IF( YDDYNA%LPC_FULL.AND.NCURRENT_ITER > 0 )THEN
+
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      PGMVT1(JROF,JLEV,YT1%MU)=&
+       & PGMVT1(JROF,JLEV,YT1%MU) - PB2(JROF,MSLB2USI-1+JLEV)
+      PGMVT1(JROF,JLEV,YT1%MV)=&
+       & PGMVT1(JROF,JLEV,YT1%MV) - PB2(JROF,MSLB2VSI-1+JLEV)
+      PGMVT1(JROF,JLEV,YT1%MT)=&
+       & PGMVT1(JROF,JLEV,YT1%MT) - PB2(JROF,MSLB2TSI-1+JLEV)
+    ENDDO
+  ENDDO
+  IF(YDDYNA%LNHEE)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MSPD)=PGMVT1(JROF,JLEV,YT1%MSPD)-PB2(JROF,MSLB2PDSI-1+JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+  IF(YDDYNA%LNHDYN)THEN
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PGMVT1(JROF,JLEV,YT1%MSVD)=PGMVT1(JROF,JLEV,YT1%MSVD)-PB2(JROF,MSLB2VDSI-1+JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+  DO JROF=KST,KPROF
+    PGMVT1S(JROF,YT1%MSP)=PGMVT1S(JROF,YT1%MSP) - PB2(JROF,MSLB2SPSI)
+  ENDDO
+
+ENDIF
+
+
+! store value of advected GFL array into auxiliary PC scheme buffer
+! this has to be done in order to perform on this quantity coupling
+! each corrector to have biperiodic array before spectral transforms 
+
+! Here assumption is that content of GFL array is not changed. So, please
+! do not use for lagged physics (for that purpose please move this part of the
+! code into CPGLAG routine).
+IF( YDDYNA%LPC_FULL )THEN
+  IF( NCURRENT_ITER == 0 )THEN
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LPC) THEN
+        PGFLPC(KST:KPROF,1:NFLEVG,YCOMP(JGFL)%MPPC)=&
+         & PGFLT1(KST:KPROF,1:NFLEVG,YCOMP(JGFL)%MP1)
+      ENDIF
+    ENDDO
+  ELSE
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LPC) THEN
+        PGFLT1(KST:KPROF,1:NFLEVG,YCOMP(JGFL)%MP1)=&
+         & PGFLPC(KST:KPROF,1:NFLEVG,YCOMP(JGFL)%MPPC)
+      ENDIF
+    ENDDO
+  ENDIF
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CPEULDYN',1,ZHOOK_HANDLE)
+END SUBROUTINE CPEULDYN

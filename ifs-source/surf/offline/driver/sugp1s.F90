@@ -1,0 +1,376 @@
+! (C) Copyright 1995- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+SUBROUTINE SUGP1S(NCID)
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+
+USE YOMGP1S0 , ONLY : GP0      ,TSLNU0   ,QLINU0   ,TILNU0   ,&
+                      &FSNNU0   ,TSNNU0   ,ASNNU0   ,RSNNU0   ,WSNNU0,&
+                      &TRENU0   ,WRENU0,&
+                      &TLICENU0,TLMNWNU0,TLWMLNU0,TLBOTNU0,TLSFNU0,& 
+                      &HLICENU0,HLMLNU0,&                            
+                      &UONU0   ,VONU0     ,TONU0    ,SONU0,&           
+                      &LAINU0, BSTRNU0, BSTR2NU0            
+
+USE YOMGP1SA , ONLY : GPA      ,TSLNUA   ,QLINUA   ,TILNUA   ,&
+                      &FSNNUA   ,TSNNUA   ,ASNNUA   ,RSNNUA   ,WSNNUA,&
+                      &TRENUA   ,WRENUA   ,QLQNUA,&
+                      &TLICENUA,TLMNWNUA,TLWMLNUA,TLBOTNUA,TLSFNUA,& 
+                      &HLICENUA,HLMLNUA,&                            
+                      &UONUA   ,VONUA     ,TONUA    ,SONUA ,&          
+                      &LAINUA , BSTRNUA, BSTR2NUA             
+
+USE YOMGP1S1 , ONLY : GP1      ,TSLNU1   ,QLINU1   ,TILNU1   ,&
+                      &FSNNU1   ,TSNNU1   ,ASNNU1   ,RSNNU1   ,&
+                      &TRENU1   ,WRENU1,&
+                      &TLICENU1,TLMNWNU1,TLWMLNU1,TLBOTNU1,TLSFNU1,WSNNU1,& 
+                      &HLICENU1,HLMLNU1,&                            
+                      &UONU1   ,VONU1     ,TONU1    ,SONU1,&         
+                      &LAINU1, BSTRNU1, BSTR2NU1                     
+
+USE PTRGP1S  , ONLY : MTSLNU   ,MQLINU   ,MTILNU   ,MFSNNU   ,&
+                      &MTSNNU   ,MASNNU   ,MRSNNU   ,MWSNNU,&
+                      &MTRENU   ,MWRENU   ,MQLQNU, & 
+                      &MTLICENU,MTLMNWNU,MTLWMLNU,MTLBOTNU,MTLSFNU,& 
+                      &MHLICENU,MHLMLNU,&                            
+                      &MUONU   ,MVONU     ,MTONU    ,MSONU,&         
+                      &MLAINU , MBSTRNU, MBSTR2NU 
+
+USE YOMLUN1S , ONLY : NULNAM   ,NULGP0, NULOUT
+USE YOMLOG1S , ONLY : CFINIT
+USE YOMDPHY  , ONLY : NCSS     ,NGPP     ,NPOI ,NGPA ,NVHILO,&
+                      &NCOM    ,NVELO    ,NSCLRO,NCSNEC
+
+
+#ifdef DOC
+
+!**** *SUGP1S*   - Routine to initialize prognostic variables
+
+!     Purpose.
+!     --------
+!         Initialize prognostic variables of the one-column surface model
+
+!***  Interface.
+!     ----------
+!        *CALL* *SUGP1S(NCID)
+
+!     Explicit arguments :
+!     --------------------
+!        NCID : NETCDF FILE UNIT
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by SUINIF1S.
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-21
+!        Bart vd Hurk (KNMI) Reading of NetCDF input : 2000-07-13
+!        Y. Takaya           add variables for OML   : 2008-10-07
+
+#endif
+
+IMPLICIT NONE
+
+INTEGER NCID
+
+INTEGER(KIND=JPIM),PARAMETER :: JPCSS=5
+INTEGER(KIND=JPIM),PARAMETER :: JPVTYPES=20 !in CTESSEL original 8
+REAL(KIND=JPRB) :: TSLNU(JPCSS)
+REAL(KIND=JPRB) :: QLINU(JPCSS)
+REAL(KIND=JPRB) :: TILNU(JPCSS)
+REAL(KIND=JPRB) :: FSNNU(JPCSS)
+REAL(KIND=JPRB) :: TSNNU(JPCSS)
+REAL(KIND=JPRB) :: ASNNU
+REAL(KIND=JPRB) :: RSNNU(JPCSS)
+REAL(KIND=JPRB) :: TRENU
+REAL(KIND=JPRB) :: WRENU
+
+REAL(KIND=JPRB) :: LAINU(JPVTYPES)
+REAL(KIND=JPRB) :: BSTRNU(JPVTYPES)
+REAL(KIND=JPRB) :: BSTR2NU(JPVTYPES)
+
+
+!* < ENDUTRA
+REAL(KIND=JPRB):: TLICENU
+REAL(KIND=JPRB):: TLMNWNU
+REAL(KIND=JPRB):: TLWMLNU
+REAL(KIND=JPRB):: TLBOTNU
+REAL(KIND=JPRB):: TLSFNU
+REAL(KIND=JPRB):: HLICENU
+REAL(KIND=JPRB):: HLMLNU
+!* ENDUTRA >
+
+REAL(KIND=JPRB):: UONU(NCOM+1)     !KPP
+REAL(KIND=JPRB):: VONU(NCOM+1)     !KPP
+REAL(KIND=JPRB):: SONU(NCOM+1)     !KPP
+REAL(KIND=JPRB):: TONU(NCOM+1)     !KPP
+
+INTEGER(KIND=JPIM) ::IGPP,IGPA,KULOUT,J
+
+CHARACTER CLFILE*4,CLHDR(10)*64
+
+REAL(KIND=JPHOOK)  :: ZHOOK_HANDLE
+
+#include "rdsupr.intfb.h"
+#include "namgp1s.h"
+
+IF (LHOOK) CALL DR_HOOK('SUGP1S',0,ZHOOK_HANDLE)
+
+!*        ALLOCATE TOTAL SIZE and pointer stuff.
+
+KULOUT=NULOUT
+ALLOCATE (GP0(NPOI,NGPP))
+MTSLNU=1
+MQLINU=MTSLNU+NCSS
+MTILNU=MQLINU+NCSS
+MFSNNU=MTILNU+NCSS
+MTSNNU=MFSNNU+NCSNEC
+MWSNNU=MTSNNU+NCSNEC
+MRSNNU=MWSNNU+NCSNEC
+MASNNU=MRSNNU+NCSNEC
+MTRENU=MASNNU+1
+MWRENU=MTRENU+1
+MUONU=MWRENU+1                  
+MVONU=MUONU+(NCOM+1)            
+MTONU=MVONU+(NCOM+1)            
+MSONU=MTONU+(NCOM+1)            
+MTLICENU=MSONU+(NCOM+1)         
+MTLMNWNU=MTLICENU+1
+MTLWMLNU=MTLMNWNU+1
+MTLBOTNU=MTLWMLNU+1
+MTLSFNU=MTLBOTNU+1
+MHLICENU=MTLSFNU+1
+MHLMLNU=MHLICENU+1
+MLAINU=MHLMLNU+1
+MBSTRNU=MLAINU+NVHILO
+MBSTR2NU=MBSTRNU+NVHILO
+IGPP=MBSTR2NU+NVHILO-1
+
+
+! final checking
+
+IF (IGPP /= NGPP) THEN
+  WRITE(KULOUT,*) ' SUGP: ARRAYS GP0 and GP1'
+  WRITE(KULOUT,*) ' INCONSISTENCY IN THE SPACE FOR THE '
+  WRITE(KULOUT,*) ' PROGNOSTIC array'
+  WRITE(KULOUT,*) ' IGPP=',igpp,' NGPP=',Ngpp
+  WRITE(KULOUT,*) ' CHANGE THE SIZE OF NGPP'
+  CALL ABORT
+ENDIF
+
+TSLNU0 => GP0(:,MTSLNU:MTSLNU+NCSS-1)
+QLINU0 => GP0(:,MQLINU:MQLINU+NCSS-1)
+TILNU0 => GP0(:,MTILNU:MTILNU+NCSS-1)
+FSNNU0 => GP0(:,MFSNNU:MFSNNU+NCSNEC-1)
+TSNNU0 => GP0(:,MTSNNU:MTSNNU+NCSNEC-1)
+RSNNU0 => GP0(:,MRSNNU:MRSNNU+NCSNEC-1)
+WSNNU0 => GP0(:,MWSNNU:MWSNNU+NCSNEC-1)
+ASNNU0 => GP0(:,MASNNU)
+TRENU0 => GP0(:,MTRENU)
+WRENU0 => GP0(:,MWRENU)
+
+UONU0 => GP0(:,MUONU:MUONU+(NCOM+1)-1)   !KPP
+VONU0 => GP0(:,MVONU:MVONU+(NCOM+1)-1)   !KPP
+TONU0 => GP0(:,MTONU:MTONU+(NCOM+1)-1)   !KPP
+SONU0 => GP0(:,MSONU:MSONU+(NCOM+1)-1)   !KPP
+
+TLICENU0 => GP0(:,MTLICENU)
+TLMNWNU0 => GP0(:,MTLMNWNU)
+TLWMLNU0 => GP0(:,MTLWMLNU)
+TLBOTNU0 => GP0(:,MTLBOTNU)
+TLSFNU0  => GP0(:,MTLSFNU)
+HLICENU0 => GP0(:,MHLICENU)
+HLMLNU0  => GP0(:,MHLMLNU)
+
+LAINU0 => GP0(:,MLAINU:MLAINU+NVHILO-1)
+BSTRNU0 => GP0(:,MBSTRNU:MBSTRNU+NVHILO-1)
+BSTR2NU0 => GP0(:,MBSTR2NU:MBSTR2NU+NVHILO-1)
+
+
+
+ALLOCATE (GP1(NPOI,NGPP))
+TSLNU1 => GP1(:,MTSLNU:MTSLNU+NCSS-1)
+QLINU1 => GP1(:,MQLINU:MQLINU+NCSS-1)
+TILNU1 => GP1(:,MTILNU:MTILNU+NCSS-1)
+FSNNU1 => GP1(:,MFSNNU:MFSNNU+NCSNEC-1)
+TSNNU1 => GP1(:,MTSNNU:MTSNNU+NCSNEC-1)
+RSNNU1 => GP1(:,MRSNNU:MRSNNU+NCSNEC-1)
+WSNNU1 => GP1(:,MWSNNU:MWSNNU+NCSNEC-1)
+ASNNU1 => GP1(:,MASNNU)
+TRENU1 => GP1(:,MTRENU)
+WRENU1 => GP1(:,MWRENU)
+
+UONU1 => GP1(:,MUONU:MUONU+(NCOM+1)-1)   !KPP
+VONU1 => GP1(:,MVONU:MVONU+(NCOM+1)-1)   !KPP
+TONU1 => GP1(:,MTONU:MTONU+(NCOM+1)-1)   !KPP
+SONU1 => GP1(:,MSONU:MSONU+(NCOM+1)-1)   !KPP
+
+TLICENU1 => GP1(:,MTLICENU)
+TLMNWNU1 => GP1(:,MTLMNWNU)
+TLWMLNU1 => GP1(:,MTLWMLNU)
+TLBOTNU1 => GP1(:,MTLBOTNU)
+TLSFNU1  => GP1(:,MTLSFNU)
+HLICENU1 => GP1(:,MHLICENU)
+HLMLNU1  => GP1(:,MHLMLNU)
+
+LAINU1 => GP1(:,MLAINU:MLAINU+NVHILO-1)
+BSTRNU1 => GP1(:,MBSTRNU:MBSTRNU+NVHILO-1)
+BSTR2NU1 => GP1(:,MBSTR2NU:MBSTR2NU+NVHILO-1)
+
+! final checking
+
+MQLQNU=MBSTR2NU+NVHILO
+
+IGPA=MQLQNU+NCSS-1
+
+IF (IGPA /= NGPA) THEN
+  WRITE(KULOUT,*) ' SUGP: ARRAY GPA'
+  WRITE(KULOUT,*) ' INCONSISTENCY IN THE SPACE FOR THE '
+  WRITE(KULOUT,*) ' PROGNOSTIC array'
+  WRITE(KULOUT,*) ' IGPA=',igpa,' NGPA=',Ngpa
+  WRITE(KULOUT,*) ' CHANGE THE SIZE OF NGPA'
+  CALL ABORT
+ENDIF
+
+ALLOCATE (GPA(NPOI,NGPA))
+TSLNUA => GPA(:,MTSLNU:MTSLNU+NCSS-1)
+QLINUA => GPA(:,MQLINU:MQLINU+NCSS-1)
+TILNUA => GPA(:,MTILNU:MTILNU+NCSS-1)
+FSNNUA => GPA(:,MFSNNU:MFSNNU+NCSNEC-1)
+TSNNUA => GPA(:,MTSNNU:MTSNNU+NCSNEC-1)
+RSNNUA => GPA(:,MRSNNU:MRSNNU+NCSNEC-1)
+WSNNUA => GPA(:,MWSNNU:MWSNNU+NCSNEC-1)
+ASNNUA => GPA(:,MASNNU)
+TRENUA => GPA(:,MTRENU)
+WRENUA => GPA(:,MWRENU)
+QLQNUA => GPA(:,MQLQNU:MQLQNU+NCSS-1)
+
+UONUA => GPA(:,MUONU:MUONU+(NCOM+1)-1)   !KPP
+VONUA => GPA(:,MVONU:MVONU+(NCOM+1)-1)   !KPP
+TONUA => GPA(:,MTONU:MTONU+(NCOM+1)-1)   !KPP
+SONUA => GPA(:,MSONU:MSONU+(NCOM+1)-1)   !KPP
+
+TLICENUA => GPA(:,MTLICENU)
+TLMNWNUA => GPA(:,MTLMNWNU)
+TLWMLNUA => GPA(:,MTLWMLNU)
+TLBOTNUA => GPA(:,MTLBOTNU)
+TLSFNUA  => GPA(:,MTLSFNU)
+HLICENUA => GPA(:,MHLICENU)
+HLMLNUA  => GPA(:,MHLMLNU)
+
+LAINUA => GPA(:,MLAINU:MLAINU+NVHILO-1)
+BSTRNUA => GP1(:,MBSTRNU:MBSTRNU+NVHILO-1)
+BSTR2NUA => GP1(:,MBSTR2NU:MBSTR2NU+NVHILO-1)
+
+
+
+!*         1.  Initialisation to absurd values
+
+GP0(:,:)=-999.
+
+!*    Exit routine if no reading required
+
+IF (CFINIT == 'netcdf')THEN
+
+!*        2. read NetCDF fields
+
+  CALL RDSUPR(NCID)
+
+
+ELSE
+
+!*         1.  Initialisation to absurd values
+
+!*       2.    Modifies default values.
+
+!        2.1   Read namelist
+
+  REWIND(NULNAM)
+  READ(NULNAM,NAMGP1S)
+
+!     ------------------------------------------------------------------
+
+  TSLNU0(1,1:NCSS)=TSLNU(1:NCSS)
+  QLINU0(1,1:NCSS)=QLINU(1:NCSS)
+  TILNU0(1,1:NCSS)=TILNU(1:NCSS)
+  FSNNU0(1,1:NCSNEC)=FSNNU(1:NCSNEC)
+  TSNNU0(1,1:NCSNEC)=TSNNU(1:NCSNEC)
+  ASNNU0(1)=ASNNU
+  RSNNU0(1,1:NCSNEC)=RSNNU(1:NCSNEC)
+  TRENU0(1)=TRENU
+  WRENU0(1)=WRENU
+
+  TLICENU0(:) =TLICENU
+  TLMNWNU0(:) =TLMNWNU
+  TLWMLNU0(:) =TLWMLNU
+  TLBOTNU0(:) =TLBOTNU
+  TLSFNU0(:)  =TLSFNU
+  HLICENU0(:) =HLICENU
+  HLMLNU0(:) =HLMLNU
+
+  LAINU0(1,1:NVHILO)=LAINU(1:NVHILO)
+  BSTRNU0(1,1:NVHILO)=BSTRNU(1:NVHILO)
+  BSTR2NU0(1,1:NVHILO)=BSTR2NU(1:NVHILO)
+
+
+  DO J=1,NGPP
+    IF (GP0(1,J) == -999.) THEN
+      WRITE(KULOUT,*) 'PB WITH SOIL INITIALISATION'
+      !CALL ABORT
+    ENDIF
+  ENDDO
+
+!      -----------------------------------------------------------
+
+!*       3.    Print final values.
+!              -------------------
+
+  WRITE(UNIT=KULOUT,FMT='('' COMMON YOMGP1S '')')
+  WRITE(UNIT=KULOUT,FMT=*) ' TSLNU0   =  ',(TSLNU0(1,J),J=1,NCSS)
+  WRITE(UNIT=KULOUT,FMT=*) ' QLINU0   =  ',(QLINU0(1,J),J=1,NCSS)
+  WRITE(UNIT=KULOUT,FMT=*) ' TILNU0   =  ',(TILNU0(1,J),J=1,NCSS)
+  WRITE(UNIT=KULOUT,FMT=*) ' FSNNU0   =  ',FSNNU0(1,1)
+  WRITE(UNIT=KULOUT,FMT=*) ' TSNNU0   =  ',TSNNU0(1,1)
+  WRITE(UNIT=KULOUT,FMT=*) ' ASNNU0   =  ',ASNNU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' RSNNU0   =  ',RSNNU0(1,1)
+  WRITE(UNIT=KULOUT,FMT=*) ' TRENU0   =  ',TRENU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' WRENU0   =  ',WRENU0(1)
+  
+  WRITE(UNIT=KULOUT,FMT=*) ' TLICENU   =  ',TLICENU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' TLMNWNU   =  ',TLMNWNU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' TLWMLNU   =  ',TLWMLNU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' TLBOTNU   =  ',TLBOTNU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' TLSFNU    =  ',TLSFNU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' HLICENU   =  ',HLICENU0(1)
+  WRITE(UNIT=KULOUT,FMT=*) ' HLMLNU    =  ',HLMLNU0(1)
+
+  WRITE(UNIT=KULOUT,FMT=*) ' LAINU0   =  ',(LAINU0(1,J),J=1,NVHILO)
+  WRITE(UNIT=KULOUT,FMT=*) ' BSTRNU0  =  ',(BSTRNU0(1,J),J=1,NVHILO)  
+  WRITE(UNIT=KULOUT,FMT=*) ' BSTR2NU0 =  ',(BSTR2NU0(1,J),J=1,NVHILO)    
+
+
+ENDIF
+
+IF (LHOOK) CALL DR_HOOK('SUGP1S',1,ZHOOK_HANDLE)
+
+RETURN
+END SUBROUTINE SUGP1S

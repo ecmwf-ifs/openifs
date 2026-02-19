@@ -1,0 +1,154 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE AER_RESUSPENSION &
+  &(YDEAERSNK, YDEAERSRC,YDEAERATM, KAER , PZ0M, PT, PRHCL, PRHO, &
+        &  PUSTRBARE, PRATE_RESUS)
+
+!*** * AER_RESUSPENSION* - COMPUTE RESUSPENSION RATE (in KG/M2/S)
+
+!**   INTERFACE.
+!     ----------
+!          *AER_RESUSPENSION* IS CALLED FROM *AER_PHY3*.
+
+!     AUTHOR.
+!     -------
+!        SAMUEL REMY
+
+!     SOURCE.
+!     -------
+!     Computation of the resuspension rate following Kim et al 2016: Effects of
+!     relative humidity and particle and surface properties on particle resuspension rates
+!     Aerosol Science and Technology, 50:4, 339-352
+
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 20171128
+!-----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOEAERSNK ,ONLY : TEAERSNK
+USE YOEAERSRC ,ONLY : TEAERSRC
+USE YOEAERATM ,ONLY : TEAERATM
+
+IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+
+!*       0.1   ARGUMENTS
+!              ---------
+
+TYPE(TEAERSNK)    ,INTENT(INOUT) :: YDEAERSNK
+TYPE(TEAERSRC)    ,INTENT(INOUT) :: YDEAERSRC
+TYPE(TEAERATM)    ,INTENT(INOUT) :: YDEAERATM
+INTEGER(KIND=JPIM),INTENT(IN)    :: KAER
+
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0M
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRHCL
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PT
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRHO
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUSTRBARE
+
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PRATE_RESUS
+
+
+!*       0.5   LOCAL VARIABLES
+!              ---------------
+
+REAL(KIND=JPRB) :: ZTMP,ZTMP2,ZRHOP,ZDIAMP,ZTMP3,ZTMP4
+!* Taken from J.J.Morcrette
+
+REAL(KIND=JPRB), PARAMETER    :: ZR_OM = 0.03E-6_JPRB !m
+REAL(KIND=JPRB), PARAMETER    :: ZR_BC = 0.04E-6_JPRB !m
+REAL(KIND=JPRB), PARAMETER    :: ZR_SO4 = 0.02E-6_JPRB   !m SO4 dry particle radius,Martin et al., 2003
+REAL(KIND=JPRB), PARAMETER    :: ZR_AM = 0.35E-6_JPRB   !In Wang et al ACP 2014
+REAL(KIND=JPRB), DIMENSION(2),PARAMETER    :: ZR_NI=(/0.35E-6_JPRB,1.5E-6_JPRB/)   !In Wang et al ACP 2014
+REAL(KIND=JPRB), DIMENSION(3),PARAMETER    :: ZR_SOA=(/0.03E-6_JPRB,0.2E-6_JPRB,0.2E-6_JPRB/)
+
+
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_AM=1760._JPRB  ! kg/m^3 (water)
+REAL(KIND=JPRB), DIMENSION(2), PARAMETER    :: ZRHO_NI=(/1730._JPRB,1400._JPRB/)! kg/m^3(water)
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_OM=1800._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_BC=1000._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_SO4=1760._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_SOA=1760._JPRB  ! kg/m^3
+
+INTEGER(KIND=JPIM) :: IBIN, ITYP, IRH, JTAB
+
+
+
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!-----------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('AER_RESUSPENSION',0,ZHOOK_HANDLE)
+ASSOCIATE(RHAMAKER=>YDEAERSNK%RHAMAKER, &
+          &  RRHO_DD=>YDEAERSNK%RRHO_DD, RRHO_SS=>YDEAERSNK%RRHO_SS, &
+           & RMMD_DD=>YDEAERSNK%RMMD_DD, RMMD_SS=>YDEAERSNK%RMMD_SS, &
+           & RSSDENS_RHTAB=>YDEAERSNK%RSSDENS_RHTAB, RRHTAB=>YDEAERSNK%RRHTAB,&
+            & YAERO_DESC=>YDEAERATM%YAERO_DESC, &
+            & RSSGROWTH_RHTAB=>YDEAERSNK%RSSGROWTH_RHTAB)
+
+DO JTAB=1,12
+  IF (PRHCL*100._JPRB > RRHTAB(JTAB)) THEN
+     IRH=JTAB
+  ENDIF
+ENDDO
+
+
+ITYP=YAERO_DESC(KAER)%NTYP
+IBIN=YAERO_DESC(KAER)%NBIN
+
+IF (ITYP == 1) THEN
+  ZRHOP=RSSDENS_RHTAB(IRH)
+  ZDIAMP=RMMD_SS(IBIN)*RSSGROWTH_RHTAB(IRH)*1.E-6_JPRB
+ELSEIF (ITYP == 2) THEN
+  ZRHOP=RRHO_DD(IBIN)
+  ZDIAMP=RMMD_DD(IBIN)*1.E-6_JPRB
+ELSEIF (ITYP == 3) THEN
+  ZRHOP=ZRHO_OM
+  ZDIAMP=ZR_OM*2._JPRB
+ELSEIF (ITYP == 4) THEN
+  ZRHOP=ZRHO_BC
+  ZDIAMP=ZR_BC*2._JPRB
+ELSEIF (ITYP == 5) THEN
+  ZRHOP=ZRHO_SO4
+  ZDIAMP=ZR_SO4*2._JPRB
+ELSEIF (ITYP == 6) THEN
+  ZRHOP=ZRHO_NI(IBIN)
+  ZDIAMP=ZR_NI(IBIN)*2._JPRB
+ELSEIF (ITYP == 7) THEN
+  ZRHOP=ZRHO_AM
+  ZDIAMP=ZR_AM*2._JPRB
+ELSEIF (ITYP == 8) THEN
+  ZRHOP=ZRHO_SOA
+  ZDIAMP=ZR_SOA(IBIN)*2._JPRB
+ENDIF
+!ZDIAMP=ZDIAMP*1.E6  ! particle diameter in micron
+PRATE_RESUS=0._JPRB
+PRATE_RESUS=PUSTRBARE/ZDIAMP*8.521_JPRB*1E-3_JPRB*(ZRHOP/PRHO)**(-0.3028_JPRB)
+ZTMP=PRATE_RESUS
+PRATE_RESUS=PRATE_RESUS*(PUSTRBARE/ZDIAMP)**(-1.0135_JPRB)
+ZTMP2=PRATE_RESUS
+PRATE_RESUS=PRATE_RESUS*(0.0003_JPRB/ZDIAMP)**(-0.3269_JPRB)   ! Z0 concrete from Nicholson 
+ZTMP3=PRATE_RESUS
+PRATE_RESUS=PRATE_RESUS*(RHAMAKER/((ZDIAMP**3._JPRB)*(PUSTRBARE**2)*PRHO))**(-0.2961_JPRB)
+ZTMP4=PRATE_RESUS
+IF (PRHCL > 0.55_JPRB) THEN
+   PRATE_RESUS=PRATE_RESUS*10._JPRB**(-0.0741_JPRB*((PRHCL*100._JPRB)-55._JPRB))
+ENDIF
+
+!:WRITE(*,*) "AER_RESUS, PZ0M=",ITYP, PZ0M,ZRHOP,ZDIAMP,PUSTRBARE,RHAMAKER,PRHO,PRHCL,PRATE_RESUS,ZTMP,ZTMP2,ZTMP3,ZTMP4
+!-----------------------------------------------------------------------
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('AER_RESUSPENSION',1,ZHOOK_HANDLE)
+END SUBROUTINE AER_RESUSPENSION

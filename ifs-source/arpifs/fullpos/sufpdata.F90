@@ -1,0 +1,206 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE SUFPDATA(YDFPOS,YDGEOMETRY,YDSURF,YDMODEL,KMMCLI,KITER,YDFPDATA,LDUPDSUW)
+
+!**** *SUFPDATA*  - Initialize auxilary data needed for surface post-processing
+
+!     Purpose.
+!     --------
+!          Initialize auxilary data needed for surface post-processing : 
+!          climatology and surface-dependent interpolations weights.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUFPDATA
+
+!        Explicit arguments :
+!        --------------------
+!           KMMCLI : month of the climatology for climatology update. If invalid (>12 or <1), then no update
+!           KITER : post-processing iteration (needed to define what to update) 
+
+!        Implicit arguments :
+!        --------------------
+!        None
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      R. El Khatib *METEO-FRANCE*
+!      Original : 22-Jan-2018 from cprep3
+
+!     Modifications.
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD  , ONLY : GEOMETRY
+USE TYPE_MODEL    , ONLY : MODEL
+USE PARKIND1      , ONLY : JPIM,    JPRB
+USE YOMHOOK       , ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOMLUN        , ONLY : NULOUT
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE YOMFPC        , ONLY : LALLOFP
+USE FULLPOS       , ONLY : TFPOS, TFPDATA
+
+IMPLICIT NONE
+
+TYPE(TFPOS)       ,INTENT(IN), TARGET :: YDFPOS
+TYPE(GEOMETRY)    ,INTENT(IN) :: YDGEOMETRY
+TYPE(TSURF)       ,INTENT(IN) :: YDSURF
+TYPE(MODEL)       ,INTENT(IN) :: YDMODEL
+INTEGER(KINd=JPIM),INTENT(IN) :: KMMCLI
+INTEGER(KIND=JPIM),INTENT(IN) :: KITER
+TYPE(TFPDATA)     ,INTENT(INOUT) :: YDFPDATA
+LOGICAL           ,INTENT(IN), OPTIONAL :: LDUPDSUW
+
+LOGICAL :: LLPHYS, LLUPDSUW
+INTEGER (KIND=JPIM) :: IFPDOM
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "sufprfpbuf_clim.intfb.h"
+#include "sufpsuw.intfb.h"
+
+#include "gridfpossfx_init.h"
+
+!      -----------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPDATA',0,ZHOOK_HANDLE)
+ASSOCIATE(YDAFN=>YDFPOS%YAFN, YDFPGEOMETRY=>YDFPOS%YFPGEOMETRY, YDFPOFN=>YDFPOS%YFPIOH%YFPOFN(:), &
+ & YDFPSTRUCT=>YDFPOS%YFPSTRUCT, YDFPWSTD=>YDFPOS%YFPWSTD, YDNAMFPIOS=>YDFPOS%YFPIOH%YNAMFPIOS, &
+ & YDNAMFPSCI=>YDFPOS%YNAMFPSCI, YDNAMFPINT=>YDFPOS%YNAMFPINT)
+ASSOCIATE(NFPSURFEX=>YDNAMFPSCI%NFPSURFEX, YDFPGEO_DEP=>YDFPGEOMETRY%YFPGEO_DEP, YDFPGEO=>YDFPGEOMETRY%YFPGEO, &
+ & YDFPUSERGEO=>YDFPGEOMETRY%YFPUSERGEO, LFPOSHOR=>YDFPGEOMETRY%LFPOSHOR, NFPXFLD=>YDNAMFPIOS%NFPXFLD)
+
+
+!*       0.    MATCH THE MODEL GEOMETRY WITH THE POST-PROCESSOR
+!              ------------------------------------------------
+
+IF (YDFPGEOMETRY%NMDLRESOL /= YDGEOMETRY%YRDIM%NRESOL) THEN
+  WRITE(NULOUT,'(''INPUT RESOLUTIONS MISMATCH : GEOMETRY = '',I2,'' POST-PROCESSOR = '',I2)') &
+   & YDGEOMETRY%YRDIM%NRESOL,YDFPGEOMETRY%NMDLRESOL 
+  CALL ABOR1('SUFPDATA : INPUT RESOLUTIONS MISMATCH')
+ENDIF
+
+LLPHYS=YDMODEL%YRML_PHY_EC%YREPHY%LEPHYS.OR.YDMODEL%YRML_PHY_MF%YRPHY%LMPHYS
+
+
+!*       1.    OUTPUT CLIMATOLOGY
+!              ------------------
+
+
+YDFPDATA%LFPUPDCLI  = (1 <= KMMCLI .AND. KMMCLI <= 12)
+
+IF (YDFPDATA%LFPUPDCLI) THEN
+  IF (KITER > 0) THEN
+    IF (ALLOCATED(YDFPDATA%YFPCLIMO%FPBUF)) THEN
+      DEALLOCATE(YDFPDATA%YFPCLIMO%FPBUF)
+      IF (LALLOFP) THEN
+        WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPCLIMO%FPBUF'
+      ENDIF
+    ENDIF
+  ENDIF
+  IFPDOM=SIZE(YDFPGEOMETRY%YFPUSERGEO)
+  CALL SUFPRFPBUF_CLIM(YDFPDATA%YFPCLIMO,YDAFN,NFPXFLD,YDFPGEO,IFPDOM,KMMCLI,YDFPUSERGEO,YDFPOFN%CLI,YDNAMFPSCI,LLPHYS)
+ENDIF
+
+!*       2.    SURFACE-RELATED INTERPOLATIONS WEIGHTS
+!              --------------------------------------
+
+
+IF ((LLPHYS.OR.(NFPSURFEX == 2)).AND.LFPOSHOR) THEN
+
+  IF (PRESENT(LDUPDSUW)) THEN
+    LLUPDSUW=LDUPDSUW
+  ELSE
+    LLUPDSUW=(KITER==0) ! Sea ice is not used for interpolations weights
+    ! we can even assume that land mask and land-sea mask are constant => cpu savings.
+    LLUPDSUW=.TRUE. ! Sea ice may be used for interpolations weights (though it is not, actually.)
+  ENDIF
+  YDFPDATA%LFPUPDSUW=LLUPDSUW
+
+  IF (YDFPDATA%LFPUPDSUW) THEN
+
+    IF (KITER > 0) THEN
+      ! Release surface-related interpolations weights
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WLAN12)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WLAN12)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WLAN12   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WLAN04)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WLAN04)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WLAN04   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WLANML)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WLANML)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WLANML   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WSEA12)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WSEA12)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WSEA12   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WSEA04)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WSEA04)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WSEA04   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WSEAML)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WSEAML)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WSEAML   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%WSFXPS)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%WSFXPS)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%WSFXPS   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%LPSLSFX)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%LPSLSFX)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%LPSLSFX   '
+        ENDIF
+      ENDIF
+      IF (ALLOCATED(YDFPDATA%YFPSUW%NPSLSFX)) THEN
+        DEALLOCATE(YDFPDATA%YFPSUW%NPSLSFX)
+        IF (LALLOFP) THEN
+          WRITE(NULOUT,'(1X,''ARRAY '',A10,'' DEALLOCATED '')') 'YDFPDATA%YFPSUW%NPSLSFX   '
+        ENDIF
+      ENDIF
+    ENDIF
+
+    CALL SUFPSUW(YDFPDATA%YFPCLIMO,YDNAMFPINT,YDNAMFPSCI,YDAFN,NFPXFLD,YDFPGEOMETRY,YDFPDATA%YFPSUW,YDFPWSTD,YDFPSTRUCT, &
+     & YDGEOMETRY,YDSURF,YDMODEL)
+
+  ENDIF
+
+
+ENDIF
+
+YDFPDATA%YFPOS => YDFPOS
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUFPDATA',1,ZHOOK_HANDLE)
+
+!      -----------------------------------------------------------------
+
+END SUBROUTINE SUFPDATA

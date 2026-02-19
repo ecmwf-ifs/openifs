@@ -1,0 +1,170 @@
+! (C) Copyright 2005- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE lib_dates
+
+IMPLICIT NONE
+
+INTEGER, PARAMETER :: JPRT = SELECTED_REAL_KIND(2,1)
+INTEGER, PARAMETER :: JPRS = SELECTED_REAL_KIND(4,2)
+INTEGER, PARAMETER :: JPRM = SELECTED_REAL_KIND(6,37)
+INTEGER, PARAMETER :: JPRB = SELECTED_REAL_KIND(13,300)
+
+INTEGER, PARAMETER :: JPIT = SELECTED_INT_KIND(2)
+INTEGER, PARAMETER :: JPIS = SELECTED_INT_KIND(4)
+INTEGER, PARAMETER :: JPIM = SELECTED_INT_KIND(9)
+INTEGER, PARAMETER :: JPIB = SELECTED_INT_KIND(12)
+
+
+INTEGER(KIND=JPIM)    :: YYYY0, MM0, DD0
+PARAMETER               (YYYY0=1850)
+PARAMETER               (MM0=1)
+PARAMETER               (DD0=1)
+
+CONTAINS
+! test 1
+!!==================================================
+SUBROUTINE HH2DATE(INHH,L24H,YYYYMMDD,HHOUT)     !!  Return YYYYMMDD and HHMM for INMI
+
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)  :: INHH      !!  input minutes
+LOGICAL           ,INTENT(IN)  :: L24H      !! if true allow for 24 h HHOUT
+INTEGER(KIND=JPIM),INTENT(OUT) :: YYYYMMDD  !! 
+INTEGER(KIND=JPIM),INTENT(OUT) :: HHOUT
+
+INTEGER(KIND=JPIM)             :: YYYY,MM,DD,HH,NDAYS,NDM,ID
+!!====================
+YYYYMMDD = 0
+HH       = 0
+
+NDAYS = INHH/24              !! days  in INMI : 1440 = (minutes in a day)
+HHOUT = MOD(INHH,24)
+IF (L24H) THEN
+  IF (NDAYS >= 1  .AND. HHOUT== 0 ) THEN
+    NDAYS = NDAYS -1 
+    HHOUT = 24
+  ENDIF
+ENDIF 
+
+YYYY     = YYYY0
+MM       = MM0
+DD       = DD0
+NDM      = IMDAYS(YYYY,MM)     !! number of days in a month
+
+DO ID=1,NDAYS
+  DD=DD+1
+  IF ( DD .GT. NDM ) THEN
+    MM=MM+1
+    DD=1
+    IF ( MM .GT. 12 ) THEN
+      MM=1
+      YYYY=YYYY+1
+    ENDIF
+    NDM=IMDAYS(YYYY,MM)
+  ENDIF
+ENDDO
+
+YYYYMMDD = YYYY*10000+MM*100+DD
+
+END SUBROUTINE HH2DATE
+
+
+!!==================================================
+FUNCTION DATE2HH(YYYYMMDD,HH)
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM)            :: DATE2HH
+
+INTEGER(KIND=JPIM),INTENT(IN) :: YYYYMMDD
+INTEGER(KIND=JPIM),INTENT(IN) :: HH
+
+INTEGER(KIND=JPIM)            :: YYYY,MM,DD
+INTEGER(KIND=JPIM)            :: IY,IM
+
+!!====================
+DATE2HH = 0
+CALL SPLITDATE(YYYYMMDD,YYYY,MM,DD)
+
+
+!!====================
+!! SOME CHECKS
+IF (YYYY .LT. YYYY0) THEN
+  WRITE(*,*) 'DATE2MIN: YYYY .LT. YYYY0: CHANGE YYYY0 IN MOD_DATES',YYYY,YYYY0
+  STOP
+ENDIF
+IF (MM .GT. 12) THEN
+  WRITE(*,*) 'DATE2MIN: MM .GT. 12: SOME PROBLEM',MM
+  STOP
+ENDIF
+IF (DD .GT. IMDAYS(YYYY,MM)) THEN
+  WRITE(*,*) 'DATE2MIN: DD .GT. : SOME PROBLEM',DD,IMDAYS(YYYY,MM)
+  STOP
+ENDIF
+IF (HH .GT. 24) THEN
+  WRITE(*,*) 'DATE2MIN: HH .GT. 24 : SOME PROBLEM',HH
+  STOP
+ENDIF
+
+
+IY=YYYY0
+DO WHILE (IY .LT. YYYY)
+  DO IM=1,12
+    DATE2HH=DATE2HH+IMDAYS(IY,IM)*24
+  ENDDO
+  IY=IY+1
+ENDDO
+IM=1
+DO WHILE (IM .LT. MM )
+  DATE2HH=DATE2HH+IMDAYS(IY,IM)*24
+  IM=IM+1
+ENDDO
+
+DATE2HH = DATE2HH + (DD-1)*24
+DATE2HH = DATE2HH + HH
+
+END FUNCTION DATE2HH
+
+
+! =================================================
+SUBROUTINE SPLITDATE(YYYYMMDD,YYYY,MM,DD)
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)  :: YYYYMMDD
+INTEGER(KIND=JPIM),INTENT(OUT) :: YYYY,MM,DD
+
+!!====================
+YYYY =  YYYYMMDD/10000
+MM   = (YYYYMMDD-YYYY*10000)/100
+DD   =  YYYYMMDD-(YYYY*10000+MM*100)
+
+END SUBROUTINE SPLITDATE
+
+
+! ==================================================
+FUNCTION IMDAYS(IYEAR,IMON)   !! days in month
+IMPLICIT NONE
+ 
+INTEGER(KIND=JPIM)            :: IMDAYS
+
+INTEGER(KIND=JPIM),INTENT(IN) :: IYEAR
+INTEGER(KIND=JPIM),INTENT(IN) :: IMON
+
+INTEGER(KIND=JPIM)            :: ND(12)
+DATA ND /31,28,31,30,31,30,31,31,30,31,30,31/
+
+!!====================
+IMDAYS=ND(IMON)
+IF ( IMON == 2 ) THEN
+  IF ( MOD(IYEAR,400) == 0 .OR. (MOD(IYEAR,100) .NE. 0 .AND. MOD(IYEAR,4) .EQ. 0 )) IMDAYS=29
+ENDIF
+
+END FUNCTION IMDAYS
+
+
+END MODULE lib_dates

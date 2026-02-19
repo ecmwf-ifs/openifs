@@ -1,0 +1,132 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+MODULE CONTROL_VECTORS_DATA_MIX
+
+!   Purpose.
+!   --------
+!     Setup and store parameters from IFS not available in IFSAUX.
+!
+!   Author.
+!   -------
+!     Y. Tremolet
+!
+!   Modifications.
+!   --------------
+!     Original   25-Jul-2004
+!     A. Deckmyn 01-Oct-2008 : LAM wavelet Jb
+!     M. Fisher  15-Feb-2013 : Introduce structures (CTLVEC_STRUCT, etc.)
+!     Y. Michel, MF, June 2018 Extension of the control variable for sqrt EnVar
+!     S. Massart 19-Feb-2019 Parameter optimisation
+! ------------------------------------------------------------------
+
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE MPL_MODULE, ONLY : MPL_RANK
+
+IMPLICIT NONE
+SAVE
+PRIVATE
+PUBLIC CONTROL_VECTOR_DATA_STRUCT, &
+     & CTLVEC_STRUCT, CTLVEC_STRUCT_ENS, &
+     & SETUP_CTLVEC, &
+     & DESTROY_CONTROL_VECTOR_DATA_STRUCT
+
+TYPE CONTROL_VECTOR_DATA_STRUCT
+  INTEGER(KIND=JPIM) :: NSMAX, NMSMAX, NENS, NSERR, NMODERR, &
+           & MYTOVOFF, NCTL3, NCTL2, NCTL1, NPARAM, NPECV, NSCALES, &
+           & NPROMA, N_REGIONS_NS, N_REGIONS_EW, &
+           & MY_REGION_NS, MY_REGION_EW, MYPROC,&
+           & NLENTOVSCV, NLENTOVSCVG, NVATOVV, NFLEVL, NFLEVG, NUMP,&
+           & NOBNTV, NOBNTVG, NVE3D, NVE2D,MYSETW, NPRTRW, NPROC
+
+  INTEGER(KIND=JPIM), ALLOCATABLE :: MYLEVS(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NBLOCKSL(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NBLOCKSG(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NGPTOTL(:,:,:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NGPTOTG(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NGRB(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NLENTOVSCVP(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NVATOVOFF(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: N_REGIONS(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NGRBE(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: MYMS(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NALLMS(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NPTRMS(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NUMLL(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NPTRLL(:)
+  INTEGER(KIND=JPIM), ALLOCATABLE :: NPSURF(:)
+
+  LOGICAL :: LINITCV, LTOVSCV, LELAM, LWAVELETJB, LREPRO,LENSCV
+
+END TYPE CONTROL_VECTOR_DATA_STRUCT
+
+TYPE(CONTROL_VECTOR_DATA_STRUCT), POINTER :: CTLVEC_STRUCT => NULL()
+TYPE(CONTROL_VECTOR_DATA_STRUCT), POINTER :: CTLVEC_STRUCT_ENS => NULL()
+
+! ------------------------------------------------------------------
+CONTAINS
+! ------------------------------------------------------------------
+
+SUBROUTINE SETUP_CTLVEC(HANDLE,KCTL3,KCTL2,KCTL1,&
+                      & KGRB,LDINIT,LDENS,KSMAX,KMSMAX,KENS, &
+                      & KMERR,KVE3D,KVE2D,KSERR,KGRBE,KPARAM,KPECV,LDLAM, &
+                      & LDWAVELET, LDTOVS,KLENTOVSCV,KLENTOVSCVG, &
+                      & KLENTOVSCVP, KVATOVV,KVATOVOFF, &
+                      & KPROMA,KFLEVL,KFLEVG,KMYLEVS, &
+                      & KNUMP,KMYMS,KALLMS,KPTRMS,KNUMLL,KPTRLL,KPSURF,&
+                      & KNSCALES,KBLOCKSL,KBLOCKSG,KGPTOTL,KGPTOTG, &
+                      & K_REGIONS,K_REGIONS_NS,K_REGIONS_EW, &
+                      & KSETA,KSETB,KPROC,KMYPROC, &
+                      & KOBNTV,KOBNTVG,LDREPRO,KMYSETW,KPRTRW)
+
+IMPLICIT NONE
+
+TYPE(CONTROL_VECTOR_DATA_STRUCT), INTENT(IN), POINTER :: HANDLE
+INTEGER(KIND=JPIM), INTENT(IN) :: KCTL3,KCTL2,KCTL1
+INTEGER(KIND=JPIM), INTENT(IN) :: KGRB(KCTL3+KCTL2)
+INTEGER(KIND=JPIM), INTENT(IN) :: KSMAX,KMSMAX,KMERR,KSERR,KPARAM,KPECV,KENS
+INTEGER(KIND=JPIM), INTENT(IN) :: KVE3D,KVE2D
+INTEGER(KIND=JPIM), INTENT(IN) :: KGRBE(KVE3D+KVE2D)
+LOGICAL, INTENT(IN) :: LDINIT, LDENS, LDTOVS, LDWAVELET
+INTEGER(KIND=JPIM), INTENT(IN) :: KLENTOVSCV, KLENTOVSCVG, KVATOVV
+LOGICAL, INTENT(IN) :: LDLAM
+INTEGER(KIND=JPIM), INTENT(IN) :: KFLEVL, KFLEVG, KNUMP, KNSCALES, KPROC, KMYPROC,  &
+                                & KPROMA, K_REGIONS_NS, K_REGIONS_EW, KSETA, KSETB
+INTEGER(KIND=JPIM), INTENT(IN) :: KALLMS(:)
+INTEGER(KIND=JPIM), INTENT(IN) :: KMYMS(:),KPTRMS(:),KNUMLL(:), KPTRLL(:), KPSURF(:)
+INTEGER(KIND=JPIM), INTENT(IN) :: KMYLEVS(KFLEVL), KBLOCKSL(KNSCALES), &
+                                & KBLOCKSG(KNSCALES), KGPTOTG(KNSCALES), &
+                                & KGPTOTL(KNSCALES,K_REGIONS_NS,K_REGIONS_EW)
+INTEGER(KIND=JPIM), INTENT(IN) :: KLENTOVSCVP(:)
+INTEGER(KIND=JPIM), INTENT(IN) :: KVATOVOFF(:)
+INTEGER(KIND=JPIM), INTENT(IN) :: K_REGIONS(:)
+INTEGER(KIND=JPIM), INTENT(IN) :: KPRTRW,KMYSETW
+INTEGER(KIND=JPIM), INTENT(IN), OPTIONAL :: KOBNTV, KOBNTVG
+LOGICAL, INTENT(IN) :: LDREPRO
+call abor1("setup_ctlvec should never be called")
+
+END SUBROUTINE SETUP_CTLVEC
+
+! ------------------------------------------------------------------
+
+SUBROUTINE DESTROY_CONTROL_VECTOR_DATA_STRUCT(HANDLE)
+
+IMPLICIT NONE
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+TYPE(CONTROL_VECTOR_DATA_STRUCT), POINTER, INTENT(IN) :: HANDLE
+call abor1("destroy_control_vector_data_struct should never be called")
+
+END SUBROUTINE DESTROY_CONTROL_VECTOR_DATA_STRUCT
+
+! ------------------------------------------------------------------
+
+END MODULE CONTROL_VECTORS_DATA_MIX

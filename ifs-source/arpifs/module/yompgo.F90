@@ -1,0 +1,42 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+MODULE YOMPGO
+
+USE PARKIND1  ,ONLY : JPIM
+
+IMPLICIT NONE
+
+SAVE
+
+! NPTCH   - POINTER IN CHARACTER DATA BLOCK
+! NPTIN   - POINTER IN INTEGER DATA BLOCK
+! NPTRE   - POINTER IN REAL DATA BLOCK
+! NPTIND  - POINTER IN INDEX
+! NLENNAM - LENGTH OF RECORD NAMES
+! NLENRBL2- LENGTH OF REAL BLOCK 2
+! NLENREA - DIMENSION OF REAL DATA BLOCK
+! NLENIND - DIMENSION OF INDEX
+! NLENINT - DIMENSION OF INTEGER DATA BLOCK
+! NLENCHA - DIMENSION OF CHARACTER DATA BLOCK (IN CHARACTERS)
+
+INTEGER(KIND=JPIM) :: NPTCH
+INTEGER(KIND=JPIM) :: NPTIN
+INTEGER(KIND=JPIM) :: NPTRE
+INTEGER(KIND=JPIM) :: NPTIND
+INTEGER(KIND=JPIM) :: NLENNAM
+INTEGER(KIND=JPIM) :: NLENRBL2
+INTEGER(KIND=JPIM) :: NLENREA
+INTEGER(KIND=JPIM) :: NLENIND
+INTEGER(KIND=JPIM) :: NLENINT
+INTEGER(KIND=JPIM), PARAMETER :: NLENCHA=6000
+
+END MODULE YOMPGO

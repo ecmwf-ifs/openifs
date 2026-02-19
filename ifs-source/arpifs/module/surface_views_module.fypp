@@ -1,0 +1,282 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#:set ranks  = [2, 3, 4]
+#:set shapes = ['', ':', ':,:', ':,:,:', ':,:,:,:', ':,:,:,:,:']
+#:set config_file = os.path.dirname(_THIS_FILE_) + '/surface_fields_config.yaml'
+#:set config = field_config.VariableConfiguration(config_file)
+#:set prognostic = [field_config.VariableGroup(**group) for group in config.schema['prognostic']]
+#:set diagnostic = [field_config.VariableGroup(**group) for group in config.schema['diagnostic']]
+#:set variable_groups = prognostic + diagnostic
+
+MODULE SURFACE_VIEWS_MODULE
+  ! The SURFACE_VIEWS type contains namespaced access to groups of
+  ! array pointers according to individual surface variable groups.
+  !
+  !
+  ! Variable naming conventions
+  ! ---------------------------
+  ! The top-level type `SURFACE_VIEWS_TYPE` holds multiple group
+  ! types, each prefixed with `GSP_` for prognostic and `GSD_` for
+  ! diagnostic variable groups.
+  !
+  ! Each group type holds a list of array views (pointers to
+  ! sub-sections of the gobal array), each prefixed with `P` to
+  ! indicate a thread-local view pointer. Data views of prognostic
+  ! variables have an additional suffix that indicates the time index
+  ! (eg.  `_T0`, `_T1` or `_T9`). The backend storage for each of
+  ! these view pointers is provided by `FIELD_2D/FIELD_3D` objects, a
+  ! reference to which is also stored on the group types and prefixed
+  ! with `F_`.
+
+USE PARKIND1, ONLY: JPIM, JPRB
+USE FIELD_MODULE, ONLY: FIELD_2D, FIELD_3D, FIELD_4D, FIELD_2D_PTR, FIELD_3D_PTR, FIELD_2D_VIEW, FIELD_3D_VIEW
+! FIXME: CMake dependency analysis breaks down if we do this:
+! USE SURFACE_VARIABLES_MOD, ONLY: SURFACE_VARIABLES, &
+!  & ${', '.join('SURFACE_VARIABLE_GROUP_%s' % group.name for group in variable_groups)}$
+USE SURFACE_VARIABLES_MOD
+USE YOMDYN, ONLY : TDYN
+
+IMPLICIT NONE
+
+#:for group in prognostic
+TYPE SURFACE_VIEW_GROUP_${group.name}$
+#:for v in group.variables
+#:set shape = shapes[group.dimension] if v.array else shapes[group.dimension-1]
+  REAL(KIND=JPRB), POINTER :: ${'P%s_T0(%s)' % (v.name, shape)}$   ! ${v.comment}$
+  REAL(KIND=JPRB), POINTER :: ${'P%s_T1(%s)' % (v.name, shape)}$   ! ${v.comment}$
+  REAL(KIND=JPRB), POINTER :: ${'P%s_T9(%s)' % (v.name, shape)}$   ! ${v.comment}$
+#:endfor
+#:set shape = shapes[group.dimension-1]
+  REAL(KIND=JPRB), POINTER :: PGROUP(:,${shape}$)
+
+  TYPE(SURFACE_VARIABLE_GROUP_${group.name}$), POINTER :: VARIABLE_GROUP
+#:for v in group.variables
+  TYPE(FIELD_${group.dimension}$D), POINTER :: F_${v.name}$_T0=>NULL(), F_${v.name}$_T1=>NULL(), F_${v.name}$_T9=>NULL()
+#:endfor
+  TYPE(FIELD_${group.dimension+1}$D), POINTER :: F_GROUP
+
+CONTAINS
+  PROCEDURE :: INIT => SURFACE_VIEW_GROUP_${group.name}$_INIT
+  PROCEDURE :: UPDATE_VIEW => SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW
+  PROCEDURE :: SET9TO0 => SURFACE_VIEW_GROUP_${group.name}$_SET9TO0
+  PROCEDURE :: SET1TO9 => SURFACE_VIEW_GROUP_${group.name}$_SET1TO9
+  PROCEDURE :: SET1TO0 => SURFACE_VIEW_GROUP_${group.name}$_SET1TO0
+  PROCEDURE :: SET0TO1 => SURFACE_VIEW_GROUP_${group.name}$_SET0TO1
+  PROCEDURE :: PHTFILT => SURFACE_VIEW_GROUP_${group.name}$_PHTFILT
+END TYPE SURFACE_VIEW_GROUP_${group.name}$
+
+#:endfor
+
+#:for group in diagnostic
+TYPE SURFACE_VIEW_GROUP_${group.name}$
+#:set shape = shapes[group.dimension-1]
+#:for v in group.variables
+#:if v.array
+#:set array = (', ALLOCATABLE, DIMENSION(%s)' % shapes[v.array])
+  TYPE(FIELD_${group.dimension}$D_VIEW)${array}$ :: ${'P%s' % v.name}$   ! ${v.comment}$
+#:else
+  REAL(KIND=JPRB), POINTER :: ${'P%s(%s)' % (v.name, shape)}$   ! ${v.comment}$
+#:endif
+#:endfor
+  REAL(KIND=JPRB), POINTER :: PGROUP(:,${shape}$)
+
+  TYPE(SURFACE_VARIABLE_GROUP_${group.name}$), POINTER :: VARIABLE_GROUP
+#:for v in group.variables
+#:if v.array
+#:set array = (', ALLOCATABLE, DIMENSION(%s)' % shapes[v.array])
+  TYPE(FIELD_${group.dimension}$D_PTR)${array}$ :: F_${v.name}$
+#:else
+  TYPE(FIELD_${group.dimension}$D), POINTER :: F_${v.name}$=>NULL()
+#:endif
+#:endfor
+  TYPE(FIELD_${group.dimension+1}$D), POINTER :: F_GROUP
+
+CONTAINS
+  PROCEDURE :: INIT => SURFACE_VIEW_GROUP_${group.name}$_INIT
+  PROCEDURE :: UPDATE_VIEW => SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW
+END TYPE SURFACE_VIEW_GROUP_${group.name}$
+
+#:endfor
+
+CONTAINS
+
+#:for group in prognostic
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_INIT(SELF, VARIABLE_GROUP)
+    ! Constructor of the array view type for a surface variable group
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    TYPE(SURFACE_VARIABLE_GROUP_${group.name}$), TARGET, INTENT(INOUT) :: VARIABLE_GROUP
+
+    ! Create a view per timestep field for each prognostic variable
+#:for v in group.variables
+    SELF%F_${v.name}$_T0 => VARIABLE_GROUP%V${v.name}$%FT0
+    SELF%F_${v.name}$_T1 => VARIABLE_GROUP%V${v.name}$%FT1
+    SELF%F_${v.name}$_T9 => VARIABLE_GROUP%V${v.name}$%FT9
+#:endfor
+    SELF%VARIABLE_GROUP => VARIABLE_GROUP
+    SELF%F_GROUP => VARIABLE_GROUP%F_GROUP
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_INIT
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    ! Extract local array views from field objects
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+
+    ! Set up the view pointer for each timestep field
+#:for v in group.variables
+    SELF%P${v.name}$_T0 => SELF%F_${v.name}$_T0%GET_VIEW(BLOCK_INDEX)
+    SELF%P${v.name}$_T1 => SELF%F_${v.name}$_T1%GET_VIEW(BLOCK_INDEX)
+    SELF%P${v.name}$_T9 => SELF%F_${v.name}$_T9%GET_VIEW(BLOCK_INDEX)
+#:endfor
+
+    IF (ASSOCIATED(SELF%F_GROUP))  SELF%PGROUP => SELF%F_GROUP%GET_VIEW(BLOCK_INDEX)
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW
+
+#:endfor
+
+
+#:for group in diagnostic
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_INIT(SELF, VARIABLE_GROUP)
+    ! Constructor of the array view type for a surface variable group
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    TYPE(SURFACE_VARIABLE_GROUP_${group.name}$), TARGET, INTENT(INOUT) :: VARIABLE_GROUP
+    INTEGER(KIND=JPIM) :: I, J, MYSHAPE(2)
+
+    ! Create a view for the "T0" field only for diagnostic fields
+#:for v in group.variables
+#:if v.array == 1
+    IF (ALLOCATED(VARIABLE_GROUP%V${v.name}$)) THEN
+      ALLOCATE(SELF%P${v.name}$(SIZE(VARIABLE_GROUP%V${v.name}$)))
+      ALLOCATE(SELF%F_${v.name}$(SIZE(VARIABLE_GROUP%V${v.name}$)))
+      DO I=1, SIZE(VARIABLE_GROUP%V${v.name}$)
+        SELF%F_${v.name}$(I)%PTR => VARIABLE_GROUP%V${v.name}$(I)%FT0
+      END DO
+    END IF
+#:elif v.array == 2
+    IF (ALLOCATED(VARIABLE_GROUP%V${v.name}$)) THEN
+      MYSHAPE = SHAPE(VARIABLE_GROUP%V${v.name}$)
+      ALLOCATE(SELF%P${v.name}$(MYSHAPE(1), MYSHAPE(2)))
+      ALLOCATE(SELF%F_${v.name}$(MYSHAPE(1), MYSHAPE(2)))
+      DO J=1, MYSHAPE(2)
+        DO I=1, MYSHAPE(1)
+          SELF%F_${v.name}$(I,J)%PTR => VARIABLE_GROUP%V${v.name}$(I,J)%FT0
+        END DO
+      END DO
+    END IF
+#:else
+    SELF%F_${v.name}$ => VARIABLE_GROUP%V${v.name}$%FT0
+#:endif
+#:endfor
+    SELF%VARIABLE_GROUP => VARIABLE_GROUP
+    SELF%F_GROUP => VARIABLE_GROUP%F_GROUP
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_INIT
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    ! Extract local array views from field objects
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+    INTEGER(KIND=JPIM) :: I, J
+
+    ! Set up the view pointer for the "T0" field
+#:for v in group.variables
+#:if v.array == 1
+    IF (ALLOCATED(SELF%F_${v.name}$)) THEN
+      DO I=1, SIZE(SELF%F_${v.name}$)
+        SELF%P${v.name}$(I)%P => SELF%F_${v.name}$(I)%PTR%GET_VIEW(BLOCK_INDEX)
+      END DO
+    END IF
+#:elif v.array == 2
+    IF (ALLOCATED(SELF%F_${v.name}$)) THEN
+      DO J=1, SIZE(SELF%F_${v.name}$, DIM=2)
+        DO I=1, SIZE(SELF%F_${v.name}$, DIM=1)
+          SELF%P${v.name}$(I,J)%P => SELF%F_${v.name}$(I,J)%PTR%GET_VIEW(BLOCK_INDEX)
+        END DO
+      END DO
+    END IF
+#:else
+    IF (ASSOCIATED(SELF%F_${v.name}$))  SELF%P${v.name}$ => SELF%F_${v.name}$%GET_VIEW(BLOCK_INDEX)
+#:endif
+#:endfor
+
+    IF (ASSOCIATED(SELF%F_GROUP))  SELF%PGROUP => SELF%F_GROUP%GET_VIEW(BLOCK_INDEX)
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW
+
+#:endfor
+
+  ! Timestepping utility subroutines for prognostics variables
+#:for group in prognostic
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET9TO0(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+
+#:for v in group.variables
+#:set shape = shapes[group.dimension-1]
+    IF (SELF%VARIABLE_GROUP%V${v.name}$%LACTIVE) THEN
+      SELF%${'P%s_T9(%s)' % (v.name, shape)}$ = SELF%${'P%s_T0(%s)' % (v.name, shape)}$
+    END IF
+#:endfor
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET9TO0
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET1TO9(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+
+#:for v in group.variables
+    IF (SELF%VARIABLE_GROUP%V${v.name}$%LACTIVE) THEN
+      SELF%${'P%s_T1(%s)' % (v.name, shape)}$ = SELF%${'P%s_T9(%s)' % (v.name, shape)}$
+    END IF
+#:endfor
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET1TO9
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET1TO0(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+
+#:for v in group.variables
+    IF (SELF%VARIABLE_GROUP%V${v.name}$%LACTIVE) THEN
+      SELF%${'P%s_T1(%s)' % (v.name, shape)}$ = SELF%${'P%s_T0(%s)' % (v.name, shape)}$
+    END IF
+#:endfor
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET1TO0
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET0TO1(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+
+#:for v in group.variables
+    IF (SELF%VARIABLE_GROUP%V${v.name}$%LACTIVE) THEN
+      SELF%${'P%s_T0(%s)' % (v.name, shape)}$ = SELF%${'P%s_T1(%s)' % (v.name, shape)}$
+    END IF
+#:endfor
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_SET0TO1
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_PHTFILT(SELF, YDDYN)
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    TYPE(TDYN), INTENT(IN) :: YDDYN
+    REAL(KIND=JPRB) :: REPSP1, ZZPHY
+
+    REPSP1 = YDDYN%REPSP1
+    ZZPHY = 1.0_JPRB - REPSP1
+
+#:for v in group.variables
+#:set shape = shapes[group.dimension-1]
+    IF (SELF%VARIABLE_GROUP%V${v.name}$%LACTIVE) THEN
+      SELF%${'P%s_T9(%s)' % (v.name, shape)}$ = REPSP1*SELF%${'P%s_T1(%s)' % (v.name, shape)}$ &
+       &                                      + ZZPHY*SELF%${'P%s_T0(%s)' % (v.name, shape)}$
+      SELF%${'P%s_T0(%s)' % (v.name, shape)}$ = SELF%${'P%s_T1(%s)' % (v.name, shape)}$
+    END IF
+#:endfor
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_PHTFILT
+
+#:endfor
+
+
+END MODULE SURFACE_VIEWS_MODULE

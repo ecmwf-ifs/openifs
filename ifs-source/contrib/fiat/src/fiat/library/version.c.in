@@ -1,0 +1,42 @@
+/*
+ * (C) Copyright 2014- ECMWF.
+ * 
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ * In applying this licence, ECMWF does not waive the privileges and immunities
+ * granted to it by virtue of its status as an intergovernmental organisation
+ * nor does it submit to any jurisdiction.
+ */
+
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+
+#include <stdlib.h>
+#include <string.h>
+
+//-----------------------------------------------------------------------------
+
+const char * fiat_version()     { return "@fiat_VERSION@"; }
+const char * fiat_version_str() { return "@fiat_VERSION_STR@"; }
+
+unsigned int fiat_version_int()
+{
+  return 10000*@fiat_VERSION_MAJOR@
+         + 100*@fiat_VERSION_MINOR@
+         +   1*@fiat_VERSION_PATCH@;
+}
+
+static char* __fiat_git_sha1 = 0;
+
+const char * fiat_git_sha1() { return "@fiat_GIT_SHA1@"; }
+const char * fiat_git_sha1_abbrev(unsigned int length)
+{
+  size_t N = strlen(fiat_git_sha1())-40+length;
+  N = min(strlen(fiat_git_sha1()),N);
+  if( __fiat_git_sha1 ) free(__fiat_git_sha1);
+  __fiat_git_sha1 = malloc( sizeof(char)*(N+1) );
+  memcpy( __fiat_git_sha1, fiat_git_sha1(), N );
+  __fiat_git_sha1[N] = '\0';
+  return __fiat_git_sha1;
+}
+//-----------------------------------------------------------------------------
+

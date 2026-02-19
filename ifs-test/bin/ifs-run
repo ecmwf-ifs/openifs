@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+
+set -o pipefail
+
+log () {
+  # Send stdout/stderr both to file and terminal
+  ("$@" | tee stdout.log) 3>&1 1>&2 2>&3 | tee stderr.log
+}
+
+main () {
+
+  SCRIPT_DIR="$( cd $( dirname "${BASH_SOURCE[0]}" ) && pwd -P )"
+
+  #################################################################
+  # DEFAULT VALUES
+  #################################################################
+
+  NTHREAD=1
+  NPROC=1
+  IFS_EXECUTABLE=not-specified
+  IFS_SOURCES_DIR=""
+  IFS_ARGS=""
+  LAUNCH=""
+  WORK_DIR=$(pwd)
+  SETUP="./setup"
+  POSTPROCESSING="./postprocessing"
+
+  source ./set_launcher.bash
+
+  if [ -f ./params ]; then
+    source ./params
+    if [ -n ${IFS_TEST_PARALLEL_OVERRIDE-} ]; then
+      # This will override each of NPROC/NTHREAD/NPROMA using the (up to)
+      # three provided slash-separated values.  NPROC and NTHREAD are only
+      # overridden in tests that would have them set to greater than 1 by
+      # default, so that explicitly-serial tasks remain so.
+      do_parallel_override() {
+        [[ ${NPROC:-1} -gt 1 && -n ${1-} ]] && NPROC=$1
+        [[ ${NTHREAD:-1} -gt 1 && -n ${2-} ]] && NTHREAD=$2
+        [[ -n ${3-} ]] && NPROMA=$3
+      }
+      do_parallel_override ${IFS_TEST_PARALLEL_OVERRIDE//\// }
+    fi
+  fi
+
+  if [ -f ./ifs_env ]; then
+    source ./ifs_env
+  fi
+
+  #################################################################
+  # Parse command-line
+  #################################################################
+
+  while test $# -gt 0; do
+
+      # Split --option=value in $opt="--option" and $val="value"
+
+      opt=""
+      val=""
+
+      case "$1" in
+      --*=*)
+        opt=`echo "$1" | sed 's/=.*//'`
+        val=`echo "$1" | sed 's/--[_a-zA-Z0-9]*=//'`
+        ;;
+      --*)
+        opt=$1
+        ;;
+      *)
+        break
+        ;;
+      esac    
+
+      # Parse options
+      case "$opt" in
+        --nthread)
+          NTHREAD="$val"
+          ;;
+        --nproc)
+          NPROC="$val"
+          ;;
+        --nproma)
+          NPROMA="$val"
+          ;;
+        --launcher)
+          LAUNCHER=$val
+          ;;
+        --launcher_mem_flag)
+          LAUNCHER_MEM_FLAG=$val
+          ;;
+        --launcher_nproc_flag)
+          LAUNCHER_NPROC_FLAG=$val
+          ;;
+        --launcher_nthread_flag)
+          LAUNCHER_NTHREAD_FLAG=$val
+          ;;
+        --launcher_other_flags)
+          LAUNCHER_OTHER_FLAGS=$val
+          ;;
+        --launch)
+          LAUNCH=$val
+          ;;
+        --sources_dir)
+          IFS_SOURCES_DIR="--source-dirs=$val"
+          ;;
+        --workdir)
+          WORK_DIR=$val
+          ;;
+        --setup)
+          SETUP=$val
+          ;;
+        --postprocessing)
+          POSTPROCESSING=$val
+          ;;
+        --)
+          shift
+          break
+          ;;
+        *)
+          ;;
+      esac
+      shift
+  done
+
+  #################################################################
+  # SETUP
+  #################################################################
+
+  echo "### Begin setup ###"
+  NAMELIST_INIT=${IFS_NAMELIST}
+
+  cd ${WORK_DIR}
+
+  set -exa
+
+  if [ -f ${SETUP} ]; then
+      source ${SETUP}
+  fi
+
+  #################################################################
+  # RUN
+  #################################################################
+
+  set +x
+  echo "Cycle: ${IFS_CYCLE}"
+  echo "Initial namelist: ${NAMELIST_INIT}"
+  echo "Working directory: ${WORK_DIR}"
+  echo "GRIB_DEFINITION_PATH: ${GRIB_DEFINITION_PATH}"
+  set -x
+
+  cat ${NAMELIST_INIT} >> fort.4
+
+  export OMP_NUM_THREADS=$NTHREAD
+
+  if [ -z "$LAUNCH" ]; then
+    if [ -z $LAUNCHER_NTHREAD_FLAG ]; then
+      LAUNCH="$LAUNCHER $LAUNCHER_NPROC_FLAG $NPROC $LAUNCHER_MEM_FLAG \
+              $IFS_SOURCES_DIR $LAUNCHER_OTHER_FLAGS"
+    else
+      LAUNCH="$LAUNCHER $LAUNCHER_NPROC_FLAG $NPROC $LAUNCHER_NTHREAD_FLAG $NTHREAD \
+              $LAUNCHER_MEM_FLAG $IFS_SOURCES_DIR $LAUNCHER_OTHER_FLAGS"
+    fi
+  fi
+
+  echo
+  echo "### Launching $IFS_EXECUTABLE ###"
+  $LAUNCH $IFS_EXECUTABLE $IFS_ARGS
+
+  #################################################################
+  # POST-PROCESSING
+  #################################################################
+
+  echo
+  echo "### Begin postprocessing ###"
+  if [ -f ${POSTPROCESSING} ]; then
+    source ${POSTPROCESSING}
+  else
+    echo "No postprocessing"
+  fi
+
+}
+
+# Capture all output from the IFS, setup, postprocessing etc.
+log main "$@"
+
+exit $?

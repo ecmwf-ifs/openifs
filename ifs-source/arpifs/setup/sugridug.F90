@@ -1,0 +1,315 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUGRIDUG(YDGEOMETRY,YDML_GCONF,YDGFL,YDEPHLI,YGFL,KFILE)
+
+!**** *SUGRIDUG*  - Initialize the upper air grid-point fields from GRIB
+
+!     Purpose.
+!     --------
+!           Initialize the upper air gridpoint fields of the model
+!           from GRIB file.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUGRIDUG
+
+!        Explicit arguments :
+!        ------------------
+!        KFILE : an indicator for which  file is to be read
+!               KFILE = 1 the CFNGGG-UA file is read
+!               KFILE = 6 the CFNFGIG-UA file is read
+!               KFILE = 7 the CFNANIG-UA file is read
+!               KFILE = 8 the CFNPANGG-UA file is read
+!               KFILE = 9 the CFNIUA file is read
+!               KFILE =12 the CFNBGHRGG-UA file is read
+!             else        the CFNIGG-UA  file is read
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Mats Hamrud *ECMWF*
+!      Original : 94-06-30
+
+!     Modifications.
+!     --------------
+!      M.Hortal/M.Hamrud : 03-01-01 GFL
+!      M.Janiskova : 04-01-21 initialization of GPCLOUD for new cloud scheme
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Hamrud      01-Dec-2003 CY28R1 Cleaning
+!      Y.Tremolet    18-Jan-2005 Introduce conserving interpolation option
+!      Y.Tremolet    18-Feb-2005 Split pre_grid_biconserv
+!      M.Hamrud      01-Dec-2005 Generalized IO scheme
+!      E.Holm        13-Nov-2008 Add high resolution background=12, used
+!                                by rdfpinc for adding increments
+!      R. El Khatib  04-Aug-2014 Pruning of the conf. 927/928
+!      M. Janiskova  11-Apr_2016 Reading grid-point q increments
+!      R. El Khatib  13-Sep-2016 CFNIUA name of Upper air gp GRIB data for conf 903
+!      S. Massart    06-Mar-2020 Addition of ECV (reading LOW RES GP UA AN)
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD          , ONLY : GEOMETRY
+USE MODEL_GENERAL_CONF_MOD, ONLY : MODEL_GENERAL_CONF_TYPE
+USE YOMGFL                , ONLY : TGFL
+USE PARKIND1              , ONLY : JPIM, JPRB
+USE YOMHOOK               , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN                , ONLY : NULOUT
+USE YOMCT0                , ONLY : NINTERPINCR, L_OOPS
+USE YOMOPH0               , ONLY : CFNANIG, CFNBGHRGG, CFNFGIG, CFNGGG, CFNIGG, &
+                                 & CFNGG, CFNIUA, CFNPANGG
+USE YOMVAR                , ONLY : LSPINT, LECV
+USE YOM_YGFL              , ONLY : TYPE_GFLD
+USE YOEPHLI               , ONLY : TEPHLI
+USE YOETLDIAG             , ONLY : LTL4DREP
+USE YOMJBECV              , ONLY : YRECVGRIB, YRECVCONFIG, YRECV5, NINTERPECV
+USE YOMJBECPHYSECV        , ONLY : ECPHYS_UPPER_AIR_GP
+USE IOSTREAM_MIX          , ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST, IO_GET,&
+                                 & CLOSE_IOSTREAM, TYPE_IOSTREAM , TYPE_IOREQUEST, CLOSE_IOREQUEST
+USE ALGORITHM_STATE_MOD   , ONLY : L_IN_LOWRES_STATE_CTOR, GET_NUPTRA
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)                ,INTENT(IN)    :: YDGEOMETRY
+TYPE(MODEL_GENERAL_CONF_TYPE), INTENT(INOUT) :: YDML_GCONF
+TYPE(TGFL)                    ,INTENT(INOUT) :: YDGFL
+TYPE(TEPHLI)                  ,INTENT(INOUT) :: YDEPHLI
+TYPE(TYPE_GFLD)               ,INTENT(INOUT) :: YGFL
+INTEGER(KIND=JPIM)            ,INTENT(IN)    :: KFILE
+
+INTEGER(KIND=JPIM) :: IGRIB3D(YGFL%NUMFLDS)
+INTEGER(KIND=JPIM) :: ICL, JGFL, JECV, JSTGLO, ICEND, ISTC, IBL, ICL2, IINCR
+INTEGER(KIND=JPIM) :: JLEV
+INTEGER(KIND=JPIM),ALLOCATABLE :: IGRIBECV(:)
+REAL(KIND=JPRB),   ALLOCATABLE :: ZZGFL(:,:,:,:), ZZECV(:,:,:,:)
+
+CHARACTER :: CLFN*16, CLLABEL*16, CLNUPTRA*1, CINCR*1
+
+LOGICAL :: LLSPINT, LLINCR
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+
+#include "gpnorm_trans.h"
+#include "gpnorm1.intfb.h"
+
+
+#include "gpnorm3.intfb.h"
+
+!     ------------------------------------------------------------------
+
+!*       1.    READ IN GRID-POINT FIELDS FROM GRIB DATA.
+!              -----------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUGRIDUG',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, &
+  & YDMP=>YDGEOMETRY%YRMP,YDDIMECV=>YDML_GCONF%YRDIMECV)
+ASSOCIATE(NCHEM=>YGFL%NCHEM, NDIM=>YGFL%NDIM, NUMFLDS=>YGFL%NUMFLDS, &
+ & YCOMP=>YGFL%YCOMP, &
+ & NPROMA=>YDDIM%NPROMA, NRESOL=>YDDIM%NRESOL, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & NGPTOT=>YDGEM%NGPTOT, &
+ & GFL=>YDGFL%GFL, &
+ & LPHYLIN=>YDEPHLI%LPHYLIN, &
+ & NECVSP_3D=>YDDIMECV%NECVSP_3D, &
+ & NECVGP_3D=>YDDIMECV%NECVGP_3D, &
+ & MECVGRB_3D=>YRECVGRIB%MECVGRB_3D)
+LLINCR  = (KFILE == 6. .OR. KFILE/10 == 6 .OR. KFILE == 7)
+LLSPINT = LSPINT.AND.LLINCR
+
+IF (LPHYLIN .AND. LTL4DREP) THEN
+  YCOMP(1)%LGPINGP=.TRUE.
+ENDIF
+
+ICL = 0
+IF(NUMFLDS > 0 ) THEN
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LGP .AND. YCOMP(JGFL)%NREQIN == 1 .AND. YCOMP(JGFL)%LGPINGP&
+       & .AND. .NOT. LLSPINT) THEN
+      ICL = ICL+1
+      IGRIB3D(ICL) = YCOMP(JGFL)%IGRBCODE
+    ENDIF
+  ENDDO
+  ALLOCATE (ZZGFL(NGPTOT,NFLEVG,ICL,1))
+ENDIF
+
+IF (L_IN_LOWRES_STATE_CTOR()) THEN
+  ! MC: Only relevant for OOPS-IFS
+  ! MC: Don't read upper air gridpoint fields for setting up LOWRES state
+  IF (LHOOK) CALL DR_HOOK('SUGRIDUG',1,ZHOOK_HANDLE)
+  RETURN
+ENDIF
+
+IF (ICL>0) THEN
+  WRITE(UNIT=NULOUT,FMT='(A)')' READ UPPER AIR GRIDPOINT FIELDS FROM GRIB '
+  IF (KFILE == 1) THEN
+    IF (L_OOPS) THEN
+      WRITE(CLNUPTRA,FMT='(I1)') GET_NUPTRA()
+      CLFN=CFNGGG(1:12)//'UA'//'_'//CLNUPTRA
+    ELSE
+      CLFN=CFNGGG(1:12)//'UA'
+    ENDIF
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' LOW RES GP UA TO BE READ FROM FILE ',CLFN
+  ELSEIF (KFILE == 2) THEN
+    CLFN=CFNGG
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' LOW RES GP INCR TO BE READ FROM FILE ',CLFN
+  ELSEIF (KFILE == 6 .OR. KFILE/10 == 6) THEN
+    CLFN=CFNFGIG(1:12)//'UA'
+    IF (KFILE >= 60) THEN
+      IINCR = KFILE - 60
+      WRITE(CINCR,FMT='(I1)') IINCR
+      CLFN=CFNFGIG(1:12)//'UA'//'_'//CINCR
+    ENDIF
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' LOW RES GP UA FG TO BE READ FROM FILE ',CLFN
+  ELSEIF (KFILE == 7) THEN
+    CLFN=CFNANIG(1:12)//'UA'
+    WRITE(UNIT=NULOUT,FMT='(A)') 'YIPPIE'
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' LOW RES GP UA AN TO BE READ FROM FILE ',CLFN
+  ELSEIF (KFILE == 8) THEN
+    CLFN=CFNPANGG(1:13)//'UA'
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' READ UPPER AIR GRIDPOINT FIELDS FROM GRIB ',CLFN
+  ELSEIF (KFILE == 9) THEN
+    CLFN=CFNIUA
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' READ UPPER AIR GRIDPOINT FIELDS FROM GRIB ',CLFN
+  ELSEIF (KFILE == 12) THEN
+    CLFN=CFNBGHRGG(1:13)//'UA'
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' HIGH RES GP UA BG TO BE READ FROM FILE ',CLFN
+  ELSE
+    CLFN=CFNIGG(1:12)//'UA'
+    WRITE(UNIT=NULOUT,FMT='(A,A)')&
+     & ' READ UPPER AIR GRIDPOINT FIELDS FROM GRIB ',CLFN
+  ENDIF
+
+  CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=1)
+  CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+   & KGRIB3D=IGRIB3D(1:ICL),KPROMA=NGPTOT,LDINTERP=LLINCR,&
+   & KTYPE_INTERP=NINTERPINCR)
+  CALL IO_GET(YL_IOSTREAM,YL_IOREQUEST,PR4=ZZGFL(:,:,1:ICL,:))
+  CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+  CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+ENDIF
+
+IF (KFILE == 7 .AND. LECV .AND. NECVGP_3D > 0) THEN
+  !
+  ALLOCATE(IGRIBECV(NECVGP_3D))
+  ALLOCATE (ZZECV(NGPTOT,NFLEVG,NECVGP_3D,1))
+  DO JECV=1,NECVGP_3D
+    IGRIBECV(JECV) = MECVGRB_3D(JECV+NECVSP_3D)
+  ENDDO
+  !
+  CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=1)
+  CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+   & KGRIB3D=IGRIBECV,KPROMA=NGPTOT,LDINTERP=LLINCR,&
+   & KTYPE_INTERP=NINTERPECV)
+  CALL IO_GET(YL_IOSTREAM,YL_IOREQUEST,PR4=ZZECV)
+  CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+  CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+  !
+ENDIF
+
+!*       ADD TO GFL GRIDPOINT
+!        --------------------
+
+CALL GSTATS(1411,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,ICEND,ISTC,JLEV,&
+!$OMP& JGFL,IBL,ICL2)
+DO JSTGLO=1,NGPTOT,NPROMA
+  ICEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+  ISTC  = 1
+  ICL2  = 0
+  DO JGFL=1,NUMFLDS
+  IBL   = (JSTGLO-1)/NPROMA+1
+    IF(YCOMP(JGFL)%LGP) THEN
+      IF (YCOMP(JGFL)%NREQIN == 1) THEN
+        IF (YCOMP(JGFL)%LGPINGP .AND. .NOT. LLSPINT) THEN
+          ICL2 = ICL2+1
+          DO JLEV=1,NFLEVG
+            GFL(ISTC:ICEND,JLEV,YCOMP(JGFL)%MP,IBL) = ZZGFL(JSTGLO+ISTC-1:JSTGLO+ICEND-1,JLEV,ICL2,1)
+          ENDDO
+        ELSEIF (YCOMP(JGFL)%LTRAJIO .AND. .NOT. LLSPINT) THEN
+          GFL(:,:,YCOMP(JGFL)%MP,IBL) = 0.0_JPRB
+        ENDIF
+      ELSE
+        GFL(:,:,YCOMP(JGFL)%MP,IBL) = 0.0_JPRB
+      ENDIF
+    ENDIF
+  ENDDO
+ENDDO
+!$OMP END PARALLEL DO
+CALL GSTATS(1411,1)
+IF (KFILE == 7 .AND. LECV .AND. NECVGP_3D > 0) THEN
+  DO JECV=1,NECVGP_3D
+    WRITE(CLLABEL,'(A10,I6.6)')'ECV FG 3D ', IGRIBECV(JECV)
+    CALL GPNORM1(YDGEOMETRY,YRECV5%RGPECV3D(JECV,:,:,:),NFLEVG,.TRUE.,CLLABEL)
+  ENDDO
+  !
+  DO JECV=1,NECVGP_3D
+    IF (TRIM(YRECVCONFIG%YRCONFIG(JECV)%CSETDESC) ==  'EC_PHYS') THEN 
+      CALL ECPHYS_UPPER_AIR_GP(YDGEOMETRY,ZZECV(:,:,JECV,1),JECV) 
+    ELSEIF (TRIM(YRECVCONFIG%YRCONFIG(JECV)%CSETDESC) /=  'JB_HYBRID_ACV') THEN 
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,ICEND,ISTC,JLEV,&
+!$OMP& IBL)
+      DO JSTGLO=1,NGPTOT,NPROMA
+        ICEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+        ISTC  = 1
+        IBL   = (JSTGLO-1)/NPROMA+1
+        DO JLEV=1,NFLEVG
+          YRECV5%RGPECV3D(JECV,ISTC:ICEND,JLEV,IBL) = YRECV5%RGPECV3D(JECV,ISTC:ICEND,JLEV,IBL) &
+            & + ZZECV(JSTGLO+ISTC-1:JSTGLO+ICEND-1,JLEV,JECV,1)
+        ENDDO
+      ENDDO
+!$OMP END PARALLEL DO
+    ENDIF
+  ENDDO
+  DEALLOCATE (ZZECV)
+  !
+  DO JECV=1,NECVGP_3D
+    WRITE(CLLABEL,'(A10,I6.6)')'ECV 4V 3D ', IGRIBECV(JECV)
+    CALL GPNORM1(YDGEOMETRY,YRECV5%RGPECV3D(JECV,:,:,:),NFLEVG,.TRUE.,CLLABEL)
+  ENDDO
+  !
+  DEALLOCATE(IGRIBECV)
+  !
+ENDIF
+
+IF (ALLOCATED(ZZGFL)) DEALLOCATE (ZZGFL)
+
+WRITE(NULOUT,'(A)') ' SUGRIDUG : STATISTICS FOR ALL GFL FIELDS'
+DO JGFL=1,NUMFLDS
+  IF(YCOMP(JGFL)%LGP) THEN
+    CALL GPNORM3(YDGEOMETRY,GFL,NDIM,JGFL,YCOMP(JGFL)%CNAME)
+  ENDIF
+ENDDO
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUGRIDUG',1,ZHOOK_HANDLE)
+
+END SUBROUTINE SUGRIDUG

@@ -1,0 +1,52 @@
+#!/bin/bash
+
+do_grep() {
+  # Wrap grep so that finding nothing isn't fatal under "set -e"
+  if ! grep "$@"; then
+    local rc=$?
+    [[ $rc -le 1 ]] || return $rc
+  fi
+}
+
+grep_cvg() {
+  do_grep 'GREPGRAD - ' "$@"
+  do_grep 'GREPMIN' "$@"
+  do_grep 'congrad: ' "$@"
+  do_grep -A6 'Summary of Lanczos iteration' "$@"
+  do_grep -A4 'diagnose quality of the minimization' "$@"
+}
+
+LATEST_CVG_FILE=CVG_DIAGS
+SAVED_CVG_FILE=SAVED_CVG_DIAGS
+
+case "${IFS_TEST_BITIDENTICAL:-0}" in
+  2|init)
+    grep_cvg NODE.* >"$SAVED_CVG_FILE"
+    if [[ -s $SAVED_CVG_FILE ]]; then
+      echo "Convergence diagnostics generated and saved as $SAVED_CVG_FILE"
+    else
+      echo "No convergence diagnostics produced"
+      exit 1
+    fi
+    ;;
+  1|true|yes|on|check)
+    grep_cvg NODE.* >"$LATEST_CVG_FILE"
+    if [[ ! -s $SAVED_CVG_FILE ]]; then
+      echo "No $SAVED_CVG_FILE to check against"
+      exit 1
+    fi
+    if diff -qs "$LATEST_CVG_FILE" "$SAVED_CVG_FILE"; then
+      echo "Convergence test PASSED"
+    else
+      echo "Convergence test FAILED"
+      exit 1
+    fi
+    ;;
+  0|false|no|off)
+    ;;
+  *)
+    echo "Unknown IFS_TEST_BITIDENTICAL value"
+    exit 1
+    ;;
+esac
+

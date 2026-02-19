@@ -1,0 +1,736 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUSPECB(YDGEOMETRY,YDML_GCONF,YDDYN,KFILE,YDSP)
+
+!**** *SUSPECB*  - Initialize the spectral fields of barotropic model.
+
+!     Purpose.
+!     --------
+!           Initialize the spectral fields of the model (barotropic).
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUSPECB(....)*
+
+!        Explicit arguments :
+!        --------------------
+!        KFILE : an indicator for which spectral file is to be read
+!               KFILE = 0 the CFNISH file is read
+!               KFILE = 1 the CFNGSH file is read
+!               KFILE = 2 the CFNRF file is read
+!               KFILE = 3 the CFNBS file is read
+!               YDSP - spectral fields
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        FAITOU,FADIES,FACILE,FAIRME,LFIMST,LFILAF,
+!        CHIEN,BALADS
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!        Note de travail ARPEGE Nr 12 et 17
+
+!     Author.
+!     -------
+!      Mats Hamrud and Philippe Courtier  *ECMWF*
+!      Original : 91-11-14
+
+!     Modifications.
+!     --------------
+!      R. El Khatib : 01-08-07 Pruning options
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      D. Paradis & R. El Khatib : 04-07-22 GRIBEX
+!      Modified : 06-02-06 C.Temperton (bugfixes for Williamson et al. tests)
+!      K. Yessad (Aug 2009): prune TRAGEO.
+!      K. Yessad (Jan 2010): externalisation of group EGGX in XRD/IFSAUX
+!      E.Holm     26-01-11 Use global parameters JPMXLE, JPMXGL
+!      T.Wilhelmsson Use IOSTREAM when reading GRIB
+!      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!      K. Yessad (July 2014): Move some variables.
+!      P. Marguinaud  (Oct 2014) Use FACILO
+!      R. El Khatib 08-Dec-2015 Interoperability GRIB2 vs FA
+!     ------------------------------------------------------------------
+
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD           , ONLY : GEOMETRY
+USE PARKIND1               , ONLY : JPIM, JPRB, JPRD
+USE YOMHOOK                , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN                 , ONLY : NULOUT, NINMSH, NINISH, NFGISH, NBIAS, NULNAM
+USE YOMCST                 , ONLY : RDAY, RG, R, RPI, RA, ROMEGA
+USE YOMVERT                , ONLY : VP00
+USE YOMCT0                 , ONLY : LR2D, LRVEQ, NQUAD, N2DINI
+USE YOMARG                 , ONLY : NGRIBFILE
+USE YOMCT3                 , ONLY : NSTEP
+USE YOMCT1                 , ONLY : LRFILAF
+USE YOMRIP0                , ONLY : NINDAT
+USE YOMOPH0                , ONLY : CFNBS, CFNGSH, CFNISH, CFNRF, CNMCA, LINC
+USE YOMDYN                 , ONLY : TDYN
+USE YOMTAG                 , ONLY : MTAGDISTSP
+USE YOMMP0                 , ONLY : MYPROC, MYSETW
+USE YOMVODCST              , ONLY : CSTVO, CSTDIV
+USE YOMSWE                 , ONLY : ALPHASWE, GMUCENSWE
+USE IOSTREAM_MIX           , ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST, IO_GET,&
+ &                                  CLOSE_IOSTREAM, TYPE_IOSTREAM , TYPE_IOREQUEST, CLOSE_IOREQUEST
+USE SPECTRAL_FIELDS_MOD    , ONLY: SPECTRAL_FIELD, ASSIGNMENT(=)
+USE MPL_MODULE
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)               ,INTENT(INOUT) :: YDGEOMETRY
+TYPE(TDYN)                   ,INTENT(IN)    :: YDDYN
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(IN)    :: YDML_GCONF
+INTEGER(KIND=JPIM)           ,INTENT(IN)    :: KFILE 
+TYPE(SPECTRAL_FIELD)         ,INTENT(INOUT) :: YDSP
+
+!     ------------------------------------------------------------------
+
+REAL(KIND=JPRB) :: ZSPVOR(YDGEOMETRY%YRDIMV%NFLSUR,YDGEOMETRY%YRDIM%NSPEC2), ZSPSP (YDGEOMETRY%YRDIM%NSPEC2),&
+ &  ZSPEC (YDGEOMETRY%YRDIM%NSPEC2)
+REAL(KIND=JPRB),ALLOCATABLE :: ZGPFIELDS(:,:,:)
+REAL(KIND=JPRB),ALLOCATABLE :: ZU(:), ZV(:), ZDIV(:)
+REAL(KIND=JPRB) :: ZDIVE(1,YDGEOMETRY%YRDIM%NSPEC2),ZVORE(1,YDGEOMETRY%YRDIM%NSPEC2)
+REAL(KIND=JPRB) :: ZSCALAR(2,YDGEOMETRY%YRDIM%NSPEC2)
+
+INTEGER(KIND=JPIM) :: IDATEF(11)
+
+CHARACTER :: CLFN*16,CLFNRF*16,CLR1*5,CLR2*4
+
+#include "fcttim.func.h"
+
+INTEGER(KIND=JPIM) :: IVSETSC(1)
+INTEGER(KIND=JPIM) :: IINC, ILEV, IM, IN, INBARI, INDAT, INM, IOMASTER, IRCV
+INTEGER(KIND=JPIM) :: IREP, ISEFRE, ITAILTAG, IUNTIN, JJ, JN, JNM, JSE, J, JINT
+INTEGER(KIND=JPIM) :: JKGLO, IEND, IBL
+
+LOGICAL :: LLFICP, LLMORE
+
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+
+REAL(KIND=JPRB) :: ZZRCORI (YDGEOMETRY%YRGEM%NGPTOT)
+REAL(KIND=JPRB) :: Z12DAY, ZRADI, ZTC, ZSINTC, ZCOSTC, ZLC, ZSINLC, ZCOSLC, ZREFRAD
+REAL(KIND=JPRB) :: ZU0, ZGH0, ZGHS0, ZEPS, ZDSTRET
+REAL(KIND=JPRB) :: ZXE, ZTB, ZTE, ZSILAT, ZLAT, ZCOLAT, ZSILON, ZLON, ZX, ZXEMX
+REAL(KIND=JPRB) :: ZBX, ZBXE, ZUP, ZINTLAP, ZLATP
+REAL(KIND=JPRB) :: ZATH, ZBTH, ZCTH, ZO, ZOK, ZF, ZSIN, ZCOS, ZR, ZPH0
+INTEGER(KIND=JPIM) :: JMLOC, JIR 
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!       ---------------------------------------------------------------------
+
+#include "namswe.nam.h"
+
+#include "dir_trans.h"
+#include "chien.h"
+#include "facilo.h"
+
+#include "abor1.intfb.h"
+#include "balads.intfb.h"
+#include "posnam.intfb.h"
+#include "lacone.intfb.h"
+#include "speuv.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUSPECB',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV, &
+ & YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP,  YDGSGEOM=>YDGEOMETRY%YRGSGEOM, &
+ & YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB, &
+ & YDLAP=>YDGEOMETRY%YRLAP,  YDVAB=>YDGEOMETRY%YRVAB, YDVETA=>YDGEOMETRY%YRVETA,  &
+ & YDVFE=>YDGEOMETRY%YRVFE, YDSTA=>YDGEOMETRY%YRSTA, YDCSGLEG=>YDGEOMETRY%YRCSGLEG,  &
+ & YDCSGEOM=>YDGEOMETRY%YRCSGEOM, &
+  & YDCSGEOM_NB=>YDGEOMETRY%YRCSGEOM_NB,  YDSPGEOM=>YDGEOMETRY%YSPGEOM, YDRIP=>YDML_GCONF%YRRIP,  &
+  & YDDIMF=>YDML_GCONF%YRDIMF)
+
+ASSOCIATE(NDGENG=>YDDIM%NDGENG, NDGLG=>YDDIM%NDGLG, NDGSAG=>YDDIM%NDGSAG, &
+ & NDLON=>YDDIM%NDLON, NGPBLKS=>YDDIM%NGPBLKS, NPROMA=>YDDIM%NPROMA, &
+ & NRESOL=>YDDIM%NRESOL, NSMAX=>YDDIM%NSMAX, NSPEC2=>YDDIM%NSPEC2, &
+ & NSPEC2G=>YDDIM%NSPEC2G, NUMP=>YDDIM%NUMP, &
+ & NF3D=>YDDIMF%NF3D, NFD2D=>YDDIMF%NFD2D,NGRBSP3=>YDDIMF%NGRBSP3,NGRBSP2=>YDDIMF%NGRBSP2,  &
+ & NFLEVG=>YDDIMV%NFLEVG, NFLSUR=>YDDIMV%NFLSUR, &
+ & REFGEO=>YDDYN%REFGEO, &
+ & NGPTOT=>YDGEM%NGPTOT, NHTYP=>YDGEM%NHTYP, NLOEN=>YDGEM%NLOEN, &
+ & NMEN=>YDGEM%NMEN, NSTTYP=>YDGEM%NSTTYP, RC2M1=>YDGEM%RC2M1, &
+ & RC2P1=>YDGEM%RC2P1, RLOCEN=>YDGEM%RLOCEN, RMUCEN=>YDGEM%RMUCEN, &
+ & RSTRET=>YDGEM%RSTRET, &
+ & MYMS=>YDLAP%MYMS, NASM0=>YDLAP%NASM0, NVALUE=>YDLAP%NVALUE, &
+ & RLAPDI=>YDLAP%RLAPDI, &
+ & NBSETLEV=>YDMP%NBSETLEV, NBSETSP=>YDMP%NBSETSP, NPROCM=>YDMP%NPROCM, &
+ & NPSP=>YDMP%NPSP, &
+ & TSTEP=>YDRIP%TSTEP)
+!     ------------------------------------------------------------------
+
+!        0.    RESET ARRAYS
+!              ------------
+
+IF (NFLEVG /= 1) CALL ABOR1('SUSPECB: NFLEVG /= 1')
+IF(NSTTYP == 2 .OR. ABS(RSTRET-1.0_JPRB) > 1.E-14_JPRB)&
+ & CALL ABOR1('SUSPECB:NO STRETCHING')
+
+!  Define the PE responsible for the reading of GRIB data
+
+IOMASTER=1
+LLMORE=.TRUE.
+IRCV=IOMASTER
+ITAILTAG=MTAGDISTSP+999
+
+ALLOCATE(YDGEOMETRY%YROROG(NGPBLKS))
+DO JKGLO=1,NGPTOT,NPROMA
+  IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
+  IBL=(JKGLO-1)/NPROMA+1
+  ALLOCATE(YDGEOMETRY%YROROG(IBL)%OROG (1:IEND))
+  ALLOCATE(YDGEOMETRY%YROROG(IBL)%OROGL(1:IEND))
+  ALLOCATE(YDGEOMETRY%YROROG(IBL)%OROGM(1:IEND))
+  YDGEOMETRY%YROROG(IBL)%OROG (1:IEND)=0.0_JPRB
+  YDGEOMETRY%YROROG(IBL)%OROGL(1:IEND) = 0.0_JPRB
+  YDGEOMETRY%YROROG(IBL)%OROGM(1:IEND) = 0.0_JPRB
+ENDDO
+
+DO JJ=1,NSPEC2
+  YDSP%VOR(1,JJ) = 0.0_JPRB
+  YDSP%DIV(1,JJ) = 0.0_JPRB
+  IF (NPSP==1) THEN
+    YDSP%SP(JJ)   = 0.0_JPRB
+    YDSP%OROG(JJ) = 0.0_JPRB
+  ENDIF
+ENDDO
+
+!      -----------------------------------------------------------
+
+!*       1.    All 2-D MODELS.
+!              ---------------
+
+IF (LR2D) THEN
+
+!          1.2. INITIALIZE 2-D FIELDS WITH ROSSBY-HAURWITZ WAVE
+!               - - - - - - - - - - - - - - - - - - - - - - -
+
+  IF(MOD(N2DINI,10) == 1)THEN
+
+    WRITE(NULOUT,*) 'SUSPECB : SHALLOW-WATER FIELDS ARE',&
+     & ' INITIALIZED WITH ARTIFICIAL INITIAL CONDITIONS'  
+
+    IF(N2DINI == 1) THEN
+
+      ! -- Rossby-Haurwitz wave
+      WRITE(NULOUT,*) ' Rossby-Hurwitz wave'
+
+      DO JJ=1,NSPEC2
+        ZSPVOR(1,JJ)=0.0_JPRB
+        ZSPEC(JJ)=0.0_JPRB
+        ZSPSP(JJ)=0.0_JPRB
+      ENDDO
+
+      ! The initialisation of the RHW wave in spectral space requires to divide by the correct normalisation of the
+      ! Legendre polynomials sqrt((2*IN+1)*(IN-IM)!/(IN+IM)!). Furthermore, 945 == (2*IM+1)!! (see formula 9 in Wedi et al 2013) 
+      ! from the computation of the associated P^m_(m+1) polynomial. Finally, the factor 0.5 needs to be added for IM<>0 
+      ! components due to the integration over the longitudinal direction (see formula (3) in Wedi et. al 2013).
+      IN=5
+      IM=4
+
+      ! * DEFINE (4,5) WAVE (ON REAL SPHERE)
+      IF (MYSETW == NPROCM(IM)) THEN
+        ZSPVOR(1,NASM0(IM)+(IN-IM)*2)=-0.5_JPRB*(7.848E-6_JPRB/945._JPRB)*REAL(IM*IM+3*IM+2,JPRB)/SQRT(11._JPRB/362880._JPRB)
+        ZSPEC(NASM0(IM)+(IN-IM)*2)=-0.5_JPRB*(7.848E-6_JPRB/945._JPRB)*REAL(IM*IM+3*IM+2,JPRB)/SQRT(11._JPRB/362880._JPRB)
+      ENDIF
+      ! * DEFINE (0,1) WAVE (ON REAL SPHERE)
+      IF (MYSETW == NPROCM(0)) THEN
+        ZSPVOR(1,NASM0(0)+2)=2._JPRB*7.848E-6_JPRB/SQRT(3._JPRB)
+        ZSPEC(NASM0(0)+2)=2._JPRB*7.848E-6_JPRB/SQRT(3._JPRB)
+      ENDIF
+
+
+      ! special
+      ! use grid-point initialisation for reference and for the geopotential initialisation 
+
+      ALLOCATE(ZGPFIELDS(NGPTOT,4,1))
+      ZO=7.848E-6_JPRB
+      ZOK=7.848E-6_JPRB
+      ZPH0 = REFGEO
+      ZF = 2._JPRB*ROMEGA
+      ZR = REAL(IM,JPRB)
+
+      DO J=1,NGPTOT
+         
+        ZCOS = SQRT(1._JPRB - YDGSGEOM_NB%GEMU(J)*YDGSGEOM_NB%GEMU(J))
+        ZSIN = YDGSGEOM_NB%GEMU(J)
+
+        ZATH =   ZO*0.5_JPRB*(ZF+ZO)*(ZCOS**2)&
+         &   +0.25_JPRB*(ZOK**2)*(ZCOS**(2._JPRB*ZR))*( (ZR+1)*(ZCOS**2)&
+         &   +REAL(2*(IM**2)-IM-2,JPRB)-2._JPRB*(ZR**2)/(ZCOS**2) )
+
+        ZBTH = (ZF+2._JPRB*ZO)*ZOK/REAL((IM+1)*(IM+2),JPRB)*ZCOS**ZR&
+         &       *( REAL(IM**2+2*IM+2,JPRB)-((ZR+1_JPRB)*ZCOS)**2 )
+
+        ZCTH = 0.25_JPRB*(ZOK**2)*(ZCOS**(2._JPRB*ZR))*( (ZR+1._JPRB)*(ZCOS**2) - (ZR+2._JPRB) )
+
+        ! U
+        ZGPFIELDS(J,1,1) = RA*ZO*ZCOS+RA*ZOK*COS(ZR*YDGSGEOM_NB%GELAM(J))&
+         & *(ZCOS**(ZR-1._JPRB))*(ZR*(ZSIN**2) - ZCOS**2)
+        ! V
+        ZGPFIELDS(J,2,1) =-RA*ZOK*ZR*ZCOS**(ZR-1._JPRB)&
+         & *ZSIN*SIN(ZR*YDGSGEOM_NB%GELAM(J))
+
+        ! Height
+        ZGPFIELDS(J,3,1) = ZPH0 + RA**2*(ZATH+ZBTH*COS(ZR*YDGSGEOM_NB%GELAM(J))&
+         &       +ZCTH*COS(2._JPRB*ZR*YDGSGEOM_NB%GELAM(J)))
+
+        ! try vorticity formula
+        ZGPFIELDS(J,4,1) = 2._JPRB*ZO*ZSIN -(ZR+1._JPRB)*(ZR+2._JPRB)*ZOK*ZSIN*(ZCOS**ZR)*COS(ZR*YDGSGEOM_NB%GELAM(J)) 
+
+      ENDDO
+      IVSETSC(1) = NBSETSP
+      ! put to spectral space
+      CALL DIR_TRANS(PSPVOR=ZVORE,PSPDIV=ZDIVE,&
+       &PSPSCALAR=ZSCALAR,KRESOL=NRESOL,KPROMA=NGPTOT,KVSETUV=NBSETLEV,&
+       &PGP=ZGPFIELDS)
+
+      DEALLOCATE(ZGPFIELDS)      
+
+! testing the coefficients
+      DO JMLOC=1,NUMP
+         IM=MYMS(JMLOC)
+         DO JIR=0,MIN(1,IM)
+            DO JN=IM,NSMAX
+               INM=NASM0(IM)+(JN-IM)*2+JIR
+               IF( ABS(ZVORE(1,INM)) > 1.E-10  ) THEN
+                  WRITE(NULOUT,*) ' other ', JN, IM, INM, NASM0(0)+2, NASM0(IM)+(JN-IM)*2, ZVORE(1,INM),&
+                       & ZSCALAR(2,INM), ZSPVOR(1,INM)
+      ENDIF
+            ENDDO
+         ENDDO
+      ENDDO
+
+
+
+      ! * SOLVE LINEAR BALANCE EQUATION ON REAL SPHERE.
+      CALL BALADS(YDLAP,.FALSE.,1.0_JPRB/RG,1,1,NUMP,NSMAX,NASM0,NSPEC2,ZSPEC,ZSPSP)
+
+      IF (NPSP==1) THEN
+      DO JJ=1,NSPEC2
+        ZSPSP(JJ)=ZSPSP(JJ)*RG
+      ENDDO
+
+      IF (MYSETW == NPROCM(0)) THEN
+         WRITE(NULOUT,*) ' mean GEOP:',ZSCALAR(1,NASM0(0))
+         ZSPSP(NASM0(0))=ZSCALAR(1,NASM0(0))
+      ENDIF
+
+      DO JMLOC=1,NUMP
+        IM = MYMS(JMLOC)
+        INM=NASM0(IM)+(NSMAX-IM)*2
+        ZSPSP(INM  )=0.0_JPRB
+        ZSPSP(INM+1)=0.0_JPRB
+      ENDDO
+        DO JSE=1,NSPEC2
+          YDSP%SP(JSE)=ZSPSP(JSE)
+        ENDDO
+      ENDIF
+
+      DO JSE=1,NSPEC2
+        YDSP%VOR(1,JSE)=ZSPVOR(1,JSE)
+      ENDDO
+
+    ELSEIF(N2DINI == 11) THEN
+
+      ! -- Advection of cosine bell, including direction over the pole
+      WRITE(NULOUT,*) ' Advection of a cosine bell'
+      ALLOCATE(CSTVO(1,NSPEC2))
+      ALLOCATE(CSTDIV(1,NSPEC2))
+      ALLOCATE(ZGPFIELDS(NGPTOT,4,1))
+      Z12DAY=12._JPRB*RDAY
+      ALPHASWE=0.0_JPRB
+      CALL POSNAM(NULNAM,'NAMSWE')
+      READ(NULNAM,NAMSWE)
+      WRITE(NULOUT,*) ' Angle ALPHA=',ALPHASWE,' degrees'
+      ALPHASWE=ALPHASWE*RPI/180.0_JPRB
+      ZU0=2.0_JPRB*RPI*RA/Z12DAY
+      ZLC=3.0_JPRB*RPI*0.5_JPRB
+      ZTC=0.0_JPRB
+      ZCOSTC=COS(ZTC)
+      ZSINTC=SIN(ZTC)
+      ZCOSLC=COS(ZLC)
+      ZSINLC=SIN(ZLC)
+      DO J=1,NGPTOT
+        ZGPFIELDS(J,1,1)=ZU0*(YDGSGEOM_NB%GSQM2(J)*COS(ALPHASWE)+&
+          &YDGSGEOM_NB%GEMU(J)*YDGSGEOM_NB%GECLO(J)*SIN(ALPHASWE))
+        ZGPFIELDS(J,2,1)=-ZU0*YDGSGEOM_NB%GESLO(J)*SIN(ALPHASWE)
+        ZRADI=RA*ACOS(ZSINTC*YDGSGEOM_NB%GEMU(J)+ZCOSTC*&
+          &YDGSGEOM_NB%GSQM2(J)*COS(YDGSGEOM_NB%GELAM(J)-ZLC))
+        IF(ZRADI < RA/3.0_JPRB) THEN
+          ZGPFIELDS(J,3,1)=500.0_JPRB*(1.0_JPRB+COS(3.0_JPRB*RPI*ZRADI/RA))*RG
+        ELSE
+          ZGPFIELDS(J,3,1)=0.0_JPRB
+        ENDIF
+      ENDDO
+      IVSETSC(1) = NBSETSP
+      CALL DIR_TRANS(PSPVOR=ZSPVOR,PSPDIV=ZDIVE,&
+        &PSPSCALAR=ZSCALAR,KRESOL=NRESOL,KPROMA=NGPTOT,KVSETUV=NBSETLEV,&
+        &PGP=ZGPFIELDS)
+      DO JSE=1,NSPEC2
+        YDSP%VOR(1,JSE)=ZSPVOR(1,JSE)
+        YDSP%DIV(1,JSE)=ZDIVE(1,JSE)
+        IF (NPSP==1) YDSP%SP(JSE)=ZSCALAR(1,JSE)
+        CSTVO(1,JSE)=ZSPVOR(1,JSE)
+        CSTDIV(1,JSE)=ZDIVE(1,JSE)
+      ENDDO
+
+    ELSEIF(N2DINI == 21) THEN
+
+      ! -- Global steady state non-linear zonal geostrophic flow
+      WRITE(NULOUT,*) ' Global steady state non-linear zonal geostrophic flow'
+      ALLOCATE(ZGPFIELDS(NGPTOT,4,1))
+      Z12DAY=12._JPRB*RDAY
+      ALPHASWE=0.0_JPRB
+      CALL POSNAM(NULNAM,'NAMSWE')
+      READ(NULNAM,NAMSWE)
+      WRITE(NULOUT,*) ' Angle ALPHA=',ALPHASWE,' degrees'
+      ALPHASWE=ALPHASWE*RPI/180.0_JPRB
+      GMUCENSWE=SIN(0.5_JPRB*RPI-ALPHASWE)
+      ZU0=2.0_JPRB*RPI*RA/Z12DAY
+      ZGH0=2.94E4_JPRB
+      DO J=1,NGPTOT
+        ZGPFIELDS(J,1,1)=ZU0*(YDGSGEOM_NB%GSQM2(J)*COS(ALPHASWE)+&
+          &YDGSGEOM_NB%GEMU(J)*YDGSGEOM_NB%GECLO(J)*SIN(ALPHASWE))
+        ZGPFIELDS(J,2,1)=-ZU0*YDGSGEOM_NB%GESLO(J)*SIN(ALPHASWE)
+        ZGPFIELDS(J,3,1)=ZGH0-(RA*ROMEGA*ZU0+ZU0*ZU0*0.5_JPRB)*&
+          &(-YDGSGEOM_NB%GECLO(J)*YDGSGEOM_NB%GSQM2(J)*SIN(ALPHASWE)+&
+          &YDGSGEOM_NB%GEMU(J)*COS(ALPHASWE))**2
+        ZZRCORI(J)=2.0_JPRB*ROMEGA*(-YDGSGEOM_NB%GECLO(J)*YDGSGEOM_NB%GSQM2(J)*&
+          &SIN(ALPHASWE)+YDGSGEOM_NB%GEMU(J)*COS(ALPHASWE))
+      ENDDO
+      DO JKGLO=1,NGPTOT,NPROMA
+        IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
+        IBL=(JKGLO-1)/NPROMA+1
+        YDGSGEOM(IBL)%RCORI(1:IEND)=ZZRCORI(JKGLO:JKGLO+IEND-1)
+      ENDDO
+      ZDSTRET=2.0_JPRB*RSTRET
+      CALL LACONE(NGPTOT,1,NGPTOT,1,1,ROMEGA,ZDSTRET,RC2M1,RC2P1,GMUCENSWE,&
+        &RA,RPI,YDGSGEOM_NB%GELAM,YDGSGEOM_NB%GELAT,YDGSGEOM_NB%GOMVRL,YDGSGEOM_NB%GOMVRM)
+      IVSETSC(1) = NBSETSP
+      CALL DIR_TRANS(PSPVOR=ZSPVOR,PSPDIV=ZDIVE,&
+        &PSPSCALAR=ZSCALAR,KRESOL=NRESOL,KPROMA=NGPTOT,KVSETUV=NBSETLEV,&
+        &PGP=ZGPFIELDS)
+      DO JSE=1,NSPEC2
+        YDSP%VOR(1,JSE)=ZSPVOR(1,JSE)
+        YDSP%DIV(1,JSE)=ZDIVE(1,JSE)
+        IF (NPSP==1) YDSP%SP(JSE)=ZSCALAR(1,JSE)
+      ENDDO
+
+    ELSEIF(N2DINI == 31) THEN
+
+      WRITE(NULOUT,*) ' Steady state nonlinear zonal geostrophic flow'
+      WRITE(NULOUT,*) '     with compact support'
+      ALLOCATE(ZGPFIELDS(NGPTOT,4,1))
+      Z12DAY=12._JPRB*RDAY
+      ALPHASWE=0.0_JPRB
+      CALL POSNAM(NULNAM,'NAMSWE')
+      READ(NULNAM,NAMSWE)
+      WRITE(NULOUT,*) ' Angle ALPHA=',ALPHASWE,' degrees'
+      ALPHASWE=ALPHASWE*RPI/180.0_JPRB
+      GMUCENSWE=SIN(0.5_JPRB*RPI-ALPHASWE)
+      ZXE=0.3_JPRB
+      ZU0=2.0_JPRB*RPI*RA/Z12DAY
+      Z12DAY=12._JPRB*RDAY
+      ZTB=-RPI/6.0_JPRB
+      ZTE=RPI*0.5_JPRB
+      ZGH0=2.94E4_JPRB
+      DO J=1,NGPTOT
+        ZSILAT=YDGSGEOM_NB%GEMU(J)*COS(ALPHASWE)-YDGSGEOM_NB%GSQM2(J)*&
+          &YDGSGEOM_NB%GECLO(J)*SIN(ALPHASWE)
+        ZLAT=ASIN(ZSILAT)
+        ZCOLAT=SQRT(1.0_JPRB-ZSILAT*ZSILAT)
+        ZSILON=YDGSGEOM_NB%GESLO(J)*YDGSGEOM_NB%GSQM2(J)/ZCOLAT
+        ZLON=ASIN(ZSILON)
+        IF(COS(ALPHASWE)*YDGSGEOM_NB%GECLO(J)*YDGSGEOM_NB%GSQM2(J)+&
+          &SIN(ALPHASWE)*YDGSGEOM_NB%GEMU(J) < 0.0_JPRB) THEN
+          ZLON=RPI-ZLON
+        ENDIF
+        ZX=ZXE*(ZLAT-ZTB)/(ZTE-ZTB)
+        ZXEMX=ZXE-ZX
+        IF(ZX <= 0.0_JPRB) THEN
+          ZBX=0.0_JPRB
+        ELSE
+          ZBX=EXP(-1.0_JPRB/ZX)
+        ENDIF
+        IF(ZXEMX <= 0.0_JPRB) THEN
+          ZBXE=0.0_JPRB
+        ELSE
+          ZBXE=EXP(-1.0_JPRB/ZXEMX)
+        ENDIF
+        ZUP=ZU0*ZBX*ZBXE*EXP(4.0_JPRB/ZXE)
+        ZGPFIELDS(J,2,1)=-ZUP*SIN(ALPHASWE)*ZSILON/YDGSGEOM_NB%GSQM2(J)
+        ZGPFIELDS(J,1,1)=(ZGPFIELDS(J,2,1)*YDGSGEOM_NB%GEMU(J)*&
+          &YDGSGEOM_NB%GESLO(J)+ZUP*COS(ZLON))/YDGSGEOM_NB%GECLO(J)
+        ZGPFIELDS(J,3,1)=ZGH0
+        ZINTLAP=RPI/1000.0_JPRB
+        DO JINT=1,1000
+          ZLATP=-RPI/2+(JINT-1)*ZINTLAP
+          IF(ZLATP <= ZLAT) THEN
+            ZX=ZXE*(ZLATP-ZTB)/(ZTE-ZTB)
+            ZXEMX=ZXE-ZX
+            IF(ZX <= 0.0_JPRB) THEN
+              ZBX=0.0_JPRB
+            ELSE
+              ZBX=EXP(-1.0_JPRB/ZX)
+            ENDIF
+            IF(ZXEMX <= 0.0_JPRB) THEN
+              ZBXE=0.0_JPRB
+            ELSE
+              ZBXE=EXP(-1.0_JPRB/ZXEMX)
+            ENDIF
+            ZUP=ZU0*ZBX*ZBXE*EXP(4.0_JPRB/ZXE)
+            ZGPFIELDS(J,3,1)=ZGPFIELDS(J,3,1)-RA*(2.0_JPRB*ROMEGA*SIN(ZLATP)&
+              &+ZUP*TAN(ZLATP)/RA)*ZUP*ZINTLAP
+          ENDIF
+        ENDDO
+        ZZRCORI(J)=2.0_JPRB*ROMEGA*(-YDGSGEOM_NB%GECLO(J)*YDGSGEOM_NB%GSQM2(J)*&
+          &SIN(ALPHASWE)+YDGSGEOM_NB%GEMU(J)*COS(ALPHASWE))
+      ENDDO
+      DO JKGLO=1,NGPTOT,NPROMA
+        IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
+        IBL=(JKGLO-1)/NPROMA+1
+        YDGSGEOM(IBL)%RCORI(1:IEND)=ZZRCORI(JKGLO:JKGLO+IEND-1)
+      ENDDO
+      ZDSTRET=2.0_JPRB*RSTRET
+      CALL LACONE(NGPTOT,1,NGPTOT,1,1,ROMEGA,ZDSTRET,RC2M1,RC2P1,GMUCENSWE,&
+        &RA,RPI,YDGSGEOM_NB%GELAM,YDGSGEOM_NB%GELAT,YDGSGEOM_NB%GOMVRL,YDGSGEOM_NB%GOMVRM)
+      IVSETSC(1) = NBSETSP
+      CALL DIR_TRANS(PSPVOR=ZSPVOR,PSPDIV=ZDIVE,&
+        &PSPSCALAR=ZSCALAR,KRESOL=NRESOL,KPROMA=NGPTOT,KVSETUV=NBSETLEV,&
+        &PGP=ZGPFIELDS)
+      DO JSE=1,NSPEC2
+        YDSP%VOR(1,JSE)=ZSPVOR(1,JSE)
+        YDSP%DIV(1,JSE)=ZDIVE(1,JSE)
+        IF (NPSP==1) YDSP%SP(JSE)=ZSCALAR(1,JSE)
+      ENDDO
+
+    ELSEIF(N2DINI == 41) THEN
+
+      WRITE(NULOUT,*) ' Forced non-linear system with a translating low'
+      WRITE(NULOUT,*) ' Not yet implemented'
+      CALL ABOR1(' Test No 4 not yet implemented')
+
+    ELSEIF(N2DINI == 51) THEN
+
+      WRITE(NULOUT,*) ' Zonal flow over an isolated mountain'
+      ALLOCATE(ZGPFIELDS(NGPTOT,4,1))
+      Z12DAY=12._JPRB*RDAY
+      !  ZONAL FLOW => ALPHA=0.0
+      ALPHASWE=0.0_JPRB
+      ALPHASWE=ALPHASWE*RPI/180.0_JPRB
+      GMUCENSWE=SIN(0.5_JPRB*RPI-ALPHASWE)
+      ZU0=20.0_JPRB
+      ZGH0=5.84476E4_JPRB
+      ZGHS0=1.96133E4_JPRB
+      ZLC=3.0_JPRB*RPI*0.5_JPRB
+      ZTC=RPI/6.0_JPRB
+      ZREFRAD=RPI/9.0_JPRB
+      DO J=1,NGPTOT
+        ZGPFIELDS(J,1,1)=ZU0*(YDGSGEOM_NB%GSQM2(J)*COS(ALPHASWE)+&
+          &YDGSGEOM_NB%GEMU(J)*YDGSGEOM_NB%GECLO(J)*SIN(ALPHASWE))
+        ZGPFIELDS(J,2,1)=-ZU0*YDGSGEOM_NB%GESLO(J)*SIN(ALPHASWE)
+        ZGPFIELDS(J,3,1)=ZGH0-(RA*ROMEGA*ZU0+ZU0*ZU0*0.5_JPRB)*&
+          &(-YDGSGEOM_NB%GECLO(J)*YDGSGEOM_NB%GSQM2(J)*SIN(ALPHASWE)+&
+          &YDGSGEOM_NB%GEMU(J)*COS(ALPHASWE))**2
+        ZRADI=SQRT(MIN(ZREFRAD*ZREFRAD,(YDGSGEOM_NB%GELAM(J)-ZLC)**2+&
+          &(YDGSGEOM_NB%GELAT(J)-ZTC)**2))
+        ZGPFIELDS(J,4,1)=ZGHS0*(1.0_JPRB-ZRADI/ZREFRAD)
+      ENDDO
+      IVSETSC(1) = NBSETSP
+      CALL DIR_TRANS(PSPVOR=ZSPVOR,PSPDIV=ZDIVE,&
+        &PSPSCALAR=ZSCALAR,KRESOL=NRESOL,KPROMA=NGPTOT,KVSETUV=NBSETLEV,&
+        &PGP=ZGPFIELDS)
+      DO JSE=1,NSPEC2
+        YDSP%VOR(1,JSE)=ZSPVOR(1,JSE)
+        YDSP%DIV(1,JSE)=ZDIVE(1,JSE)
+        IF (NPSP==1) THEN
+          YDSP%SP(JSE)=ZSCALAR(1,JSE)
+          YDSP%OROG(JSE)=ZSCALAR(2,JSE)
+        ENDIF
+      ENDDO
+      ALLOCATE(ZDIV(NSPEC2))
+      ALLOCATE(ZU(NGPTOT))
+      ALLOCATE(ZV(NGPTOT))
+      DO JSE=1,NSPEC2
+        ZDIV(JSE)=0.0_JPRB
+      ENDDO
+      CALL SPEUV(YDGEOMETRY,ZDIV,YDSP%OROG(:),ZU,ZV,1,1,2)
+      DO JKGLO=1,NGPTOT,NPROMA
+        IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
+        IBL=(JKGLO-1)/NPROMA+1
+        YDGEOMETRY%YROROG(IBL)%OROGL(1:IEND) = ZU(JKGLO:JKGLO+IEND-1)
+        YDGEOMETRY%YROROG(IBL)%OROGM(1:IEND) = ZV(JKGLO:JKGLO+IEND-1)
+      ENDDO
+
+    ENDIF
+
+!          1.3. INITIALIZE 2-D FIELDS WITH ARPEGE FILE
+!               - - - - - - - - - - - - - - - - - - -
+
+  ELSEIF(N2DINI == 2)THEN
+    WRITE(NULOUT,*) 'SUSPECB: SW FIELDS ARE READ ','FROM ARPEGE FILE'
+    IF(NGRIBFILE == 1)THEN
+      CALL ABOR1('INCONSISTENCY BETWEEN NGRIBFILE AND L2DINI')
+    ENDIF
+
+    !      1.3.1 OPEN THE FA FILE
+
+    IF (KFILE == 0) THEN
+      WRITE(NULOUT,*) 'ARPEGE FILENAME : ',CFNISH
+      IUNTIN = NINISH
+      INBARI=0
+      CALL FAITOU(IREP,IUNTIN,.TRUE.,CFNISH,'OLD',.TRUE.,&
+       & .TRUE.,2,1,INBARI,CNMCA)  
+    ELSEIF (KFILE == 1) THEN
+      WRITE(NULOUT,*) 'ARPEGE FILENAME : ',CFNGSH
+      IUNTIN = NINMSH
+      INBARI=0
+      CALL FAITOU(IREP,IUNTIN,.TRUE.,CFNGSH,'OLD',.TRUE.,&
+       & .TRUE.,2,1,INBARI,CNMCA)  
+    ELSEIF (KFILE == 2) THEN
+      CLR1 = CFNRF(1:5)
+      CLR2 = CFNRF(6:9)
+      IF (LINC) THEN
+        IINC=NINT(REAL(NSTEP,JPRB)*TSTEP/3600._JPRB)
+      ELSE
+        IINC=NSTEP
+      ENDIF
+      WRITE(CLFNRF,'(A5,A4,''+'',I4.4)') CLR1,CLR2,IINC
+      WRITE(NULOUT,*) 'ARPEGE FILENAME : ',CLFNRF
+      IUNTIN = NFGISH
+      INBARI=0
+      CALL FAITOU(IREP,IUNTIN,.TRUE.,CLFNRF,'OLD',.TRUE.,&
+       & .TRUE.,2,1,INBARI,CNMCA)  
+    ELSEIF (KFILE == 3) THEN
+      WRITE(NULOUT,*) 'ARPEGE FILENAME : ',CFNBS
+      IUNTIN = NBIAS
+      INBARI=0
+      CALL FAITOU(IREP,IUNTIN,.TRUE.,CFNBS,'OLD',.TRUE.,&
+       & .TRUE.,2,1,INBARI,CNMCA)  
+    ELSE
+      WRITE(*,'('' INVALID ARGUMENT TO SUSPECB, KFILE='',I6)') KFILE
+      CALL ABOR1('SUSPECB: ABOR1 CALLED')
+    ENDIF
+    CALL LFIMST(IREP,IUNTIN,.FALSE.)
+    IF (LRFILAF) THEN
+      CALL LFILAF(IREP,IUNTIN,.FALSE.)
+    ENDIF
+
+    !       1.3.2  READ AND TEST SOME FIELDS, CHECK DATE
+
+    ZEPS=1.E-10_JPRB
+    ILEV=1
+    CALL CHIEN(CNMCA,NSTTYP,RMUCEN,RLOCEN,RSTRET,NSMAX,&
+     & NDGLG,NDLON,NLOEN,NMEN,NHTYP,ILEV,VP00,YDVAB%VALH,YDVAB%VBH,&
+     & NQUAD,0,NDGSAG,NDGENG,ZEPS,LLFICP,NULOUT)  
+
+    ISEFRE=(NSMAX+1)*(NSMAX+1)
+
+    CALL FADIES(IREP,IUNTIN,IDATEF)
+    WRITE(NULOUT,*) 'YOU READ FIELDS OF THE : ',IDATEF(3),' ',&
+     & IDATEF(2),' ',IDATEF(1)  
+    INDAT = IDATEF(1) * 10000 + IDATEF(2) * 100 + IDATEF(3)
+    WRITE(NULOUT,*) ' DATE OF THE MODEL : ',NINDAT
+    WRITE(NULOUT,*) ' DATE OF THE FILE  : ',INDAT
+
+    IF (INDAT /= NINDAT) CALL ABOR1('DATE INCOHERENCE')
+
+    !       1.3.3  READ FIELDS & CLOSE FILE
+
+    CALL FACILO(IREP,IUNTIN,'SURF',1,'PRESSION',YDSP%SP(:),.TRUE.)
+
+    CALL FACILO(IREP,IUNTIN,'SPECSURF',1,'GEOPOTENTIEL',YDSP%OROG(:),.TRUE.)
+
+    CALL FACILO(IREP,IUNTIN,'S',1,'FONC.COURANT',YDSP%VOR(:,:),.TRUE.)
+    DO JNM=1,NSPEC2
+      YDSP%VOR(1,JNM)=YDSP%VOR(1,JNM)*RLAPDI(NVALUE(JNM))
+    ENDDO
+
+    CALL FACILO(IREP,IUNTIN,'S',1,'POT.VITESSE',YDSP%DIV(:,:),.TRUE.)
+    CALL ABOR1('SUSPECB: DEAD CODE ')
+    ! Ryad and Myself believes this to be dead code, if not look for computaion of NSPINDX in old version odf SULAP
+!!$    DO JNM=1,NSPEC2
+!!$     YDSP%DIV(1,NSPINDX(JNM))=ZSPEC(JNM)*YDLAP%RLAPDI(YDLAP%NVALUE(JNM))
+!!$    ENDDO
+    CALL FAIRME(IREP,IUNTIN,'UNKNOWN')
+
+!          1.4. INITIALIZE SW FIELDS WITH ECMWF MARS ARCHIVE
+!               - - - - - - - - - - - - - - - - - - - - - -
+
+  ELSEIF(N2DINI == 3)THEN
+
+    ! Only the IOMASTER PE reads the GRIB data and distribute it
+
+    IF (MYPROC == IOMASTER) THEN
+      WRITE(NULOUT,*) 'SUSPECB: SW FIELDS ARE READ FROM ECMWF MARS RETRIEVE'  
+      IF (KFILE == 0) THEN
+        WRITE(NULOUT,*)'INITIAL DATA TO BE READ FROM FILE ',CFNISH  
+        CLFN=CFNISH
+      ELSEIF (KFILE == 1) THEN
+        WRITE(NULOUT,*)'STARTING POINT FOR MINIMIZATION TO BE READ FROM FILE ',CFNGSH
+        CLFN=CFNGSH
+      ELSEIF (KFILE == 2) THEN
+        WRITE(NULOUT,*) 'REFERENCE DATA TO BE READ FROM FILE ',CFNRF  
+        CLFN=CFNRF
+      ELSE
+        WRITE(NULOUT,*) 'INVALID ARGUMENT TO SUSPECB, KFILE=', KFILE
+        CALL ABOR1('SUSPECB: ABOR1 CALLED')
+      ENDIF
+    ENDIF
+
+    CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=IOMASTER)
+    CALL SETUP_IOREQUEST(YL_IOREQUEST,'SPECTRAL_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+                       & KGRIB3D=NGRBSP3(1:NF3D),KGRIB2D=NGRBSP2(1:NFD2D))
+    CALL IO_GET(YL_IOSTREAM,YL_IOREQUEST,&
+              & PR3=YDSP%SP3D(:,:,1:NF3D),PR2=YDSP%SP2D(:,1:NFD2D))
+    CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+    CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+    
+  ELSE
+    ! Security if N2DINI>3
+    WRITE(NULOUT,*) 'N2DINI=',N2DINI
+    CALL ABOR1(' INVALID VALUE FOR N2DINI')
+  ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       2.    BAROTROPIC VORTICITY MODEL (reset D and Phi to 0.)
+!              --------------------------------------------------
+
+  IF (LRVEQ) THEN
+    DO JJ=1,NSPEC2
+      YDSP%DIV(1,JJ)=0.0_JPRB
+    ENDDO
+  ENDIF
+
+!     ------------------------------------------------------------------
+
+ELSE
+  CALL ABOR1('UNKNOWN 2D CONFIGURATION')
+ENDIF
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUSPECB',1,ZHOOK_HANDLE)
+END SUBROUTINE SUSPECB

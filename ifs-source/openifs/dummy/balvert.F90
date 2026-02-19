@@ -1,0 +1,25 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE BALVERT(YDGEOMETRY,KNS3D,YD_JB_STRUCT,PSPZZP,YDSPEC,LDJBBAL,PSPDIV,PSPT,PSPSP)
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMJG , ONLY : TYPE_JB_STRUCT
+use spectral_fields_mod, only:&
+ & spectral_field
+TYPE(GEOMETRY) , INTENT(IN) :: YDGEOMETRY
+INTEGER(KIND=JPIM) , INTENT(IN) :: KNS3D
+TYPE(TYPE_JB_STRUCT) , INTENT(IN) :: YD_JB_STRUCT
+REAL(KIND=JPRB) , INTENT(IN) :: PSPZZP(YDGEOMETRY%YRDIMV%NFLSUR,YDGEOMETRY%YRDIM%NSPEC2)
+TYPE(SPECTRAL_FIELD),OPTIONAL, INTENT(INOUT) :: YDSPEC
+LOGICAL ,OPTIONAL, INTENT(IN) :: LDJBBAL
+REAL(KIND=JPRB) ,OPTIONAL, INTENT(OUT) :: PSPDIV(YDGEOMETRY%YRDIMV%NFLSUR,YDGEOMETRY%YRDIM%NSPEC2)
+REAL(KIND=JPRB) ,OPTIONAL, INTENT(OUT) :: PSPT(YDGEOMETRY%YRDIMV%NFLSUR,YDGEOMETRY%YRDIM%NSPEC2)
+REAL(KIND=JPRB) ,OPTIONAL, INTENT(OUT) :: PSPSP(YDGEOMETRY%YRDIM%NSPEC2)
+call abor1("balvert.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE BALVERT

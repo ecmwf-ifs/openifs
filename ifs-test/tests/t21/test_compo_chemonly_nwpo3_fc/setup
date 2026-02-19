@@ -1,0 +1,101 @@
+# Source common environment variables
+. ../common/env_vars
+
+# Pre-empt some common namelist settings.
+# NAMARG:
+CNMEXP="'hmec'"
+
+# NAEPHY:
+LEO3CH=".TRUE."
+NAEPHY_EXTRA="LO3CH_HLO=.FALSE.,"
+
+# NAMDPHY:
+NVEXTR="7"
+NCEXTR="7"
+
+# NAMCT0:
+NFRPOS=3
+# NAMCT0_EXTRA="NSPPR=1,"  # uncomment for per-level norms
+
+# Include common namelists
+. ../common/namelists
+
+cat >> fort.4 << EOF
+&NAMGFL
+NCHEM=1,
+YCHEM_NL(1)%CNAME='O3',
+YCHEM_NL(1)%NREQIN=1,
+YCHEM_NL(1)%RMOLMASS=48.0,
+YCHEM_NL(1)%IGRBCODE=203,
+YCHEM_NL(1)%LNEGFIX=.TRUE.,
+YCHEM_NL(1)%IGRIBTC=210206,
+YCHEM_NL(1)%LADV=.TRUE.,
+YCHEM_NL(1)%LMASSFIX=.TRUE.,
+YCHEM_NL(1)%BETAMFBC=-999.9,
+YCHEM_NL(1)%LASSIM=.TRUE.,
+YCHEM_NL(1)%LADV5=.TRUE.,
+YQ_NL%LGP=true,
+YQ_NL%LSP=false,
+YO3_NL%LGP=false,
+YQ_NL%LGPINGP=true,
+YL_NL%LGP=true,
+YI_NL%LGP=true,
+YA_NL%LGP=true,
+!YR_NL%NREQIN=-1,
+!YS_NL%NREQIN=-1,
+/
+ &NAERAD
+ LECOMPGRID=false,
+ RMUZUV=0.01,
+ NUVTIM=72,
+ NRADUV=1,
+ NUV=24,
+ KMODTS=2,
+ NRPROMA=0,
+ LEPO3RA=false,
+ LO3_CHEM_UV=false,
+ NGHGRAD=21,
+ LAER3D=.false.,
+ /
+ &NAMFPC
+ CFPFMT="MODEL",
+ NFP3DFS=1,
+ NFP3DFP=1,
+ MFP3DFS(:)=203,
+ MFP3DFP(:)=203,
+ NFP2DF=1,
+ MFP2DF(:)=152,
+ NFPPHY=1,
+ MFPPHY(:)=210206,
+ NRFP3S(:)=-99,
+ RFP3P=100000.,85000.,70000.,50000.,
+ /
+  &NAMCOMPO
+  LCHEM_DIA=true,
+  LCHEM_DDFLX=true,
+  LCOMPO_DDFLX_DIR=true,
+  LCHEM_TROPO=true,
+  LCOMPO_DCDD=true,
+  /
+  &NAMCHEM
+  CHEM_SCHEME="nwpo3",
+  LCHEM_DIAC=false,
+  LCHEM_LIGHT=false,
+  LCHEM_0NOX=false,
+  KCHEM_NOXADV=0,
+  LCHEM_ANAO3=false,
+  KCHEM_SOLVE=1,
+  LCHEM_JOUT=false,
+  LCHEM_AEROI=false,
+  LCHEM_O3RAD=false,
+  LCHEM_CSHAPE=.false.,
+  LCHEM_WDFR=.true.,
+  LCHEM_REVCHEM=.false.,
+  KCHEM_DRYDEP=0,
+  /
+  &NAMMCC
+  LMCCEC=true,
+  LMCCIEC=false,
+  LMCC_COMPO=false,
+  /
+EOF

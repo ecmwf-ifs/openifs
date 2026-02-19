@@ -1,0 +1,185 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE VDFTOFDCS(YDVDF,KIDIA,KFDIA,KLON,KLEV,PTMST,PVDIFTS,&
+ & PUM1,PVM1,PGEOM1,PSIGFLT,&
+ & PTOFDC)  
+!     ------------------------------------------------------------------
+
+!**   *VDFTOFDCS* - DETERMINES THE COEFFICIENTS FOR THE 
+!                 TURBULENT OROGRAPHIC DRAG PARAMETRIZATION
+
+!     Original  A. BELJAARS   ECMWF    17/11/2002.
+!     Modified 
+
+!     PURPOSE
+!     -------
+
+!     DETERMINE COEFFICIENTS FOR TURBULENT OROGRAPHIC DRAG
+
+!     INTERFACE
+!     ---------
+
+!     *VDFTOFDCS* IS CALLED BY *VDFMAINS*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KLEV*         NUMBER OF LEVELS
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        DOUBLE TIME STEP (SINGLE AT 1TH STEP)
+!     *PUM1*         X-VELOCITY COMPONENT AT T-1
+!     *PVM1*         Y-VELOCITY COMPONENT AT T-1
+!     *PGEOM1*       GEOPOTENTIAL AT T-1
+!     *PSIGFLT*      FILTERED STANDARD DEVIATION OF SUBGRID OROGRAPHY
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PTOFDC*        COEFFICIENTS IN DIAGONAL TO BE PASSED ON 
+!                    TO IMPLICIT SOLVER. PTOFDC=alpha*DT*stressdiv/PSI
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
+USE PARKIND1      , ONLY : JPIM     ,JPRB
+USE YOMHOOK       , ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOMCST        , ONLY : RG
+USE PARPHY        , ONLY : REPDU2
+USE YOEVDF        , ONLY : TVDF
+USE YOMJBECPHYSECV, ONLY : LSIGFLTORO
+
+IMPLICIT NONE
+
+TYPE(TVDF),        INTENT(IN)    :: YDVDF
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTMST 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVDIFTS
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSIGFLT(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTOFDC(KLON,KLEV) 
+!*            LOCAL STORAGE
+!             ----- -------
+
+REAL(KIND=JPRB) ::    ZCOEF(KLON)
+
+INTEGER(KIND=JPIM) :: JK, JL
+
+REAL(KIND=JPRB) :: ZZ,ZTOFDALPHA,ZTOFDBETA,ZTOFDCMD,ZTOFDCORR,ZTOFDK1,ZTOFDIH,&
+ & ZTOFDKFLT,ZTOFDN1,ZTOFDN2,ZTOFDIC,ZTOFDIZ,ZTOFDIN,ZFACT1,&
+ & ZFACT2,ZUABS,ZMAX
+REAL(KIND=JPRB) :: Z1S,ZDU1, ZEXP1, ZZP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+!*       1.     INITIALIZE CONSTANTS
+!               ---------- ----------
+
+IF (LHOOK) CALL DR_HOOK('VDFTOFDCS',0,ZHOOK_HANDLE)
+
+IF (.NOT. LSIGFLTORO) THEN 
+  ZTOFDALPHA=24.
+  !ZTOFDALPHA=35.
+  ZTOFDBETA=1.
+  ZTOFDCMD=0.005
+  ZTOFDCORR=0.6
+  ZTOFDK1=0.003
+  ZTOFDIH=0.00102
+  ZTOFDKFLT=0.00035
+  ZTOFDN1=-1.9
+  ZTOFDN2=-2.8
+  ZTOFDIC=2.109
+  ZTOFDIZ=1500.
+  ZTOFDIN=-1.2
+  ZMAX=5000.
+ELSE
+  ZTOFDALPHA=YDVDF%RTOFDALPHA
+  ZTOFDBETA=1.0_JPRB
+  ZTOFDCMD=0.005_JPRB
+  ZTOFDCORR=0.6_JPRB
+  ZTOFDK1=0.003_JPRB
+  ZTOFDIH=0.00102_JPRB
+  ZTOFDKFLT=0.00035_JPRB
+  ZTOFDN1=-1.9_JPRB
+  ZTOFDN2=-2.8_JPRB
+  ZTOFDIC=2.109_JPRB
+  ZTOFDIZ=1500.0_JPRB
+  ZTOFDIN=-1.2_JPRB
+  ZMAX=5000.0_JPRB
+ENDIF
+
+ZFACT1=ZTOFDK1**(ZTOFDN1-ZTOFDN2)/(ZTOFDIH*ZTOFDKFLT**ZTOFDN1)
+ZFACT2=ZTOFDALPHA*ZTOFDBETA*ZTOFDCMD*ZTOFDCORR*ZTOFDIC*ZFACT1&
+ & *PVDIFTS*PTMST  
+
+
+!        1. PREPARE ARRAY INDEPENDENT OF HEIGHT
+!           ------- ----- ----------- -- ------
+DO JL=KIDIA,KFDIA
+  ZCOEF(JL)=ZFACT2*PSIGFLT(JL)**2
+ENDDO
+
+!        2. VERTICAL LOOP
+!           -------- ----
+
+IF (.NOT. LSIGFLTORO) THEN 
+
+  DO JK=1,KLEV
+    DO JL=KIDIA,KFDIA
+      ZZ=PGEOM1(JL,JK)/RG
+      IF (ZZ > ZMAX) THEN
+        PTOFDC(JL,JK)=0.
+      ELSE
+        ZUABS=SQRT(MAX(REPDU2,PUM1(JL,JK)**2+PVM1(JL,JK)**2))
+        PTOFDC(JL,JK)=ZCOEF(JL)*ZUABS*EXP(-(ZZ/ZTOFDIZ)**1.5)*ZZ**ZTOFDIN
+      ENDIF
+    ENDDO
+  ENDDO
+
+ELSE
+
+!     NL version of equation written for TL/AD in different format
+  DO JK=1,KLEV
+    DO JL=KIDIA,KFDIA
+      ZZ=PGEOM1(JL,JK)/RG
+      IF (ZZ > ZMAX) THEN
+        PTOFDC(JL,JK)=0.0_JPRB
+      ELSE
+        Z1S = PUM1(JL,JK)**2+PVM1(JL,JK)**2
+        IF (REPDU2 > Z1S) THEN
+          ZDU1 = REPDU2
+        ELSE
+          ZDU1  = Z1S
+        ENDIF
+        ZUABS = SQRT(ZDU1)
+        ZEXP1 = EXP(-(ZZ/ZTOFDIZ)**1.5_JPRB)
+        ZZP = ZZ**ZTOFDIN
+        PTOFDC(JL,JK)=ZCOEF(JL)*ZUABS*ZEXP1*ZZP
+
+      ENDIF
+    ENDDO
+  ENDDO
+
+ENDIF
+
+IF (LHOOK) CALL DR_HOOK('VDFTOFDCS',1,ZHOOK_HANDLE)
+END SUBROUTINE VDFTOFDCS
+

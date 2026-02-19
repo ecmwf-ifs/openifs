@@ -1,0 +1,42 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+!     ------------------------------------------------------------------
+NAMELIST/NAMFA/ NVGRIB, NBITPG ,NBITCS ,NSTRON,CMODEL, LEXTERN, NIDCEN, LSUPPDATE, &
+ & YFAOROG,   YFASP,    YFAPSI,   YFAKHI,    YFAUGEO,   YFAVGEO,   YFAT,     &
+ & YFAPD,     YFAVD,    YFAQ,     YFAL,      YFALCONV,  YFAICONV,  YFARCONV, &
+ & YFASCONV,  YFAI,     YFAO3,    YFACLF,    YFAS,      YFAR,      YFAG,     &
+ & YFAH,      YFATKE,   YFAEFB1,  YFAEFB2,   YFAEFB3,   YFASRC,    YFACVGQ,  &
+ & YFA_ASMC,  YFA_VSMC, YFALRAD,  YFAIRAD,   YFACPF,    YFASPF,    YFAFSP1,  &
+ & YFAFSP2,   YFAFSP3,  YFAFSP4,  YFAFSP5,   YFASDSAT,  YFACVV,    YFAQVA,   &
+ & YFARKTH,   YFARKTQV, YFARKTQC, YFAUOM,    YFAUAL,    YFADOM,    YFADAL,   &
+ & YFAUEN,    YFAUNEBH, &
+ & YFA_XTCC,  YFA_X10U, YFA_X10V, YFA_X10NU, YFA_X10NV, YFA_X2T,   YFA_XMRT, &
+ & YFA_X2SH,  YFA_X2RH, YFA_XCCC, YFA_XHCC,  YFA_XMCC,  YFA_XLCC,  YFA_XX2T, &
+ & YFA_XN2T,  YFA_XCVU, YFA_XCVV, YFA_XCVQ,  YFA_XCVS,  YFA_XTUU,  YFA_XTUV, &
+ & YFA_XTUQ,  YFA_XTUS, YFA_XGDU, YFA_XGDV,  YFA_XLSP,  YFA_XCP,   YFA_XLSS, &
+ & YFA_XCSF,  YFA_XLSG, YFA_XCSG, YFA_XLSH,  YFA_XCSH,  YFA_XSSR,  YFA_XSTR, &
+ & YFA_XTSR,  YFA_XTTR, YFA_X10FF,YFA_XCAPE, YFA_XCTOP, YFA_XMOCO, YFA_XCLPH,&
+ & YFA_XVEIN, YFA_XGUST,YFA_XUGST,YFA_XVGST, YFA_XUGST2,YFA_XVGST2,YFA_XX2HU,&
+ & YFA_XN2HU, YFA_XTHW, YFA_XXDIAGH,YFA_CLSP,YFA_CCP,   YFA_CLSS,  YFA_CCSF, &
+ & YFA_CLSG,  YFA_CCSG, YFA_CLSH, YFA_CCSH,  YFA_CUSS,  YFA_CVSS,  YFA_CSSH, &
+ & YFA_CSLH,  YFA_CTSP, YFA_CTCC, YFA_CBLD,  YFA_CSSR,  YFA_CSTR,  YFA_CTSR, &
+ & YFA_CTTR,  YFA_CCCC, YFA_CHCC, YFA_CMCC,  YFA_CLCC,  YFA_CUGW,  YFA_CVGW, &
+ & YFA_CUTO,  YFA_CVTO, YFA_CE,   YFA_CS,    YFA_CT,    YFA_CLHE,  YFA_CLHS, &
+ & YFA_CLHT,  YFA_CWS,  YFA_CSNS, YFA_CQTO,  YFA_CTO3,  YFA_CTME,  YFA_CICE, &
+ & YFA_CLI,   YFA_CCVU, YFA_CCVV, YFA_CCVQ,  YFA_CCVS,  YFA_CTUQ,  YFA_CTUS, &
+ & YFA_CSOC,  YFA_CTHC, YFA_CSOP, YFA_CDNI,  YFA_CGNI,  YFA_CTOP,  YFA_CSOD, &
+ & YFA_CTHD,  YFA_CFON, YFA_CCHS, YFA_CEAS,  YFA_CSRU,  YFA_CDRU,  YFA_CIRU, &
+ & YFA_CETP,  YFA_CTP,  YFA_CSMR, YFA_CTSOC, YFA_CTTHC, YFA_CDUTP, YFA_CAPE, &
+ & YFA_CIEN,  YFA_VISICLD, YFA_VISIHYD, YFA_VISICLD2, YFA_VISIHYD2,YFA_XPTYPE, &
+ & YFA_XPTYPESEV, YFA_XPTYPE2, YFA_XPTYPESEV2, YFA_MXCLWC, YFA_MXCLWC2, &
+ & NVERBOSE
+!     ------------------------------------------------------------------

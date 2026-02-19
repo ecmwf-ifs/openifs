@@ -1,0 +1,358 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE VDFDIFHS (YDMCC,YDEPHY,YDRIP,KIDIA, KFDIA, KLON, KLEV, KLEVSN,KTOP,KTILES,&
+ & KTVL,KTVH,PTMST   , PVDIFTS ,&
+ & PFRTI    ,PSSRFLTI,PSLRFL   ,PEMIS   ,PEVAPSNW,&
+ & PCPTGZ  ,PTM1    ,PQM1     ,&
+ & PAPHM1  ,PCFH    ,PCFHTI   ,PCFQTI ,&
+ & PTHKICE, PSNTICE, &
+ & PTDIF   ,PQDIF   ,PCPTSTI  ,PQSTI  ,&
+ & PCAIRTI ,PCSATTI ,PDQSTI   ,PTSKTI ,PTSKRAD ,&
+ & PTSM1M  ,PTSNOW  ,PSNS     ,PRSN   ,PTICE   ,PSST    ,&
+ & PTSKTIP1,PQSTIP1 ,PCPTSTIP1,PTE    ,PQE     ,&
+ & PJQ     ,PSSH    ,PSLH     ,PSTR   ,PG0) 
+!     ------------------------------------------------------------------
+
+!**   *VDFDIFHS* - DOES THE IMPLICIT CALCULATION FOR DIFFUSION OF S. L.
+!                   (Nonlinear version for trajectory in adjoint)
+
+!     PURPOSE
+!     -------
+
+!     SOLVE TRIDIAGONAL MATRICES FOR DIFFUSION OF DRY STATIC ENERGY
+!     AND MOISTURE; IN SO DOING, IT ALSO SOLVES THE SKIN TEMPERATURE
+!     EQUATION.
+
+!     INTERFACE
+!     ---------
+
+!     *VDFDIFHS* IS CALLED BY *VDFMAINS*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLEV*         NUMBER OF LEVELS
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTOP*         INDEX FOR BOUNDARY LAYER TOP
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PCPTGZ*      DRY STATIC ENERGY    AT T-1             (Trajectory)
+!     *PFRTI*        FRACTION OF SURFACE AREA COVERED BY TILES
+!                                                            (Trajectory)
+!     *PTM1*        TEMPERATURE AT T-1                      (Trajectory)
+!     *PQM1*        SPECIFIC HUMIDITY    AT T-1             (Trajectory)
+!     *PAPHM1*      PRESSURE AT T-1                         (Trajectory)
+!     *PCFH*        PROP. TO EXCH. COEFF. FOR HEAT (C,K-STAR IN DOC.)
+!                                                            (Trajectory)
+!     *PCFHTI*      IDEM FOR HEAT (SURFACE LAYER ONLY)      (Trajectory)
+!     *PCFQTI*      IDEM FOR MOISTURE (SURFACE LAYER ONLY)  (Trajectory)
+!     *PCPTSTI*     DRY STATIC ENRGY AT SURFACE             (Trajectory)
+!     *PQSTI*       SATURATION Q AT SURFACE                 (Trajectory)
+!     *PCAIRTI*     MULTIPLICATION FACTOR FOR Q AT LOWEST MODEL LEVEL
+!                    FOR SURFACE FLUX COMPUTATION            (Trajectory)
+!     *PCSATTI*     MULTIPLICATION FACTOR FOR QS AT SURFACE
+!                    FOR SURFACE FLUX COMPUTATION            (Trajectory)
+!     *PDQSTI*      D/DT (PQS)                              (Trajectory)
+!     *PSSRFLTI*    NET SOLAR RADIATION AT THE SURFACE, FOR EACH TILE
+!                                                            (Trajectory)
+!     *PSLRFL*      NET THERMAL RADIATION AT THE SURFACE    (Trajectory)
+!     *PEVAPSNW*    EVAPORATION FROM SNOW UNDER FOREST      (Trajectory)
+!     *PTSKTI*      SKIN TEMPERATURE AT T-1                 (Trajectory)
+!     *PTSKRAD*     SKIN TEMPERATURE AT last full radiation
+!                     time step                              (Trajectory)
+!     *PTSM1M*      TOP SOIL LAYER TEMPERATURE              (Trajectory)
+!     *PTSNOW*      SNOW TEMPERATURE                        (Trajectory)
+!     *PSNS*        SNOW MASS                               (Trajectory)                                
+!     *PRSN*        SNOW DENSITY                            (Trajectory)
+!     *PTHKICE*      Sea ice thickness                             m
+!     *PSNTICE*      Thickness of snow layer on sea ice            m
+!     *PTICE*       ICE TEMPERATURE (TOP SLAB)              (Trajectory)
+!     *PSST*         (OPEN) SEA SURFACE TEMPERATURE          (Trajectory)
+!     *PTE*         TEMPERATURE TENDENCY                    (Trajectory)
+!     *PQE*         MOISTURE TENDENCY                       (Trajectory)
+
+!     *PTMST*        DOUBLE TIME STEP (SINGLE AT 1TH STEP)
+!     *PEMIS*        MODEL SURFACE LONGWAVE EMISSIVITY
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PTDIF*       S-DOUBLE-TILDE DEVIDED BY ALFA       (Trajectory)
+!     *PQDIF*       Q-DOUBLE-TILDE DEVIDED BY ALFA       (Trajectory)
+!     *PTSKTIP1*    SKIN TEMPERATURE AT T+1              (Trajectory)
+!     *PCPTSTIP1*   DRY STATIC ENERGY AT SURFACE AT T+1  (Trajectory)
+!     *PQSTIP1*     SATURATION Q AT SURFACE AT T+1       (Trajectory)
+!     *PJQ*         Surface moisture flux                (Trajectory)
+!     *PSSH*        Surface sensible heat flux           (Trajectory)
+!     *PSLH*        Surface latent heat flux             (Trajectory)
+!     *PSTR*        Surface net thermal radiation        (Trajectory)
+!     *PG0*         Surface ground heat flux (solar      (Trajectory)
+!                    radiation leakage is not included in this term)
+
+!     METHOD
+!     ------
+
+!     *LU*-DECOMPOSITION AND BACK SUBSTITUTION IN ONE DOWNWARD SCAN
+!     AND ONE UPWARD SCAN.
+
+!     AUTHOR.
+!     -------
+!      J.F. MAHFOUF       E.C.M.W.F.    02/10/95
+
+!     MODIFICATIONS.
+!     --------------
+!      P. LOPEZ           E.C.M.W.F.    25-02-05 (Nonlinear version for trajectory in adjoint)
+!      L. Magnusson 28-09-2010 For NEMO-LIM
+!      I. Sandu    24-02-2014  Lambda skin values by vegetation type instead of tile
+!      G. Balsamo   14-08-2013 For lakes
+!      E. Dutra 11-10-2016 : Replaace surfseb by surfsebs to accomudate interface changes in surfseb 
+!                            not replicated in surfsebs. 
+!     ------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST   , ONLY : RCPD, RG, RLSTT
+USE YOETHF   , ONLY : RVTMP2
+USE YOMMCC   , ONLY : TMCC
+USE YOMRIP   , ONLY : TRIP
+USE YOEPHY   , ONLY : TEPHY
+
+IMPLICIT NONE
+
+#include "surfsebs.h"
+
+TYPE(TEPHY)       ,INTENT(IN)    :: YDEPHY
+TYPE(TMCC)        ,INTENT(IN)    :: YDMCC
+TYPE(TRIP)        ,INTENT(IN)    :: YDRIP
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVSN
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTILES 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTVL(KLON) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTVH(KLON)
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTOP 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTMST 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVDIFTS
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSSRFLTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSLRFL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEMIS(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEVAPSNW(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PJQ(KLON,KTILES)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSSH(KLON,KTILES)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSLH(KLON,KTILES)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSTR(KLON,KTILES)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PG0(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCPTGZ(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPHM1(KLON,0:KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCFH(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCFHTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCFQTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTDIF(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQDIF(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCPTSTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQSTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCAIRTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCSATTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDQSTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSKTI(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSKRAD(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSM1M(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSNOW(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSNS(KLON,KLEVSN) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRSN(KLON,KLEVSN)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTICE(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSST(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTHKICE(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSNTICE(KLON)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTSKTIP1(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQSTIP1(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCPTSTIP1(KLON,KTILES) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTE(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQE(KLON,KLEV) 
+
+REAL(KIND=JPRB) :: ZTCOE(KLON), ZEBSH(KLON,KLEV)
+REAL(KIND=JPRB) :: ZTSRF(KLON,KTILES),ZRHOCHU(KLON,KTILES),&
+                 & ZRHOCQU(KLON,KTILES),&
+                 & ZJS(KLON,KTILES),ZSSK(KLON,KTILES),ZTSK(KLON,KTILES)
+REAL(KIND=JPRB) :: ZAQL(KLON),ZBQL(KLON),ZASL(KLON),ZBSL(KLON),&
+                 & ZSL(KLON), ZQL(KLON) ,ZHLICE(KLON)
+
+INTEGER(KIND=JPIM) :: JK, JL, JT
+
+REAL(KIND=JPRB) :: Z1S, Z2S, ZALF, ZDISC,&
+                 & ZFAC, ZQDP, ZQSP1,&
+                 & ZTPFAC2, ZTPFAC3, ZCSNQ, ZCSNS
+REAL(KIND=JPRB) :: ZCOEF1,ZCOEF2,ZTEMP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('VDFDIFHS',0,ZHOOK_HANDLE)
+ASSOCIATE(LEFLAKE=>YDEPHY%LEFLAKE, YSURF=>YDEPHY%YSURF, &
+ & LNEMOLIMTHK=>YDMCC%LNEMOLIMTHK, &
+ & TSTEP=>YDRIP%TSTEP)
+ZALF=PVDIFTS
+ZTPFAC2 = 1.0_JPRB/PVDIFTS
+ZTPFAC3 = 1-ZTPFAC2
+ZHLICE(:) = 0.0_JPRB
+
+!*         1.1     SETTING OF RIGHT HAND SIDES.
+
+DO JK = KTOP, KLEV
+  DO JL = KIDIA, KFDIA
+    Z1S = RVTMP2*PTM1(JL,JK)
+    Z2S  = RCPD*PTMST
+    PTDIF(JL,JK) = ZTPFAC2*PCPTGZ(JL,JK)+&
+     & Z2S*((1.0_JPRB+RVTMP2*PQM1(JL,JK))*&
+     & PTE(JL,JK)+Z1S*PQE(JL,JK))  
+    PQDIF(JL,JK) = ZTPFAC2*PQM1(JL,JK)+PTMST*PQE(JL,JK)
+  ENDDO
+ENDDO
+
+!*        1.2     ADD MOISTURE FLUX FROM SNOW FROM TILE 7 AS EXPLICIT TERM
+
+JK=KLEV
+DO JL=KIDIA,KFDIA
+  ZCSNQ=RG*PTMST*PFRTI(JL,7)*PEVAPSNW(JL)/&
+   & (PAPHM1(JL,JK)-PAPHM1(JL,JK-1))  
+  ZCSNS=RCPD*RVTMP2*PTSKTI(JL,7)*ZCSNQ
+
+  PTDIF(JL,JK)=PTDIF(JL,JK)-ZCSNS
+  PQDIF(JL,JK)=PQDIF(JL,JK)-ZCSNQ
+ENDDO
+
+!*         2.1     TOP LAYER ELIMINATION.
+
+DO JL = KIDIA, KFDIA
+  ZTCOE(JL) = PCFH(JL,KTOP)
+  ZQDP = 1.0_JPRB/(PAPHM1(JL,KTOP)-PAPHM1(JL,KTOP-1))
+  ZDISC = 1.0_JPRB/(1.0_JPRB+PCFH(JL,KTOP)*ZQDP)
+  ZEBSH(JL,KTOP) =  ZDISC*(PCFH(JL,KTOP)*ZQDP)
+  PTDIF(JL,KTOP) = ZDISC*PTDIF(JL,KTOP)
+  PQDIF(JL,KTOP) = ZDISC*PQDIF(JL,KTOP)
+ENDDO
+
+!*         2.2     ELIMINATION FOR MIDDLE LAYERS.
+
+DO JK = KTOP+1, KLEV-1
+  DO JL = KIDIA, KFDIA
+    ZQDP = 1.0_JPRB/(PAPHM1(JL,JK)-PAPHM1(JL,JK-1))
+    ZFAC = ZTCOE(JL)*ZQDP
+    ZTCOE(JL) = PCFH(JL,JK)
+    ZTEMP=PCFH(JL,JK)*ZQDP
+    ZDISC = 1.0_JPRB/(1.0_JPRB+ZFAC*(1.0_JPRB-ZEBSH(JL,JK-1))+ZTEMP)
+    ZEBSH(JL,JK) = ZDISC*ZTEMP
+    PTDIF(JL,JK) = ZDISC*(PTDIF(JL,JK)+ZFAC*PTDIF(JL,JK-1))
+    PQDIF(JL,JK) = ZDISC*(PQDIF(JL,JK)+ZFAC*PQDIF(JL,JK-1))
+  ENDDO
+ENDDO
+!*         2.3     BOTTOM LAYER, LINEAR RELATION BETWEEN LOWEST
+!                  MODEL LEVEL S AND Q AND FLUXES.
+
+DO JL = KIDIA, KFDIA
+  ZQDP = 1.0_JPRB/(PAPHM1(JL,KLEV)-PAPHM1(JL,KLEV-1))
+  ZFAC = ZTCOE(JL)*ZQDP
+  ZDISC = 1.0_JPRB/(1.0_JPRB+ZFAC*(1.0_JPRB-ZEBSH(JL,KLEV-1)))
+  ZBSL(JL)= ZDISC*(PTDIF(JL,KLEV)+ZFAC*PTDIF(JL,KLEV-1))*ZALF
+  ZBQL(JL)= ZDISC*(PQDIF(JL,KLEV)+ZFAC*PQDIF(JL,KLEV-1))*ZALF
+  ZASL(JL)= -ZDISC*RG*PTMST*ZQDP*ZALF
+  ZAQL(JL)= ZASL(JL)
+ENDDO
+
+
+!*         3.1     PREPARE ARRAY'S FOR CALL TO SURFACE ENERGY
+!                  BALANCE ROUTINE
+
+ZTSRF(KIDIA:KFDIA,1) = PSST(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,2) = PTICE(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,3) = PTSM1M(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,4) = PTSM1M(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,5) = PTSNOW(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,6) = PTSM1M(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,7) = PTSNOW(KIDIA:KFDIA)
+ZTSRF(KIDIA:KFDIA,8) = PTSM1M(KIDIA:KFDIA)
+IF (LEFLAKE) THEN
+  ZTSRF(KIDIA:KFDIA,9) = PSST(KIDIA:KFDIA)
+ENDIF
+
+ZCOEF1=1.0_JPRB/(RG*ZALF*PTMST)
+DO JT=1,KTILES
+  DO JL=KIDIA,KFDIA
+    ZRHOCHU(JL,JT) = PCFHTI(JL,JT)*ZCOEF1
+    ZRHOCQU(JL,JT) = PCFQTI(JL,JT)*ZCOEF1
+  ENDDO
+ENDDO
+
+
+!*         3.2     CALL TO SURFACE ENERGY BALANCE ROUTINE
+!                  REMEMBER: OUTPUT IS EXTRAPOLATED IN TIME
+
+CALL SURFSEBS(YDSURF=YSURF,KIDIA=KIDIA,KFDIA=KFDIA,KLON=KLON,&
+           &KLEVSN=KLEVSN,KTILES=KTILES,KTVL=KTVL,KTVH=KTVH,&
+           &PTMST=TSTEP,PSSKM1M=PCPTSTI,PTSKM1M=PTSKTI,PQSKM1M=PQSTI,&
+           &PDQSDT=PDQSTI,PRHOCHU=ZRHOCHU,PRHOCQU=ZRHOCQU,&
+           &PALPHAL=PCAIRTI,PALPHAS=PCSATTI,PSSRFL=PSSRFLTI,&
+           &PFRTI=PFRTI,PTSRF=ZTSRF,&
+           &PSNS=PSNS,PRSN=PRSN,PHLICE=ZHLICE,&
+           &PSLRFL=PSLRFL,PTSKRAD=PTSKRAD,PEMIS=PEMIS,&
+           &PASL=ZASL,PBSL=ZBSL,PAQL=ZAQL,PBQL=ZBQL,&
+           &PTHKICE=PTHKICE,PSNTICE=PSNTICE,&
+           &PJS=ZJS,PJQ=PJQ,PSSK=ZSSK,PTSK=ZTSK,&
+           &PSSH=PSSH,PSLH=PSLH,PSTR=PSTR,PG0=PG0,&
+           &PSL=ZSL,PQL=ZQL,LNEMOLIMTHK=LNEMOLIMTHK)
+
+
+!*         3.2a    ADD SNOW EVAPORATION TO FLUXES
+
+PJQ(KIDIA:KFDIA,7) = PJQ(KIDIA:KFDIA,7)+PEVAPSNW(KIDIA:KFDIA)
+PSLH(KIDIA:KFDIA,7) = PSLH(KIDIA:KFDIA,7)+PEVAPSNW(KIDIA:KFDIA)*RLSTT
+
+
+!*         3.3     COMPUTE PARAMETERS AT NEW TIME LEVEL 
+
+DO JT=1,KTILES
+  DO JL=KIDIA,KFDIA
+    PTSKTIP1(JL,JT) = ZTPFAC2*ZTSK(JL,JT)+ZTPFAC3*PTSKTI(JL,JT)
+    ZQSP1= PQSTI(JL,JT)+PDQSTI(JL,JT)*(ZTSK(JL,JT)-PTSKTI(JL,JT))
+    PQSTIP1(JL,JT) = ZTPFAC2*ZQSP1+ZTPFAC3*PQSTI(JL,JT)
+    PCPTSTIP1(JL,JT) = ZTPFAC2*ZSSK(JL,JT)+ZTPFAC3*PCPTSTI(JL,JT)
+  ENDDO
+ENDDO
+
+
+!*         3.5    COPY LOWEST MODEL SOLUTION FROM SURFSEB 
+
+ZCOEF2=1.0_JPRB/ZALF
+DO JL=KIDIA,KFDIA
+  PTDIF(JL,KLEV) = ZSL(JL)*ZCOEF2
+  PQDIF(JL,KLEV) = ZQL(JL)*ZCOEF2
+ENDDO
+
+
+!*         4.     BACK-SUBSTITUTION.
+
+DO JK = KLEV-1, KTOP, -1
+  DO JL = KIDIA, KFDIA
+    PTDIF(JL,JK) = PTDIF(JL,JK)+ZEBSH(JL,JK)*PTDIF(JL,JK+1)
+    PQDIF(JL,JK) = PQDIF(JL,JK)+ZEBSH(JL,JK)*PQDIF(JL,JK+1)
+  ENDDO
+ENDDO
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('VDFDIFHS',1,ZHOOK_HANDLE)
+
+!     ------------------------------------------------------------------
+
+END SUBROUTINE VDFDIFHS

@@ -1,0 +1,38 @@
+# (C) Copyright 2020- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+##################################################################
+## Project dependencies
+
+include( CMakeFindDependencyMacro )
+
+set( fiat_VERSION_STR @fiat_VERSION_STR@ )
+set( fiat_HAVE_MPI    @fiat_HAVE_MPI@ )
+set( fiat_HAVE_OMP    @fiat_HAVE_OMP@ )
+set( fiat_HAVE_FCKIT  @fckit_HAVE_FCKIT@ )
+set( fiat_SOURCE_FILENAMES      @fiat_SOURCE_FILENAMES@ )
+
+if( fiat_HAVE_OMP AND NOT TARGET OpenMP::OpenMP_Fortran )
+    if( NOT CMAKE_Fortran_COMPILER_LOADED )
+        enable_language( Fortran )
+    endif()
+    find_dependency( OpenMP COMPONENTS Fortran )
+endif()
+
+if( fiat_HAVE_FCKIT AND NOT TARGET fckit )
+  find_dependency( fckit HINTS ${CMAKE_CURRENT_LIST_DIR}/../fckit @fckit_DIR@ )
+endif()
+
+if( ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set(_whole_archive "-Wl,-force_load")
+  set(_no_whole_archive "")
+else()
+  set(_whole_archive "-Wl,--whole-archive")
+  set(_no_whole_archive "-Wl,--no-whole-archive")
+endif()
+set(MPI_SERIAL_LIBRARIES ${_whole_archive} mpi_serial ${_no_whole_archive})

@@ -1,0 +1,155 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUALMDH(YDGEM,YDML_DIAG)
+!****
+!     ------------------------------------------------------------------
+
+!     SUALMDH * DECLARATION DES MASQUES ET DE LEURS AUXILLIAIRES
+!     DIAGNOSTICS PAR DOMAINES HORIZONTAUX
+!     ------------------------------------
+
+!       -------------------------------------------------------
+!     BUT
+!     ---
+!       COMPTE TENU DES INDICATEURS LOGIQUES, DECLARE ET ALLOUE DE
+!     DE LA MEMOIRE AUX MASQUES DES DIFFERENTS DOMAINES HORIZONAUX
+
+!     ARGUMENTS D ENTREE
+!     ------------------
+
+!     ARGUMENTS IMPLICITES
+!     --------------------
+!       UNITE NULOUT
+!       INDICATEURS LOGIQUES, COMMON /YOMLDDH/
+!         DANS LE COMDECK * YOMMDDH * POUR LES MASQUES
+!       DIMENSIONS PROPRES AUX MASQUES DIAGNOSTIQUES DDH, COMMON /DDHDIM/
+!       POINTEURS PROPRES AUX MASQUES DIAGNOSTIQUES DDH, COMMON /POMMDDH/
+!       DECLARATION DES MASQUES ET LEURS AUXILLIAIRES
+
+!     AUTRES ENTREES
+!     --------------
+
+!     SORTIES
+!     -------
+!       INITIALISE LES POINTEURS /POMMDDH/
+
+!     ECRIT PAR
+!     --------- ALAIN JOLY
+
+!     13/4/90 - 10/90
+
+!     Modifications:
+!     --------------
+!        R. El Khatib : 01-08-07 Pruning options
+!        D.Salmond & M.Hortal : 22-Nov-2005 Mods for coarser/finer physics
+!        T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!        K. Yessad (July 2014): Move some variables.
+!     ------------------------------------------------------------------
+
+USE MODEL_DIAGNOSTICS_MOD , ONLY : MODEL_DIAGNOSTICS_TYPE
+USE YOMGEM   , ONLY : TGEM
+USE PARKIND1 , ONLY : JPIM     ,JPRB
+USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMCT0   , ONLY : LALLOPR
+USE YOMMP0   , ONLY : NPRINTLEV, NPROC
+USE YOMLUN   , ONLY : NULOUT
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(TGEM) , INTENT(IN) :: YDGEM
+TYPE(MODEL_DIAGNOSTICS_TYPE),INTENT(INOUT):: YDML_DIAG
+
+INTEGER(KIND=JPIM) :: IU, IGPTOT
+
+LOGICAL :: LLP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUALMDH',0,ZHOOK_HANDLE)
+ASSOCIATE(YDMDDH=>YDML_DIAG%YRMDDH,LHDDOP=>YDML_DIAG%YRLDDH%LHDDOP, LHDZON=>YDML_DIAG%YRLDDH%LHDZON, &
+ & LSDDH=>YDML_DIAG%YRLDDH%LSDDH,  NDHBPX=>YDML_DIAG%YRMDDH%NDHBPX, NDHDDX=>YDML_DIAG%YRMDDH%NDHDDX, &
+ & NDHKD=>YDML_DIAG%YRMDDH%NDHKD, NDHNOM=>YDML_DIAG%YRMDDH%NDHNOM, NDHNPU=>YDML_DIAG%YRMDDH%NDHNPU, &
+ & NGPTOT=>YDGEM%NGPTOT)
+!     ------------------------------------------------------------------
+
+LLP = NPRINTLEV >= 1.OR. LALLOPR
+IU = NULOUT
+IF (LLP) THEN
+  WRITE (NULOUT,*) ' DDH* DECLARATION DES PLANS MEMOIRES '
+  WRITE (NULOUT,*) '      ------------------------------ '
+
+  WRITE (NULOUT,*) '         PLANS BANDES ZONALES'
+ENDIF
+IGPTOT=NGPTOT
+
+!     MASQUES BANDES DE LATITUDES
+!     ---------------------------
+IF ( LHDZON ) THEN
+  ALLOCATE(YDMDDH%NDDHLA(IGPTOT))
+  IF(LLP)WRITE(IU,9) 'NDDHLA   ',SIZE(YDMDDH%NDDHLA),SHAPE(YDMDDH%NDDHLA)
+
+!     AUXILLIAIRES DE LECTURE DES DOMAINES INTERNES EN DOMAINES UTILISATEUR
+!     ------------------------------------------------------------------
+  ALLOCATE(YDMDDH%NLRDDH(NDHDDX,NDHKD))
+  IF(LLP)WRITE(IU,9) 'NLRDDH   ',SIZE(YDMDDH%NLRDDH),SHAPE(YDMDDH%NLRDDH)
+  ALLOCATE(YDMDDH%NLXDDH(NDHKD))
+  IF(LLP)WRITE(IU,9) 'NLXDDH   ',SIZE(YDMDDH%NLXDDH),SHAPE(YDMDDH%NLXDDH)
+
+!     TABLEAUX DE POIDS POUR LES MOYENNES ZONALES
+!     ------------------------------------------------------------------
+  ALLOCATE(YDMDDH%HDSFLA(NDHKD))
+  IF(LLP)WRITE(IU,9) 'HDSFLA   ',SIZE(YDMDDH%HDSFLA),SHAPE(YDMDDH%HDSFLA)
+  ALLOCATE(YDML_DIAG%YRPADDH%NGLALIST(NDHKD+1,NPROC))
+  IF(LLP)WRITE(IU,9) 'NGLALIST ',SIZE(YDML_DIAG%YRPADDH%NGLALIST),SHAPE(YDML_DIAG%YRPADDH%NGLALIST)
+
+ENDIF
+
+IF ( LHDDOP ) THEN
+  IF (LLP) WRITE (NULOUT,*) '         PLANS UTILISATEUR '
+
+!     MASQUES UTILISATEUR
+!     -------------------
+  ALLOCATE(YDMDDH%NDDHPU(IGPTOT,NDHNPU))
+  IF(LLP)WRITE(IU,9) 'NDDHPU   ',SIZE(YDMDDH%NDDHPU),SHAPE(YDMDDH%NDDHPU)
+
+!     AUXILLIAIRES DE LECTURE DES DOMAINES INTERNES EN DOMAINES UTILISATEUR
+!     ------------------------------------------------------------------
+  ALLOCATE(YDMDDH%NURDDH(NDHDDX,0:NDHBPX,NDHNPU))
+  IF(LLP)WRITE(IU,9) 'NURDDH   ',SIZE(YDMDDH%NURDDH),SHAPE(YDMDDH%NURDDH)
+  ALLOCATE(YDMDDH%NUXDDH(0:NDHBPX,NDHNPU))
+  IF(LLP)WRITE(IU,9) 'NUXDDH   ',SIZE(YDMDDH%NUXDDH),SHAPE(YDMDDH%NUXDDH)
+
+!     TABLEAUX DE POIDS POUR LES MOYENNES HORIZONTALES
+!     ------------------------------------------------------------------
+  ALLOCATE(YDMDDH%HDSFDU(0:NDHBPX,NDHNPU))
+  IF(LLP)WRITE(IU,9) 'HDSFDU   ',SIZE(YDMDDH%HDSFDU),SHAPE(YDMDDH%HDSFDU)
+  ALLOCATE(YDML_DIAG%YRPADDH%NGPUMASK(NDHNOM,NPROC))
+  IF(LLP)WRITE(IU,9) 'NGPUMASK ',SIZE(YDML_DIAG%YRPADDH%NGPUMASK),SHAPE(YDML_DIAG%YRPADDH%NGPUMASK)
+ENDIF
+
+IF ( LSDDH ) THEN
+  IF (LLP)WRITE (NULOUT,*) '  DECLARE MASQUE INTERNE ET POIDS LOCAUX '
+  ALLOCATE(YDMDDH%NDDHI(IGPTOT))
+  IF(LLP)WRITE(IU,9) 'NDDHI    ',SIZE(YDMDDH%NDDHI ),SHAPE(YDMDDH%NDDHI )
+  ALLOCATE(YDMDDH%HDSF(IGPTOT))
+  IF(LLP)WRITE(IU,9) 'HDSF     ',SIZE(YDMDDH%HDSF  ),SHAPE(YDMDDH%HDSF  )
+ENDIF
+
+9 FORMAT(1X,'ARRAY ',A10,' ALLOCATED ',8I8)
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUALMDH',1,ZHOOK_HANDLE)
+END SUBROUTINE SUALMDH

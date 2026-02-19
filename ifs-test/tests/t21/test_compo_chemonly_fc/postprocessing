@@ -1,0 +1,4 @@
+echo "No sanity checks implemented"
+
+./ifs-check-tracers
+./ifs-check-bitid

@@ -1,0 +1,6 @@
+DIFF=$(grep 'SUMMED TIME IN COMMUNICATIONS   = [ 0-9.]* SECONDS [ 0-9.]* PERCENT OF TOTAL' NODE.001_01 | tr -s " " | cut -d" " -f8)
+for IDIFF in ${DIFF} ; do
+    if (($(bc <<< "$IDIFF>0.0"))); then echo "Passed: $IDIFF > 0"; else echo "Test failed: Time in communications must be greater than 0"; exit 1; fi
+done
+
+./ifs-check-bitid

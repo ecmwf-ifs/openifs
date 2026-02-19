@@ -1,0 +1,22 @@
+! (C) Copyright 1989- Meteo-France.
+
+      SUBROUTINE INVJUL(JULIAN,IYYY,MM,ID)
+      PARAMETER (IGREG=2299161)
+      IF (JULIAN .GE. IGREG) THEN
+         JALPHA=INT(((JULIAN-1867216)-0.25)/36524.25)
+         JA=JULIAN+1+JALPHA-INT(0.25*JALPHA)
+      ELSE
+         JA=JULIAN
+      ENDIF
+      JB=JA+1524
+      JC=INT(6680.+((JB-2439870)-122.1)/365.25)
+      JD=365*JC+INT(0.25*JC)
+      JE=INT((JB-JD)/30.6001)
+      ID=JB-JD-INT(30.6001*JE)
+      MM=JE-1
+      IF (MM .GT. 12) MM=MM-12
+      IYYY=JC-4715
+      IF (MM .GT. 2) IYYY=IYYY-1
+      IF (IYYY .LE. 0) IYYY=IYYY-1
+      RETURN
+      END

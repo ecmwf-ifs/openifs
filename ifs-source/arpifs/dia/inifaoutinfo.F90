@@ -1,0 +1,227 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE INIFAOUTINFO(YDRIP,YDXFU,CDCONF,CDINC,CDFIC,KDATEF)
+
+!**** *INIFAOUTINFO*  - INIFAOUT options; created from inifaout.F90
+
+!     Author. 
+!     ------- 
+!      Philippe Marguinaud *METEO FRANCE*
+!      Original : 11-09-2012
+
+!     Modifications :
+!     ---------------
+!     P. Marguinaud : 10-10-2013 : Simplify.
+!     T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!     L. Raynaud (Nov 2014) : add writing of random background vector
+!
+!      K. Yessad (July 2014): Move some variables.
+!     R. El Khatib 17-Mar-2016 CFPATH passed to suofname
+!----------------------------------------------------------------------------
+
+USE YOMXFU   , ONLY : TXFU, JPFUXT
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN   , ONLY : NULOUT 
+USE YOMOPH0  , ONLY : CFANS, CFNAN, CFNGR, CFNBGV, CFNRF, LINC, CFPATH
+USE YOMVAR   , ONLY : LTRREF, LTWANA, LTWGRA, LTWLCZ, MBGVEC, LTWBGV
+USE ALGORITHM_STATE_MOD  , ONLY : GET_NSIM4D
+USE YOMCT0   , ONLY : NCONF, LOBSC1, LFBDAP, LINFLAT
+USE YOMCT3   , ONLY : NSTEP
+USE YOMRIP   , ONLY : TRIP
+USE YOMINI   , ONLY : LINITER
+
+!----------------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(TRIP)        ,INTENT(IN)            :: YDRIP
+TYPE(TXFU)        ,INTENT(IN)            :: YDXFU
+CHARACTER(LEN=1)  ,INTENT(IN)            :: CDCONF 
+CHARACTER(LEN=*),  INTENT(OUT), OPTIONAL :: CDINC
+CHARACTER(LEN=*),  INTENT(OUT), OPTIONAL :: CDFIC
+INTEGER(KIND=JPIM),INTENT(OUT), OPTIONAL :: KDATEF (:)
+!----------------------------------------------------------------------------
+CHARACTER(LEN=16)  :: CLINC
+CHARACTER(LEN=214) :: CLFIC
+CHARACTER(LEN=5)   :: CLR1, CLNSTEP
+CHARACTER(LEN=1)   :: CL
+CHARACTER(LEN=3)   :: CLSIM4D, CLBGVEC
+CHARACTER(LEN=4)   :: CLR2
+
+INTEGER(KIND=JPIM) :: IMTS, IDTIME
+INTEGER(KIND=JPIM) :: ISTEP, IINC
+INTEGER(KIND=JPIM) :: IPPDATE(22)
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!----------------------------------------------------------------------------
+
+#include "suppdate.intfb.h"
+#include "suofname.intfb.h"
+
+!----------------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('INIFAOUTINFO',0,ZHOOK_HANDLE)
+ASSOCIATE(&
+ & TSTEP=>YDRIP%TSTEP, &
+ & LXFU=>YDXFU%LXFU, N1RAZ=>YDXFU%N1RAZ, NFRRAZ=>YDXFU%NFRRAZ)
+!----------------------------------------------------------------------------
+
+CLINC = ''
+
+WRITE(CLNSTEP,'(I5.4)') NSTEP
+WRITE(CLSIM4D,'(I3.3)') GET_NSIM4D()
+
+IF (LTRREF) THEN
+
+  CLR1 = CFNRF(1:5)
+  CLR2 = CFNRF(6:9)
+  IF (NSTEP < 0) THEN
+    CLFIC=CLR1//CLR2//CLNSTEP
+  ELSE
+    IF (LINC) THEN
+      IINC=NINT(REAL(NSTEP,JPRB)*TSTEP/3600._JPRB)
+    ELSE
+      IINC=NSTEP
+    ENDIF
+    WRITE(CLINC,'(I4.4)') IINC
+    CLFIC=CLR1//CLR2//CLINC
+  ENDIF
+
+  WRITE(NULOUT,'('' WRITE TRAJECTORY ON FILE '',A16)')TRIM(CLFIC)
+
+ELSEIF(LTWANA) THEN
+
+  IF (NSTEP < 0) THEN
+    CL='-'
+    IINC=ABS(NSTEP)
+  ELSEIF (NCONF/100 == 1.OR.LOBSC1) THEN
+    CL=CFNAN(10:10)
+    IMTS=NINT(REAL(NSTEP,JPRB)*TSTEP/60._JPRB)
+    IINC=(IMTS/60)*100+MOD(IMTS,60)
+  ELSE
+    CL=CFNAN(10:10)
+    IINC=NSTEP
+  ENDIF
+  WRITE(CLINC,'(I4.4)') IINC
+  CLFIC=CFNAN(1:6)//CLSIM4D//CL//CLINC
+
+  WRITE(NULOUT,'('' WRITE ANALYSIS ON FILE '',A16)')TRIM(CLFIC)
+
+ELSEIF(LTWGRA) THEN
+
+  IF (NSTEP < 0) THEN
+    CL='-'
+    IINC=ABS(NSTEP)
+  ELSEIF (NCONF/100 == 1) THEN
+    CL=CFNGR(10:10)
+    IMTS=NINT(REAL(NSTEP,JPRB)*TSTEP/60._JPRB)
+    IINC=(IMTS/60)*100+MOD(IMTS,60)
+  ELSE
+    CL=CFNGR(10:10)
+    IINC=NSTEP
+  ENDIF
+  WRITE(CLINC,'(I4.4)') IINC
+  CLFIC=CFNGR(1:6)//CLSIM4D//CL//CLINC
+
+  WRITE(NULOUT,'('' WRITE GRADIENT ON FILE '',A16)')TRIM(CLFIC)
+
+ELSEIF (LTWLCZ) THEN
+
+  CLFIC="SVARPE000+0000"
+  IF (NSTEP < 0) THEN
+    CLFIC(10:10)='-'
+    IINC=ABS(NSTEP)
+  ELSEIF (NCONF/100 == 6) THEN
+    IMTS=NINT(REAL(NSTEP,JPRB)*TSTEP/60._JPRB)
+    IINC=(IMTS/60)*100+MOD(IMTS,60)
+  ELSE
+    IINC=NSTEP
+  ENDIF
+  WRITE(CLFIC(7:9),'(I3.3)') GET_NSIM4D()
+  WRITE(CLFIC(11:14),'(I4.4)') IINC
+  WRITE(NULOUT,'('' WRITE SV '',I2, '' ON FILE '',A16)')GET_NSIM4D(),CLFIC
+
+ELSEIF (LTWBGV) THEN
+
+  IF (NSTEP < 0) THEN
+    CL='-'
+    IINC=ABS(NSTEP)
+  ELSE
+    CL='+'
+    IINC=NINT(REAL(NSTEP,JPRB)*TSTEP/3600._JPRB)
+  ENDIF
+  WRITE(NULOUT,*)'NSTEP=', NSTEP
+  WRITE(NULOUT,*) 'TSTEP=',TSTEP
+  WRITE(NULOUT,*) 'IINC=',IINC
+  WRITE(CLINC,'(I4.4)') IINC
+  WRITE(NULOUT,*) 'CDINC=',CLINC
+  WRITE(CLBGVEC,'(I3.3)') MBGVEC
+  CLFIC=CFNBGV(1:6)//CLBGVEC//CL//CLINC
+
+  WRITE(NULOUT,'('' WRITE RANDOM VECTOR ON FILE '',A16)')TRIM(CLFIC)
+
+ELSEIF (LINITER) THEN
+
+  CLFIC= CFANS
+
+ELSE
+
+  IF (NSTEP < 0) THEN
+    IF (LINC) THEN
+      CALL SUOFNAME(KSTEP=NSTEP,PTSTEP=TSTEP,CDPATH=CFPATH,CDLABEL='ICMSH',CDOFNAME=CLFIC)
+    ELSE
+      CALL SUOFNAME(KSTEP=NSTEP,CDPATH=CFPATH,CDLABEL='ICMSH',CDOFNAME=CLFIC)
+    ENDIF
+  ELSE
+    ISTEP=NSTEP
+    IF (PRESENT (CDINC)) THEN
+      CDINC = CLINC
+    IF (LINC) THEN
+      CALL SUOFNAME(KSTEP=ISTEP,PTSTEP=TSTEP,CDPATH=CFPATH,CDLABEL='ICMSH',CDOFNAME=CLFIC,CDINC=CDINC)
+    ELSE
+      CALL SUOFNAME(KSTEP=ISTEP,CDPATH=CFPATH,CDLABEL='ICMSH',CDOFNAME=CLFIC,CDINC=CDINC)
+    ENDIF
+      CLINC = CDINC
+    ENDIF
+  ENDIF
+
+ENDIF
+
+IF (CDCONF == 'x') THEN
+  CLFIC = TRIM (CLFIC)//'.sfx'
+ENDIF
+
+!*           DECIDE ON SUITABLE TIME UNIT.
+!            -----------------------------
+
+IF (NCONF==701 .AND. LINFLAT) THEN
+  IDTIME=2
+ELSE
+  IDTIME=0
+ENDIF
+IF (LFBDAP.AND.LXFU) THEN
+  CALL SUPPDATE(YDRIP,NSTEP,IDTIME,KEVENTTS=YDXFU%NRAZTS,KDIME=JPFUXT,&
+              & KFREVENT=NFRRAZ,K1EVENT=N1RAZ,KPPDATE=IPPDATE)
+ELSE
+  CALL SUPPDATE(YDRIP,NSTEP,KDTIME=IDTIME,KDIME=1,KPPDATE=IPPDATE)
+ENDIF
+
+IF (PRESENT (CDINC))  CDINC      = CLINC
+IF (PRESENT (CDFIC))  CDFIC      = CLFIC
+IF (PRESENT (KDATEF)) KDATEF     = IPPDATE (1:SIZE (KDATEF))
+
+!----------------------------------------------------------------------------
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('INIFAOUTINFO',1,ZHOOK_HANDLE)
+END SUBROUTINE INIFAOUTINFO
+

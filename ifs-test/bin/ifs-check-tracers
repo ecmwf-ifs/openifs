@@ -1,0 +1,61 @@
+#!/bin/bash
+set -eu
+
+# Check aerosol, chemistry and GHG tracers for sanity (in particular, negative values).
+
+# Are we running in single or double precision? This will affect the way we check validity.
+precision=$(perl -ne 'm{^\s*The model is using (single|double) precision\.\s*} and print "$1\n"' NODE.[0-9][0-9][0-9]_[0-9][0-9] | uniq)
+[[ -n $precision ]] || { echo >&2 "Cannot determine precision from NODE file"; exit 2; }
+GFL_NAMELIST_FILE=${GFL_NAMELIST_FILE:-"fort.4"}
+
+case "${IFS_TEST_WARN_NEG_TRACER:-default}" in
+  0|false|no|off)
+    msg_level=ERROR
+    ;;
+  1|true|yes|on)
+    msg_level=WARN
+    ;;
+  default)
+    msg_level=ERROR
+    ;;
+  *)
+    echo >&2 "Unknown IFS_TEST_WARN_NEG_TRACER value"
+    exit 3
+    ;;
+esac
+
+# Extract the list of tracer names from the namelist.
+while read tracer; do
+  tracers+=($tracer)
+done < <(perl -ne "m{\\bY(?:AERO|CHEM|GHG)_NL\\([0-9]+\\)%CNAME='([^']+)'} and print \"\$1\n\"" $GFL_NAMELIST_FILE )
+
+negatives=0
+
+in_gpnorm_block=false
+while read -r a b c d e; do
+  if [[ $a = GPNORM && $c = AVERAGE && $d = MINIMUM && $e = MAXIMUM ]]; then
+    for tracer in "${tracers[@]}"; do
+      if [[ $b = $tracer ]]; then
+        in_gpnorm_block=true
+        continue 2
+      fi
+    done
+    in_gpnorm_block=false
+  elif $in_gpnorm_block; then
+    if [[ $a = AVE || -z ${a//[0-9]/} ]]; then
+      if [[ $c = -* ]]; then
+        echo "  $msg_level: negative minimum found for tracer $tracer on level $a: $c"
+        negatives=$((negatives+1))
+      fi
+    else
+      in_gpnorm_block=false
+    fi
+  fi
+done < NODE.*
+
+if [[ $negatives -gt 0 ]]; then
+  echo "$msg_level: $negatives negative minimum tracer values found"
+  [[ $msg_level != ERROR ]] || exit 1
+else
+  echo "OK: no negative tracer values found"
+fi

@@ -1,0 +1,16 @@
+rm -f NODE.001_01 drhook.prof.* drhook_lock ifs.stat *000000 job fort.4 gmon.out stdout.log stderr.log meminfo.txt
+
+if [[ $(basename $(pwd)) =~ "4dvar" ]]
+then
+   rm -f enspert.???_??? *_obs_formated.txt
+fi
+
+if [[ $(basename $(pwd)) =~ "dualconf" ]]
+then
+  rm -f namelist_geom namelist_geom1 namelist_geom2 common_namelists namelist_model1 namelist_model2 create_config_file.json
+fi
+
+if [[ $(dirname $(pwd)) =~ /scm$ ]]
+then
+  rm -f diagvar* onecol.r progvar.nc
+fi

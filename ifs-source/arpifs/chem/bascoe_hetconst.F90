@@ -1,0 +1,472 @@
+! (C) Copyright 2009- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE BASCOE_HETCONST(YGFL,KTRACER,PTEMP, PRS, PDENS, LD_PSC_POSSIBLE, KTOP_PSC,KBOT_PSC, KLEV,  &
+  & PCONC, PSA_SIZEDIST, PAER, PTSTEP, PRHET )
+
+USE PARKIND1 , ONLY : JPIM,    JPRB
+USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOM_YGFL , ONLY : TYPE_GFLD
+USE BASCOE_MODULE , ONLY :  NHET, &
+!VH   & IH2O,IN2O5,IHCL,IHOCL,ICLONO2,   & IHOBR,IHBR,IBRONO2, &
+!VH      use AERO_DEF, only : &
+   & NBINS, PTSIZE, NAER, IAER_SAD
+
+IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+!*       0.1  ARGUMENTS
+!             ---------
+TYPE(TYPE_GFLD)    ,INTENT(INOUT):: YGFL
+INTEGER(KIND=JPIM), INTENT(IN)::KTRACER(9)
+REAL(KIND=JPRB),INTENT(IN)  :: PTEMP, PRS, PDENS
+LOGICAL,INTENT(IN)          :: LD_PSC_POSSIBLE
+INTEGER(KIND=JPIM), INTENT(IN)::KLEV,KTOP_PSC,KBOT_PSC
+REAL(KIND=JPRB),INTENT(IN)  :: PCONC(YGFL%NCHEM)
+REAL(KIND=JPRB),INTENT(IN)  :: PSA_SIZEDIST(NBINS)
+REAL(KIND=JPRB),INTENT(IN)  :: PAER(NAER)
+REAL(KIND=JPRB),INTENT(IN)  :: PTSTEP
+REAL(KIND=JPRB),INTENT(OUT) :: PRHET(NHET)
+
+
+! * LOCAL 
+REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+INTEGER(KIND=JPIM) :: IH2O,IN2O5,IHCL,IHOCL,ICLONO2,IHOBR,IHBR,IBRONO2,IHNO3
+REAL(KIND=JPRB)    :: ZLCLONO2, ZLN2O5, ZLHOCL, ZLBRONO2, ZLHOBR, ZLTOTAL, ZRATIO
+REAL(KIND=JPRB), PARAMETER :: ZT_ICE = 186. , ZT_NAT = 194.
+REAL(KIND=JPRB)    :: ZVMRWV, ZVMRHCL
+REAL(KIND=JPRB), DIMENSION(NBINS) :: ZND
+REAL(KIND=JPRB)    :: ZSLOW1,ZSLOW2,ZSLOW3
+REAL(KIND=JPRB)    :: ZP_ICE,ZVMR_H2O,ZVMR_HNO3,ZPW,ZPN0,ZPN0T,ZMT,ZBT,ZHNO3EQ,ZTEMP 
+REAL(KIND=JPRB),PARAMETER :: ZPREF = 101325._JPRB
+
+REAL(KIND=JPRB)  :: ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE,ZGH2O,ZGHCL,ZHCL_VMR,ZHBR_VMR
+!- Switch to select the PSC parameterization. 
+!-   1: very simple. 
+!-   2: more realistic approach, but may need further tuning
+INTEGER(KIND=JPIM),PARAMETER :: IMODE=2
+
+!-------------------------------------------------------------------
+#include "bascoe_gliq.intfb.h"
+!-------------------------------------------------------------------
+#ifdef WITH_COMPO_DR_HOOK
+IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST',0,ZHOOK_HANDLE )
+#endif
+
+PRHET(:) = 0._JPRB
+
+  ZS_STS = 0._JPRB
+  ZS_SAT = 0._JPRB
+  ZS_NAT = 0._JPRB
+  ZS_ICE = 0._JPRB
+  ZGH2O  = 0._JPRB
+  ZGHCL  = 0._JPRB
+
+ IH2O   =KTRACER(1)
+ IN2O5  =KTRACER(2)
+ IHCL   =KTRACER(3)
+ IHOCL  =KTRACER(4)
+ ICLONO2=KTRACER(5)
+ IHOBR  =KTRACER(6)
+ IHBR   =KTRACER(7)
+ IBRONO2=KTRACER(8)
+ IHNO3  =KTRACER(9)
+ 
+! ----------------------------------------------------------------------
+!    Calculate sticking coefficients - used in CHEM
+! ----------------------------------------------------------------------
+
+ZS_STS  = MIN( 5.E-7_JPRB, MAX( 0.0_JPRB, PAER(IAER_SAD) ) )
+ZND(:)  = PSA_SIZEDIST(1:NBINS)
+! Convert PCONC from [molec/cm3] to [mole/mole]  through division by PDENS
+ZVMRWV  = MAX( MIN( PCONC(IH2O)/PDENS, 6.E-6_JPRB ), 1.E-7_JPRB )
+ZVMRHCL = MAX( MIN( PCONC(IHCL)/PDENS, 4.E-9_JPRB ), 1.E-10_JPRB )
+
+CALL BASCOE_GLIQ( ZND(1:NBINS), PTSIZE(1:NBINS,1) ,&
+                & PTEMP, PRS, ZVMRWV, ZVMRHCL, ZGHCL, ZGH2O )
+
+IF( .NOT. LD_PSC_POSSIBLE .OR.&
+  &    KLEV < KTOP_PSC .OR. KLEV > KBOT_PSC ) THEN
+!VH  CONTINUE
+  ZS_ICE = 0.0_JPRB 
+  ZS_NAT = 0.0_JPRB
+ELSE
+  IF (IMODE == 1_JPIM) THEN
+    ! psc_sad_ice and psc_sad_nat are tuned in order to let the (oversimplistic) test 
+    ! for PSC existence deliver acceptable results for Antarctic 2003. 
+    IF( PTEMP < ZT_ICE ) THEN
+      ZS_ICE = 1.E-6_JPRB
+      ZS_NAT = 0._JPRB
+    ELSEIF ( PTEMP < ZT_NAT ) THEN
+      ZS_ICE = 0._JPRB
+      ZS_NAT = 1.E-7_JPRB
+    ELSE
+      ZS_ICE = 0._JPRB
+      ZS_NAT = 0._JPRB
+    ENDIF
+  ELSEIF (IMODE == 2_JPIM) THEN
+    ! PSC is expected to appear at at quite smaller number of gripoints, than in IMODE=1 
+    ! therefore psc_sad_ice and psc_sad_nat may need to be larger. 
+    ! VH - but still I see an over-estimation of O3 depletion, and too much HCL. with 
+    ! VH - ZS_ICE=2e-6 and ZS_NAT=2e-7. Therefore reduce again to ' standard' condition.
+    ZTEMP = PTEMP
+    ! Koop and Murphy, QJRMS, 2005:
+    ZP_ICE = EXP( 9.550426_JPRB - 5723.265_JPRB/ZTEMP + 3.53068_JPRB*LOG(ZTEMP) - 0.00728332_JPRB*ZTEMP ) 
+    !* Compute H2O vmr from concentration in molec/cm3, through division by PDENS, i.e. air density in molec/cm3
+    ZVMR_H2O=PCONC(IH2O)/PDENS
+    !VH IF( ZVMR_H2O*PRS/ZP_ICE > 1.0_JPRB ) THEN
+    IF( ZVMR_H2O*PRS > ZP_ICE ) THEN
+      ZS_ICE = 2.E-6_JPRB
+      ZS_NAT = 0._JPRB
+    ELSE
+      !* Compute HNO3 vmr from given concentration PCONC in units [molec/cm3]
+      ! partial pressure of water vapor normalized by the standard pressure ZPREF ( / )
+      !    2e-5 mb (=2e-3 Pa) < pw * ZPREF < 2e-3 mb (= 2e-1 Pa)
+      ! pw * ZPREF > 2e-5 mb (= 2e-3 Pa), see line above
+      ! "virtual" HNO3 partial pressure normalized by the standard pressure ZPREF ( / ).
+
+      ZVMR_HNO3=PCONC(IHNO3)/PDENS
+      ZPW = ZVMR_H2O*PRS/ZPREF                              
+      ZPW = MAX(MIN(ZPW,2.E-1_JPRB/ZPREF),2.E-3_JPRB/ZPREF) 
+      ! ZPW = max(pw,2.e-3/ZPREF)                           
+      ZPN0 = ZVMR_HNO3*PRS/ZPREF                            
+
+      ! Conversion of normalized pressure from "/" to "Torr/Pa". Rem: 1 Pa = 7.5e-3 Torr
+      ! Parameter m(T) in Eq.(1) of Hanson and Mauersberger (1988), p.857.                                                      
+      ZTEMP = MIN(ZTEMP,273._JPRB)
+      ZPN0T = ZPN0*ZPREF/100._JPRB*0.75_JPRB           
+      ZMT  = -2.7836_JPRB - 0.00088_JPRB*ZTEMP         
+      ! Parameter b(T) in Eq.(1) of Hanson and Mauersberger (1988), p.857.
+      ZBT  = 38.9855_JPRB - 11397.0_JPRB/ZTEMP + 0.009179_JPRB*ZTEMP       
+      ! HNO3 partial pressure (Torr/Pa !!!). Hanson and Mauersberger (1988), Eq.(1), p.857.
+      ZHNO3EQ = 10.0_JPRB**(ZMT*LOG10(ZPW*ZPREF/100.*0.75_JPRB) + ZBT)     
+
+      !VH IF (ZPN0T/ZHNO3EQ > 1.0_JPRB) THEN
+      IF (ZPN0T > ZHNO3EQ) THEN
+        ZS_ICE = 0._JPRB
+        ZS_NAT = 2.E-7_JPRB
+      ELSE
+        ZS_ICE = 0._JPRB
+        ZS_NAT = 0._JPRB
+      ENDIF
+    ENDIF
+  ENDIF
+ENDIF
+
+! ----------------------------------------------------------------------
+!    Update Heter. Reaction rates.
+! ----------------------------------------------------------------------
+ZLCLONO2 = PCONC(ICLONO2)*RH2(PTEMP,ZGHCL,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)/&
+         &      (1.0_JPRB+RH2(PTEMP,ZGHCL,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*PTSTEP)
+ZLN2O5   = PCONC(IN2O5)*  RH4(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)/&
+         &    (1.0_JPRB+  RH4(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*PTSTEP)
+ZLHOCL   = PCONC(IHOCL)*  RH5(PTEMP,ZGHCL,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)/&
+         &    (1.0_JPRB+  RH5(PTEMP,ZGHCL,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*PTSTEP)
+ZLBRONO2 = PCONC(IBRONO2)*RH9(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)/&
+         &      (1.0_JPRB+RH9(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*PTSTEP)
+ZLHOBR   = PCONC(IHOBR)*  RH7(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)/&
+         &    (1.0_JPRB+  RH7(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*PTSTEP)
+ZLTOTAL  = (ZLCLONO2+ZLN2O5+ZLHOCL+ZLBRONO2+ZLHOBR)*PTSTEP
+
+!VH Set minimum to HCL /HBR concentrations - required for troposphere with low HCL due to wet dep.
+ZHCL_VMR = MAX(PCONC(IHCL)/PDENS, 1E-10_JPRB)
+ZHBR_VMR = MAX(PCONC(IHBR)/PDENS, 1E-15_JPRB)
+
+! Use variables 'as is', as in BASCOE
+!ZHCL_VMR = PCONC(IHCL)/PDENS
+!ZHBR_VMR = PCONC(IHBR)/PDENS
+
+ZRATIO   = ZLTOTAL/(ZHCL_VMR*PDENS)
+
+IF(ZRATIO > 1._JPRB)THEN
+  ZSLOW1=1.0_JPRB/(1.1_JPRB*ZRATIO*ZHCL_VMR * PDENS)
+ELSE
+  ZSLOW1=1.0_JPRB/(ZHCL_VMR*PDENS)
+ENDIF
+IF( PCONC(IN2O5) < 100._JPRB ) THEN
+  ZSLOW2 = 0.0_JPRB
+ELSE
+  ZSLOW2 = ZSLOW1
+ENDIF
+
+IF( (PCONC(IHOBR)) < 100._JPRB ) THEN
+  ZSLOW3 = 0._JPRB
+ELSE 
+  ZLHOBR=PTSTEP*PCONC(IHOBR)*RH8(PTEMP,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)/&
+          &      (1.0_JPRB+RH8(PTEMP,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*PTSTEP)
+  ZRATIO=ZLHOBR/PCONC(IHOBR)
+  IF(ZRATIO > 1._JPRB)THEN
+    ZSLOW3=1.0_JPRB/(1.1_JPRB*ZRATIO*ZHBR_VMR*PDENS)
+  ELSE
+    ZSLOW3=1.0_JPRB/(ZHBR_VMR*PDENS)
+  ENDIF
+ENDIF
+
+PRHET(1) = RH1(PTEMP,ZGH2O,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)
+PRHET(2) = RH2(PTEMP,ZGHCL,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*ZSLOW1
+PRHET(3) = RH3(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)
+PRHET(4) = RH4(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*ZSLOW2
+PRHET(5) = RH5(PTEMP,ZGHCL,ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*ZSLOW1
+PRHET(6) = RH6(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)
+PRHET(7) = RH7(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*ZSLOW1
+PRHET(8) = RH8(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*ZSLOW3
+PRHET(9) = RH9(PTEMP,      ZS_STS,ZS_SAT,ZS_NAT,ZS_ICE)*ZSLOW1
+
+#ifdef WITH_COMPO_DR_HOOK
+IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST',1,ZHOOK_HANDLE )
+#endif
+
+CONTAINS
+
+
+!   RH1(TEMP) ; {ClONO2 + H2O(c) = HOCl + HNO3(c)}
+FUNCTION RH1(PTEMP,PGH2O,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH1
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PGH2O,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+
+#ifdef WITH_COMPO_DR_HOOK     
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH1',0,ZHOOK_HANDLE )
+#endif
+
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*97.4579/6.022))
+      ZG_STS=PGH2O  ! factor surf area dens already in PGH2O
+      ZG_SAT=0.00
+      ZG_NAT=0.004 ! v3s13: checked JPL2000 OK (p.47)
+      ZG_ICE=0.3
+      ZGAMMA=ZG_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH1=ZGAMMA*ZTERM
+
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH1',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH1
+
+!   RH2(TEMP) ; {ClONO2 + HCl(c) = Cl2 + HNO3(c)}
+FUNCTION RH2(PTEMP,PGHCL,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH2
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PGHCL,PS_STS,PS_SAT,PS_NAT,PS_ICE
+
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+     
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH2',0,ZHOOK_HANDLE )
+#endif
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*97.4579/6.022))
+      ZG_STS=PGHCL  ! factor surf area dens already in PGHCL
+      ZG_SAT=0.00
+      ZG_NAT=0.2
+      ZG_ICE=0.3 ! v3s13: checked JPL2000 OK (p.47)
+      ZGAMMA=ZG_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH2=ZTERM*ZGAMMA   
+!RH2 taken into account outside chem integ
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH2',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH2
+
+!   RH3(TEMP) ; {N2O5 + H2O(c) = 2HNO3(c)}
+FUNCTION RH3(PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH3
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+
+#ifdef WITH_COMPO_DR_HOOK     
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH3',0,ZHOOK_HANDLE )
+#endif
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*108.0104/6.022))
+      ZG_STS=0.100
+      ZG_SAT=0.00
+      ZG_NAT=0.0004 ! v3s13: checked JPL2000 OK (p.47)
+      ZG_ICE=0.02
+      ZGAMMA=ZG_STS*PS_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH3=ZTERM*ZGAMMA
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH3',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH3
+
+!   RH4(TEMP) ; {N2O5 + HCl(c) = ClNO2 + HNO3(c)}
+FUNCTION RH4(PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH4
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+     
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH4',0,ZHOOK_HANDLE )
+#endif
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*108.0104/6.022))
+      ZG_STS=0.00  ! v3s13: checked JPL2000 OK (p.47)
+      ZG_SAT=0.00
+      ZG_NAT=0.003 ! v3s13: checked JPL2000 OK (p.47)
+      ZG_ICE=0.03  ! v3s13: checked JPL2000 OK (p.47)
+      ZGAMMA=ZG_STS*PS_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH4=ZTERM*ZGAMMA
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH4',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH4
+
+!   RH5(TEMP) ; {HOCl + HCl(c) = Cl2 + H2O(c)}
+FUNCTION RH5(PTEMP,PGHCL,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH5
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PGHCL,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH5',0,ZHOOK_HANDLE )
+#endif
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*52.4603/6.022))
+      ZG_STS=0.4*PGHCL ! v3s13: checked JPL2000 OK (p.46), surf area dens already HF
+      ZG_SAT=0.00
+      ZG_NAT=0.1
+      ZG_ICE=0.2
+      ZGAMMA=ZG_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH5=ZGAMMA*ZTERM
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH5',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH5
+
+!   RH6(TEMP) ; {BrONO2 + H2O(c) = HOBr+HNO3}
+FUNCTION RH6(PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH6
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+     
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH6',0,ZHOOK_HANDLE )
+#endif
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*141.9089/6.022))
+      ZG_STS=0.7  ! v3s13: checked JPL2000 OK (p.56)
+      ZG_SAT=0.0
+      ZG_NAT=0.0
+      ZG_ICE=0.3  ! v3s13: checked JPL2000 OK (p.47)
+      ZGAMMA=ZG_STS*PS_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH6=ZTERM*ZGAMMA
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH6',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH6
+
+!   RH7(TEMP) ; {HOBr + HCl(c) = BrCl + H2O(c)}
+FUNCTION RH7(PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH7
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+     
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH7',0,ZHOOK_HANDLE )
+#endif      
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*96.9113/6.022))
+      ZG_STS=0.00 ! v3s13: checked JPL2000 OK (p.55)
+      ZG_SAT=0.00
+      ZG_NAT=0.0 
+      ZG_ICE=0.3  ! v3s13: checked JPL2000 OK (p.47)
+      ZGAMMA=ZG_STS*PS_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH7=ZTERM*ZGAMMA
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH7',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH7
+
+!   RH8(TEMP) ; {HOBr + HBr(c) = Br2 + H2O(c)}. All versions have this 
+! reaction OFF (g_*=0). At v3s14, tried reaction ON: ZG_STS=0.25 & ZG_ICE=0.1
+! following JPL97 p247 (not in JPL2000) but crashed in DECOMP_HARD
+FUNCTION RH8(PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH8
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+     
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH8',0,ZHOOK_HANDLE )
+#endif
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*96.9113/6.022))
+      ZG_STS=0.0
+      ZG_SAT=0.00
+      ZG_NAT=0.0
+      ZG_ICE=0.0
+      ZGAMMA=ZG_STS*PS_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH8=ZTERM*ZGAMMA
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH8',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH8
+
+!   RH9(TEMP) ; {BrONO2 + HCl(c) = BrCl + HNO3(c)}
+FUNCTION RH9(PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE)
+
+      USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1 , ONLY : JPRB
+      IMPLICIT NONE
+      REAL(KIND=JPRB) :: RH9
+      REAL(KIND=JPRB),INTENT(IN) :: PTEMP,PS_STS,PS_SAT,PS_NAT,PS_ICE
+      REAL(KIND=JPRB) :: ZG_STS, ZG_SAT, ZG_NAT, ZG_ICE, ZGAMMA, ZTERM
+      REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+
+#ifdef WITH_COMPO_DR_HOOK     
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH9',0,ZHOOK_HANDLE )
+#endif
+!      ZTERM=0.25*sqrt(8.E7*1.38*PTEMP/(3.1415*97.4579/6.022))
+      ZTERM=0.25*SQRT(8.E7*1.38*PTEMP/(3.1415*141.9089/6.022))
+! since v3s13 (except v3s16), ZG_STS=ZG_ICE=0.5, since JPL97 p247 said ZG_STS & 
+! ZG_ICE could be very high (not in JPL2000)
+      ZG_STS=0.5
+      ZG_SAT=0.00
+      ZG_NAT=0.0
+      ZG_ICE=0.5
+      ZGAMMA=ZG_STS*PS_STS+ZG_SAT*PS_SAT+ZG_NAT*PS_NAT+ZG_ICE*PS_ICE
+      RH9=ZTERM*ZGAMMA
+#ifdef WITH_COMPO_DR_HOOK
+      IF (LHOOK) CALL DR_HOOK('BASCOE_HETCONST:RH9',1,ZHOOK_HANDLE )
+#endif
+END FUNCTION RH9
+
+
+
+END SUBROUTINE BASCOE_HETCONST

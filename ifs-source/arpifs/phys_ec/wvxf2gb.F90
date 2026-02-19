@@ -1,0 +1,399 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE WVXF2GB(YDGEOMETRY,YDSURF,LDFIRSTCALL,PTSTEP,YDEWCOU,K_NFIELDS, K_NC, K_NR,&
+ & KSTPW,&
+ & LDWCOUNORMS, P_FIELDS, KGPTOT, KGPTOTG, KPROMA, KDGLG)
+#ifdef WITH_WAVE
+
+!**** *WVXF2GB*  - Initialize the wave gridpoint fields from GRIB
+
+!     Purpose.
+!     --------
+!           Initialize the gridpoint fields of the model from GRIB file.
+
+!**   Interface.
+!     ----------
+!        *CALL* *WVXF2GB(...)
+
+!        Explicit arguments : 
+!        ------------------
+!            NFIELDS - Number of ATM fields to pass to WAVE
+!            NWVFIELDS - Number of WAVE fields to pass to ATM
+!            NC - Number of longitude lines
+!            NR - Number of latitude lines
+!            LDWCOUNORMS - global norms flag
+!            FIELDS - Array holding the ATM fields.
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      LARS ISAKSEN *ECMWF*
+!      JIM DOYLE
+
+!     Modifications:
+!     --------------
+!      S. Abdalla  : 01-11-27: Generalise the ATM-WAVE interface.
+!      M.Hamrud    : 02-01-10 Replaced call to MODNSEC with call to new routine PREGRBENC
+!      D.Salmond   : 02-08-14  MPL_BROADCAST inserted instead of MPL_SEND / MPL_RECV
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Hamrud      10-Jan-2004 CY28R1 Cleaning
+!      D.Salmond     22-Nov-2005 Mods for coarser/finer physics
+!      M.Hamrud      01-Jul-2006  Revised surface fields
+!      J. Bidlot     August 2010 use gribapi handles
+!      T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!      K. Yessad (July 2014): Move some variables.
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD      , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX, ONLY : TSURF
+USE PARKIND1          , ONLY : JPIM, JPRB
+USE YOMHOOK           , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCT3            , ONLY : NSTEP
+USE YOEWCOU           , ONLY : TEWCOU
+USE YOMMP0            , ONLY : NPROC, MYPROC, NPRCIDS
+USE YOMDYNCORE        , ONLY : LPPSTEPS
+USE MPL_MODULE        , ONLY : MPL_SEND, MPL_RECV, MPL_WAIT,&
+ &                             JP_BLOCKING_STANDARD, JP_NON_BLOCKING_STANDARD
+USE GRIB_UTILS_MOD    , ONLY : GRIB_SET_PARAMETER
+USE GRIB_API_INTERFACE, ONLY : IGRIB_CLONE, IGRIB_SET_VALUE
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TSURF)       ,INTENT(INOUT) :: YDSURF
+LOGICAL           ,INTENT(IN)    :: LDFIRSTCALL
+TYPE(TEWCOU)      ,INTENT(INOUT) :: YDEWCOU
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTEP
+INTEGER(KIND=JPIM),INTENT(IN)    :: K_NFIELDS 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KDGLG
+INTEGER(KIND=JPIM),INTENT(OUT)   :: K_NC 
+INTEGER(KIND=JPIM),INTENT(OUT)   :: K_NR 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTPW
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: P_FIELDS(KGPTOTG,K_NFIELDS) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KGPTOTG
+INTEGER(KIND=JPIM),INTENT(IN)    :: KGPTOT
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROMA
+!     ------------------------------------------------------------------
+LOGICAL,INTENT(INOUT) :: LDWCOUNORMS
+REAL(KIND=JPRB) :: ZFLOC(KGPTOT*K_NFIELDS)
+
+INTEGER(KIND=JPIM) :: I, J, JF, IEND,&
+ & IBL, IST, ISENDLEN, IRECVLEN,&
+ & JGL, JSTGLO, JROC, IPROC, ITAG, IREQ
+
+LOGICAL :: LLWVDEBUG=.FALSE.
+ 
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB),ALLOCATABLE :: ZSENDBUF(:)
+REAL(KIND=JPRB),ALLOCATABLE :: ZRECVBUF(:)
+INTEGER(KIND=JPIM),ALLOCATABLE :: IMASK_WAVE_IN(:)
+!INTEGER(KIND=JPIM),ALLOCATABLE :: ILOCALINDEX(:)
+!INTEGER(KIND=JPIM),ALLOCATABLE :: IGLOBALPROC(:)
+INTEGER(KIND=JPIM) :: ISENDREQ(NPROC)
+
+!     ------------------------------------------------------------------
+
+#include "gathergpf.intfb.h"
+#include "abor1.intfb.h"
+#include "wvcouple_update_grib_handles.intfb.h"
+
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('WVXF2GB',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP)
+ASSOCIATE(NDLON=>YDDIM%NDLON, &
+ & LWVIN_MASK_NOT_SET=>YDEWCOU%LWVIN_MASK_NOT_SET, &
+ & LWVIN_UNINITIALISED=>YDEWCOU%LWVIN_UNINITIALISED, &
+ & MASK_WAVE_IN=>YDEWCOU%MASK_WAVE_IN, &
+ & NGRIB_HANDLE_FOR_WAM=>YDEWCOU%NGRIB_HANDLE_FOR_WAM, &
+ & LWINIT=>YDEWCOU%LWINIT, &
+ & NSTPW=>YDEWCOU%NSTPW, &
+ & NGPTOTG=>YDGEM%NGPTOTG, &
+ & NGLOBALPROC=>YDMP%NGLOBALPROC, NLOCALINDEX=>YDMP%NLOCALINDEX, &
+ & SD_WW=>YDSURF%SD_WW, YSD_WW=>YDSURF%YSD_WW)
+!     ------------------------------------------------------------------
+
+CALL GSTATS_BARRIER(733)
+
+K_NR = KDGLG
+K_NC = NDLON
+
+!*       WRITE SURFACE FIELDS
+
+CALL WVCOUPLE_UPDATE_GRIB_HANDLES(LWINIT, NSTPW, PTSTEP, NSTEP, LPPSTEPS, NGRIB_HANDLE_FOR_WAM)
+
+!ALLOCATE(ILOCALINDEX(NGPTOTG))
+!ALLOCATE(IGLOBALPROC(NGPTOTG))
+!IGLOBALPROC=NGLOBALPROC
+!ILOCALINDEX=NLOCALINDEX
+
+! 2* Read the work file from the grid-point-buffer:
+! 2.1* READ WORK FILE
+
+CALL GSTATS(1425,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IST,IEND,IBL,I,JGL)
+DO JSTGLO=1,KGPTOT,KPROMA
+  IST    = 1
+  IEND   = MIN(KPROMA,KGPTOT-JSTGLO+1)
+  IBL=(JSTGLO-1)/KPROMA+1
+
+! 2.2* COPY DATA INTO WORKFILE
+  DO I=1, K_NFIELDS
+    DO JGL =IST,IEND
+      ZFLOC(JSTGLO+JGL-1+KGPTOT*(I-1)) = SD_WW(JGL,YSD_WW%YWW(I)%MP,IBL)
+    ENDDO
+  ENDDO
+ENDDO
+!$OMP END PARALLEL DO
+CALL GSTATS(1425,1)
+
+! 3* Collect the fields from all PE's to all PEs:
+IF( LWVIN_MASK_NOT_SET )THEN
+  IF( SUM(MASK_WAVE_IN) > 0 )THEN
+    LWVIN_MASK_NOT_SET=.FALSE.
+  ENDIF
+ENDIF
+
+IF( LWVIN_MASK_NOT_SET .OR. LDWCOUNORMS )THEN
+
+! Get the whole field, as MASK_WAVE_IN is only initialised on
+! the first call to the wave model 
+! We will also get the whole field if the wave model requires 
+! to produce global norms of input fields
+  CALL GATHERGPF(YDGEOMETRY,ZFLOC,P_FIELDS,K_NFIELDS,-1)
+
+ELSE
+
+! Get only the subset of the fields that are needed on each PE
+! using MASK_WAVE_IN which is now initialised
+
+! Debug option allows us to check the correctness of the
+! optimised communications
+  IF( LLWVDEBUG ) CALL GATHERGPF(YDGEOMETRY,ZFLOC,P_FIELDS,K_NFIELDS,-1)
+
+  CALL GSTATS(678,0)
+
+! Initialise data structures for optimised communications
+  IF( LWVIN_UNINITIALISED )THEN
+    LWVIN_UNINITIALISED=.FALSE.
+    ALLOCATE(YDEWCOU%MWVIN_SENDCNT(NPROC))
+    ALLOCATE(YDEWCOU%MWVIN_SENDOFF(NPROC))
+    ALLOCATE(YDEWCOU%MWVIN_RECVCNT(NPROC))
+    ALLOCATE(YDEWCOU%MWVIN_RECVOFF(NPROC))
+    YDEWCOU%MWVIN_SENDCNT(:)=0
+    DO J=1,KGPTOTG
+      IF( MASK_WAVE_IN(J) == 1 )THEN
+        IPROC=NGLOBALPROC(J)
+        YDEWCOU%MWVIN_SENDCNT(IPROC)=YDEWCOU%MWVIN_SENDCNT(IPROC)+1
+      ENDIF
+    ENDDO
+    YDEWCOU%MWVIN_SENDOFF(:)=0
+    YDEWCOU%MWVIN_SENDTOT=0
+    DO JROC=1,NPROC
+      IF( YDEWCOU%MWVIN_SENDCNT(JROC) > 0 )THEN
+        YDEWCOU%MWVIN_SENDOFF(JROC)=YDEWCOU%MWVIN_SENDTOT
+        YDEWCOU%MWVIN_SENDTOT=YDEWCOU%MWVIN_SENDTOT+YDEWCOU%MWVIN_SENDCNT(JROC)
+      ENDIF
+    ENDDO
+    ALLOCATE(YDEWCOU%MWVIN_SENDBUF(YDEWCOU%MWVIN_SENDTOT))
+    ALLOCATE(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDTOT))
+    YDEWCOU%MWVIN_SENDCNT(:)=0
+    DO J=1,KGPTOTG
+      IF( MASK_WAVE_IN(J) == 1 )THEN
+        IPROC=NGLOBALPROC(J)
+        YDEWCOU%MWVIN_SENDCNT(IPROC)=YDEWCOU%MWVIN_SENDCNT(IPROC)+1
+        YDEWCOU%MWVIN_SENDBUF(YDEWCOU%MWVIN_SENDOFF(IPROC)+YDEWCOU%MWVIN_SENDCNT(IPROC))=NLOCALINDEX(J)
+        YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(IPROC)+YDEWCOU%MWVIN_SENDCNT(IPROC))=J
+      ENDIF
+    ENDDO
+
+    YDEWCOU%MWVIN_RECVCNT(:)=0
+    ITAG=1
+    DO JROC=1,NPROC-1
+      IPROC=MOD(MYPROC+JROC-1,NPROC)+1
+      CALL MPL_SEND(YDEWCOU%MWVIN_SENDCNT(IPROC),KDEST=NPRCIDS(IPROC),KTAG=ITAG,&
+                  & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=ISENDREQ(JROC),&
+                  & CDSTRING='WVXF2GB: SEND COUNT ' )
+    ENDDO
+    DO JROC=1,NPROC-1
+      IPROC=MOD(-JROC-1+MYPROC+NPROC,NPROC)+1
+      CALL MPL_RECV(YDEWCOU%MWVIN_RECVCNT(IPROC),KSOURCE=NPRCIDS(IPROC),KTAG=ITAG,&
+                  & KMP_TYPE=JP_BLOCKING_STANDARD,&
+                  & CDSTRING='WVXF2GB: RECV COUNT ' )
+    ENDDO
+    CALL MPL_WAIT(KREQUEST=ISENDREQ(1:NPROC-1),CDSTRING='WVXF2GB: WAIT SEND COUNT')
+
+    YDEWCOU%MWVIN_RECVOFF(:)=0
+    YDEWCOU%MWVIN_RECVTOT=0
+    DO JROC=1,NPROC
+      IF( YDEWCOU%MWVIN_RECVCNT(JROC) > 0 )THEN
+        YDEWCOU%MWVIN_RECVOFF(JROC)=YDEWCOU%MWVIN_RECVTOT
+        YDEWCOU%MWVIN_RECVTOT=YDEWCOU%MWVIN_RECVTOT+YDEWCOU%MWVIN_RECVCNT(JROC)
+      ENDIF
+    ENDDO
+
+    ALLOCATE(YDEWCOU%MWVIN_RECVBUF(YDEWCOU%MWVIN_RECVTOT))
+
+    ITAG=2
+    IREQ=0
+    DO JROC=1,NPROC-1
+      IPROC=MOD(MYPROC+JROC-1,NPROC)+1
+      IF( YDEWCOU%MWVIN_SENDCNT(IPROC) > 0 )THEN
+        IREQ=IREQ+1
+        CALL MPL_SEND(YDEWCOU%MWVIN_SENDBUF(YDEWCOU%MWVIN_SENDOFF(IPROC)+1:&
+                    & YDEWCOU%MWVIN_SENDOFF(IPROC)+YDEWCOU%MWVIN_SENDCNT(IPROC)),&
+                    & KDEST=NPRCIDS(IPROC),KTAG=ITAG,&
+                    & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=ISENDREQ(IREQ),&
+                    & CDSTRING='WVXF2GB: SEND LIST ' )
+      ENDIF
+    ENDDO
+    DO JROC=1,NPROC-1
+      IPROC=MOD(-JROC-1+MYPROC+NPROC,NPROC)+1
+      IF( YDEWCOU%MWVIN_RECVCNT(IPROC) > 0 )THEN
+        CALL MPL_RECV(YDEWCOU%MWVIN_RECVBUF(YDEWCOU%MWVIN_RECVOFF(IPROC)+1:&
+                     & YDEWCOU%MWVIN_RECVOFF(IPROC)+YDEWCOU%MWVIN_RECVCNT(IPROC)),&
+                     & KSOURCE=NPRCIDS(IPROC),KTAG=ITAG,&
+                     & KMP_TYPE=JP_BLOCKING_STANDARD,&
+                     & CDSTRING='WVXF2GB: RECV LIST ' )
+      ENDIF
+    ENDDO
+    CALL MPL_WAIT(KREQUEST=ISENDREQ(1:IREQ),CDSTRING='WVXF2GB: WAIT SEND LIST')
+
+  ENDIF
+! End of initialisation of data structures
+
+
+! YDEWCOU%MWVIN_SENDBUF contains local indexes of data on remote tasks that 
+! this task needs 
+! YDEWCOU%MWVIN_RECVBUF contains local indexes of data on this task that 
+! remote tasks need
+
+  ISENDLEN=YDEWCOU%MWVIN_RECVTOT*K_NFIELDS
+  ALLOCATE(ZSENDBUF(ISENDLEN))
+
+  ITAG=3
+  IREQ=0
+  I=0
+  DO JROC=1,NPROC-1
+    IPROC=MOD(MYPROC+JROC-1,NPROC)+1
+    IF( YDEWCOU%MWVIN_RECVCNT(IPROC) > 0 )THEN
+      IREQ=IREQ+1
+      IST=I+1
+      DO JF=1,K_NFIELDS
+        DO J=1,YDEWCOU%MWVIN_RECVCNT(IPROC)
+          I=I+1
+          ZSENDBUF(I)=ZFLOC(YDEWCOU%MWVIN_RECVBUF(YDEWCOU%MWVIN_RECVOFF(IPROC)+J)+KGPTOT*(JF-1))
+        ENDDO
+      ENDDO
+      IEND=I
+      CALL MPL_SEND(ZSENDBUF(IST:IEND),KDEST=NPRCIDS(IPROC),KTAG=ITAG,&
+                  & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=ISENDREQ(IREQ),&
+                  & CDSTRING='WVXF2GB: SEND DATA ' )
+    ENDIF
+  ENDDO
+  IF( LLWVDEBUG)THEN
+    ALLOCATE(IMASK_WAVE_IN(KGPTOTG))
+    IMASK_WAVE_IN=0
+  ENDIF
+  DO JROC=1,NPROC-1
+    IPROC=MOD(-JROC-1+MYPROC+NPROC,NPROC)+1
+    IF( YDEWCOU%MWVIN_SENDCNT(IPROC) > 0 )THEN
+      IRECVLEN=YDEWCOU%MWVIN_SENDCNT(IPROC)*K_NFIELDS
+      ALLOCATE(ZRECVBUF(1:IRECVLEN))
+      CALL MPL_RECV(ZRECVBUF(1:IRECVLEN),KSOURCE=NPRCIDS(IPROC),KTAG=ITAG,&
+                  & KMP_TYPE=JP_BLOCKING_STANDARD,&
+                  & CDSTRING='WVXF2GB: RECV DATA ' )
+      IF( LLWVDEBUG )THEN
+        DO JF=1,K_NFIELDS
+          DO J=1,YDEWCOU%MWVIN_SENDCNT(IPROC)
+            IF( P_FIELDS(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(IPROC)+J),JF) /=&
+              & ZRECVBUF(J+YDEWCOU%MWVIN_SENDCNT(IPROC)*(JF-1)) )THEN
+              CALL ABOR1("WVXF2GB: PROBLEM OOPS1")
+            ENDIF
+            IMASK_WAVE_IN(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(IPROC)+J))=1
+          ENDDO
+        ENDDO
+      ELSE
+        DO JF=1,K_NFIELDS
+          DO J=1,YDEWCOU%MWVIN_SENDCNT(IPROC)
+            P_FIELDS(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(IPROC)+J),JF)=&
+             &ZRECVBUF(J+YDEWCOU%MWVIN_SENDCNT(IPROC)*(JF-1))
+          ENDDO
+        ENDDO
+      ENDIF
+      DEALLOCATE(ZRECVBUF)
+    ENDIF
+  ENDDO
+  CALL MPL_WAIT(KREQUEST=ISENDREQ(1:IREQ),&
+   & CDSTRING='WVXF2GB: WAIT SEND DATA')
+
+! Now copy data that was located on this processor
+  IF( LLWVDEBUG )THEN
+    DO JF=1,K_NFIELDS
+      DO J=1,YDEWCOU%MWVIN_SENDCNT(MYPROC)
+        IF( P_FIELDS(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(MYPROC)+J),JF) /=&
+          & ZFLOC(YDEWCOU%MWVIN_SENDBUF(YDEWCOU%MWVIN_SENDOFF(MYPROC)+J)+KGPTOT*(JF-1)) )THEN
+          CALL ABOR1("WVXF2GB: PROBLEM OOPS2")
+        ENDIF
+        IMASK_WAVE_IN(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(MYPROC)+J))=1
+      ENDDO
+    ENDDO
+  ELSE
+    DO JF=1,K_NFIELDS
+      DO J=1,YDEWCOU%MWVIN_SENDCNT(MYPROC)
+        P_FIELDS(YDEWCOU%MWVIN_SENDIND(YDEWCOU%MWVIN_SENDOFF(MYPROC)+J),JF)=&
+         &ZFLOC(YDEWCOU%MWVIN_SENDBUF(YDEWCOU%MWVIN_SENDOFF(MYPROC)+J)+KGPTOT*(JF-1))
+      ENDDO
+    ENDDO
+  ENDIF
+
+
+  IF( LLWVDEBUG )THEN
+    DO J=1,KGPTOTG
+      IF( MASK_WAVE_IN(J) == 1 .AND. IMASK_WAVE_IN(J) == 0 )THEN
+        CALL ABOR1("WVXF2GB: PROBLEM OOPS3")
+      ENDIF
+      IF( MASK_WAVE_IN(J) == 0 .AND. IMASK_WAVE_IN(J) == 1 )THEN
+        CALL ABOR1("WVXF2GB: PROBLEM OOPS4")
+      ENDIF
+    ENDDO
+    DEALLOCATE(IMASK_WAVE_IN)
+  ENDIF
+
+  DEALLOCATE(ZSENDBUF)
+
+  CALL GSTATS(678,1)
+
+ENDIF
+!DEALLOCATE(ILOCALINDEX)
+!DEALLOCATE(IGLOBALPROC)
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('WVXF2GB',1,ZHOOK_HANDLE)
+#endif
+END SUBROUTINE WVXF2GB

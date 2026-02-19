@@ -1,0 +1,292 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE WRFPFILTER(YDGEOMETRY,KFPDOM,KDIMAT,KFPCMAX,KFMAX,KGLFI,LDBED,PBED,PLTF,CDMAT,LDFPFIL,PFPMAT)
+
+!**** *WRFPFILTER*  - COMPUTE MATRIXES FOR POST-PROCESSING SPECTRAL FILTER
+
+!     PURPOSE.
+!     --------
+!        To initialize the filtering matrixes for the post-processing of
+!        derivatives
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *WRFPFILTER*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!          YDGEOMETRY : model geometry
+!          KFPDOM : number of domains
+!          KDIMAT : first dimension of matrixes array
+!          KFPCMAX: maximum truncation for the post-processing
+!          KFMAX  : maximum truncation of the output subdomains.
+!          KGLFI : granularity factor for LFI filtering matrixes
+!          LDBED : .TRUE. to use the low-pass filter on the homogenous resolution
+!            space (arpege only); otherwise the gaussian filter is used.
+!          PBED : coefficient of the exponential function in the low-pass filter.
+!          PLTF : coefficient of the exponential function in the gaussian filter
+!          CDMAT : filenames of filtering matrixes to be written out
+!          LDFPFIL : .TRUE. if filter active (for each domain)
+!          PFPMAT : matrix filters for each domain
+
+!       IMPLICIT ARGUMENTS
+!        --------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     AUTHOR.
+!     -------
+!      RYAD EL KHATIB *METEO-FRANCE*
+!      ORIGINAL : 22-May-2013 from fpfilter
+
+!     MODIFICATIONS.
+!     --------------
+!      R. El Khatib 25-Feb-2016 getfplun
+!      P. Marguinaud 04-Oct-2016 Port to single precision
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YOMLUN   , ONLY : NULOUT
+USE YOMMP0   , ONLY : NPRTRV, NPRTRW, MYSETW, MYSETV
+USE MPL_MODULE, ONLY : MPL_SEND, MPL_RECV, MPL_BARRIER
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY),     INTENT(IN) :: YDGEOMETRY
+INTEGER(KIND=JPIM), INTENT(IN) :: KFPDOM
+INTEGER(KIND=JPIM), INTENT(IN) :: KDIMAT
+INTEGER(KIND=JPIM), INTENT(IN) :: KFPCMAX(KFPDOM)
+INTEGER(KIND=JPIM), INTENT(IN) :: KFMAX(KFPDOM)
+INTEGER(KIND=JPIM), INTENT(IN) :: KGLFI
+LOGICAL,            INTENT(IN) :: LDBED
+REAL(KIND=JPRB),    INTENT(IN) :: PBED
+REAL(KIND=JPRB),    INTENT(IN) :: PLTF
+CHARACTER(LEN=*),   INTENT(IN) :: CDMAT(KFPDOM)
+LOGICAL,            INTENT(IN) :: LDFPFIL(KFPDOM)
+REAL(KIND=JPRB),    INTENT(IN) :: PFPMAT(KDIMAT,KFPDOM)
+
+CHARACTER (LEN = 16) :: CLHEAD
+CHARACTER (LEN = 16), ALLOCATABLE :: CLWAVE(:)
+
+INTEGER(KIND=JPIM) :: INAR, INARI, IREP, JMLOC, ITMXSUR, JDOM, IM, ITAG, INIMES
+INTEGER(KIND=JPIM) :: JSETW, II, JM, ILEN, IOFF0, ISOURCE
+INTEGER(KIND=JPIM) :: IWDOM, JV
+INTEGER(KIND=JPIM) :: IULFP, IVSETDOM(KFPDOM), IWSETDOM(KFPDOM)
+INTEGER(KIND=JPIM), ALLOCATABLE :: IMLOC(:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: ISRANGE(:), ISRANGE2(:), IOFF(:), IWSET(:)
+
+REAL(KIND=JPRB), ALLOCATABLE :: ZWAVE(:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB) :: ZHEADER(5)
+
+!     ------------------------------------------------------------------
+
+#include "getfplun.intfb.h"
+#include "set2pe.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('WRFPFILTER',0,ZHOOK_HANDLE)
+ASSOCIATE(MYMS=>YDGEOMETRY%YRLAP%MYMS, NSMAX=>YDGEOMETRY%YRDIM%NSMAX,  &
+ & NUMP=>YDGEOMETRY%YRDIM%NUMP, &
+ & NPTRMS=>YDGEOMETRY%YRMP%NPTRMS, NUMPP=>YDGEOMETRY%YRMP%NUMPP,NALLMS=>YDGEOMETRY%YRMP%NALLMS)
+!     ------------------------------------------------------------------
+
+!*       1.    Setup
+
+WRITE(NULOUT,*) ' Entering WRFPFILTER'
+
+ALLOCATE(ISRANGE(0:NSMAX),ISRANGE2(0:NSMAX),IOFF(NUMP+1),IWSET(0:NSMAX),IMLOC(0:NSMAX))
+DO JM=0,NSMAX
+  ISRANGE(JM)=NSMAX+1-JM
+  ISRANGE2(JM)=ISRANGE(JM)**2
+ENDDO
+IOFF(1)=0
+DO JMLOC=1,NUMP
+  IM=MYMS(JMLOC)
+  IOFF(JMLOC+1)=IOFF(JMLOC)+(NSMAX+1-IM)**2
+ENDDO
+
+IVSETDOM(:)=0
+II=0
+DO JDOM=1,KFPDOM
+  IF (LDFPFIL(JDOM)) THEN
+    II=II+1
+    IF (II > NPRTRV) II=1
+    IVSETDOM(JDOM)=II
+  ENDIF
+ENDDO
+
+IWSETDOM(:)=0
+DO JV=1, NPRTRV
+! IWDOM : number of domains for this V-set
+  IWDOM=0
+  DO JDOM=1,KFPDOM
+    IF (IVSETDOM(JDOM) == JV) THEN
+      IWDOM=IWDOM+1
+    ENDIF
+  ENDDO
+  II=1
+  DO JDOM=1,KFPDOM
+    IF (IVSETDOM(JDOM) == JV) THEN
+      IWSETDOM(JDOM)=II
+      II=II+(NPRTRW-1)/IWDOM +1
+      IF (II > NPRTRW) II=1
+    ENDIF
+  ENDDO
+ENDDO
+WRITE(NULOUT,'('' WRFPFILTER'')')
+DO JDOM=1,KFPDOM
+  WRITE(NULOUT,'(''DOMAIN '',I2,'' BY SET (W,V) = '',2I6)') &
+   & JDOM,IWSETDOM(JDOM),IVSETDOM(JDOM)
+ENDDO
+
+ALLOCATE(CLWAVE(0:NSMAX))
+DO JM=0,NSMAX
+  IF (JM == 0) WRITE (CLWAVE(JM),'(A,I5.4)') 'WNUM 0000'
+  IF (JM  > 0) WRITE (CLWAVE(JM),'(A,I5.4)') 'WNUM',JM
+ENDDO
+
+WRITE (CLHEAD,'(A)') 'HEADER'
+INARI=0
+INAR=NSMAX+1
+IREP=0
+ITMXSUR=2*((NSMAX+1)/2)+1
+ALLOCATE(ZWAVE(ITMXSUR*(NSMAX+1)))
+
+! Find which local wave and W-set for for each global wave
+DO JSETW=1,NPRTRW
+  DO JM=1,NUMPP(JSETW)
+    IM=NALLMS(NPTRMS(JSETW)+JM-1)
+    IWSET(IM)=JSETW
+    IMLOC(IM)=JM
+  ENDDO
+ENDDO
+
+
+!*       2.    Write out filtering matrixes
+
+!*       2.1   Headers 
+INIMES=1
+DO JDOM=1,KFPDOM
+  IF (IVSETDOM(JDOM) == MYSETV .AND. IWSETDOM(JDOM) == MYSETW) THEN
+    CALL GETFPLUN(JDOM,IULFP)
+    CALL LFIAFM(IREP,IULFP,KGLFI)
+    CALL LFIOUV(IREP,IULFP,.TRUE.,TRIM(CDMAT(JDOM)),'UNKNOWN',.TRUE.,.FALSE.,&
+     &   INIMES,INAR,INARI)
+    ZHEADER(1)=REAL(NSMAX,KIND=JPRB) 
+    ZHEADER(2)=REAL(KFMAX(JDOM),KIND=JPRB) 
+    ZHEADER(3)=REAL(KFPCMAX(JDOM),KIND=JPRB)
+    IF (LDBED) THEN
+      ZHEADER(4)=0._JPRB
+      ZHEADER(5)=PBED
+      WRITE(NULOUT,'(''WRITING FILTERING MATRIX : NSMAX = '',I4,  &
+       & '' KFMAX = '',I4,'' KFPCMAX = '',I4,'' SHAPE = THX  PBED = '', &
+       & E14.7, '' CDMAT = '',A)') NSMAX,KFMAX(JDOM),KFPCMAX(JDOM),PBED,TRIM(CDMAT(JDOM))
+    ELSE
+      ZHEADER(4)=1._JPRB
+      ZHEADER(5)=PLTF
+      WRITE(NULOUT,'(''WRITING FILTERING MATRIX : NSMAX = '',I4,  &
+       & '' KFMAX = '',I4,'' KFPCMAX = '',I4,'' SHAPE = GAUSSIAN  PLTF = '', &
+       & E14.7, '' CDMAT = '',A)') NSMAX,KFMAX(JDOM),KFPCMAX(JDOM),PLTF,TRIM(CDMAT(JDOM))
+    ENDIF
+    CALL RLFIECR (IULFP, CLHEAD, ZHEADER, SIZE(ZHEADER))
+  ENDIF
+ENDDO
+
+!*       2.2   Recv and write loop (ordered) for waves
+
+DO JM=0,NSMAX
+  ILEN=ISRANGE2(JM)
+  IOFF0=IOFF(IMLOC(JM))
+! Send
+  DO JDOM=1,KFPDOM
+    ITAG=JM+(NSMAX+1)*(JDOM-1)
+    IF (IVSETDOM(JDOM) == MYSETV .AND. IWSETDOM(JDOM) /= MYSETW) THEN
+      IF (MYSETW == IWSET(JM)) THEN
+        CALL SET2PE(ISOURCE,0,0,IWSETDOM(JDOM),IVSETDOM(JDOM))
+        !write(0,*) 'send : ',JM,' to ',ISOURCE,NSMAX,MYSETW,IWSET(JM),MYSETV
+        CALL MPL_SEND(PFPMAT(IOFF0+1:IOFF0+ILEN,JDOM),KDEST=ISOURCE,KTAG=ITAG, &
+         & CDSTRING='WRFPFILTER:')
+      ENDIF
+    ENDIF
+  ENDDO
+! Recv/write
+  DO JDOM=1,KFPDOM
+    ITAG=JM+(NSMAX+1)*(JDOM-1)
+    IF (IVSETDOM(JDOM) == MYSETV .AND. IWSETDOM(JDOM) == MYSETW) THEN
+      CALL GETFPLUN(JDOM,IULFP)
+      IF (MYSETW /= IWSET(JM)) THEN
+        CALL SET2PE(ISOURCE,0,0,IWSET(JM),MYSETV)
+        !write(0,*) 'waiting for : ',JM,' from ',ISOURCE,NSMAX,MYSETW,IWSET(JM),MYSETV
+        CALL MPL_RECV(ZWAVE(1:ILEN),KSOURCE=ISOURCE,KTAG=ITAG,CDSTRING='WRFPFILTER:')
+        !write(0,*) 'writ : ',JM,' from ',ISOURCE,NSMAX
+        CALL RLFIECR (IULFP, CLWAVE(JM), ZWAVE(1:ILEN), ILEN)
+      ELSE
+        !write(0,*) 'writ : ',JM,' from me',NSMAX,MYSETW,IWSET(JM),MYSETV
+        CALL RLFIECR (IULFP, CLWAVE(JM), PFPMAT(IOFF0+1:IOFF0+ILEN,JDOM), ILEN)
+      ENDIF
+    ENDIF
+  ENDDO
+  IF (.TRUE.) CALL MPL_BARRIER(CDSTRING='WRFPFILTER:')
+ENDDO
+
+!*       2.3  Close files
+
+DO JDOM=1,KFPDOM
+  IF (IVSETDOM(JDOM) == MYSETV .AND. IWSETDOM(JDOM) == MYSETW) THEN
+    CALL GETFPLUN(JDOM,IULFP)
+    CALL LFILAF(IREP,IULFP,.FALSE.)
+    CALL LFIFER(IREP,IULFP,'KEEP')
+  ENDIF
+ENDDO
+
+
+DEALLOCATE(CLWAVE,IOFF,IWSET,IMLOC)
+DEALLOCATE(ISRANGE,ISRANGE2,ZWAVE)
+! Fair load imbalance absorber
+IF (.TRUE.) CALL MPL_BARRIER(CDSTRING='WRFPFILTER:')
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('WRFPFILTER',1,ZHOOK_HANDLE)
+
+CONTAINS
+
+SUBROUTINE RLFIECR (KFPLUN, CDNOMA, PDONNE, KLONGD)
+
+USE PARKIND1, ONLY : JPRD
+
+INTEGER (KIND=JPIM), INTENT(IN) :: KFPLUN
+CHARACTER (LEN=*)   :: CDNOMA
+REAL (KIND=JPRB)    :: PDONNE (:)
+REAL (KIND=JPRD)    :: ZDONNE (SIZE (PDONNE))
+INTEGER (KIND=JPIM) :: KLONGD
+
+REAL (KIND=JPHOOK) :: ZHOOK_HANDLE
+
+IF (LHOOK) CALL DR_HOOK('WRFPFILTER:RLFIECR',0,ZHOOK_HANDLE)
+
+ZDONNE = REAL (PDONNE, JPRD)
+
+CALL LFIECR (IREP, KFPLUN, CDNOMA, ZDONNE, KLONGD)
+
+IF (LHOOK) CALL DR_HOOK('WRFPFILTER:RLFIECR',1,ZHOOK_HANDLE)
+
+END SUBROUTINE RLFIECR
+
+END SUBROUTINE WRFPFILTER

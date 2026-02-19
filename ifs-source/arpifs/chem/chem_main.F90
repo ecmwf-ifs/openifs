@@ -1,0 +1,998 @@
+! (C) Copyright 2009- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+ SUBROUTINE CHEM_MAIN &
+ &    (YDVAB,YDDIMV,YDMODEL,KIDIA  , KFDIA , KLON, KLEV , KVCLIS, KTRAC, KCHEM ,&
+ &    PTSTEP, KGPLAT, KFLDX, KFLDX2 , KLEVX,&
+ &    PEXTRA , PEXTR2 ,PDELP, PRS1, PRSF1, PGEOH, PGEOF, PQP, PTP,&
+ &    PLP,   PIP,  PRP,   PSP, PAP, PQSAT, PFPLCL, PFPLCN , PFPLSL , PFPLSN , PCOVPTOT,&
+ &    PALB, PWND, PLSM, PCSZA, PGELAT, PGELAM, PGEMU, PKOZO, PCFLX, PCFLXO, PDV, PGFL,&
+ &    PAEROC,PWETDIAM, PWETVOL, PND, PAERAOT, PAERAAOT, PAERASY,&
+ &    PTENGFL, PCEN ,PTENC,PNEEFLX, PCHEM2AER,PCHEM2GHG,IKLEVTROP)
+
+
+!**   DESCRIPTION
+!     ----------
+!
+!   MAIN routine for IFS chemistry
+!
+!
+!
+!**   INTERFACE.
+!     ----------
+!          *CHEM_MAIN* IS CALLED FROM *CALLPAR*.
+
+! INPUTS:
+! -------
+! KIDIA :  Start of Array
+! KFDIA :  End  of Array
+! KLON  :  Length of Arrays
+! KLEV  :  Number of Levels
+! KVCLIS : Number Cariolle chmeistry coefficinets
+! KTRAC :  Number tracers
+! KCHEM :  Array maops chemical species into tracer array  (NCHEM <= KTRAC)
+! PTSTEP:  Time step in seconds
+! KGPLAT: DM-global number of the latitude of point jrof=KSTART
+! PDELP(KLON,KLEV)             : PRESSURE DELTA in PRESSURE UNITES      (Pa)
+! PRS1(KLON,0:KLEV)            : HALF-LEVEL PRESSURE           (Pa)
+! PRSF1(KLON,KLEV)             : FULL-LEVEL PRESSURE           (Pa)
+! PGEOH(KLON,0:KLEV)           : GEOPOTENTIAL                 (m*m/s*s)
+! PGEOF(KLON,KLEV)             : GEOPOTENTIAL at full levels (m*m/s*s)
+! PQP     (KLON,KLEV)         :  SPECIFIC HUMIDITY            (kg/kg)
+! PTP     (KLON,KLEV)         :  TEMPERATURE                  (K)
+! PLP     (KLON,KLEV)         :  LCWC                         (kg/kg)
+! PIP     (KLON,KLEV)         :  ICWC                         (kg/kg)
+! PRP     (KLON,KLEV)         :  Rain water content           (kg/kg)
+! PSP     (KLON,KLEV)         :  Snow water content           (kg/kg)
+! PAP     (KLON,KLEV)         :  CLOUD FRACTION                0..1
+! PCOVPTOT(KLON,KLEV)         :  PRECIP FRACTION               0..1
+! PFPLCL (KLON,KLEV+1)        : CONVECTIVE PRECIPITATION AS RAIN  (kg/m2s)
+! PFPLCN (KLON,KLEV+1)        : CONVECTIVE PRECIPITATION AS SNOW  (kg/m2s)
+! PFPLSL (KLON,KLEV+1)        : STRATIFORM PRECIPITATION AS RAIN  (kg/m2s)
+! PFPLSN (KLON,KLEV+1)        : STRATIFORM PRECIPITATION AS SNOW .(kg/m2s)
+! PALB(KLON)                  : Surface albedo
+! PWND(KLON)                  : Surface wind
+! PLSM(KLON)                  : Land Sea Mask
+! PCSZA(KLON)                 : COS of Solar Zenit Angle
+! PGELAM(KLON)                : LONGITUDE (RADIANS)
+! PGELAT(KLON)                : LATITUDE (RADIANS)
+! PGEMU(KLON)                 : SINE OF LATITUDE!
+! PKOZO(KLON,KLEV,KVCLIS)     : PHOTOCHEMICAL COEFFICIENTS COMPUTED FROM A 2D PHOTOCHEMICAL MODEL (KVCLIS=8)!
+! PCFLX(KLON,KTRAC)           : SURFACE FLUX            (kg/m2s) for DIAGNOSTICS
+! PCFLX(KLON,KTRAC)           : EFFECTIVE SURFACE FLUX            (kg/m2s) for DIAGNOSTICS
+! PDV(KLON,NCHEM_DV)          : DRY Deposition velocities     (m/s) for application in chemistry scheme if LCHEM_DDFLX = false
+! PGFL(KLON,KLEV,YGFL%NDIM)   : GLF fields as of start of callpar
+! PAEROC(KLON,KLEV,NACTAERO)  : Aerosol concentrations  (kg/kg)
+! PWETDIAM(KLON,KLEV,NMODE)   : Glomap geometric mean wet diameter per mode (real dims 1,1,NMODES if GLOMAP not used)
+! PWETVOL(KLON,KLEV,NMODE)    : Glomap avg wet volume of size mode (m3) (real dims 1,1,NMODES if GLOMAP not used)
+! PND(KLON,KLEV,NMODE)        : Glomap number concentration (cm-3) (real dims 1,1,NMODES if GLOMAP not used)
+! PAERAOT(KLON,KLEV,6)        : Glomap extinction AOD per model level at 6 wavelengths
+! PAERAAOT(KLON,KLEV,6)       : Glomap absorption AOD per model levelat 6 wavelengths
+! PAERASY(KLON,KLEV,6)        : Glomap asymetry factor
+! PTENGFL(KLON,KLEV,YGFL%NDIM1): GFL tendencies as of start of callpar
+! PCEN(KLON,KLEV,KTRAC)       : CONCENTRATION OF TRACERS           (kg/kg)
+! PTENC(KLON,KLEV,KTRAC)      : TOTAL TENDENCY OF CONCENTRATION OF TRACERS BEFORE(kg/kg s-1)
+! PNEEFLX(KLON)               : BIAS CORRECTED NEE FLUX USED
+!
+! OUTPUTS:
+! -------
+! PTENC  (KLON,KLEV,KTRAC)     : TENDENCY OF CONCENTRATION OF TRACERS including chemistry(kg/kg s-1)
+! PCHEM2AER  (KLON,KLEV,4)     : TENDENCY OF Selected TRACERS because specific reactions (kg/kg s-1)
+! PCHEM2GHG  (KLON,KLEV,NCHEM2GHG)  : TENDENCY OF Selected TRACERS because specific reactions.
+!                                   1.  Field 1 containing CH4 loss rate  ( s-1)
+!                                   2. tropospheric CO2 production tendency due to CO oxidation [kg CO2/kg/s]
+
+!
+! INOUPUTS:
+!--------
+!
+! PEXTRA(KLON,KLEVX,KFLDX)     : extra 3d field for diagnostics
+! PEXTR2(KLON,KFLDX2)          : extra 2d field for diagnostics
+!
+! LOCAL:
+! -------
+!
+! ZCON(KLON,KLEV,NCHEM)        : CONCENTRATION OF TRACERS           (kg/kg)
+! ZTENC0(KLON,KLEV,NCHEM)       : TOTAL TENDENCY OF CONCENTRATION OF TRACERS before (kg/kg s-1)
+! ZTENC1(KLON,KLEV,NCHEM)       : TOTAL TENDENCY OF CONCENTRATION OF TRACERS after (kg/kg s-1)
+! ZWLOSS(KLON,NCHEM_SCV)           : TOTAL WET DEPOSITION FLUX   (kg/(m2s))
+! ZDLOSS(KLON,NCHEM_DV)            : TOTAL DRY DEPOSITION FLUX   (kg/(m2s))
+! ZBUDR(KLON,KLEV,NCHEM)           : PARTIAL TENDENCY OF CONCENTRATION OF TRACERS DUE TO REACTION TO OH (kg/kg s-1)
+! ZBUDJ(KLON,KLEV,NPHOTO_NSOA)     : PARTIAL TENDENCY OF CONCENTRATION OF TRACERS DUE TO PHOTOLYSIS / O3 PROD & LOSS (kg/kg s-1)
+! ZBUDX(KLON,KLEV,NBUD_EXTRA)      : PARTIAL TENDENCY OF CONCENTRATION OF TRACERS DUE TO ADDITIONAL CHEMICAL RATES
+!                                   (e.g. boundary conditions (1st index), O3 budget, heterogeneous chemistry, ...) (kg/kg s-1)
+! ZOUT(KLON,KLEV,5)               : Any additional output such as tendencies of BC or Photolysis Rates   O3, NO2, O1D , XX, XX
+!
+!     Externals.
+!     ---------
+!                 CHEM_MOCAGE
+!                 CHEM_MOZART
+!                 CHEM_TM5
+!                 CHEM_DECAY
+
+!
+!     AUTHOR.
+!     -------
+!        JOHANNES FLEMMING  *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL   : 2009-07-22
+!        S. MASSART : 2015-12-30 add KGPLAT as an input for the linear carbon monoxide chemical scheme
+!        A. AGUSTI-PANAREDA: 2016-11-25  add carbon tracers
+!        18-09, M. Michou, call to ARPEGE-Climat 6.3 chemistry implemented (scheme arpclim_repro)
+
+
+USE TYPE_MODEL , ONLY : MODEL
+USE YOMVERT  , ONLY : TVAB
+USE YOMDIMV  , ONLY : TDIMV
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCHEM  , ONLY : IEXTR_EM,IEXTR_ROH,IEXTR_PH,IEXTR_WD,IEXTR_NG,IEXTR_CH,IEXTR_CHTR, &
+ &                    IEXTR_FE,IEXTR_ROH_TROP,IEXTR_DD,IEXTR_CHEMX
+
+USE YOMLUN   , ONLY : NULOUT
+USE YOMCT3   , ONLY : NSTEP
+USE YOMCST   , ONLY : RMD
+USE TM5_CHEM_MODULE,    ONLY : ICH4_TM5=>ICH4, IHNO3_TM5=>IHNO3, NBUD_EXTRA, ISO2_TM5=>ISO2, ISO4_TM5=>ISO4, &
+ &                             INH4_TM5=>INH4, IFLCO, &
+ &                             NSOA_BUDG, NCHEM2AER, NCHEM2GHG
+USE BASCOETM5_MODULE,   ONLY : ICH4_BASCOETM5=>ICH4, NBC_BT=>NBC, BASCOETM5_BC=>BASCOE_BC, &
+ &                             ISO2_BASCOETM5=>ISO2, ISO4_BASCOETM5=>ISO4, INH4_BASCOETM5=>INH4
+USE BASCOE_MODULE, ONLY : BASCOE_BC, NBC
+
+
+
+
+USE TM5_PHOTOLYSIS, ONLY : NPHOTO
+USE UKCA_MODE_SETUP, ONLY: NMODES
+USE YOM_GRIB_CODES, ONLY : NGRBGHG
+
+IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+!*       0.1  ARGUMENTS
+!             ---------
+
+TYPE(TVAB)        ,INTENT(IN) :: YDVAB
+TYPE(TDIMV)       ,INTENT(IN) :: YDDIMV
+TYPE(MODEL)       ,INTENT(INOUT):: YDMODEL
+INTEGER(KIND=JPIM),INTENT(IN) :: KIDIA , KFDIA , KLON , KLEV, KVCLIS
+INTEGER(KIND=JPIM),INTENT(IN) :: KTRAC, KLEVX, KFLDX, KFLDX2
+INTEGER(KIND=JPIM),INTENT(IN) :: KCHEM(YDMODEL%YRML_GCONF%YGFL%NCHEM)
+INTEGER(KIND=JPIM),INTENT(IN) :: KGPLAT(KLON)
+
+REAL(KIND=JPRB),INTENT(IN)    :: PTSTEP
+REAL(KIND=JPRB),INTENT(INOUT) :: PEXTRA(KLON,KLEVX,KFLDX),PEXTR2(KLON,KFLDX2)
+REAL(KIND=JPRB),INTENT(IN)    :: PDELP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PRSF1(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PRS1(KLON,0:KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PGEOH(KLON,0:KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PGEOF(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PQP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PTP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PLP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PIP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PRP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PSP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PAP(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PQSAT(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PCOVPTOT(KLON,KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PFPLCL(KLON,0:KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PFPLCN(KLON,0:KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PFPLSL(KLON,0:KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PFPLSN(KLON,0:KLEV)
+REAL(KIND=JPRB),INTENT(IN)    :: PCFLX(KLON,KTRAC)
+REAL(KIND=JPRB),INTENT(IN)    :: PCFLXO(KLON,KTRAC)
+REAL(KIND=JPRB),INTENT(INOUT) :: PTENC(KLON,KLEV,KTRAC)
+REAL(KIND=JPRB),INTENT(IN)    :: PCEN(KLON,KLEV,KTRAC)
+REAL(KIND=JPRB),INTENT(IN)    :: PCSZA(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PALB(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PWND(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PLSM(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PGELAT(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PGELAM(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PGEMU(KLON)
+REAL(KIND=JPRB),INTENT(IN)    :: PDV(KLON,YDMODEL%YRML_GCONF%YGFL%NCHEM_DV)
+REAL(KIND=JPRB),INTENT(IN)    :: PKOZO(KLON,KLEV,KVCLIS)
+
+REAL(KIND=JPRB),INTENT(IN)    :: PAEROC(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB),INTENT(IN)    :: PWETDIAM(KLON,KLEV,NMODES)
+REAL(KIND=JPRB),INTENT(IN)    :: PWETVOL(KLON,KLEV,NMODES)
+REAL(KIND=JPRB),INTENT(IN)    :: PND(KLON,KLEV,NMODES)
+REAL(KIND=JPRB),INTENT(IN)    :: PAERAOT(KLON,KLEV,6)
+REAL(KIND=JPRB),INTENT(IN)    :: PAERAAOT(KLON,KLEV,6)
+REAL(KIND=JPRB),INTENT(IN)    :: PAERASY(KLON,KLEV,6)
+
+
+REAL(KIND=JPRB),INTENT(IN)    :: PGFL(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NDIM)
+REAL(KIND=JPRB),INTENT(IN)    :: PTENGFL(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NDIM1)
+REAL(KIND=JPRB),INTENT(IN)    :: PNEEFLX(KLON)
+REAL(KIND=JPRB),INTENT(OUT)   :: PCHEM2AER(KLON,KLEV,NCHEM2AER)
+REAL(KIND=JPRB),INTENT(OUT)   :: PCHEM2GHG(KLON,KLEV,NCHEM2GHG)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: IKLEVTROP(KLON)
+
+!
+!*       0.5   LOCAL VARIABLES
+!              ---------------
+INTEGER(KIND=JPIM) :: JK, JL, JT, INO, IN2O, IJOUT, IPOS, ILI, IICH4, IIHNO3
+INTEGER(KIND=JPIM) :: ICO,IGHGCH4,FCO2,FCO2NOBIO,FCO2NOFLX
+INTEGER(KIND=JPIM) :: IPCH4, ISAD
+REAL(KIND=JPRB)    :: ZDELP(KLON,KLEV)
+REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+REAL(KIND=JPRB)    :: ZCON(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM)
+REAL(KIND=JPRB)    :: ZTENC0(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM)
+REAL(KIND=JPRB)    :: ZTENC1(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM)
+REAL(KIND=JPRB)    :: ZSOGTOSOA(KLON,KLEV,2)
+REAL(KIND=JPRB)    :: ZQP(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZLP(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZIP(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZRP(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZSP(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZAP(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZCOVPTOT(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZFPLCL(KLON,0:KLEV)
+REAL(KIND=JPRB)    :: ZFPLCN(KLON,0:KLEV)
+REAL(KIND=JPRB)    :: ZFPLSL(KLON,0:KLEV)
+REAL(KIND=JPRB)    :: ZFPLSN(KLON,0:KLEV)
+REAL(KIND=JPRB)    :: ZWLOSS(KLON,YDMODEL%YRML_GCONF%YGFL%NCHEM_SCV)
+REAL(KIND=JPRB)    :: ZALB(KLON), ZCSZA(KLON)
+REAL(KIND=JPRB)    :: ZDLOSS(KLON,YDMODEL%YRML_GCONF%YGFL%NCHEM_DV)
+REAL(KIND=JPRB)    :: ZBUDR(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM)
+REAL(KIND=JPRB)    :: ZBUDJ(KLON,KLEV,NPHOTO+NSOA_BUDG)
+REAL(KIND=JPRB)    :: ZBUDX(KLON,KLEV,NBUD_EXTRA)
+REAL(KIND=JPRB)    :: ZOUT(KLON,KLEV,5)
+REAL(KIND=JPRB)    :: ZNGFLX(KLON,0:KLEV)
+REAL(KIND=JPRB)    :: ZCONIN(KLON,KLEV), ZTENCIN(KLON,KLEV), ZTENCOUT(KLON,KLEV), ZEXTR(KLON,KLEVX)
+REAL(KIND=JPRB)    :: ZPTROP(KLON),ZCH4_CLIM
+
+REAL(KIND=JPRB)    :: ZGAW(KLON), ZFCHQ(KLON,0:KLEV), ZTO3(KLON,KLEV)
+REAL(KIND=JPRB)    :: ZCOTRA(KLON,KLEV,3) ! 3 traceurs contrails, parametrisation à implementer
+REAL(KIND=JPRB)    :: ZEMIS(KLON,KLEV,3) ! 3 especes emises par l'aviation, parametrisation à implementer
+REAL(KIND=JPRB)    :: ZAREAD_NAT(KLON,KLEV),ZAREAD_ICE(KLON,KLEV),ZAREAD_SUL(KLON,KLEV)
+LOGICAL :: LLCHECK_METEO, LLTENDUPDT
+!------------------------------------------------------------------------
+!------------------------------------------------------------------------
+!------------------------------------------------------------------------
+#include "chem_bascoe.intfb.h"
+#include "chem_bascoetm5.intfb.h"
+#include "chem_n2o.intfb.h"
+#include "chem_tm5.intfb.h"
+#include "chem_decay.intfb.h"
+#include "chem_linco.intfb.h"
+#include "abor1.intfb.h"
+#include "chem_negat.intfb.h"
+#include "chem_scav.intfb.h"
+#include "chem_drydep.intfb.h"
+#include "chem_inext.intfb.h"
+#include "troplev.intfb.h"
+#include "chem_rnpb.intfb.h"
+#include "chem_nwpo3.intfb.h"
+
+
+
+
+
+
+IF (LHOOK) CALL DR_HOOK('CHEM_MAIN',0,ZHOOK_HANDLE)
+
+ASSOCIATE(YGFL=>YDMODEL%YRML_GCONF%YGFL,YDCHEM=>YDMODEL%YRML_CHEM%YRCHEM,YDCOMPO=>YDMODEL%YRML_CHEM%YRCOMPO)
+ASSOCIATE(NACTAERO=>YGFL%NACTAERO, NCHEM=>YGFL%NCHEM, NCHEM_DV=>YGFL%NCHEM_DV, &
+ & NCHEM_SCV=>YGFL%NCHEM_SCV, NDIM=>YGFL%NDIM, NDIM1=>YGFL%NDIM1, NGFL_EXT=>YGFL%NGFL_EXT, &
+ & YCHEM=>YGFL%YCHEM, YGHG=>YGFL%YGHG, NGHG=>YGFL%NGHG, YEXT=>YGFL%YEXT, YLRCH4=>YGFL%YLRCH4,&
+ & CHEM_SCHEME=>YDCHEM%CHEM_SCHEME, IEXTR_FREE=>YDCHEM%IEXTR_FREE, &
+ & LCHEM_ANACH4=>YDCHEM%LCHEM_ANACH4, &
+ & LCHEM_DDFLX=>YDCOMPO%LCHEM_DDFLX, LCOMPO_DDFLX_DIR=>YDCOMPO%LCOMPO_DDFLX_DIR,LCHEM_DIA=>YDCOMPO%LCHEM_DIA, &
+ & LCHEM_DIAC=>YDCHEM%LCHEM_DIAC, LCHEM_HTAP=>YDCHEM%LCHEM_HTAP, &
+ & LCHEM_JOUT=>YDCHEM%LCHEM_JOUT, LCHEM_LIGHT=>YDCHEM%LCHEM_LIGHT, &
+ & LCHEM_TROPO=>YDCOMPO%LCHEM_TROPO, RCH4CONST=>YDCHEM%RCH4CONST, &
+ & LCHEM_ARPCLIM=>YDCHEM%LCHEM_ARPCLIM, &
+ & LAERCHEM=>YGFL%LAERCHEM, LAERNITRATE => YDCOMPO%LAERNITRATE, KCHEM_WETDEP =>YDCHEM%KCHEM_WETDEP, &
+ & LAERSOA=>YDCOMPO%LAERSOA,LAERSOA_COUPLED=>YDCOMPO%LAERSOA_COUPLED )
+!
+LLTENDUPDT=.TRUE.
+
+!*       1.0   Set local values
+!              ---------------
+ ! calculate delta p from full level pressure to make sure that the FE delta p's are not used
+ DO JK=1,KLEV
+   DO JL=KIDIA,KFDIA
+       ZDELP(JL,JK) = PRS1(JL,JK)- PRS1(JL,JK-1)
+    ENDDO
+ ENDDO
+
+
+ IF (LCHEM_TROPO ) THEN
+! calculate tropopause pressure ! humidity based (TRUE)  , temperature based (FALSE)
+   CALL TROPLEV(KLON,KIDIA,KFDIA,KLEV,.FALSE.,PTP,PQP,PRSF1,IKLEVTROP)
+   DO JL=KIDIA,KFDIA
+     ZPTROP(JL)=PRSF1(JL,IKLEVTROP(JL))
+   ENDDO
+ ELSE
+   DO JL=KIDIA,KFDIA
+     ZPTROP(JL)=24000_JPRB - 14800_JPRB * (COS(PGELAT(JL)))**4_JPIM
+        ! find approximate trop-strat interface, required for detailed budget information
+       DO JK = 1,KLEV
+         IF (PRSF1(JL,JK) < ZPTROP(JL)) THEN
+           IKLEVTROP(JL) = JK
+         ELSE
+             ! level found; exit this loop
+          CYCLE
+         ENDIF
+      ENDDO
+   ENDDO
+ ENDIF
+
+!! calculate no-conservation of diffusion and convection tendencies
+IF (LCHEM_DIA) THEN
+
+! strore tropopause height
+   DO JL=KIDIA,KFDIA
+     PEXTRA(JL,IEXTR_FREE(1,6),IEXTR_EM) = ZPTROP(JL)
+   ENDDO
+   DO JT=1,NCHEM
+    DO JK=1,KLEV
+      DO JL=KIDIA,KFDIA
+        ZTENC1(JL,JK,JT) = PTENC(JL,JK,KCHEM(JT))
+        IF (YCHEM(JT)%LADV ) THEN
+          ZTENC0(JL,JK,JT) = PTENGFL(JL,JK,YCHEM(JT)%MP1)
+        ELSE
+          ZTENC0(JL,JK,JT) = 0.0_JPRB
+        ENDIF
+      ENDDO
+    ENDDO
+   ENDDO
+   ZEXTR=0.0_JPRB
+   CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,  ZDELP, PTSTEP,ZTENC1, ZTENC0, ZEXTR)
+   DO JT=1,NCHEM
+     DO JL=KIDIA,KFDIA
+       PEXTRA(JL,JT, IEXTR_FE) = PEXTRA(JL,JT, IEXTR_FE ) +  ZEXTR(JL,JT) + PCFLXO(JL,KCHEM(JT)) * PTSTEP
+     ENDDO
+   ENDDO
+   IF (LCHEM_DDFLX .AND. LCOMPO_DDFLX_DIR ) THEN
+     DO JT=1,NCHEM
+       DO JL=KIDIA,KFDIA
+         PEXTRA(JL,JT, IEXTR_DD) = PEXTRA(JL,JT, IEXTR_DD ) - ( PCFLXO(JL,KCHEM(JT)) - PCFLX(JL,KCHEM(JT)) )* PTSTEP
+       ENDDO
+     ENDDO
+   ENDIF
+
+ENDIF
+
+! set starting fields
+DO JT=1,NCHEM
+  IF (YCHEM(JT)%LADV ) THEN
+    DO JK=1,KLEV
+      DO JL=KIDIA,KFDIA
+        ! set to callpar concentration
+        ! these concentrations  contain advection and diffusion since update of ZCEN in callpar
+        ZCON(JL,JK,JT) = PCEN(JL,JK,KCHEM(JT))
+        ! test use of gfl concentration, i.e. at the start of callpar + full callpar tendencies
+        ! ZCON(JL,JK,JT)  =  PGFL(JL,JK,YCHEM(JT)%MP9_PH) +  PTENC(JL,JK,KCHEM(JT)) * PTSTEP
+        ZTENC1(JL,JK,JT) = 0.0_JPRB
+        ZTENC0(JL,JK,JT) = 0.0_JPRB
+      ENDDO
+    ENDDO
+  ELSE
+    DO JK=1,KLEV
+      DO JL=KIDIA,KFDIA
+        ! if no advection also no vertical transport, i.e. as at start of callpar
+        ZCON(JL,JK,JT)  =  PGFL(JL,JK,YCHEM(JT)%MP9_PH)
+        ZTENC1(JL,JK,JT)  =  0.0_JPRB
+        ZTENC0(JL,JK,JT)  =  0.0_JPRB
+      ENDDO
+    ENDDO
+  ENDIF
+ENDDO
+
+!Initialize PCHEM2GHG to zero
+PCHEM2GHG(KIDIA:KFDIA,1:KLEV,1:NCHEM2GHG)=0.0_JPRB
+
+
+! copy meto input in local arrays
+ ZALB(KIDIA:KFDIA) = PALB(KIDIA:KFDIA)
+ ZAP(KIDIA:KFDIA,1:KLEV) = PAP(KIDIA:KFDIA,1:KLEV)
+ ZQP(KIDIA:KFDIA,1:KLEV) = PQP(KIDIA:KFDIA,1:KLEV)
+ ZLP(KIDIA:KFDIA,1:KLEV) = PLP(KIDIA:KFDIA,1:KLEV)
+ ZIP(KIDIA:KFDIA,1:KLEV) = PIP(KIDIA:KFDIA,1:KLEV)
+ ZRP(KIDIA:KFDIA,1:KLEV) = PRP(KIDIA:KFDIA,1:KLEV)
+ ZSP(KIDIA:KFDIA,1:KLEV) = PSP(KIDIA:KFDIA,1:KLEV)
+ ZCOVPTOT(KIDIA:KFDIA,1:KLEV) = PCOVPTOT(KIDIA:KFDIA,1:KLEV)
+ ZFPLCL(KIDIA:KFDIA,0:KLEV) = PFPLCL(KIDIA:KFDIA,0:KLEV)
+ ZFPLCN(KIDIA:KFDIA,0:KLEV) = PFPLCN(KIDIA:KFDIA,0:KLEV)
+ ZFPLSL(KIDIA:KFDIA,0:KLEV) = PFPLSL(KIDIA:KFDIA,0:KLEV)
+ ZFPLSN(KIDIA:KFDIA,0:KLEV) = PFPLSN(KIDIA:KFDIA,0:KLEV)
+ ZCSZA(KIDIA:KFDIA) = PCSZA(KIDIA:KFDIA)
+
+LLCHECK_METEO=.TRUE.
+IF (LLCHECK_METEO) THEN
+! correct unphysical values in input
+   WHERE (ZALB(KIDIA:KFDIA) > 0.9_JPRB) ZALB(KIDIA:KFDIA) = 0.9_JPRB
+   WHERE (ZALB(KIDIA:KFDIA) < 0.0_JPRB) ZALB(KIDIA:KFDIA) = 0.0_JPRB
+
+   WHERE (ZAP(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZAP(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZAP(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZAP(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZQP(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZQP(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZQP(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZQP(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZLP(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZLP(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZLP(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZLP(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZIP(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZIP(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZIP(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZIP(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZRP(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZRP(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZRP(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZRP(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZSP(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZSP(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZSP(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZSP(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZCOVPTOT(KIDIA:KFDIA,1:KLEV) < 0.0_JPRB) ZCOVPTOT(KIDIA:KFDIA,1:KLEV) = 0.0_JPRB
+   WHERE (ZCOVPTOT(KIDIA:KFDIA,1:KLEV) > 1.0_JPRB) ZCOVPTOT(KIDIA:KFDIA,1:KLEV) = 1.0_JPRB
+
+   WHERE (ZFPLCL(KIDIA:KFDIA,0:KLEV) < 0.0_JPRB) ZFPLCL(KIDIA:KFDIA,0:KLEV) = 0.0_JPRB
+   WHERE (ZFPLCN(KIDIA:KFDIA,0:KLEV) < 0.0_JPRB) ZFPLCN(KIDIA:KFDIA,0:KLEV) = 0.0_JPRB
+   WHERE (ZFPLSL(KIDIA:KFDIA,0:KLEV) < 0.0_JPRB) ZFPLSL(KIDIA:KFDIA,0:KLEV) = 0.0_JPRB
+   WHERE (ZFPLSN(KIDIA:KFDIA,0:KLEV) < 0.0_JPRB) ZFPLSN(KIDIA:KFDIA,0:KLEV) = 0.0_JPRB
+
+   WHERE (ZCSZA(KIDIA:KFDIA) > 1._JPRB) ZCSZA(KIDIA:KFDIA) = 1.0_JPRB
+   WHERE (ZCSZA(KIDIA:KFDIA) < -1._JPRB) ZCSZA(KIDIA:KFDIA) = -1.0_JPRB
+
+ENDIF
+
+!*       2.0   Chemistry
+!              ---------------
+! initialise zbudr to prevent fpe in openifs-test
+ZBUDR(:,:,:) = 0.0_JPRB
+!
+SELECT CASE (TRIM(CHEM_SCHEME))
+  CASE ("n2o")
+
+    ZOUT = 0.0_JPRB
+
+    CALL CHEM_N2O (YDMODEL%YRML_GCONF,YDMODEL%YRML_PHY_EC%YREPHY,YDMODEL%YRML_CHEM,YDMODEL%YRML_PHY_MF%YRPHY2, &
+&     NSTEP, KIDIA  , KFDIA , KLON, KLEV , KVCLIS,  &
+&     PTSTEP ,ZDELP, PRS1, PRSF1, PGEOH, PTP, PKOZO, ZPTROP, &
+&     ZCSZA, PGELAT, PGELAM, &
+&     PGEMU, ZCON, ZTENC1, ZOUT )
+
+
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,&
+&          ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+
+      ! chemistry tendencies - troposphere only
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP, &
+&          ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CHTR),KTOP=IKLEVTROP)
+
+      ! Find N2O tracer index
+      IN2O=-1
+      DO JT=1,NCHEM
+        IF (TRIM (YCHEM(JT)%CNAME) == 'N2O' ) IN2O=JT
+      ENDDO
+
+       ! LBC long-lived components as emissions.
+        PEXTRA(KIDIA:KFDIA,IN2O,IEXTR_EM) =   PEXTRA(KIDIA:KFDIA,IN2O,IEXTR_EM) + ZOUT(KIDIA:KFDIA,1,1)
+        !substract from chemistry
+        PEXTRA(KIDIA:KFDIA,IN2O, IEXTR_CH) = PEXTRA(KIDIA:KFDIA,IN2O,IEXTR_CH) - ZOUT(KIDIA:KFDIA,1,1)
+        !also substract from trop chemistry
+        PEXTRA(KIDIA:KFDIA,IN2O, IEXTR_CHTR) = PEXTRA(KIDIA:KFDIA,IN2O,IEXTR_CHTR) - ZOUT(KIDIA:KFDIA,1,1)
+
+    ENDIF
+
+  CASE ("bascoe")
+
+    ZOUT = 0.0_JPRB
+
+    CALL CHEM_BASCOE (YDMODEL%YRML_GCONF, YDCHEM,&
+&     NSTEP, KIDIA  , KFDIA , KLON, KLEV ,  &
+&     PTSTEP ,ZDELP, PRS1, PRSF1, PGEOH, ZQP, PTP, &
+&     ZALB, ZCSZA, PGELAT, PGELAM, &
+&     ZCON, ZTENC1, ZOUT )
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,ZTENC1,&
+&                      ZTENC0,PEXTRA(:,:, IEXTR_CH))
+
+      ! chemistry tendencies - troposphere only
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,ZTENC1,&
+&                      ZTENC0,PEXTRA(:,:, IEXTR_CHTR),KTOP=IKLEVTROP)
+
+      DO JT=1,NBC
+        ! LBC long-lived components as deposition. Note that first index in ZOUT is preserved for CH4 boundary condition
+        PEXTRA(KIDIA:KFDIA,BASCOE_BC(JT),IEXTR_DD) =   PEXTRA(KIDIA:KFDIA,BASCOE_BC(JT),IEXTR_DD) + ZOUT(KIDIA:KFDIA,JT+1,1)
+        !substract from chemistry
+        PEXTRA(KIDIA:KFDIA,BASCOE_BC(JT), IEXTR_CH) = PEXTRA(KIDIA:KFDIA,BASCOE_BC(JT),IEXTR_CH) - ZOUT(KIDIA:KFDIA,JT+1,1)
+        !also substract from trop chemistry
+        PEXTRA(KIDIA:KFDIA,BASCOE_BC(JT), IEXTR_CHTR) = PEXTRA(KIDIA:KFDIA,BASCOE_BC(JT),IEXTR_CHTR) - ZOUT(KIDIA:KFDIA,JT+1,1)
+      ENDDO
+
+   ENDIF
+
+
+  CASE ("bascoetm5")
+
+    CALL CHEM_BASCOETM5 (YDDIMV, YDMODEL, &
+ &     NSTEP, KIDIA, KFDIA, KLON, KLEV, NACTAERO , &
+ &     PTSTEP ,ZDELP, PRS1, PRSF1, PGEOH, ZQP, PTP, &
+ &     ZLP, ZIP, ZAP, IKLEVTROP,ZALB, PWND, PLSM, ZCSZA, PGELAT, PGELAM, &
+ &     PGEMU, ZCON, ZTENC1, ZBUDR, ZBUDJ, ZBUDX, ZOUT, &
+ &     PAEROC, PWETDIAM,PWETVOL, PND, PAERAOT, PAERAAOT, PAERASY, ZSOGTOSOA, &
+ &     PCHEM2GHG )
+
+
+    CALL CHEM_DECAY(YGFL,KIDIA,KFDIA,KLON,KLEV,PTSTEP, PRSF1, PGELAT, ZCON,ZTENC1)
+
+     ! output for aerosol scheme
+    IF (NACTAERO > 0 .AND. LAERCHEM) THEN
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,1) =  ZTENC1(KIDIA:KFDIA,1:KLEV,ISO4_BASCOETM5) -ZTENC0(KIDIA:KFDIA,1:KLEV,ISO4_BASCOETM5)
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,2) = -1.0_JPRB*ZBUDR(KIDIA:KFDIA,1:KLEV,ISO2_BASCOETM5)
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,3) =  ZTENC1(KIDIA:KFDIA,1:KLEV,ISO2_BASCOETM5) - ZTENC0(KIDIA:KFDIA,1:KLEV,ISO2_BASCOETM5)
+
+      ZTENC1(KIDIA:KFDIA,1:KLEV,ISO4_BASCOETM5) = ZTENC0(KIDIA:KFDIA,1:KLEV,ISO4_BASCOETM5)
+
+    ENDIF
+    IF (NACTAERO > 0 .AND. LAERNITRATE) THEN
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,4) =  ZTENC1(KIDIA:KFDIA,1:KLEV,INH4_BASCOETM5) - ZTENC0(KIDIA:KFDIA,1:KLEV,INH4_BASCOETM5)
+      ZTENC1(KIDIA:KFDIA,1:KLEV,INH4_BASCOETM5) = ZTENC0(KIDIA:KFDIA,1:KLEV,INH4_BASCOETM5)
+    ENDIF
+
+    IF (NACTAERO > 0 .AND. LAERSOA .AND. LAERSOA_COUPLED) THEN
+      ! SOA
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,5) = ZSOGTOSOA(KIDIA:KFDIA,1:KLEV,1)
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,6) = ZSOGTOSOA(KIDIA:KFDIA,1:KLEV,2)
+    ENDIF
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+
+      ! chemistry tendencies - troposphere only
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,&
+&                      PEXTRA(:,:, IEXTR_CHTR),KTOP=IKLEVTROP)
+
+
+      IICH4=ICH4_BASCOETM5
+      IF (.NOT. LCHEM_ANACH4) THEN
+        ! LBC CH4 as depositon, not emissions
+        PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_DD) =   PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_DD) + ZOUT(KIDIA:KFDIA,1,1)
+        !substract from chemistry
+        PEXTRA(KIDIA:KFDIA,IICH4, IEXTR_CH) = PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_CH) - ZOUT(KIDIA:KFDIA,1,1)
+        !also substract from trop chemistry
+        PEXTRA(KIDIA:KFDIA,IICH4, IEXTR_CHTR) = PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_CHTR) - ZOUT(KIDIA:KFDIA,1,1)
+      ENDIF
+
+      DO JT=1,NBC_BT
+        ! LBC long-lived components as deposition, not emissions.
+        ! Note that first index in ZOUT is preserved for CH4 boundary condition
+        PEXTRA(KIDIA:KFDIA,BASCOETM5_BC(JT),IEXTR_DD) =   PEXTRA(KIDIA:KFDIA,BASCOETM5_BC(JT),IEXTR_DD) + ZOUT(KIDIA:KFDIA,JT+1,1)
+        !substract from chemistry
+        PEXTRA(KIDIA:KFDIA,BASCOETM5_BC(JT), IEXTR_CH) = PEXTRA(KIDIA:KFDIA,BASCOETM5_BC(JT),IEXTR_CH) - ZOUT(KIDIA:KFDIA,JT+1,1)
+        !substract from trop chemistry
+        PEXTRA(KIDIA:KFDIA,BASCOETM5_BC(JT), IEXTR_CHTR) = PEXTRA(KIDIA:KFDIA,BASCOETM5_BC(JT),IEXTR_CHTR)&
+&         - ZOUT(KIDIA:KFDIA,JT+1,1)
+      ENDDO
+
+      ! special trop.chemistry diagnostics
+      IF (LCHEM_DIAC) THEN
+        ! accumulate tendencies due to reaction with OH
+        CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,  ZDELP, PTSTEP, ZBUDR,ZTENC0,PEXTRA(:,:,IEXTR_ROH))
+        ! accumulate tendencies due to photolysis
+        CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NPHOTO+NSOA_BUDG, NPHOTO+NSOA_BUDG,  ZDELP, PTSTEP, ZBUDJ,ZTENC0(:,:,1:NPHOTO+NSOA_BUDG),&
+          & PEXTRA(:,1:NPHOTO+NSOA_BUDG,IEXTR_PH))
+        ! accumulate tendencies due to more detailed O3 budgets
+        CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NBUD_EXTRA, NBUD_EXTRA,  ZDELP, PTSTEP, ZBUDX,ZTENC0(:,:,1:NBUD_EXTRA),&
+             & PEXTRA(:,1:NBUD_EXTRA,IEXTR_CHEMX))
+        ! accumulate tendencies due to reaction with OH, troposphere only
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV, NCHEM, KLEVX, ZDELP, PTSTEP,&
+        &  ZBUDR,ZTENC0,PEXTRA(:,:, IEXTR_ROH_TROP),KTOP=IKLEVTROP)
+        ! accumulate tendencies due to photolysis, troposphere only , "on top of IEXTR_PH"
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV, NPHOTO+NSOA_BUDG, NPHOTO+NSOA_BUDG, ZDELP, PTSTEP,&
+        &    ZBUDJ,ZTENC0(:,:,1:NPHOTO+NSOA_BUDG),PEXTRA(:,NPHOTO+NSOA_BUDG+1:2*(NPHOTO+NSOA_BUDG), IEXTR_PH),KTOP=IKLEVTROP)
+        ! accumulate tendencies due to detailed O3 budgets and other chemistry, troposphere only , "on top of IEXTRA_CHEMX "
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV, NBUD_EXTRA, NBUD_EXTRA, ZDELP, PTSTEP,&
+        &    ZBUDX,ZTENC0(:,:,1:NBUD_EXTRA),PEXTRA(:,NBUD_EXTRA+1:NBUD_EXTRA+NBUD_EXTRA, IEXTR_CHEMX),KTOP=IKLEVTROP)
+
+      ENDIF ! (LCHEM_DIAC)
+
+    ENDIF
+
+  CASE ("tm5")
+
+    CALL CHEM_TM5(YDVAB,YDDIMV,YDMODEL,NSTEP, KIDIA  , KFDIA , KLON, KLEV , KVCLIS, NACTAERO ,&
+ &     PTSTEP ,ZDELP, PRS1, PRSF1, PGEOH, ZQP, PTP,&
+ &     ZLP, ZIP, ZAP, ZPTROP, ZALB, PWND, PLSM, ZCSZA, PGELAT, PGELAM,&
+ &     PGEMU, PKOZO, IKLEVTROP, PDV, ZCON, ZTENC1, ZBUDR, ZBUDJ, ZBUDX, ZOUT,&
+ &     PAEROC,PWETDIAM, PWETVOL,PND, PAERAOT, PAERAAOT, PAERASY, ZSOGTOSOA, &
+ &     PCHEM2GHG)
+
+    CALL CHEM_DECAY(YGFL,KIDIA,KFDIA,KLON,KLEV,PTSTEP, PRSF1, PGELAT, ZCON,ZTENC1)
+
+     ! output for aerosol scheme
+    IF (NACTAERO > 0 .AND. LAERCHEM) THEN
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,1) =  ZTENC1(KIDIA:KFDIA,1:KLEV,ISO4_TM5) -ZTENC0(KIDIA:KFDIA,1:KLEV,ISO4_TM5)
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,2) = -1.0_JPRB*ZBUDR(KIDIA:KFDIA,1:KLEV,ISO2_TM5)
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,3) =  ZTENC1(KIDIA:KFDIA,1:KLEV,ISO2_TM5) - ZTENC0(KIDIA:KFDIA,1:KLEV,ISO2_TM5)
+
+      ZTENC1(KIDIA:KFDIA,1:KLEV,ISO4_TM5) = ZTENC0(KIDIA:KFDIA,1:KLEV,ISO4_TM5)
+    ENDIF
+    IF (NACTAERO > 0 .AND. LAERNITRATE) THEN
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,4) =  ZTENC1(KIDIA:KFDIA,1:KLEV,INH4_TM5) - ZTENC0(KIDIA:KFDIA,1:KLEV,INH4_TM5)
+      ZTENC1(KIDIA:KFDIA,1:KLEV,INH4_TM5) = ZTENC0(KIDIA:KFDIA,1:KLEV,INH4_TM5)
+    ENDIF
+
+    IF (NACTAERO > 0 .AND. LAERSOA .AND. LAERSOA_COUPLED) THEN
+      ! SOA
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,5) = ZSOGTOSOA(KIDIA:KFDIA,1:KLEV,1)
+      PCHEM2AER(KIDIA:KFDIA,1:KLEV,6) = ZSOGTOSOA(KIDIA:KFDIA,1:KLEV,2)
+    ENDIF
+
+      IICH4=ICH4_TM5
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,&
+      & PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CHTR),KTOP=IKLEVTROP)
+
+      IF (.NOT. LCHEM_ANACH4) THEN
+        ! LBC CH4 as deposition, not emissions
+        PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_DD) =   PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_DD) + ZOUT(KIDIA:KFDIA,1,1)
+        !substract from chemistry
+        PEXTRA(KIDIA:KFDIA,IICH4, IEXTR_CH) = PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_CH) - ZOUT(KIDIA:KFDIA,1,1)
+        !substract from trop chemistry also
+        PEXTRA(KIDIA:KFDIA,IICH4, IEXTR_CHTR) = PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_CHTR) - ZOUT(KIDIA:KFDIA,1,1)
+
+        ! UBC CH4 as atmospheric emissions
+        PEXTRA(KIDIA:KFDIA,IEXTR_FREE(1,3),IEXTR_EM) = PEXTRA(KIDIA:KFDIA,IEXTR_FREE(1,3),IEXTR_EM) + ZOUT(KIDIA:KFDIA,2,1)
+        !substract from chemistry
+        PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_CH)=PEXTRA(KIDIA:KFDIA,IICH4,IEXTR_CH) - ZOUT(KIDIA:KFDIA,2,1)
+      ENDIF
+
+      ! UBC HNO3 as atmopshere emissions
+      IIHNO3=IHNO3_TM5
+      PEXTRA(KIDIA:KFDIA,IEXTR_FREE(1,4),IEXTR_EM) = PEXTRA(KIDIA:KFDIA,IEXTR_FREE(1,4),IEXTR_EM) + ZOUT(KIDIA:KFDIA,3,1)
+      ! substract from chemistry
+      PEXTRA(KIDIA:KFDIA,IIHNO3,IEXTR_CH) = PEXTRA(KIDIA:KFDIA,IIHNO3,IEXTR_CH) - ZOUT(KIDIA:KFDIA,3,1)
+
+      ! special chemistry diagnostics
+      IF (LCHEM_DIAC) THEN
+        ! accumulate tendencies due to reaction with OH
+        CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,  ZDELP, PTSTEP, ZBUDR,ZTENC0,PEXTRA(:,:,IEXTR_ROH))
+        ! accumulate tendencies due to photolysis
+        CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NPHOTO+NSOA_BUDG, NPHOTO+NSOA_BUDG,  ZDELP, PTSTEP, ZBUDJ,ZTENC0(:,:,1:NPHOTO+NSOA_BUDG),&
+          & PEXTRA(:,1:NPHOTO+NSOA_BUDG,IEXTR_PH))
+        ! accumulate tendencies due to more detailed O3 budgets
+        CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NBUD_EXTRA, NBUD_EXTRA,  ZDELP, PTSTEP, ZBUDX,ZTENC0(:,:,1:NBUD_EXTRA),&
+             & PEXTRA(:,1:NBUD_EXTRA,IEXTR_CHEMX))
+        ! accumulate tendencies due to reaction with OH, troposphere only
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV, NCHEM, KLEVX, ZDELP, PTSTEP,&
+        &  ZBUDR,ZTENC0,PEXTRA(:,:, IEXTR_ROH_TROP),KTOP=IKLEVTROP)
+        ! accumulate tendencies due to photolysis, troposphere only , "on top of IEXTR_PH"
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV, NPHOTO+NSOA_BUDG, NPHOTO+NSOA_BUDG, ZDELP, PTSTEP,&
+        &    ZBUDJ,ZTENC0(:,:,1:NPHOTO+NSOA_BUDG),PEXTRA(:,NPHOTO+NSOA_BUDG+1:2*(NPHOTO+NSOA_BUDG), IEXTR_PH),KTOP=IKLEVTROP)
+        ! accumulate tendencies due to detailed O3 budgets and other chemistry, troposphere only , "on top of IEXTRA_CHEMX "
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV, NBUD_EXTRA, NBUD_EXTRA, ZDELP, PTSTEP,&
+        &    ZBUDX,ZTENC0(:,:,1:NBUD_EXTRA),PEXTRA(:,NBUD_EXTRA+1:NBUD_EXTRA+NBUD_EXTRA, IEXTR_CHEMX),KTOP=IKLEVTROP)
+
+      ENDIF ! (LCHEM_DIAC)
+    ENDIF
+
+  CASE ("decay")
+
+    CALL CHEM_DECAY(YGFL,KIDIA,KFDIA,KLON,KLEV,PTSTEP,PRSF1,PGELAT,ZCON,ZTENC1)
+
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+    ENDIF
+
+  CASE ("linco")
+
+    CALL CHEM_LINCO  (YDCHEM, YGFL, KIDIA, KFDIA, KLON, KLEV, KGPLAT, &
+ &     PTSTEP , PTP, ZCON ,ZTENC1)
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, &
+ &     KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+    ENDIF
+
+  CASE ("linco_RnPb")
+
+    CALL CHEM_LINCO  (YDCHEM, YGFL, KIDIA, KFDIA, KLON, KLEV, KGPLAT, &
+ &       PTSTEP , PTP, ZCON(:,:,JT) ,ZTENC1(:,:,IFLCO))
+
+    CALL CHEM_RNPB  ( YGFL, KIDIA, KFDIA, KLON, KLEV, KTRAC, &
+ &       PTSTEP , PRSF1, PTP, ZCON ,ZTENC1)
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, &
+ &     KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+    ENDIF
+
+! Radon - Pb decay
+  CASE  ("RnPb")
+
+    CALL CHEM_RNPB  ( YGFL, KIDIA, KFDIA, KLON, KLEV, KTRAC, &
+ &     PTSTEP , PRSF1, PTP, ZCON ,ZTENC1)
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, &
+ &     KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+    ENDIF
+
+! Linear ozone only
+  CASE  ("nwpo3")
+
+    CALL CHEM_NWPO3  (YDMODEL, KIDIA, KFDIA, KLON, KLEV, KTRAC, KVCLIS, &
+ &     PTSTEP, PKOZO, ZCSZA, PGEMU, PDELP,  PRS1, PRSF1, PTP, ZCON ,ZTENC1)
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, &
+ &     KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+    ENDIF
+
+  CASE  ("carbontracers")
+
+    IPCH4=-999_JPIM
+    DO JT=1,NGHG
+     IF (YGHG(JT)%IGRBCODE == NGRBGHG(2) ) IPCH4=JT
+    ENDDO
+
+    DO JT = 1,NCHEM
+
+      ICO = INDEX(TRIM( YCHEM(JT)%CNAME ), 'CO')
+
+      FCO2NOBIO = INDEX(TRIM( YCHEM(JT)%CNAME ), 'CO2_NBI')
+      FCO2NOFLX = INDEX(TRIM( YCHEM(JT)%CNAME ), 'CO2_NFX')
+      FCO2 = INDEX(TRIM( YCHEM(JT)%CNAME ), 'CO2')
+
+      IF ( ICO == 1 .AND. FCO2 == 0 ) THEN
+        WRITE(NULOUT,*) ' LINCO CALLED FOR Species ', JT , YCHEM(JT)%CNAME
+        CALL CHEM_LINCO  (YDCHEM, YGFL, KIDIA, KFDIA, KLON, KLEV, KGPLAT, &
+ &       PTSTEP , PTP, ZCON(:,:,JT) ,ZTENC1(:,:,JT))
+      ENDIF
+
+      !!! Hardcoding of chemical tendencies for CH4 carbon tracers !!!
+      !!! the GHG CH4 chem tendency is used.
+      !!! Assumes LGHG and LCH4 are on.
+
+      IGHGCH4 = INDEX(TRIM( YCHEM(JT)%CNAME ), 'CH4')
+      IF ( IGHGCH4 /= 0 ) THEN
+      ! add new tendency to input tendency
+       !*  tendency (kg/kg/sec)
+         DO JK=1,KLEV
+           DO JL=KIDIA,KFDIA
+              ZTENC1(JL,JK,JT) = ZTENC1(JL,JK,JT) - &
+ &               PGFL(JL,JK,YLRCH4%MP9_PH)*PGFL(JL,JK,YGHG(IPCH4)%MP9_PH)
+           ENDDO
+         ENDDO
+      ENDIF
+      !!! end of harcoding
+
+
+      IF ( FCO2NOBIO == 0 .AND. FCO2NOFLX == 0 .AND. FCO2 == 1 ) THEN
+     ! store nee flux as chemical tendency (Sign of NEE is changed to follow atm budget convention)
+       PEXTRA(KIDIA:KFDIA,JT, IEXTR_CH) = PEXTRA(KIDIA:KFDIA,JT, IEXTR_CH) - &
+ &        PNEEFLX(KIDIA:KFDIA)  * PTSTEP
+      ENDIF
+
+    ENDDO
+
+    ! Diagnostics in 3d extra fields
+    IF (LCHEM_DIA) THEN
+      ! chemistry tendencies
+      CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, &
+ &     KLEVX,ZDELP,PTSTEP,ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_CH))
+    ENDIF
+  CASE DEFAULT
+
+    CALL ABOR1(" NO CHEMISTRY SCHEME "//TRIM(CHEM_SCHEME) )
+
+END SELECT
+
+IF (LLTENDUPDT ) THEN
+  DO JT=1,NCHEM
+     ! WRITE(NULOUT,*) ' Species ', JT , YCHEM(JT)%CNAME,
+    ! loop over levels
+     DO JK=1,KLEV
+      ! loop over points
+       DO JL=KIDIA,KFDIA
+        ! update intermediate tendency
+        !        PTENC(JL,JK,KCHEM(JT))  =  0.0_JPRB
+          ZCON(JL,JK,JT)  =  ZCON(JL,JK,JT) + PTSTEP *  ZTENC1(JL,JK,JT)
+        ENDDO
+      ENDDO
+  ENDDO
+ENDIF
+
+!*    3.0 wet deposition
+!           ------------------
+
+  ZTENC0(KIDIA:KFDIA,1:KLEV,1:NCHEM)=ZTENC1(KIDIA:KFDIA,1:KLEV,1:NCHEM)
+
+! CHEM_SCAV updates tendency
+!* convective precip
+
+  ! No scavenging when ARPEGE-Climat chemistry scheme is active -  NCHEM_SCV=0 but not used in CHEM_SCAV at this stage
+IF (.NOT.LCHEM_ARPCLIM) THEN
+    CALL  CHEM_SCAV&
+  & ( YDCHEM, YDMODEL%YRML_PHY_EC%YRECLDP, YDMODEL%YRML_PHY_AER%YREDBUG, YGFL, &
+  & KIDIA , KFDIA  , KLON , KLEV , NCHEM ,NCHEM_SCV,  NSTEP, KCHEM_WETDEP, PTSTEP,&
+  & PRSF1, ZDELP, PTP, ZFPLCL, ZFPLCN, ZAP, ZLP, ZIP, ZRP, ZSP, PLSM, ZCON,ZTENC0,&
+  &   ZTENC1, ZWLOSS )
+ENDIF
+
+! write to extra fields for diagnostic
+IF (LCHEM_DIA) THEN
+  CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,  ZDELP, PTSTEP, ZTENC1,ZTENC0, PEXTRA(:,:, IEXTR_WD ))
+ENDIF
+
+
+
+ZTENC0(KIDIA:KFDIA,1:KLEV,1:NCHEM)=ZTENC1(KIDIA:KFDIA,1:KLEV,1:NCHEM)
+! * Grid-scale precip
+IF (.NOT.LCHEM_ARPCLIM) THEN
+   CALL  CHEM_SCAV&
+  & ( YDCHEM, YDMODEL%YRML_PHY_EC%YRECLDP, YDMODEL%YRML_PHY_AER%YREDBUG, YGFL, &
+  & KIDIA , KFDIA  , KLON , KLEV , NCHEM ,NCHEM_SCV , NSTEP, KCHEM_WETDEP, PTSTEP,&
+  & PRSF1, ZDELP, PTP, ZFPLSL, ZFPLSN, ZAP, ZLP, ZIP, ZRP, ZSP, PLSM, ZCON,ZTENC0,&
+  &   ZTENC1, ZWLOSS, PPRCOV = ZCOVPTOT )
+ENDIF
+
+! write flux to extra fields for diagnostic of wet deposition
+IF (LCHEM_DIA) THEN
+  CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,  ZDELP, PTSTEP,ZTENC1,ZTENC0, PEXTRA(:,:, IEXTR_WD ))
+ENDIF
+
+! direct application of dry deposition if not LCHEM_DDFLX or LCHEM_
+!*     3.5 Dry deposition
+!           ------------------
+IF ( .NOT. LCHEM_DDFLX ) THEN
+  ZTENC0(KIDIA:KFDIA,1:KLEV,1:NCHEM)=ZTENC1(KIDIA:KFDIA,1:KLEV,1:NCHEM)
+  CALL CHEM_DRYDEP&
+ & (  YGFL, KIDIA , KFDIA  , KLON, KLEV , NCHEM , NCHEM_DV, PTSTEP,&
+ &    PGEOH, ZDELP, PDV, ZCON, ZTENC0, ZTENC1 , ZDLOSS )
+
+! write flux to extra fields for diagnostic of dry deposition
+! if LCHEM_DDFLX pextra(:,:,IEXTR_DD) has been filled in gems init
+  IF (LCHEM_DIA) THEN
+    CALL CHEM_INEXT( KIDIA , KFDIA  , KLON , KLEV , NCHEM, KLEVX,  ZDELP, PTSTEP, ZTENC1,ZTENC0,PEXTRA(:,:, IEXTR_DD ))
+  ENDIF
+ENDIF
+
+!*   4.0 add 3D  NO emissions ifrom Air craft and Lightning, see culight
+!*
+IF (LCHEM_LIGHT) THEN
+  INO=-1
+  DO JT=1,NCHEM
+    IF (TRIM (YCHEM(JT)%CNAME) == 'NO' ) INO=JT
+  ENDDO
+
+  ILI=-999_JPIM
+  DO JT=1,NGFL_EXT
+    IF ( TRIM(YEXT(JT)%CNAME) == 'EMILI')    ILI   = JT
+  ENDDO
+
+ ! add as NO
+  IF ( LCHEM_LIGHT ) THEN
+   IF ( ILI /= -999_JPIM  ) THEN
+      ZTENC0(KIDIA:KFDIA,1:KLEV,INO)=ZTENC1(KIDIA:KFDIA,1:KLEV,INO)
+      ZTENCIN(KIDIA:KFDIA,1:KLEV) = PGFL(KIDIA:KFDIA,1:KLEV,YEXT(ILI)%MP9_PH)
+      CALL  CHEM_EMI3D&
+       & ( KIDIA , KFDIA  , KLON , KLEV , ZDELP, ZTENCIN, ZTENC0(:,:,INO), ZTENC1(:,:,INO))
+      IF (LCHEM_DIA) THEN
+        CALL CHEM_INEXT(KIDIA, KFDIA, KLON, KLEV,1,1,ZDELP,PTSTEP,ZTENC1(:,:,INO),ZTENC0(:,:,INO),&
+         & PEXTRA(:,IEXTR_FREE(1,2), IEXTR_EM))
+      ENDIF
+    ELSE
+      CALL ABOR1(" 3d EMILI field not defined - check namelist ")
+    ENDIF
+  ENDIF
+
+ENDIF
+
+
+
+!*       5.0   Update tendencies
+!              ---------------
+DO JT=1,NCHEM
+     ! WRITE(NULOUT,*) ' Species ', JT , YCHEM(JT)%CNAME,
+    ! loop over levels
+    DO JK=1,KLEV
+      ! loop over points
+      DO JL=KIDIA,KFDIA
+        ! add new tendency to input tendency
+        !        PTENC(JL,JK,KCHEM(JT))  =  0.0_JPRB
+        PTENC(JL,JK,KCHEM(JT))  =  PTENC(JL,JK,KCHEM(JT)) + ZTENC1(JL,JK,JT)
+      ENDDO
+    ENDDO
+ENDDO
+
+
+! Set CH4 constant if LCHEM_HTAP
+
+IF (LCHEM_HTAP .AND. RCH4CONST > 0.0_JPRB ) THEN
+  ZCH4_CLIM = RCH4CONST*YCHEM(IICH4)%RMOLMASS/RMD
+  DO JK=1,KLEV
+   ! loop over points
+    DO JL=KIDIA,KFDIA
+      ! add new tendency to input tendency
+!*  tendency (kg/kg/sec)
+       PTENC(JL,JK,KCHEM(IICH4))  = ( ZCH4_CLIM - PGFL(JL,JK,YCHEM(IICH4)%MP9_PH))  / PTSTEP
+    ENDDO
+ ENDDO
+ENDIF
+
+!*       6.0   correct negative tendencies
+! in order to use aert-neg we set aer minval to chem minval
+!              ---------------
+
+DO JT=1,NCHEM
+  IF(YCHEM(JT)%LNEGFIX) THEN
+    IF (NACTAERO > 0 .AND. LAERNITRATE .AND. (YCHEM(JT)%CNAME == 'HNO3' .OR. YCHEM(JT)%CNAME == 'NH3')) CYCLE
+    ZCONIN(KIDIA:KFDIA,1:KLEV)  = PGFL(KIDIA:KFDIA,1:KLEV,YCHEM(JT)%MP9_PH)
+    ZTENCIN(KIDIA:KFDIA,1:KLEV) = PTENC(KIDIA:KFDIA,1:KLEV,KCHEM(JT))
+
+    CALL CHEM_NEGAT&
+      & ( KIDIA   , KFDIA , KLON , KLEV,&
+      & PTSTEP  ,   ZCONIN , ZTENCIN, PRS1,&
+      &   ZNGFLX , ZTENCOUT )
+
+!    DO JK=1,KLEV
+!      DO JL=KIDIA,KFDIA
+!        IF ( ZCONIN(JL,JK) + PTSTEP* ZTENCOUT(JL,JK) < 0.0_JPRB ) THEN
+!          WRITE(NULOUT,*) ' NEGATIVE  CONC PROJECTED in CHEM_MAIN after correction',JL,JK, JT , YCHEM(JT)%CNAME
+!          WRITE(NULOUT,*) ' MINVALUES ',ZCONIN(JK,JL) + PTSTEP* ZTENCOUT(JL,JK), ZCONIN(JK,JL), ZTENCOUT(JL,JK)
+!          CALL ABOR1( " IN CHEM_MAIN AER_NEG did not work ")
+!        ENDIF
+!      ENDDO
+!    ENDDO
+
+    IF (LCHEM_DIA) THEN
+      PEXTRA(KIDIA:KFDIA,JT,IEXTR_NG ) =  PEXTRA(KIDIA:KFDIA,JT,IEXTR_NG ) -  ZNGFLX(KIDIA:KFDIA,KLEV) * PTSTEP
+    ENDIF
+    ! adapted tendency back in tendency array
+    PTENC(KIDIA:KFDIA,1:KLEV,KCHEM(JT)) = ZTENCOUT(KIDIA:KFDIA,1:KLEV)
+  ENDIF
+ENDDO
+
+! write jo3, jno2 and etcs in extra files
+IF (LCHEM_JOUT) THEN
+  IJOUT=MIN(5,5_JPIM) ! only save O3 & NO2 & PAN photolysis rates
+  IPOS = 0
+  IF (LCHEM_DIA) IPOS = IEXTR_FE
+  IF (LCHEM_DIAC) IPOS = IEXTR_CHEMX
+  DO JT = 2, IJOUT
+    DO JK=1,KLEV
+      DO JL=KIDIA,KFDIA
+        PEXTRA(JL,JK,IPOS+JT) =  ZOUT(JL,JK,JT)
+      ENDDO
+    ENDDO
+  ENDDO
+ENDIF
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CHEM_MAIN',1,ZHOOK_HANDLE )
+END SUBROUTINE CHEM_MAIN

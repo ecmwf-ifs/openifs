@@ -1,0 +1,170 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE SUAERV &
+ & (  YDERAD,KLEV  , PETAH,&
+ & PVDAES, PVDAEL, PVDAEU, PVDAED,&
+ & PTRBGA, PVOBGA, PSTBGA, PAEOPS, PAEOPL, PAEOPU,&
+ & PAEOPD, PTRPT , PAEADK, PAEADM, PAEROS &
+ & )  
+
+!**** *SUAERV* - PARAMETERS FOR THE VERTICAL DISTRIBUTIONS OF AEROSOLS.
+
+!     PURPOSE.
+!     --------
+
+!          THIS ROUTINE COMPUTES THE VALUES *PVDAEN* (*N=*S,*L,*U OR *D
+!     FOR SEA,LAND,URBAN OR DESERT) OF A SURFACE-NORMALISED VERTICAL
+!     DISTRIBUTION OF AEROSOLS' OPTICAL DEPHTS FROM THE ARGUMENT *PETAH*
+!     (VERTICAL COORDINATE) AT *KLEVP1* LEVELS. IT ALSO SETS VALUES FOR
+!     NON-GEOGRAPHICALLY WEIGHTED TOTAL OPTICAL DEPTHS (AT 0.55 E-06
+!     WAVE-LENGTH) *PAEOPN* FOR THE SAME FOUR TYPES AND SIMILEAR OPTICAL
+!     DEPHTS DIVIDED BY PRESSURE FOR BACKGROUND WELL-MIXED AEROSOLS
+!     OF THREE TYPES *PMNBGA* (*MN*=*TR*,*VO* OR *ST* FOR TROPOSPHERIC,
+!     VOLCANIC (STRATOSPHERIC ASHES) OR STRATOSPHERIC (SULFURIC TYPE)).
+!     IT FINALLY SET VALUES FOR THE POWER TO BE APPLIED TO A TEMPERATURE
+!     RATIO SMALLER THAN ONE IN ORDER TO OBTAIN AN IDEX ONE IN THE
+!     STRATOSPHERE AND ZERO IN THE TROPOSPHERE WITH A RELATIVELY SMOOTH
+!     TRANSITION (*PTRPT*), AS WELL AS FOR ADSORPTION COEFFICIENTS FOR
+!     WATER TO THE THREE TYPE OF TROPOSPHERIC AEROSOLS (*PAEADK*) WITH
+!     A MINIMUM VALUE (IN THE WHOLE ATMOSPHERE) FOR THE SUM OF THE
+!     PRODUCTS OF *PAEADK* BY THE OPTICAL DEPTHS DIVIDED BY PRESURE
+!     THICKNESS: *PAEADM*.
+
+!**   INTERFACE.
+!     ----------
+
+!          *SUAERV* IS CALLED FROM *SUECRAD*.
+!          THERE ARE SIXTEEN DUMMY ARGUMENTS: *PETAH* IS THE VERTICAL
+!     COORDINATE.
+!                                             *PVDAEN* (*N=*S,*L,*U OR
+!     *D) ARE THE NORMALISED VERTICAL DISTRIBUTIONS.
+!                                             *KLEVP1* IS THE NUMBER OF
+!     LEVELS.
+!                                             *PMNBGA* (*MN*=*TR*,*VO*
+!     OR *ST*) ARE THE BACKGROUND OPTICAL DEPTHS DIVIDED BY PRESSURE.
+!                                             *PAEOPN* (*N=*S,*L,*U OR
+!     *D) ARE THE TOTAL OPTICAL DEPHTS FOR THE VERTICALLY VARYING
+!     AEROSOLS.
+!                                             *PTRPT* IS THE TEMPERATURE
+!     EXPONENT FOR THE STRATOSPHERIC DEFINITION.
+!                                             *PAEADK* (1,2,3) AND
+!     AND *PAEADM* ARE THE CONSTANTS FOR THE DEFINITION OF THE QUANTITY
+!     OF WATER VAPOUR THAT WILL BE ADSORBED TO THE DRY AEROSOLS TO FORM
+!     MOIST AEROSOLS.
+
+!     METHOD.
+!     -------
+
+!          STRAIGHTFORWARD, EQUIVALENT HEIGTHS ARE GIVEN IN METERS (8434
+!     FOR THE ATMOSPHERE) AND TROPOSPHERIC AND STRATOSPHERIC PRESSURE
+!     BOUNDARY VALUES ARE SET AT 101325 AND 19330 *PASCAL.
+
+!     EXTERNALS.
+!     ----------
+
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+
+!          NONE.
+
+!     AUTHOR
+!     ------
+!      J.-F. GELEYN     E.C.M.W.F.     04/11/82.
+
+!     MODIFICATIONS
+!     -------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      JJMorcrette   20120815    scale heights by aerosol types
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOERAD   , ONLY : TERAD
+
+IMPLICIT NONE
+
+TYPE(TERAD)       ,INTENT(INOUT) :: YDERAD
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PETAH(KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVDAES(KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVDAEL(KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVDAEU(KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVDAED(KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTRBGA 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVOBGA 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSTBGA 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEOPS 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEOPL 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEOPU 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEOPD 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTRPT 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEADK(3) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEADM 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAEROS 
+!     ------------------------------------------------------------------
+INTEGER(KIND=JPIM) :: JK
+
+
+REAL(KIND=JPRB) :: ZHSD, ZHSL, ZHSS, ZHSU
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+!*         1.     COMPUTATIONS.
+!                 -------------
+
+!-- the variable defining the tropospheric
+!-- background as read from the namelist (or default in suecrad)
+!-- YRERAD%TRBKG
+!-- the variable defining the stratospheric
+!-- background as read from the namelist (or default in suecrad)
+!-- YRERAD%STBKG
+
+IF (LHOOK) CALL DR_HOOK('SUAERV',0,ZHOOK_HANDLE)
+ZHSS=MAX(1.0_JPRB,8434._JPRB/1000._JPRB)
+ZHSL=MAX(1.0_JPRB,8434._JPRB/1000._JPRB)
+ZHSU=MAX(1.0_JPRB,8434._JPRB/1000._JPRB)
+ZHSD=MAX(1.0_JPRB,8434._JPRB/3000._JPRB)
+PVDAES(1)=0._JPRB
+PVDAEL(1)=0._JPRB
+PVDAEU(1)=0._JPRB
+PVDAED(1)=0._JPRB
+IF(PETAH(1) /= 0.0_JPRB) THEN
+  PVDAES(1)=PETAH(1)**ZHSS
+  PVDAEL(1)=PETAH(1)**ZHSL
+  PVDAEU(1)=PETAH(1)**ZHSU
+  PVDAED(1)=PETAH(1)**ZHSD
+ENDIF
+DO JK=2,KLEV+1
+  PVDAES(JK)=PETAH(JK)**ZHSS
+  PVDAEL(JK)=PETAH(JK)**ZHSL
+  PVDAEU(JK)=PETAH(JK)**ZHSU
+  PVDAED(JK)=PETAH(JK)**ZHSD
+ENDDO
+PTRBGA= YDERAD%TRBKG/(101325._JPRB-19330._JPRB)
+PVOBGA= 0.007_JPRB/19330._JPRB
+PSTBGA= YDERAD%STBKG/19330._JPRB !original 0.045, here reduced, now defined in namelist or suecrad
+PAEOPS= 0.05_JPRB
+PAEOPL= 0.2_JPRB
+PAEOPU= 0.1_JPRB
+PAEOPD= 1.9_JPRB
+PTRPT = 30._JPRB
+PAEADK(1)=+.3876E-03_JPRB
+PAEADK(2)=+.6693E-02_JPRB
+PAEADK(3)=+.8563E-03_JPRB
+PAEADM   = 2.6E-10_JPRB
+
+PAEROS   = 0.1462E-16_JPRB
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUAERV',1,ZHOOK_HANDLE)
+END SUBROUTINE SUAERV

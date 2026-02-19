@@ -1,0 +1,258 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE LWVB &
+ & ( KIDIA , KFDIA , KLON  , KLEV  , KUAER,&
+ & PABCU , PADJD , PADJU,&
+ & PB    , PBINT , PBSUR , PBTOP,&
+ & PDISD , PDISU , PEMIS , PEMIW,&
+ & PGASUR, PGBSUR, PGATOP, PGBTOP,&
+ & PDWFSU,PFLUC                  &
+ & )  
+
+!**** *LWVB*   - L.W., VERTICAL INTEGRATION, EXCHANGE WITH BOUNDARIES
+
+!     PURPOSE.
+!     --------
+!           INTRODUCES THE EFFECTS OF THE BOUNDARIES IN THE VERTICAL
+!           INTEGRATION
+
+!**   INTERFACE.
+!     ----------
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!     ==== INPUTS ===
+! PABCU : (KLON,NUA,3*KLEV+1); ABSORBER AMOUNTS
+! PADJ.. : (KLON,KLEV+1)     ; CONTRIBUTION BY ADJACENT LAYERS
+! PB     : (KLON,NSIL,KLEV+1); SPECTRAL HALF-LEVEL PLANCK FUNCTIONS
+! PBINT  : (KLON,KLEV+1)     ; HALF-LEVEL PLANCK FUNCTIONS
+! PBSUR  : (KLON,NSIL)       ; SPECTRAL SURFACE PLANCK FUNCTION
+! PBTOP  : (KLON,NSIL)       ; SPECTRAL T.O.A. PLANCK FUNCTION
+! PDIS.. : (KLON,KLEV+1)     ; CONTRIBUTION BY DISTANT LAYERS
+! PEMIS  : (KLON)            ; SURFACE LW EMISSIVITY
+! PEMIW  : (KLON)            ; SURFACE LW WINDOW EMISSIVITY
+! PGASUR, PGBSUR             ; SURFACE PADE APPROXIMANTS
+! PGATOP, PGBTOP             ; T.O.A. PADE APPROXIMANTS 
+!     ==== OUTPUTS ===
+! PDWFSU : (KLON,NSIL)       ; SPECTRAL DOWNWARD FLUX AT SURFACE
+! PFLUC(KLON,2,KLEV)         ; RADIATIVE FLUXES CLEAR-SKY:
+!                     1  ==>  UPWARD   FLUX TOTAL
+
+!        IMPLICIT ARGUMENTS :   NONE
+!        --------------------
+
+!     METHOD.
+!     -------
+
+!          COMPUTES THE ENERGY EXCHANGE WITH TOP AND SURFACE OF THE
+!     ATMOSPHERE AND ADDS UP ALL CONTRIBUTIONS TO GET THE CLEAR-SKY 
+!     FLUXES
+
+!     EXTERNALS.
+!     ----------
+
+!          *LWTT*
+
+!     REFERENCE.
+!     ----------
+
+!        SEE RADIATION'S PART OF THE MODEL'S DOCUMENTATION AND
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS
+
+!     AUTHOR.
+!     -------
+!      JEAN-JACQUES MORCRETTE  *ECMWF*
+!      ORIGINAL : 89-07-14
+
+!     MODIFICATIONS.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Janiskova   16-Jan-2006 Cleaning
+!-----------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM     ,JPRB
+USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOELW    , ONLY : NSIL     ,NIPD     ,NTRA     ,NUA      ,NG1P1
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KUAER 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PABCU(KLON,NUA,3*KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PADJD(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PADJU(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PB(KLON,NSIL,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBINT(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBSUR(KLON,NSIL) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBTOP(KLON,NSIL) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDISD(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDISU(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEMIS(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEMIW(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGASUR(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGBSUR(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGATOP(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGBTOP(KLON,NIPD,2) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PDWFSU(KLON,NSIL) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFLUC(KLON,2,KLEV+1) 
+
+!-----------------------------------------------------------------------
+
+REAL(KIND=JPRB) :: ZBSUR(KLON,NSIL), ZTT(KLON,NTRA)&
+ & ,  ZUU(KLON,NUA) , ZCNSOL(KLON)   , ZCNTOP(KLON)  
+
+INTEGER(KIND=JPIM) :: IN, JA, JK, JL
+
+REAL(KIND=JPRB) :: ZCNTOP1, ZCNTOP2, ZCNTOP3, ZCNTOP4, ZCNTOP5, ZCNTOP6
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "lwtt.intfb.h"
+
+!-----------------------------------------------------------------------
+
+!*         1.    INITIALIZATION
+!                --------------
+
+!*         1.2     INITIALIZE TRANSMISSION FUNCTIONS
+!                  ---------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LWVB',0,ZHOOK_HANDLE)
+DO JA=1,NTRA
+  DO JL=KIDIA,KFDIA
+    ZTT (JL,JA)=1.0_JPRB
+  ENDDO
+ENDDO
+
+DO JA=1,NUA
+  DO JL=KIDIA,KFDIA
+    ZUU(JL,JA)=1.0_JPRB
+  ENDDO
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*         2.      VERTICAL INTEGRATION
+!                  --------------------
+
+!*         2.3     EXCHANGE WITH TOP OF THE ATMOSPHERE
+!                  -----------------------------------
+
+DO JK = 1 , KLEV
+  IN=(JK-1)*NG1P1+1
+
+  DO JA=1,KUAER
+    DO JL=KIDIA,KFDIA
+      ZUU(JL,JA)=PABCU(JL,JA,IN)
+    ENDDO
+  ENDDO
+
+  CALL LWTT &
+   & ( KIDIA        , KFDIA        , KLON,&
+   & PGATOP(1,1,1), PGBTOP(1,1,1),&
+   & ZUU          , ZTT &
+   & )  
+
+  DO JL = KIDIA,KFDIA
+    ZCNTOP1=PBTOP(JL,1)*ZTT(JL,1)          *ZTT(JL,10)
+    ZCNTOP2=PBTOP(JL,2)*ZTT(JL,2)*ZTT(JL,7)*ZTT(JL,11)
+    ZCNTOP3=PBTOP(JL,3)*ZTT(JL,4)*ZTT(JL,8)*ZTT(JL,12)
+    ZCNTOP4=PBTOP(JL,4)*ZTT(JL,5)*ZTT(JL,9)*ZTT(JL,13)
+    ZCNTOP5=PBTOP(JL,5)*ZTT(JL,3)          *ZTT(JL,14)
+    ZCNTOP6=PBTOP(JL,6)*ZTT(JL,6)          *ZTT(JL,15)
+    ZCNTOP(JL)=ZCNTOP1+ZCNTOP2+ZCNTOP3+ZCNTOP4+ZCNTOP5+ZCNTOP6
+    PFLUC(JL,2,JK)=ZCNTOP(JL)-PBINT(JL,JK)-PDISD(JL,JK)-PADJD(JL,JK)
+    IF (JK == 1) THEN
+      PDWFSU(JL,1)=ZCNTOP1-PB(JL,1,JK)-PDWFSU(JL,1)
+      PDWFSU(JL,2)=ZCNTOP2-PB(JL,2,JK)-PDWFSU(JL,2)
+      PDWFSU(JL,3)=ZCNTOP3-PB(JL,3,JK)-PDWFSU(JL,3)
+      PDWFSU(JL,4)=ZCNTOP4-PB(JL,4,JK)-PDWFSU(JL,4)
+      PDWFSU(JL,5)=ZCNTOP5-PB(JL,5,JK)-PDWFSU(JL,5)
+      PDWFSU(JL,6)=ZCNTOP6-PB(JL,6,JK)-PDWFSU(JL,6)
+    ENDIF
+  ENDDO
+
+ENDDO
+
+JK = KLEV+1
+IN=(JK-1)*NG1P1+1
+
+DO JL = KIDIA,KFDIA
+  ZCNTOP(JL)= PBTOP(JL,1)&
+   & + PBTOP(JL,2)&
+   & + PBTOP(JL,3)&
+   & + PBTOP(JL,4)&
+   & + PBTOP(JL,5)&
+   & + PBTOP(JL,6)  
+  PFLUC(JL,2,JK)=ZCNTOP(JL)-PBINT(JL,JK)-PDISD(JL,JK)-PADJD(JL,JK)
+ENDDO
+
+!*         2.5     EXCHANGE WITH LOWER LIMIT
+!                  -------------------------
+
+JK = 1
+IN=(JK-1)*NG1P1+1
+
+DO JL = KIDIA,KFDIA
+  ZBSUR(JL,1)=PBSUR(JL,1)*PEMIS(JL) -(1.0_JPRB-PEMIS(JL))*PDWFSU(JL,1)
+  ZBSUR(JL,2)=PBSUR(JL,2)*PEMIS(JL) -(1.0_JPRB-PEMIS(JL))*PDWFSU(JL,2)
+  ZBSUR(JL,3)=PBSUR(JL,3)*PEMIW(JL) -(1.0_JPRB-PEMIW(JL))*PDWFSU(JL,3)
+  ZBSUR(JL,4)=PBSUR(JL,4)*PEMIW(JL) -(1.0_JPRB-PEMIW(JL))*PDWFSU(JL,4)
+  ZBSUR(JL,5)=PBSUR(JL,5)*PEMIS(JL) -(1.0_JPRB-PEMIS(JL))*PDWFSU(JL,5)
+  ZBSUR(JL,6)=PBSUR(JL,6)*PEMIS(JL) -(1.0_JPRB-PEMIS(JL))*PDWFSU(JL,6)
+
+  PFLUC(JL,1,JK) = ZBSUR(JL,1)&
+   & + ZBSUR(JL,2)&
+   & + ZBSUR(JL,3)&
+   & + ZBSUR(JL,4)&
+   & + ZBSUR(JL,5)&
+   & + ZBSUR(JL,6)  
+
+  ZBSUR(JL,1)=ZBSUR(JL,1)-PB(JL,1,1)
+  ZBSUR(JL,2)=ZBSUR(JL,2)-PB(JL,2,1)
+  ZBSUR(JL,3)=ZBSUR(JL,3)-PB(JL,3,1)
+  ZBSUR(JL,4)=ZBSUR(JL,4)-PB(JL,4,1)
+  ZBSUR(JL,5)=ZBSUR(JL,5)-PB(JL,5,1)
+  ZBSUR(JL,6)=ZBSUR(JL,6)-PB(JL,6,1)
+ENDDO
+
+DO JK = 2 , KLEV+1
+  IN=(JK-1)*NG1P1+1
+
+  DO JA=1,KUAER
+    DO JL=KIDIA,KFDIA
+      ZUU(JL,JA)=PABCU(JL,JA,1)-PABCU(JL,JA,IN)
+    ENDDO
+  ENDDO
+
+  CALL LWTT &
+   & ( KIDIA        , KFDIA        , KLON,&
+   & PGASUR(1,1,1), PGBSUR(1,1,1),&
+   & ZUU, ZTT &
+   & )  
+
+  DO JL = KIDIA,KFDIA
+    ZCNSOL(JL)=ZBSUR(JL,1)*ZTT(JL,1)          *ZTT(JL,10)&
+     & +ZBSUR(JL,2)*ZTT(JL,2)*ZTT(JL,7)*ZTT(JL,11)&
+     & +ZBSUR(JL,3)*ZTT(JL,4)*ZTT(JL,8)*ZTT(JL,12)&
+     & +ZBSUR(JL,4)*ZTT(JL,5)*ZTT(JL,9)*ZTT(JL,13)&
+     & +ZBSUR(JL,5)*ZTT(JL,3)          *ZTT(JL,14)&
+     & +ZBSUR(JL,6)*ZTT(JL,6)          *ZTT(JL,15)  
+    PFLUC(JL,1,JK)=ZCNSOL(JL)+PBINT(JL,JK)-PDISU(JL,JK)-PADJU(JL,JK)
+  ENDDO
+
+ENDDO
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LWVB',1,ZHOOK_HANDLE)
+END SUBROUTINE LWVB

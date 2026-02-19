@@ -1,0 +1,615 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE SUFPD(KFPCONF,YDGEOMETRY,CDFPFMT,CDFPDOM,YDNAMFPD)
+
+!**** *SUFPD*  - INITIALIZE FULL-POS HORIZONTAL SUBDOMAINS
+
+!     PURPOSE.
+!     --------
+!        SETS DEFAULT VALUES, THEN READS NAMELIST NAMFPD AND CHECKS IT.
+!        COMPUTES TOTAL NUMBER OF OUTPUT POINTS.
+!        Computes YOMFPD variables.
+
+!        Important remark for angles (longitudes, latitudes):
+!        - input angles of YEMGEO are in radians (ELON.., ELAT..)
+!        - angles of YOMFPD are in degrees (RLON.., RLAT..)
+!        - local variables appended by _DG are in degrees.
+!        - local variables appended by _RD are in radians.
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *SUFPD*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!           KFPCONF : configuration of the post-processing :
+!                     1 : gridpoint post-processing, possibly with spectral filters (<NFPOS=1>)
+!                     2 : gridpoint/spectral post-processing (spectral outputs possible) (<NFPOS=2>)
+!           CDFPFMT : output grid format
+!           CDFPDOM : names of the output domains
+!           YDNAMFPD namelist structure of dimensions
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!        Documentation about FULL-POS.
+
+!     AUTHOR.
+!     -------
+!      RYAD EL KHATIB *METEO-FRANCE*
+!      ORIGINAL : 94-04-08
+
+!     MODIFICATIONS.
+!     --------------
+!      Modified : 01-03-26  R. El Khatib (More controls + modified default values for aladin)
+!      Modified : 01-04-13  M. Janousek (New domain definition)
+!      Modified : 01-05-25  J. Masek (RCORI_ACAD added to NEMGEO/YEMGEO)
+!      R. El Khatib : 01-08-07 Pruning options
+!      R. El Khatib : 03-04-17 Fullpos improvments
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      Modified : 04-07-08 S. Martinez (Introduce ATOUR05 domain)
+!      J-D Gril : 04-11-29  calls modif. for Mercator Rotated/tilted
+!      Modified : 05-11-09 S. Martinez (Introduce ATOURX05 domain)
+!      J-D Gril : 06-01-31 Initialization at 0,0 of ELAT0,ELON0 for latlon cases
+!      Modified : 09-11-16 S. Martinez (Introduce EURAT01 domain)
+!      J-D Gril : 06-01-31 Initialization at 0,0 of ELAT0,ELON0 for latlon cases
+!      R. El Khatib : 24-Aug-2009 preinitialisations for safety
+!      Modified : 09-11-16 S. Martinez (Introduce EURAT01 domain)
+!      K. Yessad (Jan 2010): externalisation of group EGGX in XRD/IFSAUX
+!      K. Yessad (oct 2010): compute RFPMS, multi-linear interpolations.
+!      D. Degrauwe (feb 2012): boyd periodization
+!      D. Degrauwe  : Feb 2012 alternative extension zone (E')
+!      R. El Khatib : 01-Mar-2012 LFPSPEC => NFPOS
+!      R. El Khatib : 27-Jul-2012 More prints
+!      R. El Khatib : 05-Sep-2012 Cleanings
+!      T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!      R. El Khatib 27-Sep-2013 Boyd periodization in Fullpos-2
+!      R. El Khatib 04-Aug-2014 Pruning of the conf. 927/928
+!      LF. Meunier  20-Jul-2015 Introduce ATOURX01 domain
+!      I. Etchevers 29-Sep-2017 Post-Processing in I-zone for FRANGP0025
+!      S. Martinez  09-May-2018 Introduce domains GLOB01 & EURAT005/EURAT1S20
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMLUN   , ONLY : NULOUT   ,NULNAM   ,NULERR
+USE YOMFPD   , ONLY : TNAMFPD
+USE YOMCT0   , ONLY : LELAM, LRPLANE
+USE YOMCST   , ONLY : RPI      ,RA
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM), INTENT(IN) :: KFPCONF
+TYPE(GEOMETRY),     INTENT(IN) :: YDGEOMETRY
+CHARACTER(LEN=*),   INTENT(IN) :: CDFPFMT
+CHARACTER(LEN=*),   INTENT(IN) :: CDFPDOM(:)
+TYPE(TNAMFPD), TARGET, INTENT(OUT) :: YDNAMFPD
+
+INTEGER(KIND=JPIM), POINTER :: NLAT(:)
+INTEGER(KIND=JPIM), POINTER :: NLON(:)
+INTEGER(KIND=JPIM), POINTER :: NFPLUX
+INTEGER(KIND=JPIM), POINTER :: NFPGUX
+REAL(KIND=JPRB), POINTER :: RLATC(:)
+REAL(KIND=JPRB), POINTER :: RLONC(:)
+REAL(KIND=JPRB), POINTER :: RDELX(:)
+REAL(KIND=JPRB), POINTER :: RDELY(:)
+INTEGER(KIND=JPIM), POINTER :: NFPBWX
+INTEGER(KIND=JPIM), POINTER :: NFPBWY
+INTEGER(KIND=JPIM), POINTER :: NFPNOEXTZL
+INTEGER(KIND=JPIM), POINTER :: NFPNOEXTZG
+INTEGER(KIND=JPIM), POINTER :: NFPBZONL
+INTEGER(KIND=JPIM), POINTER :: NFPBZONG
+INTEGER(KIND=JPIM), POINTER :: NFPRLX
+INTEGER(KIND=JPIM), POINTER :: NFPRUX
+INTEGER(KIND=JPIM), POINTER :: NFPRLY
+INTEGER(KIND=JPIM), POINTER :: NFPRUY
+
+INTEGER(KIND=JPIM) :: IERR, J, JI, IROTEQ, ISOTRP, IGIVO, IFPDOM
+REAL(KIND=JPRB)    :: ZDELX, ZDELY, ZEPS, ZRPK, ZRD2DG, ZDG2RD, ZBETA
+REAL(KIND=JPRB)    :: ZLONC_DG, ZLATC_DG, ZLON0_DG, ZLAT0_DG, ZLON1_DG, ZLAT1_DG, ZLON2_DG, ZLAT2_DG
+REAL(KIND=JPRB)    :: ZLAMAX_RD, ZLAMIN_RD, ZLOMAX_RD, ZLOMIN_RD, ZLONR_RD, ZLATR_RD
+REAL(KIND=JPRB)    :: ZLATN, ZLATS, ZLONW, ZLONE
+REAL(KIND=JPRB) , ALLOCATABLE :: ZGLON_RD(:,:),ZGLAT_RD(:,:),ZNORX(:,:),ZNORY(:,:),ZGM(:,:)
+LOGICAL :: LLMRT
+
+REAL(KIND=JPHOOK)               :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "eggx_n.h"
+
+#include "posnam.intfb.h"
+
+#include "namfpd.nam.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUFPD',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDEGEO=>YDGEOMETRY%YREGEO)
+ASSOCIATE(NDGLG=>YDDIM%NDGLG, NDGUNG=>YDDIM%NDGUNG, NDGUXG=>YDDIM%NDGUXG, &
+ & NDLON=>YDDIM%NDLON, NDLUNG=>YDDIM%NDLUNG, NDLUXG=>YDDIM%NDLUXG, &
+ & EDELX=>YDEGEO%EDELX, EDELY=>YDEGEO%EDELY, ELAT0=>YDEGEO%ELAT0, &
+ & ELATC=>YDEGEO%ELATC, ELON0=>YDEGEO%ELON0, ELONC=>YDEGEO%ELONC, &
+ & LMRT=>YDEGEO%LMRT, LREDEL_IN_METRES=>YDEGEO%LREDEL_IN_METRES)
+
+WRITE(NULOUT,'(''- Set up F-post processing, horizontal dimensions -'')')
+
+ZEPS=EPSILON(1.0_JPRB)*100._JPRB
+ZRD2DG=180.0_JPRB/RPI
+ZDG2RD=RPI/180.0_JPRB
+
+IFPDOM=SIZE(CDFPDOM)
+
+!*       0. POINTERS TO THE NAMELIST STRUCTURE
+!           ----------------------------------
+
+NLAT=>YDNAMFPD%NLAT(:)
+NLON=>YDNAMFPD%NLON(:)
+NFPLUX=>YDNAMFPD%NFPLUX
+NFPGUX=>YDNAMFPD%NFPGUX
+RLATC=>YDNAMFPD%RLATC(:)
+RLONC=>YDNAMFPD%RLONC(:)
+RDELX=>YDNAMFPD%RDELX(:)
+RDELY=>YDNAMFPD%RDELY(:)
+NFPBWX=>YDNAMFPD%NFPBWX
+NFPBWY=>YDNAMFPD%NFPBWY
+NFPNOEXTZL=>YDNAMFPD%NFPNOEXTZL
+NFPNOEXTZG=>YDNAMFPD%NFPNOEXTZG
+NFPBZONL=>YDNAMFPD%NFPBZONL
+NFPBZONG=>YDNAMFPD%NFPBZONG
+NFPRLX=>YDNAMFPD%NFPRLX
+NFPRUX=>YDNAMFPD%NFPRUX
+NFPRLY=>YDNAMFPD%NFPRLY
+NFPRUY=>YDNAMFPD%NFPRUY
+
+
+!*       1. SET DEFAULT VALUES
+!           -------------------
+
+IF (IFPDOM > 1 .AND. (CDFPFMT == 'GAUSS' .OR. CDFPFMT == 'LELAM')) THEN
+  WRITE(NULOUT,*) ' GAUSS OR LELAM >>> IFPDOM=1 '
+  CALL ABOR1('SUFPD : GAUSS OR LELAM GRID >>> NFPDOM=1')
+ELSEIF (CDFPFMT == 'GAUSS') THEN
+  ! * Arrival grid and departure grid are Gaussian grids
+  !   Default values as the global model
+  !   (RDELX,RDELY) is given in degrees.
+  NLAT(1)=NDGLG
+  NLON(1)=NDLON
+  RLONC(1)=0.0_JPRB
+  RLATC(1)=0.0_JPRB
+  RDELX(1)=180._JPRB/REAL(NDGLG,JPRB)
+  RDELY(1)=360._JPRB/REAL(NDLON,JPRB)
+  NFPLUX=0
+  NFPGUX=0
+ELSEIF (LELAM .AND. CDFPFMT == 'LELAM') THEN
+  ! * Arrival grid = LELAM grid
+  !   (RDELX,RDELY) is given in metres, EDELX and EDELY are assumed to be in metres.
+  NFPLUX=NDLUXG
+  NFPGUX=NDGUXG
+  IF (KFPCONF /= 1) THEN
+    NLON(1)=NDLON
+    NLAT(1)=NDGLG
+  ELSE
+    NLON(1)=NDLUXG
+    NLAT(1)=NDGUXG
+  ENDIF
+  RLATC(1)=ELATC*ZRD2DG
+  RLONC(1)=ELONC*ZRD2DG
+  IF (RLONC(1) > 180._JPRB+ZEPS) THEN
+    RLONC(1)=RLONC(1)-360._JPRB
+  ENDIF
+  IF (LREDEL_IN_METRES) THEN
+    RDELX(1)=EDELX
+    RDELY(1)=EDELY
+  ELSE
+    RDELY(1) = EDELY*ZRD2DG
+    RDELX(1) = EDELX*ZRD2DG
+  ENDIF
+ELSEIF (.NOT.LELAM.AND.CDFPFMT == 'LELAM') THEN
+  ! * Arrival grid = LELAM grid
+  !   (RDELX,RDELY) is given in metres.
+  IF     (CDFPDOM(1) == 'BELG') THEN
+    RLONC(1)= 4.90727841961041_JPRB
+    RLATC(1)= 50.44595488554766_JPRB
+    RDELX(1)= 12715.66669793552_JPRB
+    RDELY(1)= 12715.66669793411_JPRB
+    NFPLUX=61
+    NFPGUX=61
+  ELSEIF (CDFPDOM(1) == 'SLOV') THEN
+    RLONC(1)= 13.52668207859151_JPRB
+    RLATC(1)= 46.05017943078632_JPRB
+    RDELX(1)= 26271.55175829969_JPRB
+    RDELY(1)= 26271.55175398597_JPRB
+    NFPLUX=37
+    NFPGUX=37
+  ELSEIF (CDFPDOM(1) == 'MARO') THEN
+    RLONC(1)= -6.9999999966693_JPRB
+    RLATC(1)= 31.56059436526966_JPRB
+    RDELX(1)= 18808.17792427479_JPRB
+    RDELY(1)= 18808.17793051683_JPRB
+    NFPLUX=149
+    NFPGUX=149
+  ELSEIF (CDFPDOM(1) == 'OPMA') THEN
+    RLONC(1)= -7.00000000285346_JPRB
+    RLATC(1)= 31.56059442218072_JPRB
+    RDELX(1)= 31336.13988918715_JPRB
+    RDELY(1)= 31336.13991686922_JPRB
+    NFPLUX=97
+    NFPGUX=97
+  ELSEIF (CDFPDOM(1) == 'LACE14') THEN
+    RLONC(1)= 16.99999999944358_JPRB
+    RLATC(1)= 46.24470063381371_JPRB
+    RDELX(1)= 14734.913810093_JPRB
+    RDELY(1)= 14734.91380550296_JPRB
+    NFPGUX=181
+    NFPLUX=205
+  ELSEIF (CDFPDOM(1) == 'LACE12') THEN
+    RLONC(1)=17._JPRB
+    RLATC(1)=46.2447006_JPRB
+    RDELX(1)=12176.15632814141_JPRB
+    RDELY(1)=12176.15632814142_JPRB
+    NFPGUX=205
+    NFPLUX=229
+  ELSEIF (CDFPDOM(1) == 'LACE20') THEN
+    RLONC(1)=17.00000000009107_JPRB
+    RLATC(1)=46.24470062058892_JPRB
+    RDELX(1)=20678.82820101414_JPRB
+    RDELY(1)=20678.82820101414_JPRB
+    NFPLUX=139
+    NFPGUX=124
+  ELSEIF (CDFPDOM(1) == 'ROUM') THEN
+    RLONC(1)= 25.00000000483406_JPRB
+    RLATC(1)= 44.77301981937139_JPRB
+    RDELX(1)= 33102.62857952392_JPRB
+    RDELY(1)= 33102.6285617361_JPRB
+    NFPLUX=61
+    NFPGUX=61
+  ELSEIF (CDFPDOM(1) == 'FRAN') THEN
+    RLONC(1)= 1.27754303826285_JPRB
+    RLATC(1)= 45.31788242335041_JPRB
+    RDELX(1)= 12715.66779231173_JPRB
+    RDELY(1)= 12715.67301977791_JPRB
+    NFPLUX=189
+    NFPGUX=189
+  ELSE
+    ! Old domain ALADIN-FRANCE
+    RLONC(1)= 2.57831063089259_JPRB
+    RLATC(1)= 46.46884540633992_JPRB
+    RDELX(1)= 12715.66736292664_JPRB
+    RDELY(1)= 12715.6635946432_JPRB
+    NFPLUX=169
+    NFPGUX=169
+  ENDIF
+  IF (KFPCONF /= 1) THEN
+    NLON(1)=NFPLUX+11
+    NLAT(1)=NFPGUX+11
+  ELSE
+    NLON(1)=NFPLUX
+    NLAT(1)=NFPGUX
+  ENDIF
+ELSEIF (CDFPFMT == 'LALON') THEN
+  ! * Arrival grid = LALON grid
+  !   (RDELX,RDELY) is given in degrees.
+  DO J=1, IFPDOM
+    IF     (CDFPDOM(J) == 'HENORD') THEN
+      NLAT(J)=60
+      NLON(J)=180
+      RLONC(J)=179._JPRB
+      RLATC(J)=45._JPRB
+      RDELX(J)=ABS(358._JPRB-0.0_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(89.25_JPRB-0.75_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'HESUDC') THEN
+      NLAT(J)=60
+      NLON(J)=180
+      RLONC(J)=179._JPRB
+      RLATC(J)=-45._JPRB
+      RDELX(J)=ABS(358._JPRB-0.0_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(-89.25_JPRB+0.75_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'HESUDA') THEN
+      NLAT(J)=30
+      NLON(J)=90
+      RLONC(J)=178._JPRB
+      RLATC(J)=-45._JPRB
+      RDELX(J)=ABS(356._JPRB-0.0_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(-88.5_JPRB+1.5_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'ATLMED') THEN
+      NLAT(J)=65
+      NLON(J)=129
+      RLONC(J)=-20._JPRB
+      RLATC(J)=48.75_JPRB
+      RDELX(J)=ABS(44._JPRB+84._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(72.75_JPRB-24.75_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'EURATL') THEN
+      NLAT(J)=103
+      NLON(J)=103
+      RLONC(J)=2._JPRB
+      RLATC(J)=45.75_JPRB
+      RDELX(J)=ABS(36._JPRB+32._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(71.25_JPRB-20.25_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'ZONCOT') THEN
+      NLAT(J)=81
+      NLON(J)=81
+      RLONC(J)=0.0_JPRB
+      RLATC(J)=48.75_JPRB
+      RDELX(J)=ABS(20._JPRB+20._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(63.75_JPRB-33.75_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'FRANCE') THEN
+      NLAT(J)=61
+      NLON(J)=61
+      RLONC(J)=2._JPRB
+      RLATC(J)=45.75_JPRB
+      RDELX(J)=ABS(12._JPRB+8._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(53.25_JPRB-38.25_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'GLOB15') THEN
+      NLAT(J)=121
+      NLON(J)=240
+      RLONC(J)=179.25_JPRB
+      RLATC(J)=0.0_JPRB
+      RDELX(J)=ABS(358.5_JPRB-0.0_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(90._JPRB+90._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'EURAT5') THEN
+      NLAT(J)=105
+      NLON(J)=149
+      RLONC(J)=5._JPRB
+      RLATC(J)=46._JPRB
+      RDELX(J)=ABS(42._JPRB+32._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(72._JPRB-20._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'ATOUR10') THEN
+      NLAT(J)=81
+      NLON(J)=166
+      RLONC(J)=-17.5_JPRB
+      RLATC(J)=40._JPRB
+      RDELX(J)=ABS(65._JPRB+100._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(80._JPRB-0.0_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'EUROC25') THEN
+      NLAT(J)=105
+      NLON(J)=129
+      RLONC(J)=1._JPRB
+      RLATC(J)=48._JPRB
+      RDELX(J)=ABS(17._JPRB+15._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(61._JPRB-35._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'GLOB25') THEN
+      NLAT(J)=73
+      NLON(J)=144
+      RLONC(J)=178.75_JPRB
+      RLATC(J)=0.0_JPRB
+      RDELX(J)=ABS(357.5_JPRB-0.0_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(90._JPRB+90._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'EURSUD') THEN
+      NLAT(J)=41
+      NLON(J)=54
+      RLONC(J)=-19._JPRB/3._JPRB
+      RLATC(J)=38.25_JPRB
+      RDELX(J)=ABS(24._JPRB+34._JPRB/3._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(48.25_JPRB-28.25_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'EUREST') THEN
+      NLAT(J)=39
+      NLON(J)=73
+      RLONC(J)=16._JPRB/3._JPRB
+      RLATC(J)=50.75_JPRB
+      RDELX(J)=ABS(88._JPRB/3._JPRB+56._JPRB/3._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(60.25_JPRB-41.25_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'GRID25') THEN
+      NLAT(J)=21
+      NLON(J)=41
+      RLONC(J)=0.0_JPRB
+      RLATC(J)=50._JPRB
+      RDELX(J)=ABS(50._JPRB+50._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(75._JPRB-25._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'MAROC') THEN
+      NLAT(J)=158
+      NLON(J)=171
+      RLONC(J)=-6.975_JPRB
+      RLATC(J)=31.05_JPRB
+      RDELX(J)=ABS(5.85_JPRB+19.8_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(42.9_JPRB-19.2_JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'OCINDIEN15') THEN
+      NLAT(J)=67
+      NLON(J)=89
+      RLONC(J)=66._JPRB
+      RLATC(J)=-16.5_JPRB
+      RDELX(J)=ABS(132._JPRB-0.0_JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(33._JPRB+66._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'REUNION05') THEN
+      NLAT(J)=61
+      NLON(J)=141
+      RLONC(J)=65._JPRB
+      RLATC(J)=-20._JPRB
+      RDELX(J)=ABS(100._JPRB-30._JPRB)/REAL(NLON(J)-1,JPRB)
+      RDELY(J)=ABS(-5._JPRB+35._JPRB)/REAL(NLAT(J)-1,JPRB)
+    ELSEIF (CDFPDOM(J) == 'GLOB05') THEN
+      NLAT(J)=361
+      NLON(J)=720
+      RLONC(J)=179.75_JPRB
+      RLATC(J)=0._JPRB
+      RDELX(J)=0.5_JPRB
+      RDELY(J)=0.5_JPRB
+    ELSEIF (CDFPDOM(J) == 'GLOB025') THEN
+      NLAT(J)=721
+      NLON(J)=1440
+      RLONC(J)=179.875_JPRB
+      RLATC(J)=0._JPRB
+      RDELX(J)=0.25_JPRB
+      RDELY(J)=0.25_JPRB
+    ELSEIF (CDFPDOM(J) == 'ATOUR05') THEN
+      NLAT(J)=241
+      NLON(J)=401
+      RLONC(J)=0._JPRB
+      RLATC(J)=20._JPRB
+      RDELX(J)=0.5_JPRB
+      RDELY(J)=0.5_JPRB
+    ELSEIF (CDFPDOM(J) == 'ATOURX05') THEN
+      NLAT(J)=181
+      NLON(J)=401
+      RLONC(J)=0._JPRB
+      RLATC(J)=35._JPRB
+      RDELX(J)=0.5_JPRB
+      RDELY(J)=0.5_JPRB
+    ELSEIF (CDFPDOM(J) == 'ATOURX01') THEN
+      NLAT(J)=901
+      NLON(J)=2001
+      RLONC(J)=0._JPRB
+      RLATC(J)=35._JPRB
+      RDELX(J)=0.1_JPRB
+      RDELY(J)=0.1_JPRB
+    ELSEIF (CDFPDOM(J) == 'EURAT01') THEN
+      NLAT(J)=521
+      NLON(J)=741
+      RLONC(J)=5._JPRB
+      RLATC(J)=46._JPRB
+      RDELX(J)=0.1_JPRB
+      RDELY(J)=0.1_JPRB
+    ELSEIF (CDFPDOM(J) == 'GLOB01') THEN
+      NLAT(J)=1801
+      NLON(J)=3600
+      RLONC(J)=179.95_JPRB
+      RLATC(J)=0._JPRB
+      RDELX(J)=0.1_JPRB
+      RDELY(J)=0.1_JPRB
+    ELSEIF (CDFPDOM(J) == 'EURAT005' .OR. CDFPDOM(J) == 'EURAT1S20') THEN
+      NLAT(J)=1041
+      NLON(J)=1481
+      RLONC(J)=5._JPRB
+      RLATC(J)=46._JPRB
+      RDELX(J)=0.05_JPRB
+      RDELY(J)=0.05_JPRB
+    ELSE
+      IF (LELAM) THEN
+        NLON(J)=NDLUXG
+        NLAT(J)=NDGUXG
+        ! Find largest LALON domain included
+        ZLON0_DG = ELON0
+        ZLAT0_DG = ELAT0
+        ZLONC_DG = ELONC
+        ZLATC_DG = ELATC
+        ZDELX = EDELX
+        ZDELY = EDELY
+        LLMRT = LMRT
+        IF (.NOT.LRPLANE) THEN
+          RLONC(J)=ZLONC_DG
+          RLATC(J)=ZLATC_DG
+          IF (.NOT.LREDEL_IN_METRES) THEN
+            RDELX(J)=ZDELX*ZRD2DG
+            RDELY(J)=ZDELY*ZRD2DG         
+          ELSE
+            IERR=IERR+1
+            WRITE(NULERR,'(''ERROR IN SUFPD: EDELX and EDELY are not in the right unit, expected radians'')')
+          ENDIF
+        ELSE
+          ALLOCATE(ZGLON_RD(NDLUNG:NDLUXG,NDGUNG:NDGUXG))
+          ALLOCATE(ZGLAT_RD(NDLUNG:NDLUXG,NDGUNG:NDGUXG))
+          ALLOCATE(ZGM  (NDLUNG:NDLUXG,NDGUNG:NDGUXG))
+          ALLOCATE(ZNORX(NDLUNG:NDLUXG,NDGUNG:NDGUXG))
+          ALLOCATE(ZNORY(NDLUNG:NDLUXG,NDGUNG:NDGUXG))
+          IROTEQ=-1_JPIM
+          IF (LLMRT) IROTEQ=IROTEQ-1_JPIM
+          ZLONR_RD=0._JPRB
+          ZLATR_RD=0._JPRB
+          ZBETA=0._JPRB
+          ISOTRP=0_JPIM
+          IGIVO=0_JPIM
+          ! The next 4 ones are preinitialisation for safety:
+          ZLON1_DG=0._JPRB
+          ZLAT1_DG=0._JPRB
+          ZLON2_DG=0._JPRB
+          ZLAT2_DG=0._JPRB
+
+          WRITE(NULOUT,*) 'Call EGGX_N by SUFPD'
+          IF (LREDEL_IN_METRES) THEN
+            WRITE(NULOUT,*) ' Info: input (ZDELX,ZDELY) to EGGX_N is in metres'
+          ELSE
+            WRITE(NULOUT,*) ' Info: input (ZDELX,ZDELY) to EGGX_N is in radians'
+          ENDIF
+
+          CALL EGGX_N(RPI,RA,IROTEQ,ZLONR_RD,ZLATR_RD,ZBETA,ZLON1_DG,ZLAT1_DG,ZLON2_DG,ZLAT2_DG,&
+           & ZLON0_DG,ZLAT0_DG,ZRPK,NULOUT,ISOTRP,IGIVO,&
+           & ZGLON_RD,ZGLAT_RD,ZGM,ZNORX,ZNORY,NDLUNG,&
+           & NDLUXG,NDGUNG,NDGUXG,NDLUNG,NDLUXG,NDGUNG,NDGUXG,&
+           & ZDELX,ZDELY,ZLONC_DG,ZLATC_DG)  
+          ZLAMAX_RD= ZGLAT_RD(2,NDGUXG-1)
+          ZLAMIN_RD= ZGLAT_RD(2,2)
+          ZLOMAX_RD= ZGLON_RD(NDLUXG-1,2)
+          ZLOMIN_RD= ZGLON_RD(2,2)
+          DO JI=2,NDLUXG-1
+            ZLAMAX_RD=MIN(ZGLAT_RD(JI,NDGUXG-1),ZLAMAX_RD)
+            ZLAMIN_RD=MAX(ZGLAT_RD(JI,1+1),ZLAMIN_RD)
+          ENDDO
+          DO JI=2,NDGUXG-1
+            ZLOMAX_RD=MIN(ZGLON_RD(NDLUXG-1,JI),ZLOMAX_RD)
+            ZLOMIN_RD=MAX(ZGLON_RD(1+1,JI),ZLOMIN_RD)
+          ENDDO
+          ZLATN=(ZLAMAX_RD*ZRD2DG)-0.01_JPRB
+          ZLATS=(ZLAMIN_RD*ZRD2DG)+0.01_JPRB
+          ZLONW=(ZLOMIN_RD*ZRD2DG)+0.01_JPRB
+          ZLONE=(ZLOMAX_RD*ZRD2DG)-0.01_JPRB
+          IF (ZLONE < ZLONW) THEN
+            ZLONW=ZLONW-360._JPRB
+          ENDIF
+          RLONC(J)=0.5_JPRB*(ZLONW+ZLONE)
+          RLATC(J)=0.5_JPRB*(ZLATN+ZLATS)
+          RDELX(J)=(ZLONE-ZLONW)/REAL(NLON(J)-1,JPRB)
+          RDELY(J)=(ZLATN-ZLATS)/REAL(NLAT(J)-1,JPRB)
+          DEALLOCATE(ZGLON_RD)
+          DEALLOCATE(ZGLAT_RD)
+          DEALLOCATE(ZGM)
+          DEALLOCATE(ZNORX)
+          DEALLOCATE(ZNORY)
+        ENDIF
+      ELSE
+        NLAT(J)=0
+        NLON(J)=0
+        RLATC(J)=0.0_JPRB
+        RLONC(J)=0.0_JPRB
+        RDELX(J)=0.0_JPRB
+        RDELY(J)=0.0_JPRB
+      ENDIF
+    ENDIF
+  ENDDO
+  NFPLUX=0
+  NFPGUX=0
+ELSE
+  WRITE(NULOUT,*) 'UNRECOGNIZED VARIABLE CDFPFMT = ',CDFPFMT
+  CALL ABOR1('SUFPD : ERROR CDFPFMT')
+ENDIF
+
+! width of I zone
+NFPBZONL=8
+NFPBZONG=8
+
+! width of E' zone
+NFPNOEXTZL=0
+NFPNOEXTZG=0
+
+NFPBWX=0
+NFPBWY=0
+
+NFPRLX=0
+NFPRLY=0
+NFPRUX=0
+NFPRUY=0
+
+!*       2. READ NAMELIST
+!           -------------
+
+CALL POSNAM(NULNAM,'NAMFPD')
+READ(NULNAM,NAMFPD)
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUFPD',1,ZHOOK_HANDLE)
+END SUBROUTINE SUFPD
