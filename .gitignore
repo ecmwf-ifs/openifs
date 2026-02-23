@@ -1,5 +1,5 @@
 # Ignore the OpenIFS build/source/install directories and any log files
-source/
-build/
-install/
-*.log
+/source/
+/build/
+/install/
+/*.log
