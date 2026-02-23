@@ -67,7 +67,7 @@ module function mgrids_advection_create( &
 contains
 
   subroutine setup_no_advection()
-    call this%final()
+    call this%cleanup()
   end subroutine
 
   subroutine setup_mgrids_sladv()
@@ -197,7 +197,7 @@ end subroutine
 
 !------------------------------------------------------------------------------
 
-module subroutine final(this)
+module subroutine cleanup(this)
   class(mgrids_advection) :: this
   if( associated( this%implementation ) ) then
     call this%implementation%final()
