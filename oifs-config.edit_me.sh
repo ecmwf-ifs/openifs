@@ -29,9 +29,9 @@ export OIFS_PLATFORM="hpc2020"
 export OIFS_CYCLE=48r1
 export OIFS_CLIMATE="climate.v020"
 
-#---Base code assumes openifs-48r1 and openifs-expt are installed
+#---Base code assumes openifs and openifs-expt are installed
 #---in $HOME. Either these can be changed by the user------------
-export OIFS_HOME="${HOME}/openifs-48r1"
+export OIFS_HOME="${HOME}/openifs"
 
 #---Central location for non-openifs bundle source code, which 
 #---is required for the build and run. This only needs to be set 
