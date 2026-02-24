@@ -80,7 +80,7 @@ projects :
 
     - atlas :
         git     : https://github.com/ecmwf/atlas
-        version : 0.31.1
+        version : 0.34.0
         require : eckit fckit
         cmake   : >
             ATLAS_ENABLE_TESSELATION=OFF
