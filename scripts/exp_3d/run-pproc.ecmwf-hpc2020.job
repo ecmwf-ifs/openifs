@@ -71,7 +71,7 @@ set -eu -o pipefail
 #--- customise here: -------------------------------------
 
 # this determines which OpenIFS installation is used
-PLATFORM_CFG="${HOME}/openifs-48r1/oifs-config.edit_me.sh"
+PLATFORM_CFG="/path/to/your/config/oifs-config.edit_me.sh"
 
 # add value here if only one specific startdate should be chosen,
 # otherwise all available dates will be run (default: empty)
