@@ -50,15 +50,8 @@ external_data:
       target_path: t42/inidata.tar.gz
       extract_path: t42/inidata
 
-    - source_path: 48r1/t21/2025_09_15_4dvardata.tar.gz
-      target_path: t21/4dvardata.tar.gz
-      extract_path: t21/4dvardata
-
     - source_path: 48r1/compo/2025_09_15_compo_data.tar.gz
       target_path: compo_data.tar.gz
       extract_path: compo_data
 
-    - source_path: 48r1/sat/2025_09_15_sat_data.tar.gz
-      target_path: sat_data.tar.gz
-      extract_path: sat_data
 
