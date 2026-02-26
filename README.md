@@ -25,9 +25,9 @@ Contributions to OpenIFS are welcome. In order to do so, please create a pull re
 
 Other UNIX-like operating systems, e.g. Mac OS, may work too out of the box, as long as the correct dependencies are installed.
 
-## Requirements
+## Pre-requisites
 
-As described later as part of a docker installation, the minimum software packages required to run OpenIFS on Linux (and UNIX-like operating systems) is the following
+The minimum software packages required to run OpenIFS on Linux (and UNIX-like operating systems) is the following
 
 * git
 * cmake
@@ -42,7 +42,7 @@ As described later as part of a docker installation, the minimum software packag
 * bison
 * flex
 
-OpenIFS, as with the IFS, is constantly tested with a wide range of compilers, e.g. gnu/gcc, intel and cray. However, even with this testing, we cannot and do not guarantee all release branches will be compatible with all compiler versions.
+> Note: OpenIFS, as with the IFS, is constantly tested with a wide range of compilers, e.g. gnu/gcc, intel and cray. Even with this testing, we cannot and do not guarantee all release branches will be compatible with all compiler versions.
 
 ## Installing and Building OpenIFS
 
@@ -113,11 +113,17 @@ where
 
 * `-t` invokes the testing simulations, which are coarse resolutions t21 tests, comprising of 21 3-D NWP tests with and without chemistry and 1 SCM test (based on TWP-ICE).
 
-> Note: OpenIFS build and test can be run together with the following
+> Note: OpenIFS build and test can be run together using `$OIFS_TEST/openifs-test.sh -cbt`
 
+> Note: The defaults in `oifs-config.edit_me.sh` set the host and site to `local`, which assumes that all the dependencies are installed and defined. This works in the docker install. 
+> If running on an HPC, it is probably necessary to use an arch file. For example, if running on ECMWF HPC either set `OIFS_HOST` and `OIFS_PLATFORM` in `oifs-config.edit_me.sh`, i.e.
+  
 ```bash
-$OIFS_TEST/openifs-test.sh -cbt
-```
+export OIFS_HOST="ecmwf"
+export OIFS_PLATFORM="hpc2020"
+```  
+
+> or use `$OIFS_TEST/openifs-test.sh -cbt --arch=./arch/ecmwf/hpc2020/gnu` or `$OIFS_TEST/openifs-test.sh -cbt --arch=./arch/ecmwf/hpc2020/intel`, depending if you want to use the Intel or gnu compiler.
 
 If everything has worked correctly with the build of OpenIFS, then all tests should have passed and the `openifs-test.sh` returns the following
 
