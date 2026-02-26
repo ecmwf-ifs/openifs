@@ -176,7 +176,14 @@ for arg in "$@" ; do
   fi
 done
 
-log_echo "[INFO]: Site/host of platform = $SITE and the platform = $PLATFORM"
+if [[ "${PLATFORM:-}" == "local" || "${SITE:-}" == "local" ]]; then
+  export PLATFORM="local"
+  export SITE="local"
+  export OIFS_ARCH=""
+  log_echo "[INFO]: Site/host set to local, so assume dependencies are installed and available"
+else 
+  log_echo "[INFO]: Site/host of platform = $SITE and the platform = $PLATFORM, using arch file $OIFS_ARCH"
+fi
 
 # set number of threads for the system
 # default number of threads taken from the IFS. 
