@@ -21,8 +21,8 @@
 #
 #--- set machine specific settings -----------------------------
 
-export OIFS_HOST="ecmwf"
-export OIFS_PLATFORM="hpc2020"
+export OIFS_HOST="local"
+export OIFS_PLATFORM="local"
 
 #--- set principal OIFS variables ------------------------------
 
