@@ -6,8 +6,8 @@ FROM docker.io/library/gcc:13.2.0-bookworm
 SHELL ["/bin/bash", "-l", "-c"]
 
 ARG OPENIFS_DIR=
-ARG OPENIFS_DATA=
-ARG SCM= 
+ARG OPENIFS_DATA=openifs-expt
+ARG SCM_URL=
 ARG OPENIFS_REPO_URL=
 ARG OPENIFS_BRANCH=
 
@@ -45,7 +45,12 @@ USER openifs
 
 # Create working directories
 RUN mkdir ~/${OPENIFS_DIR} && \
-    mkdir -p ~/${OPENIFS_DATA}/${SCM}
+    mkdir -p ~/${OPENIFS_DATA}/
+
+WORKDIR /home/openifs/${OPENIFS_DATA}
+RUN wget ${SCM_URL} && \
+    tar -xvf $(basename ${SCM_URL}) && \
+    rm $(basename ${SCM_URL})
 
 # Clone OpenIFS repository directly in the container
 # WORKDIR /home/openifs
@@ -54,7 +59,6 @@ RUN mkdir ~/${OPENIFS_DIR} && \
 WORKDIR /home/openifs/${OPENIFS_DIR}
 
 COPY --chown=openifs:openifs ${OPENIFS_DIR} /home/openifs/${OPENIFS_DIR} 
-COPY --chown=openifs:openifs ${SCM} /home/openifs/${OPENIFS_DATA}/${SCM}
 
 # Update OIFS_HOME in config file
 RUN sed -i 's|export OIFS_HOME="${HOME}/.*"|export OIFS_HOME="${HOME}/'${OPENIFS_DIR}'"|g' oifs-config.edit_me.sh

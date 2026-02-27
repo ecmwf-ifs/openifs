@@ -3,8 +3,8 @@ openifs_version : "48r1"
 # The OpenIFS branch to extract from repo
 openifs_branch : "main"
 #
-# SCM experiment data directory
-scm_exp_datadir : "~/openifs-expt/scm_openifs"
+# SCM experiment data URL (tar.gz or tar file)
+scm_url : https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz
 # 
 # Docker image - the following images are known to work.
 #base_docker_image : "12.3.0-bullseye"

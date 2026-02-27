@@ -167,26 +167,24 @@ def shallow_clone(repo_url, clone_dir, branch="main", force=False):
 
     return
 
-def modify_dockerfile(dockerfile_path, base_docker_version, openifs_dir, repo_url, branch):
+def modify_dockerfile(dockerfile_path, base_docker_version, openifs_dir, repo_url, branch, scm_url):
     """Modify the Dockerfile to replace the base image version and set OPENIFS_DIR."""
     logger = logging.getLogger(__name__)
     
     with open(dockerfile_path, "r") as file:
-        lines = file.readlines()
-    
-    with open(dockerfile_path, "w") as file:
-        for line in lines:
-            if line.startswith("FROM docker.io/library/gcc:"):
-                file.write(f"FROM docker.io/library/gcc:{base_docker_version}\n")
-            elif line.startswith("ARG OPENIFS_DIR="):
-                file.write(f"ARG OPENIFS_DIR={openifs_dir}\n")
-            elif line.startswith("ARG OPENIFS_REPO_URL="):
-                file.write(f"ARG OPENIFS_REPO_URL={repo_url}\n")
-            elif line.startswith("ARG OPENIFS_BRANCH="):
-                file.write(f"ARG OPENIFS_BRANCH={branch}\n")
-            else:
-                file.write(line)
+        content = file.read()
 
+    # Replace placeholders
+    content = content.replace('FROM docker.io/library/gcc:13.2.0-bookworm', 
+                            f'FROM docker.io/library/gcc:{base_docker_version}')
+    content = content.replace('ARG OPENIFS_DIR=', f'ARG OPENIFS_DIR={openifs_dir}')
+    content = content.replace('ARG SCM_URL=', f'ARG SCM_URL={scm_url}')
+    content = content.replace('ARG OPENIFS_REPO_URL=', f'ARG OPENIFS_REPO_URL={repo_url}')
+    content = content.replace('ARG OPENIFS_BRANCH=', f'ARG OPENIFS_BRANCH={branch}')
+    
+    with open(dockerfile_path, 'w') as f:
+        f.write(content)
+    
 def update_oifs_home(oifs_config_path, openifs_version):
     """Update OIFS_HOME in oifs-config.edit_me.sh to use openifs_version.
     
@@ -333,12 +331,10 @@ def main():
                       config['base_docker_image'], 
                       config['openifs_version'], 
                       config['openifs_repo_url'],
-                      config['openifs_branch']
+                      config['openifs_branch'],
+                      config['scm_url']
                       )
 
-    # copy scm data directory to docker build directory
-    docker_scm_exp_datadir = os.path.join(config['openifs_build_docker_dir'], "scm_openifs")
-    shutil.copytree(config['scm_exp_datadir'], docker_scm_exp_datadir, dirs_exist_ok=True)
     
     # Check for an existing OpenIFS directory in the docker build directory
     openifs_dir = os.path.join(config['openifs_build_docker_dir'], config['openifs_version'])
