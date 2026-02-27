@@ -1,0 +1,34 @@
+# Openifs version
+openifs_version : "48r1"
+# The OpenIFS branch to extract from repo
+openifs_branch : "main"
+#
+# SCM experiment data directory
+scm_exp_datadir : "~/openifs-expt/scm_openifs"
+# 
+# Docker image - the following images are known to work.
+#base_docker_image : "12.3.0-bullseye"
+base_docker_image : "13"
+#
+# Path for the Docker file template
+docker_template : "./Dockerfile"
+#
+# Directory to store the OpenIFS Dockerfile and base OpenIFS version and files
+openifs_build_docker_dir : "~/oifs_docker_create_dir"
+#
+# The URL for the OpenIFS repository, where the branch will be extracted
+openifs_repo_url : "git@github.com:ecmwf-ifs/openifs.git" 
+#
+# True to clone OpenIFS repository, False to use existing
+clone_openifs : True
+# 
+# Force removal of existing clone directory without prompting
+force_reclone : False
+#
+# Force rebuild of Docker image even if it exists
+force_rebuild : True
+#
+# Run tests after building image
+run_tests : True
+
+

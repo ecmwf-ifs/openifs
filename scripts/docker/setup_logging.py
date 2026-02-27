@@ -1,0 +1,30 @@
+#! /usr/bin/env python3
+
+import logging
+
+def main( logfile, level=logging.INFO ):
+
+    """
+    This function sets up a logging system that writes messages to both 
+    a log file and the console. It defines a uniform message format that 
+    includes the log level, logger name, function name, and message text.
+
+    Args 
+    --- 
+    logfile (str) : Path to the file where log messages will be written. The file will be overwritten each time the function is called.
+    level (string or integer), optional : default is INFO, which is quite verbose level options are INFO, WARNING and ERROR (in this implementation)
+    """
+
+    logging.basicConfig(
+        level=level,  # Set the default log level to INFO
+        format='[%(levelname)s] %(name)s.%(funcName)s : %(message)s',
+        # set up 2 handlers so that output written to file and screen
+        handlers=[
+            logging.FileHandler(logfile, mode='w', encoding='utf-8'),  # Log to a file
+            logging.StreamHandler()        # Log to screen
+        ]
+    )
+
+if __name__ == "__main__":
+    main()
+
