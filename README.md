@@ -3,7 +3,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-This repository contains code and scripts need to build and run the OpenIFS and OpenIFS Single-Column Model.
+This repository contains code and scripts needed to build and run the OpenIFS and OpenIFS Single-Column Model.
 
 ## Contact
 
@@ -23,7 +23,7 @@ Contributions to OpenIFS are welcome. In order to do so, please create a pull re
 
 * Linux 
 
-Other UNIX-like operating systems, e.g. Mac OS, may work too out of the box, as long as the correct dependencies are installed.
+Other UNIX-like operating systems, e.g. macOS, may work too out of the box, as long as the correct dependencies are installed.
 
 ## Pre-requisites
 
@@ -147,6 +147,7 @@ An **example forecast experiment** has been prepared for OpenIFS 48r1. The exper
 > NOTE: The `OIFS_EXPT` location for model experiments will often be in a different location from the model installation `OIFS_HOME`. In general, you will require more disk space for experiments, depending on the model grid resolution, the duration of the forecast experiment and the output frequency of model results.
 
 ```
+source oifs-config.edit_me.sh  # always do this first
 cd $OIFS_EXPT
 wget https://openifs.ecmwf.int/data/experiments/48r1/2016-09-25_Karl/ab2a.tar.gz
 tar -xvzf ab2a.tar.gz
@@ -154,26 +155,25 @@ tar -xvzf ab2a.tar.gz
 * Ensure the **namelist files** for the atmopsheric model (fort.4) and for the wave model (wam_namelist) are found in the experiment directory. Backup copies should remain in the `ecmwf` subfolder:
 
 ```
-source oifs-config.edit_me.sh  # always do this first
 cd $OIFS_EXPT/ab2a/2016092500
 cp ./ecmwf/fort.4 .
 cp ./ecmwf/wam_namelist .
 ```
 * Copy the model run scripts and the experiment configuration file into the experiment directory.
     - `oifs-run`: This is a generic **run script** which executes the binary model program file.
+    - `run-oifs.ecmwf-hpc2020.job`: This is a **wrapper script** that calls oifs-run and submits a non-interactive job to the batch scheduler; this script is an example for use on the ECMWF hpc2020 and you may need to adjust it for your local HPC system.
     - `exp-config.h`: This is the **experiment configuration file** that determines settings for your experiment; this file is read by oifs-run.
-    - `run-oifs.ecmwf-hpc2020.job`: This is a **wrapper script** that calls oifs-run and submits a non-interactive job to the batch scheduler on the ECMWF hpc2020; to use this script you may need to adjust it for your HPC system.
 
 ```
 cd $OIFS_EXPT/ab2a/2016092500
-cp $OIFS_HOME/scripts/exp_3d/oifs-run .
-cp $OIFS_HOME/scripts/exp_3d/exp-config.h .
-cp $OIFS_HOME/scripts/exp_3d/run-oifs.ecmwf-hpc2020.job .
+cp $OIFS_RUN_SCRIPT/oifs-run .
+cp $OIFS_RUN_SCRIPT/exp-config.h .
+cp $OIFS_RUN_SCRIPT/run-oifs.ecmwf-hpc2020.job .
 ```
 
 ### Customise the experiment parameters
 
-Here we describe you can customise the way how OpenIFS will run the forecast experiment.
+Here we describe how you can customise the way how OpenIFS will run the forecast experiment.
 
 #### Customising the namelist:
 
@@ -183,7 +183,7 @@ Here we describe you can customise the way how OpenIFS will run the forecast exp
 
 #### Customising the experiment configuration file: 
 
-* You should customise the `exp-config.h` file which determines the settings used for this experiment.
+* You should customise the `exp-config.h` file which determines the settings used for the experiment.
 * The oifs-run script will read the settings from this file.
 * Alternatively, the settings can be passed to the oifs-run script via command line parameters, which takes precedence over the exp-config.h settings. 
 > NOTE: The preference should be to **always set up an exp-config.h** for each experiment. If no exp-config.h file is found in the experiment directory (and no command line parameters are provided when calling oifs-run), then oifs-run will revert to its own default values which are not appropriate.
@@ -193,23 +193,24 @@ Here we describe you can customise the way how OpenIFS will run the forecast exp
 #--- required variables for this experiment:
  
 # this is specific for each experiment:
-OIFS_EXPID="ab2a"       # your experiment ID
-OIFS_RES="255"          # the spectral grid resolution (here: T255)
-OIFS_GRIDTYPE="l"       # the grid type, either 'l' for linear reduced grid, 
+OIFS_EXPID="ab2a"       #  your experiment ID
+OIFS_RES="255"          #  the spectral grid resolution (here: T255)
+OIFS_GRIDTYPE="l"       #  the grid type, either 'l' for linear reduced grid, 
 
-# use of the batch job script will overwrite these values:
-OIFS_NPROC=8            # the number of MPI tasks
-OIFS_NTHREAD=4          # the number of OpenMP threads
+# note: use of the batch job script will overwrite these values:
+OIFS_NPROC=8            #  the number of MPI tasks
+OIFS_NTHREAD=4          #  the number of OpenMP threads
 
 # postprocessing is optional but recommended:
-OIFS_PPROC=true         # enable postprocessing of model output after the model run
-OUTPUT_ROOT=$(pwd)      # folder where pproc output is created (only used if 
-                        #   OIFS_PPROC=true). In this example an output folder is 
-                        #   created in the experiment directory.
+OIFS_PPROC=true         #  enable postprocessing of model output after the model run
+OUTPUT_ROOT=$(pwd)      #  folder where pproc output is created (only used if 
+                        #  OIFS_PPROC=true). In this example an output folder is 
+                        #  created in the experiment directory.
 
-LFORCE=true             # overwrite existing symbolic links in the experiment directory
-LAUNCH=""               # the platform specific run command for the MPI environment
-                        #   (e.g. "mpirun", "srun", etc).
+LFORCE=true             #  overwrite existing symbolic links in the experiment directory
+LAUNCH=""               #  the platform specific run command for the MPI environment
+                        #  (e.g. "mpirun", "srun", etc). Setting this variable overwrites 
+                        #  any platform-specific default run commands defined in oifs-run
  
 #--- optional variables that can be set for this experiment:
  
@@ -219,19 +220,17 @@ LAUNCH=""               # the platform specific run command for the MPI environm
 
 ### Running the experiment
 
-After all edits to the namelists (`fort.4`) and to the experiment configuration file (`exp-config.h`) have been completed the model run can be started.
-
-Depending on the available hardware experiments can either be run interactively or as a batch job.
+After all edits to the namelists (fort.4) and to the experiment configuration file (exp-config.h) have been completed the model run can be started. Depending on the available hardware the experiment can either be run interactively or as a batch job.
 
 #### Running a batch job:
 
 This method is the preferred way to run OpenIFS, as it is more efficient and it allows more flexibility in using the available hardware resources. 
 
-* A job wrapper script that is suitable for the locally available batch scheduler needs to be used to call `oifs-run`.
-* We include an example job wrapper script `run-oifs.ecmwf-hpc2020.job` in `$OIFS_HOME/scripts/exp3d`, which is suitable for the ECMWF hpc2020 HPC. This system uses the SLURM batch job scheduler.
-    - As described above, this script is copied to the experiment directory because it needs to be located here, to run an experiment.
-* `run-oifs.ecmwf-hpc2020.job` needs to be edited with the following essential and optional changes
-    - Intially run-oifs.ecmwf-hpc2020.job sets the PLATFORM_CFG variable as follows:
+* A job wrapper script needs to be used to call `oifs-run`; that script must be customised for the locally available batch scheduler and HPC system.
+* We include an example job wrapper script `run-oifs.ecmwf-hpc2020.job` in `$OIFS_RUN_SCRIPT`, which is suitable for the ECMWF hpc2020 HPC. This system uses the slurm batch job scheduler.
+    - As described above, the job wrapper script is copied to the experiment directory because it needs to be located here to run an experiment.
+* `run-oifs.ecmwf-hpc2020.job` needs to be edited with the following essential and optional changes:
+    - Initially run-oifs.ecmwf-hpc2020.job sets the PLATFORM_CFG variable as follows:
     ```
     # set OpenIFS platform environment:
     PLATFORM_CFG="/path/to/your/config/oifs-config.edit_me.sh"
@@ -239,7 +238,7 @@ This method is the preferred way to run OpenIFS, as it is more efficient and it 
     - It is important to change "/path/to/your/config/oifs-config.edit_me.sh" to the actual path for the oifs-config.edit_me.sh, e.g., "$HOME/openifs/oifs-config.edit_me.sh"
     - You will need to adjust the batch scheduler header lines as required for your local system.
     - The `run-oifs.ecmwf-hpc2020.job` script will update the entries in `exp-config.h` with the correct settings dermined by the batch job headers.
-    - For information, the LAUNCH command for batch job submission is set to "srun" without any further options, because all required parallel environment settings are provided through the SLURM script headers.
+    - For information, the LAUNCH command for batch job submission is set to "srun" without any further options, because all required parallel environment settings are provided through the slurm script headers.
 
 Once you have made the appropriate changes the job can be submitted:
 
@@ -254,17 +253,18 @@ sbatch ./run-oifs.ecmwf-hpc2020.job
 
 #### Running interactively:
 
-This example is shown for the ECMWF hpc2020, where running the model interactively **should be fine for lower grid resolutions** up to T255L91. 
+This example is shown for the ECMWF hpc2020, where running the model interactively **should work for lower grid resolutions** up to T255L91. 
 
 * In order to run the experiment interactively, execute the `oifs-run` script from the command line in your terminal.
 * If no command line parameters are provided with the `oifs-run` command, then the values from the `exp-config.h` will be used.
 * In `exp-config.h` set `OIFS_NPROC=8` and `OIFS_NTHREAD=4`.
 * In `exp-config.h` the `LAUNCH` variable should remain empty, i.e. `LAUNCH=""` and no `--runcmd` parameter should be provided in the command line.
 
-The `oifs-run` script will in this case use its default launch parameters:  `srun -c${OIFS_NPROC} --mem=64GB --time=60`  which will work fine with `OIFS_NPROC=8` for experiment `ab2a`. 
+The oifs-run script will in this case use its default launch parameters:  `srun -c${OIFS_NPROC} --mem=64GB --time=60`  which will work fine with `OIFS_NPROC=8` for experiment `ab2a`. 
 
 ```
 # run interactively:
+source oifs-config.edit_me.sh
 cd $OIFS_EXPT/ab2a/2016092500
 ./oifs-run
 ```
@@ -273,7 +273,7 @@ cd $OIFS_EXPT/ab2a/2016092500
 
 Postprocessing creates a unique output folder and  groups all model output fields and diagnostics into individual GRIB files with ascending forecast time step. Also, a copy of the atmospheric model namelist file `fort.4`, as well as the `ifs.stat` and `NODE.01_001` log files are moved into the output folder.
 
-Postprocessing can be done either directly by `oifs-run` or in a separate step by running the `run-pproc.ecmwf-hpc2020.job` script.
+Postprocessing can be done either directly by oifs-run or in a separate step by running the `run-pproc.ecmwf-hpc2020.job` script.
 
 #### Postprocessing with oifs-run:
 
