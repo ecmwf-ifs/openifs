@@ -140,7 +140,7 @@ END ifstest on OpenIFS build
 
 ### Set up the experiment directory
 
-An **example forecast experiment** has been prepared for OpenIFS 48r1. The experiment ID is `ab2a` and you can download the tarball from here: https://openifs.ecmwf.int/data/experiments/2016-09-25_Karl/ab2a.tar.gz
+An **example forecast experiment** has been prepared for OpenIFS 48r1. The experiment ID is `ab2a` and you can download the tarball from here: https://openifs.ecmwf.int/data/experiments/48r1/2016-09-25_Karl/ab2a.tar.gz
 
 * Set variable `OIFS_EXPT` in `oifs-config.edit_me.sh` to point to a suitable location for your model experiments.
 * Extract the example forecast experiment `ab2a.tar.gz` to this location. We will refer to directory `$OIFS_EXPT/ab2a/2016092500/` as the **experiment directory**.
@@ -148,7 +148,7 @@ An **example forecast experiment** has been prepared for OpenIFS 48r1. The exper
 
 ```
 cd $OIFS_EXPT
-wget https://openifs.ecmwf.int/data/experiments/2016-09-25_Karl/ab2a.tar.gz
+wget https://openifs.ecmwf.int/data/experiments/48r1/2016-09-25_Karl/ab2a.tar.gz
 tar -xvzf ab2a.tar.gz
 ```
 * Ensure the **namelist files** for the atmopsheric model (fort.4) and for the wave model (wam_namelist) are found in the experiment directory. Backup copies should remain in the `ecmwf` subfolder:
