@@ -230,37 +230,74 @@ def build_docker_image(dockerfile_path, image_name, build_dir):
 
     logger.info("Docker image build completed")
 
-def run_openifs_test(openifs_version, image_name):
-    """Run openifs-test inside the Docker container and report results."""
+def run_openifs_test(openifs_version, image_name,
+                     run_tests=True, 
+                     run_scm_test=True, 
+                     remove_container=True):
+    """
+    Run openifs-test build inside the Docker container and report results.
+    Tests are also run, depending on the arguments and the yml config
+    
+    Args:
+        openifs_version: OpenIFS version string
+        image_name: Docker image name to test
+        run_tests : Run the OpenIFS tests
+        run_scm_test : Run the standard SCM cases
+        remove_container: If True, remove container after test completes (default: True)
+    """
     logger = logging.getLogger(__name__)
 
     logger.info(f"Running openifs-test to create, build and test suite in container {image_name}...")
     logger.info("This may take 10-30 minutes depending on your system")
-        
-    cmd = [
-        "docker", "run", "--rm", image_name,
-        "bash", "-lc",
+
+    # Build test command
+    test_cmd = (
         f"source ~/{openifs_version}/oifs-config.edit_me.sh && "
-        f"$OIFS_TEST/openifs-test.sh -cbt -j 8 --arch=''"
+        f"$OIFS_TEST/openifs-test.sh -cb -j 8''"
+    )
+    
+    # Add OpenIFS tests to command if requested
+    if run_tests :
+        logger.info("OpenIFS test will be run after build success")
+        test_cmd += " && $OIFS_TEST/openifs-test.sh -t"
+
+    # Add SCM test if requested
+    if run_scm_test:
+        logger.info("SCM test will also be run after main tests")
+        test_cmd += " && cd $OIFS_HOME && $SCM_TEST/callscm"
+    
+    # Build docker run command
+    rm_flag = "--rm" if remove_container else ""    
+    cmd = [
+        "docker", "run", 
+        *([rm_flag] if rm_flag else []),  # Add --rm only if specified, 
+        image_name,
+        "bash", "-lc",
+        test_cmd
     ]
 
     logger.info(f"Running: {' '.join(cmd)}\n")
         
     try:
         result = subprocess.run(cmd)
-    except KeyboardInterrupt:
-        logger.warning("Interrupted by user with ctrl-c")
-        return False
-        
-    logger.info("")  # Add blank line after output
-    
-    if result.returncode != 0:
-        logger.error(f"Build and/or test FAILED (exit code: {result.returncode})")
-        return False
-    else :
-        # All steps passed
-        logger.info(f"SUCCESS: All OpenIFS tests passed for {image_name}")
+        logger.info("OpenIFS built successfully")
+        if run_tests:
+            logger.info("OpenIFS tests passed successfully")
+        if run_scm_test:
+            logger.info("SCM test also passed successfully")
+        if not remove_container:
+            logger.info("Container was not removed. Use 'docker ps -a' to see it.")
+        else : 
+            logger.info("Container was removed")
         return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"OpenIFS tests failed: {e}")
+        logger.error(f"stdout: {e.stdout}")
+        logger.error(f"stderr: {e.stderr}")
+        if not remove_container:
+            logger.info("Container was not removed. Use 'docker ps -a' to inspect it.")
+        return False
+
     
 def main():
     
@@ -339,7 +376,9 @@ def main():
     # Check for an existing OpenIFS directory in the docker build directory
     openifs_dir = os.path.join(config['openifs_build_docker_dir'], config['openifs_version'])
 
-    if config['clone_openifs']:
+    clone_repo = config.get('clone_openifs', True)
+
+    if clone_repo:
         logger.info(f"Cloning OpenIFS repository to {openifs_dir}")
         shallow_clone(
             config['openifs_repo_url'], 
@@ -381,14 +420,23 @@ def main():
         logger.info(f"Docker image {oifs_image_name} built successfully!")
     
     # Run OpenIFS tests in docker container if configured
+    run_build = config.get('run_build', True)
     run_tests = config.get('run_tests', True)
+    run_scm_test = config.get('run_scm_test', True)
     
-    if run_tests:
+    if run_build:
         logger.info("=" * 70)
-        logger.info("Running openifs-test -cbt in container...")
+        logger.info("Building OpenIFS using openifs-test -bt in container...")
         logger.info("=" * 70)
         
-        test_success = run_openifs_test(config['openifs_version'], oifs_image_name)
+        test_success = run_openifs_test(
+            config['openifs_version'], 
+            oifs_image_name, 
+            config.get('run_tests', True),
+            config.get('run_scm_test', True),
+            config.get('remove_test_container', True),
+            
+            )
         
         if test_success:
             logger.info("All tests passed successfully")
@@ -399,17 +447,19 @@ def main():
             else:
                 logger.error("Tests failed on newly built image - check build configuration")
     else:
-        logger.info("Skipping tests (run_tests: False in config)")
+        logger.info("Skipping build and tests (run_build: False in config)")
     
     # ===================================================================
-    # SECTION 4: Summary
+    # Summary
     # ===================================================================
     
     logger.info("=" * 70)
     logger.info("Summary:")
     logger.info(f"  Image: {oifs_image_name}")
     logger.info(f"  Built: {'Yes' if should_build else 'No (already exists)'}")
-    logger.info(f"  Tests: {'Passed' if run_tests and test_success else 'Failed' if run_tests else 'Skipped'}")
+    logger.info(f"  OpenIFS Build: {'Passed' if run_build and test_success else 'Failed' if run_build else 'Skipped'}")
+    logger.info(f"  OpenIFS Tests: {'Passed' if run_tests and test_success else 'Failed' if run_tests else 'Skipped'}")
+    logger.info(f"  SCM standard Tests: {'Passed' if run_scm_test and test_success else 'Failed' if run_scm_test else 'Skipped'}")
     logger.info("=" * 70)
 
 if __name__ == "__main__":

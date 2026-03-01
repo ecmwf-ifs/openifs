@@ -20,15 +20,23 @@ openifs_build_docker_dir : "~/oifs_docker_create_dir"
 openifs_repo_url : "git@github.com:ecmwf-ifs/openifs.git" 
 #
 # True to clone OpenIFS repository, False to use existing
-clone_openifs : True
+clone_openifs : False
 # 
 # Force removal of existing clone directory without prompting
 force_reclone : False
 #
 # Force rebuild of Docker image even if it exists
-force_rebuild : True
+force_rebuild : False
 #
-# Run tests after building image
+# Run openifs build command after building image
+run_build : True
+#
+# Run openifs-test tests after building image
 run_tests : True
-
+#
+# Run standard SCM tests - BOMEX, DYCOMS, TWPICE - after main tests
+run_scm_test : False
+#
+# Remove test container after tests complete (False = remove with --rm, True = keep for inspection)
+remove_test_container : False
 

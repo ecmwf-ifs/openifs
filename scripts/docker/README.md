@@ -21,8 +21,6 @@ python3 -m venv openifs-env
 # Activate the virtual environment
 # On macOS/Linux:
 source openifs-env/bin/activate
-# On Windows:
-# openifs-env\Scripts\activate
 
 # Install required packages
 pip install gitpython pyyaml
@@ -34,13 +32,6 @@ python3 -c "import git, yaml; print('Packages installed successfully')"
 **Note:** Keep the virtual environment activated when running the build script. To deactivate later, simply run `deactivate`.
 
 ### Basic Usage
-
-1. Clone this repository:
-
-```bash
-git clone <repository-url>
-cd openifs-docker
-```
 
 1. Edit the configuration file:
 
@@ -55,18 +46,24 @@ cp config/create_openifs_docker.yml config/my_config.yml
 python3 create-oifs-docker.py -c config/my_config.yml
 ```
 
-The script will:
+The script will, depending on settings in the yaml config file :
 
 - Clone the OpenIFS repository
 - Copy SCM experiment data
 - Build a Docker image with all dependencies
-- Run tests to verify the installation
+  - GCC compiler suite (version specified in config)
+  - OpenMPI for parallel execution
+  - NetCDF libraries for data I/O
+  - LAPACK, Eigen3, and Boost libraries
+  - Python 3 with required packages
+  - OpenIFS source code and SCM test data
+  - Run tests to verify the installation
 
 ## Detailed Configuration
 
 ### Configuration File Options
 
-Edit `config/create_openifs_docker.yml` to customize your build:
+The configuration file, `config/create_openifs_docker.yml`, controls the build of the image/container, clone of the OpenIFS repository and whether the tests are run or not. Below is more detail abut the configuration options:
 
 #### OpenIFS Settings
 
@@ -80,11 +77,23 @@ openifs_branch: "main"
 # Repository URL (requires SSH access)
 openifs_repo_url: "git@github.com:ecmwf-ifs/openifs.git"
 
+# SCM experiment data URL (tar.gz or tar file)
+scm_url : https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz
+
 # Clone repository (True) or use existing directory (False)
 clone_openifs: True
 
 # Force removal of existing clone without prompting
 force_reclone: False
+
+# Run openifs build command after building image
+run_build : True
+
+# Run openifs-test tests after building image
+run_tests : True
+
+# Run standard SCM tests - BOMEX, DYCOMS, TWPICE - after main tests
+run_scm_test : False
 ```
 
 #### Docker Settings
@@ -98,6 +107,9 @@ docker_template: "./Dockerfile"
 
 # Force rebuild even if image exists
 force_rebuild: True
+
+# Remove test container after tests complete (False = remove with --rm, True = keep for inspection)
+remove_test_container : False
 ```
 
 #### Directory Settings
@@ -105,59 +117,37 @@ force_rebuild: True
 ```yaml
 # Directory for Docker build context and cloned repository
 openifs_build_docker_dir: "~/oifs_docker_create_dir"
-
-# SCM experiment data directory (must exist on your system)
-scm_exp_datadir: "~/openifs-expt/scm_openifs"
-```
-
-#### Testing
-
-```yaml
-# Run tests after building image (creates, builds, and tests OpenIFS)
-run_tests: True
-```
-
-### Command Line Options
-
-```bash
-python3 create-oifs-docker.py --config <yaml_file>
-# or
-python3 create-oifs-docker.py -c <yaml_file>
-```
-
-## What Gets Built
-
-The Docker image includes:
-
-- GCC compiler suite (version specified in config)
-- OpenMPI for parallel execution
-- NetCDF libraries for data I/O
-- LAPACK, Eigen3, and Boost libraries
-- Python 3 with required packages
-- OpenIFS source code and SCM test data
-
-## Output and Logs
-
-Build logs are saved to:
-
-```bash
-<openifs_build_docker_dir>/docker_bld_logfiles/log_<version>_<gcc_version>.log
 ```
 
 ## Running the Container
 
-After successful build, run the container:
+The [Quick Start](#quick-start) section describes using `create-oifs-docker.py` to automate the installation, build and testing of OpenIFS in a container. If this is successful, the container is removed and succes is reported, e.g.
+
+```bash
+INFO] __main__.run_openifs_test : SUCCESS: All OpenIFS tests passed for openifs-48r1-gcc13:main
+[INFO] __main__.main : All tests passed successfully
+[INFO] __main__.main : ======================================================================
+[INFO] __main__.main : Summary:
+[INFO] __main__.main :   Image: openifs-48r1-gcc13:main
+[INFO] __main__.main :   Built: Yes
+[INFO] __main__.main :   Tests: Passed
+[INFO] __main__.main : ======================================================================
+```
+
+The container is only removed if the scripts complete successfully. While the removal of the container saves space, all the build and test results are removed and non-recoverable.
+
+Since the image has been built and is retained, the container can be re-created and started again using the following:
 
 ```bash
 # Interactive shell
-docker run -it 48r1-gcc13:main bash
-
-# Inside container, OpenIFS environment is pre-configured
-source ~/48r1/oifs-config.edit_me.sh
-cd $OIFS_EXPT
+docker run -it <image-name>
 ```
 
-## Workflow Details
+where the image name can be taken from the report, e.g `openifs-48r1-gcc13:main` or it can be found with `docker ps -a`.
+
+This is a clean container in which `source oifs-config.edit_me.sh` is run upon start up. This container can be used as an environment for building, testing and running OpenIFS. For example, once started `$OIFS_TEST/openifs-test.sh -cbt` can be excuted (see [Main OpenIFS README](../../README.md)).
+
+## `create-oifs-docker.py` workflow details
 
 ### Step 1: Validation
 
@@ -221,15 +211,3 @@ Tested with:
 - OpenIFS 48r1
 - GCC 11.2, 12.2, 13.2
 - Debian base images
-
-## License
-
-[Add appropriate license information]
-
-## Support
-
-For issues and questions:
-
-- Check log files for detailed error messages
-- Verify all prerequisites are installed
-- Ensure repository access is configured correctly

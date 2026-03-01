@@ -46,7 +46,9 @@ The minimum software packages required to run OpenIFS on Linux (and UNIX-like op
 
 ## Installing and Building OpenIFS
 
-OpenIFS is available direct from this repository and it can be extracted by either cloning or downloading the package using 
+### Clone OpenIFS
+
+OpenIFS is available direct from this repository and it can be extracted by either cloning or downloading the package using :
 
 * Extract the entire OpenIFS repository by either executing the following command in the directory where you want to extract OpenIFS 
   * `git clone https://github.com/ecmwf-ifs/openifs.git`
@@ -63,6 +65,10 @@ git switch -c my-branch-at-TAG
 ```
 
 ### Building OpenIFS
+
+In this section, the build and test process is defined assuming the pre-requisites exist and OpenIFS has been extracted. 
+
+Section [Docker install of OpenIFS](#docker-install-of-openifs) describes how to automate this process using a docker container.
 
 #### Set up the platform configuration file
 
@@ -84,7 +90,9 @@ source $HOME/openifs/oifs-config.edit_me.sh
 
 #### OpenIFS build
 
-The build of OpenIFS and optional running of initial tests, which broadly test the build, is controlled by the build script `$OIFS_HOME/scripts/build_test/openifs-test.sh`. To run the build process and the tests use the following commands (assumes the platform configuration file has been sourced) :
+The build and initial test of OpenIFS is controlled by the script `$OIFS_HOME/scripts/build_test/openifs-test.sh`. 
+
+Once the platform configuration file, `oifs-config.edit_me.sh` has been sourced (see previous section), OpenIFS can be built using the following commands :
 
 ```bash
 cd $OIFS_HOME
@@ -95,8 +103,8 @@ where:
 
 `$OIFS_TEST` is defined in the platform configuration file (`oifs-config.edit_me.sh`) as `$OIFS_HOME/scripts/build_test`.
 
-* `-c`  creates `source` directory in `$OIFS_HOME`, which is used to collects all the sources defined in the `bundle.yml`, in preparation for the build
-* `-b`  builds the source. This step creates the directory `build` in `$OIFS_HOME`, which is used to build and store the OpenIFS and SCM executables.
+* `-c`  creates `source` directory in `$OIFS_HOME`, which is used to collect all the sources defined in the `bundle.yml`, in preparation for the build
+* `-b`  builds `source`. This step creates the directory `build` in `$OIFS_HOME`, which is used to build and store the OpenIFS and SCM executables.
   
 For more details about `openifs-test.sh` and the available options please refer to [OpenIFS-build-options](docs/oifs_build_options.md).
 
@@ -113,10 +121,10 @@ where
 
 * `-t` invokes the testing simulations, which are coarse resolutions t21 tests, comprising of 21 3-D NWP tests with and without chemistry and 1 SCM test (based on TWP-ICE).
 
-> Note: OpenIFS build and test can be run together using `$OIFS_TEST/openifs-test.sh -cbt`
-
-> Note: The defaults in `oifs-config.edit_me.sh` set the host and site to `local`, which assumes that all the dependencies are installed and defined. This works in the docker install. 
-> If running on an HPC, it is probably necessary to use an arch file. For example, if running on ECMWF HPC either set `OIFS_HOST` and `OIFS_PLATFORM` in `oifs-config.edit_me.sh`, i.e.
+> Note: 
+> OpenIFS build and test can be run together using `$OIFS_TEST/openifs-test.sh -cbt`.
+> The defaults in `oifs-config.edit_me.sh` set the host and site to `local`, which assumes that all the dependencies are installed and available locally.
+> If running on an HPC, it is probably necessary to use an arch file. For example, if running on ECMWF HPC either set `OIFS_HOST` and `OIFS_PLATFORM` in `oifs-config.edit_me.sh` as follows:
   
 ```bash
 export OIFS_HOST="ecmwf"
@@ -134,7 +142,17 @@ If everything has worked correctly with the build of OpenIFS, then all tests sho
 END ifstest on OpenIFS build
 ```
 
-> NOTE: 100% pass with `$OIFS_TEST/openifs-test.sh -cbt` shows that the low resolution (t21) ifs-test cases can run to completion on the chosen system. These tests do not check bit comparibility with known good output. If this is a requirement, e.g., if a user makes a code change and needs to test whether the code has led to unexpected behaviour in the code, then please refer to [OpenIFS-test-options](docs/oifs_test_options.md).
+100% pass with `$OIFS_TEST/openifs-test.sh -cbt` shows that the low resolution (t21) ifs-test cases can run to completion on the chosen system. These tests do not check bit comparibility with known good output. If this is a requirement, e.g., if a user makes a code change and needs to test whether the code has led to unexpected behaviour in the code, then please refer to [OpenIFS-test-options](docs/oifs_test_options.md).
+
+### Docker install of OpenIFS
+
+The previous section, [Installing and Building OpenIFS](#installing-and-building-openifs), describes the pre-requisites and build process for OpenIFS on a generic Linux based system. 
+
+[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and associated scripts and configuration automates the process described in section [Installing and Building OpenIFS](#installing-and-building-openifs), by creating a docker container, installing OpenIFS and dependencies and then building OpenIFS and running the test. 
+
+* Please go to [OpenIFS Docker Builder](scripts/docker/README.md) for details about the docker install.
+
+[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and the resulting docker development has been tested on Mac OS but it can be applied to other systems, as long as docker is installed and the appropriate python dependencies are available.
 
 ## Run a standard OpenIFS 3-D NWP experiment
 
@@ -264,7 +282,6 @@ The oifs-run script will in this case use its default launch parameters:  `srun 
 
 ```
 # run interactively:
-source oifs-config.edit_me.sh
 cd $OIFS_EXPT/ab2a/2016092500
 ./oifs-run
 ```
@@ -299,5 +316,107 @@ If you want to use this script follow these steps:
 >NOTE: In our worked example you need the line entry `ab2a`.
 * Submit the script with the `sbatch` command (or as appropriate for your system) as a serial job.
 
-
 ## Run a standard OpenIFS SCM case
+
+Since OpenIFS-48r1 was released in 2024, the Single Column Model (SCM) has been available and is built by default when OpenIFS is built. In this section we present an overview about how to set-up and run the SCM.
+
+### Setting up and building the SCM
+
+As with all OpenIFS operations, the SCM depends on environment variables defined in `oifs-config.edit_me.sh`. i.e.
+
+```bash
+#---Path to the executable for the SCM. This is the
+#---default path for the exe, produced by openifs-test.sh.
+#---DP means double precision. To run single precision change
+#---DP to SP
+export SCM_EXEC="${OIFS_BLD_PARENT}/bin/MASTER_scm.SP"
+
+#---Default assumed paths, only change if you know what you are doing
+export SCM_TEST="${OIFS_HOME}/scripts/scm"
+export SCM_VERSIONDIR="${OIFS_EXPT}/scm_openifs/48r1"
+export SCM_PROJDIR="${SCM_VERSIONDIR}/scm-projects"
+export SCM_RUNDIR="${SCM_PROJDIR}/ref48r1"
+export SCM_LOGFILE="${SCM_RUNDIR}/scm_run_log.txt"
+```
+
+SCM environment variables depend on the `OIFS_HOME` and `OIFS_EXPT`, which are also defined by sourcing `oifs-config.edit_me.sh`
+
+Before attempting to run the SCM, please follow the in instructions in section [Set up the platform configuration file](#set-up-the-platform-configuration-file).
+
+### SCM standard test-case package
+
+The standard test-case package consists of the 3 test-cases, each representative of different cloudy regimes
+
+* DYCOMS - marine stratocumulus case
+* BOMEX - trade-wind cumulus case 
+* TWPICE - A multi-day deep convective case
+
+This package can be dowloaded clicking [scm_openifs_48r1.tar.gz](https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz) or using `wget`, e.g. `wget https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz`. 
+
+Once downloaded unpack the package, e.g.
+
+```bash 
+tar -xvf /path/to/scm_openifs_48r1.tar.gz
+```
+
+For ease of use with the standard OpenIFS environment variables, we recommend that the SCM test-case package is installed in `$OIFS_EXPT`, e.g., 
+
+```bash
+cp path/to/scm_openifs_48r1.tar.gz $OIFS_EXPT
+cd $OIFS_EXPT
+tar -xvzf scm_openifs-48r1.tar.gz
+```
+
+Once installed it is important to ensure that the `$OIFS_EXPT` is set to the directory that `scm_openifs` has been installed in. For example, in the template `oifs-config.edit_me.sh`, `$OIFS_EXPT=${HOME}/openifs-expt`. In this scenario, the directory `scm_openifs` needs to be in `$OIFS_EXPT` or `${HOME}/openifs-expt/`.
+
+> Note: The untarred SCM package is small, ~45 Mb and data produced by a standard individual SCM simulation is also low. However, if I user is planning to perform many simulations and store the data, which is often the case, the disk space usage can become large. If this is the plan, then a user may need to consider installing the SCM test-case package on a larger disk area than $HOME. 
+
+### Run the SCM
+
+Once the SCM test-case package is installed has been completed, the SCM is run using the `callscm` script, which is a wrapper for the main `run.scm`. Both scripts can found in `$SCM_TEST` , which is set in the `oifs-config.edit_me.sh` file to `${OIFS_HOME}/scripts/scm`.
+
+`callscm`  includes default settings, which are the three cases, with a 450 s timestep and an experiment name of ref-oifs-scm . To run with these settings, enter the following
+
+```bash
+cd $OIFS_HOME
+$SCM_TEST/callscm
+```
+
+> Note: If running on the ECMWF HPC the mpi environment needs to be loaded to avoid runtime MPI errors and SCM fail with `callscm`. Use the following to load the environment
+
+```bash 
+# If OpenIFS and SCM built with intel compiler use
+module load prgenv/intel
+module load intel-mpi
+# if OpenIFS and SCM built with gnu compiler use
+module load prgenv/gnu
+module load gcc/11.2.0
+module load openmpi/4.1.1.1
+```
+
+`callscm`  (with defaults, i.e. no arguments) will run the DYCOMS, BOMEX and TWPICE cases with the SCM and create an output directory in `$SCM_RUNDIR/scmout_DYCOMS_ref-oifs-scm_450s` , which contains the diagnostic output from the SCM. In addition, the file scm_run_log.txt will be created in `$SCM_RUNDIR`. This file contains the print output from the SCM, which is useful for checking all the sources and paths for a simulation. 
+
+#### `callscm` command-line options
+
+Some of the `callscm` defaults can be changed through command-line options, e.g.
+
+```bash
+callscm -h -c <case_name or list of case_names> -t <timestep or list of timesteps>
+        -x <expt_name>
+where :
+-h is help which returns basic usage options and exits
+-c case_name or list of case_names (space delimited) of the case study
+   used for namelist and output directory. Default list is
+   "DYCOMS BOMEX TWPICE"
+-t timestep or list of timesteps in seconds. The default is 450s. An
+   example of a list is "1800 900 300"
+-x expt_name shortname to identify experiment. Default is ref-oifs-scm
+```
+
+For example, if a user wanted to run the BOMEX case with timesteps of 1800 s and 900 s and an experiment name of "bomex_test", they would enter the following
+
+```bash
+$SCM_TEST/callscm -c BOMEX -t "1800 900" -x "bomex_test"
+```
+
+This command results in the following output directories `$SCM_RUNDIR/scmout_BOMEX_bomex_test_900s`  and `scmout_BOMEX_bomex_test_1800s`.
