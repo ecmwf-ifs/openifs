@@ -1,5 +1,5 @@
 
-# ECWMF OpenIFS
+# ECMWF OpenIFS
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -9,25 +9,25 @@ This repository contains code and scripts needed to build and run the OpenIFS an
 
 Contact information for OpenIFS Support is available on the OpenIFS home page: https://openifs.ecmwf.int/wiki. Support is given on a best-effort basis by the developers.
 
-In addtion to https://openifs.ecmwf.int/wiki, the [OpenIFS User Forums](https://forum.ecmwf.int/) are available to post support questions. These are monitored by the OpenIFS support team as well as members of the OpenIFS user community.
+In addition to https://openifs.ecmwf.int/wiki, the [OpenIFS User Forums](https://forum.ecmwf.int/) are available to post support questions. These are monitored by the OpenIFS support team as well as members of the OpenIFS user community.
 
 ## Licence
 
-License: [Apache License 2.0](LICENSE) In applying this licence, ECMWF does not waive the privileges and immunities granted to it by virtue of its status as an intergovernmental organisation nor does it submit to any jurisdiction.
+[Apache License 2.0](LICENSE). In applying this licence, ECMWF does not waive the privileges and immunities granted to it by virtue of its status as an intergovernmental organisation nor does it submit to any jurisdiction.
 
 ## Contributing
 
-Contributions to OpenIFS are welcome. In order to do so, please create a pull request with your contribution and sign the contributors license agreement (CLA).
+Contributions to OpenIFS are welcome. In order to do so, please create a pull request with your contribution and sign the contributors licence agreement (CLA).
 
 ## Supported Platforms
 
-* Linux 
+* Linux
 
 Other UNIX-like operating systems, e.g. macOS, may work too out of the box, as long as the correct dependencies are installed.
 
 ## Pre-requisites
 
-The minimum software packages required to run OpenIFS on Linux (and UNIX-like operating systems) is the following
+The minimum software packages required to run OpenIFS on Linux (and UNIX-like operating systems) are the following:
 
 * git
 * cmake
@@ -48,9 +48,9 @@ The minimum software packages required to run OpenIFS on Linux (and UNIX-like op
 
 ### Clone OpenIFS
 
-OpenIFS is available direct from this repository and it can be extracted by either cloning or downloading the package using :
+OpenIFS is available directly from this repository and it can be extracted by either cloning or downloading the package:
 
-* Extract the entire OpenIFS repository by either executing the following command in the directory where you want to extract OpenIFS 
+* Extract the entire OpenIFS repository by either executing the following command in the directory where you want to extract OpenIFS
   * `git clone https://github.com/ecmwf-ifs/openifs.git`
 * Extract just the release branch using a shallow clone that targets a specific release branch, e.g.
   * `git clone --depth 1 --branch release/openifs-48r1 --single-branch https://github.com/ecmwf-ifs/openifs.git openifs-48r1`
@@ -66,7 +66,7 @@ git switch -c my-branch-at-TAG
 
 ### Building OpenIFS
 
-In this section, the build and test process is defined assuming the pre-requisites exist and OpenIFS has been extracted. 
+In this section, the build and test process is defined assuming the pre-requisites exist and OpenIFS has been extracted.
 
 Section [Docker install of OpenIFS](#docker-install-of-openifs) describes how to automate this process using a docker container.
 
@@ -74,15 +74,15 @@ Section [Docker install of OpenIFS](#docker-install-of-openifs) describes how to
 
 The OpenIFS model requires a number of Linux global environment variables to be set for both installation and runs. These environment variables are defined and set in the `oifs-config.edit_me.sh` file, which can be found in the top-level of your extracted OpenIFS package.
 
-The most important environment variable in `oifs-config.edit_me.sh` is `OIFS_HOME`, which is required by both model build and run scripts. For description of other variables please refer to [OpenIFS-env-vars](docs/oifs_env_vars.md).
+The most important environment variable in `oifs-config.edit_me.sh` is `OIFS_HOME`, which is required by both model build and run scripts. For a description of other variables please refer to [OpenIFS-env-vars](docs/oifs_env_vars.md).
 
-Once edited the platform configuration file is loaded using the following command: 
+Once edited, the platform configuration file is loaded using the following command:
 
 ```bash
 source /path/to/file/location/oifs-config.edit_me.sh
 ```
 
-For example, if you extracted OpenIFS into `$HOME/openifs`, the platform file would be loaded using 
+For example, if you extracted OpenIFS into `$HOME/openifs`, the platform file would be loaded using
 
 ```bash
 source $HOME/openifs/oifs-config.edit_me.sh
@@ -90,9 +90,9 @@ source $HOME/openifs/oifs-config.edit_me.sh
 
 #### OpenIFS build
 
-The build and initial test of OpenIFS is controlled by the script `$OIFS_HOME/scripts/build_test/openifs-test.sh`. 
+The build and initial test of OpenIFS is controlled by the script `$OIFS_HOME/scripts/build_test/openifs-test.sh`.
 
-Once the platform configuration file, `oifs-config.edit_me.sh` has been sourced (see previous section), OpenIFS can be built using the following commands :
+Once the platform configuration file, `oifs-config.edit_me.sh` has been sourced (see previous section), OpenIFS can be built using the following commands:
 
 ```bash
 cd $OIFS_HOME
@@ -105,12 +105,12 @@ where:
 
 * `-c`  creates `source` directory in `$OIFS_HOME`, which is used to collect all the sources defined in the `bundle.yml`, in preparation for the build
 * `-b`  builds `source`. This step creates the directory `build` in `$OIFS_HOME`, which is used to build and store the OpenIFS and SCM executables.
-  
+
 For more details about `openifs-test.sh` and the available options please refer to [OpenIFS-build-options](docs/oifs_build_options.md).
 
 ### Test OpenIFS build
 
-Once executables are successfully built, they can be tested using the following command 
+Once executables are successfully built, they can be tested using the following command
 
 ```bash
 cd $OIFS_HOME
@@ -119,19 +119,19 @@ $OIFS_TEST/openifs-test.sh -t
 
 where
 
-* `-t` invokes the testing simulations, which are coarse resolutions t21 tests, comprising of 21 3-D NWP tests with and without chemistry and 1 SCM test (based on TWP-ICE).
+* `-t` invokes the testing simulations, which are coarse resolution T21 tests, comprising 21 3-D NWP tests with and without chemistry and 1 SCM test (based on TWP-ICE).
 
-> Note: 
+> Note:
 > OpenIFS build and test can be run together using `$OIFS_TEST/openifs-test.sh -cbt`.
 > The defaults in `oifs-config.edit_me.sh` set the host and site to `local`, which assumes that all the dependencies are installed and available locally.
 > If running on an HPC, it is probably necessary to use an arch file. For example, if running on ECMWF HPC either set `OIFS_HOST` and `OIFS_PLATFORM` in `oifs-config.edit_me.sh` as follows:
-  
+
 ```bash
 export OIFS_HOST="ecmwf"
 export OIFS_PLATFORM="hpc2020"
-```  
+```
 
-> or use `$OIFS_TEST/openifs-test.sh -cbt --arch=./arch/ecmwf/hpc2020/gnu` or `$OIFS_TEST/openifs-test.sh -cbt --arch=./arch/ecmwf/hpc2020/intel`, depending if you want to use the Intel or gnu compiler.
+> or use `$OIFS_TEST/openifs-test.sh -cbt --arch=./arch/ecmwf/hpc2020/gnu` or `$OIFS_TEST/openifs-test.sh -cbt --arch=./arch/ecmwf/hpc2020/intel`, depending on whether you want to use the Intel or GNU compiler.
 
 If everything has worked correctly with the build of OpenIFS, then all tests should have passed and the `openifs-test.sh` returns the following
 
@@ -142,17 +142,17 @@ If everything has worked correctly with the build of OpenIFS, then all tests sho
 END ifstest on OpenIFS build
 ```
 
-100% pass with `$OIFS_TEST/openifs-test.sh -cbt` shows that the low resolution (t21) ifs-test cases can run to completion on the chosen system. These tests do not check bit comparibility with known good output. If this is a requirement, e.g., if a user makes a code change and needs to test whether the code has led to unexpected behaviour in the code, then please refer to [OpenIFS-test-options](docs/oifs_test_options.md).
+100% pass with `$OIFS_TEST/openifs-test.sh -cbt` shows that the low resolution (t21) ifs-test cases can run to completion on the chosen system. These tests do not check bit comparability with known good output. If this is a requirement, e.g., if a user makes a code change and needs to test whether the code has led to unexpected behaviour in the code, then please refer to [OpenIFS-test-options](docs/oifs_test_options.md).
 
 ### Docker install of OpenIFS
 
-The previous section, [Installing and Building OpenIFS](#installing-and-building-openifs), describes the pre-requisites and build process for OpenIFS on a generic Linux based system. 
+The previous section, [Installing and Building OpenIFS](#installing-and-building-openifs), describes the pre-requisites and build process for OpenIFS on a generic Linux based system.
 
-[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and associated scripts and configuration automates the process described in section [Installing and Building OpenIFS](#installing-and-building-openifs), by creating a docker container, installing OpenIFS and dependencies and then building OpenIFS and running the test. 
+[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and associated scripts and configuration automates the process described in section [Installing and Building OpenIFS](#installing-and-building-openifs), by creating a Docker container, installing OpenIFS and dependencies and then building OpenIFS and running the test.
 
-* Please go to [OpenIFS Docker Builder](scripts/docker/README.md) for details about the docker install.
+* Please go to [OpenIFS Docker Builder](scripts/docker/README.md) for details about the Docker install.
 
-[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and the resulting docker development has been tested on Mac OS but it can be applied to other systems, as long as docker is installed and the appropriate python dependencies are available.
+[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and the resulting Docker development has been tested on macOS but it can be applied to other systems, as long as Docker is installed and the appropriate python dependencies are available.
 
 ## Run a standard OpenIFS 3-D NWP experiment
 
@@ -170,7 +170,7 @@ cd $OIFS_EXPT
 wget https://openifs.ecmwf.int/data/experiments/48r1/2016-09-25_Karl/ab2a.tar.gz
 tar -xvzf ab2a.tar.gz
 ```
-* Ensure the **namelist files** for the atmopsheric model (fort.4) and for the wave model (wam_namelist) are found in the experiment directory. Backup copies should remain in the `ecmwf` subfolder:
+* Ensure the **namelist files** for the atmospheric model (fort.4) and for the wave model (wam_namelist) are found in the experiment directory. Backup copies should remain in the `ecmwf` subfolder:
 
 ```
 cd $OIFS_EXPT/ab2a/2016092500
@@ -191,7 +191,7 @@ cp $OIFS_RUN_SCRIPT/run-oifs.ecmwf-hpc2020.job .
 
 ### Customise the experiment parameters
 
-Here we describe how you can customise the way how OpenIFS will run the forecast experiment.
+Here we describe how you can customise how OpenIFS will run the forecast experiment.
 
 #### Customising the namelist:
 
@@ -199,21 +199,21 @@ Here we describe how you can customise the way how OpenIFS will run the forecast
 * An important switch is `CSTOP` in namelist `NAMRIP`. Set this to the desired duration of the forecast experiment.
 * Experiment `ab2a` can be run for up to 144 hours (6 days) by setting `CSTOP='h144'`.
 
-#### Customising the experiment configuration file: 
+#### Customising the experiment configuration file:
 
 * You should customise the `exp-config.h` file which determines the settings used for the experiment.
 * The oifs-run script will read the settings from this file.
-* Alternatively, the settings can be passed to the oifs-run script via command line parameters, which takes precedence over the exp-config.h settings. 
+* Alternatively, the settings can be passed to the oifs-run script via command line parameters, which take precedence over the exp-config.h settings.
 > NOTE: The preference should be to **always set up an exp-config.h** for each experiment. If no exp-config.h file is found in the experiment directory (and no command line parameters are provided when calling oifs-run), then oifs-run will revert to its own default values which are not appropriate.
 
 **exp-config.h:**
 ```
 #--- required variables for this experiment:
- 
+
 # this is specific for each experiment:
 OIFS_EXPID="ab2a"       #  your experiment ID
 OIFS_RES="255"          #  the spectral grid resolution (here: T255)
-OIFS_GRIDTYPE="l"       #  the grid type, either 'l' for linear reduced grid, 
+OIFS_GRIDTYPE="l"       #  the grid type, either 'l' for linear reduced grid,
 
 # note: use of the batch job script will overwrite these values:
 OIFS_NPROC=8            #  the number of MPI tasks
@@ -221,17 +221,17 @@ OIFS_NTHREAD=4          #  the number of OpenMP threads
 
 # postprocessing is optional but recommended:
 OIFS_PPROC=true         #  enable postprocessing of model output after the model run
-OUTPUT_ROOT=$(pwd)      #  folder where pproc output is created (only used if 
-                        #  OIFS_PPROC=true). In this example an output folder is 
+OUTPUT_ROOT=$(pwd)      #  folder where pproc output is created (only used if
+                        #  OIFS_PPROC=true). In this example an output folder is
                         #  created in the experiment directory.
 
 LFORCE=true             #  overwrite existing symbolic links in the experiment directory
 LAUNCH=""               #  the platform specific run command for the MPI environment
-                        #  (e.g. "mpirun", "srun", etc). Setting this variable overwrites 
+                        #  (e.g. "mpirun", "srun", etc). Setting this variable overwrites
                         #  any platform-specific default run commands defined in oifs-run
- 
+
 #--- optional variables that can be set for this experiment:
- 
+
 #OIFS_NAMELIST='my-fort.4'               # custom atmospheric model namelist file
 #OIFS_EXEC="<custom-path>/ifsMASTER.DP"  # model executable to be used for this experiment
 ```
@@ -242,7 +242,7 @@ After all edits to the namelists (fort.4) and to the experiment configuration fi
 
 #### Running a batch job:
 
-This method is the preferred way to run OpenIFS, as it is more efficient and it allows more flexibility in using the available hardware resources. 
+This method is the preferred way to run OpenIFS, as it is more efficient and it allows more flexibility in using the available hardware resources.
 
 * A job wrapper script needs to be used to call `oifs-run`; that script must be customised for the locally available batch scheduler and HPC system.
 * We include an example job wrapper script `run-oifs.ecmwf-hpc2020.job` in `$OIFS_RUN_SCRIPT`, which is suitable for the ECMWF hpc2020 HPC. This system uses the slurm batch job scheduler.
@@ -255,7 +255,7 @@ This method is the preferred way to run OpenIFS, as it is more efficient and it 
     ```
     - It is important to change "/path/to/your/config/oifs-config.edit_me.sh" to the actual path for the oifs-config.edit_me.sh, e.g., "$HOME/openifs/oifs-config.edit_me.sh"
     - You will need to adjust the batch scheduler header lines as required for your local system.
-    - The `run-oifs.ecmwf-hpc2020.job` script will update the entries in `exp-config.h` with the correct settings dermined by the batch job headers.
+    - The `run-oifs.ecmwf-hpc2020.job` script will update the entries in `exp-config.h` with the correct settings determined by the batch job headers.
     - For information, the LAUNCH command for batch job submission is set to "srun" without any further options, because all required parallel environment settings are provided through the slurm script headers.
 
 Once you have made the appropriate changes the job can be submitted:
@@ -271,14 +271,14 @@ sbatch ./run-oifs.ecmwf-hpc2020.job
 
 #### Running interactively:
 
-This example is shown for the ECMWF hpc2020, where running the model interactively **should work for lower grid resolutions** up to T255L91. 
+This example is shown for the ECMWF hpc2020, where running the model interactively **should work for lower grid resolutions** up to T255L91.
 
 * In order to run the experiment interactively, execute the `oifs-run` script from the command line in your terminal.
 * If no command line parameters are provided with the `oifs-run` command, then the values from the `exp-config.h` will be used.
 * In `exp-config.h` set `OIFS_NPROC=8` and `OIFS_NTHREAD=4`.
 * In `exp-config.h` the `LAUNCH` variable should remain empty, i.e. `LAUNCH=""` and no `--runcmd` parameter should be provided in the command line.
 
-The oifs-run script will in this case use its default launch parameters:  `srun -c${OIFS_NPROC} --mem=64GB --time=60`  which will work fine with `OIFS_NPROC=8` for experiment `ab2a`. 
+The oifs-run script will in this case use its default launch parameters:  `srun -c${OIFS_NPROC} --mem=64GB --time=60`  which will work fine with `OIFS_NPROC=8` for experiment `ab2a`.
 
 ```
 # run interactively:
@@ -288,7 +288,7 @@ cd $OIFS_EXPT/ab2a/2016092500
 
 ### Postprocessing the model output
 
-Postprocessing creates a unique output folder and  groups all model output fields and diagnostics into individual GRIB files with ascending forecast time step. Also, a copy of the atmospheric model namelist file `fort.4`, as well as the `ifs.stat` and `NODE.01_001` log files are moved into the output folder.
+Postprocessing creates a unique output folder and groups all model output fields and diagnostics into individual GRIB files with ascending forecast time step. Also, a copy of the atmospheric model namelist file `fort.4`, as well as the `ifs.stat` and `NODE.01_001` log files are moved into the output folder.
 
 Postprocessing can be done either directly by oifs-run or in a separate step by running the `run-pproc.ecmwf-hpc2020.job` script.
 
@@ -296,14 +296,14 @@ Postprocessing can be done either directly by oifs-run or in a separate step by 
 
 If in the `exp-config.h` file the `OIFS_PPROC` variable has been set to `true` (or if the `--pproc` command line parameter was used) then the model output in the experiment directory is further processed after completing the model run.
 
-* In this case the script will generate a folder called `output_YYYMMDD_HHMMSS`, with YYYYMMDD being the current date and HHMMSS the current time. 
+* In this case the script will generate a folder called `output_YYYYMMDD_HHMMSS`, with YYYYMMDD being the current date and HHMMSS the current time.
 * This avoids accidental modification or overwriting of any previous results when the model experiment is repeated.
-* For convenience a symbolic link output is set to the most recently generated model output. If the model run is repeated and a new `output_YYYMMDD_HHMMSS` folder is generated, the symbolic link will be updated to point to the most recent output folder.
-* The variable `OUTPUT_ROOT` in `exp-config.h` determines where this ouput folder will be created. The default location is inside the experiment directory, but when assigning another path to `OUTPUT_ROOT` this could be created elsewhere.
+* For convenience a symbolic link output is set to the most recently generated model output. If the model run is repeated and a new `output_YYYYMMDD_HHMMSS` folder is generated, the symbolic link will be updated to point to the most recent output folder.
+* The variable `OUTPUT_ROOT` in `exp-config.h` determines where this output folder will be created. The default location is inside the experiment directory, but when assigning another path to `OUTPUT_ROOT` this could be created elsewhere.
 
 #### Postprocessing with a separate script:
 
-The postprocessing task is carried out by a single processor. During this time the batch job's computing resources will remain allocated for `oifs-run` which can be inefficient. 
+The postprocessing task is carried out by a single processor. During this time the batch job's computing resources will remain allocated for `oifs-run` which can be inefficient.
 
 As an alternative we include the script `$OIFS_HOME/scripts/exp3d/run-pproc.ecmwf-hpc2020.job` which completes the postprocessing in isolation after the model forecast experiment has ended. This script can be submitted as a serial job.
 
@@ -312,7 +312,7 @@ If you want to use this script follow these steps:
 * In `exp-config.h` set `OIFS_PPROC=false` and run the forecast experiment to completion.
 * Copy the run-pproc script to the `OIFS_EXPT` location: `cp $OIFS_HOME/scripts/exp3d/run-pproc.ecmwf-hpc2020.job $OIFS_EXPT`
 * Edit the run-pproc script and update the variable `PLATFORM_CFG` as required for your installation.
-* The script allows postprocessing of multiple experiments in sequence. Ensure the experiment IDs of all experiments you wish to process are included in the `EXP_LIST` heredoc. 
+* The script allows postprocessing of multiple experiments in sequence. Ensure the experiment IDs of all experiments you wish to process are included in the `EXP_LIST` heredoc.
 >NOTE: In our worked example you need the line entry `ab2a`.
 * Submit the script with the `sbatch` command (or as appropriate for your system) as a serial job.
 
@@ -327,8 +327,8 @@ As with all OpenIFS operations, the SCM depends on environment variables defined
 ```bash
 #---Path to the executable for the SCM. This is the
 #---default path for the exe, produced by openifs-test.sh.
-#---DP means double precision. To run single precision change
-#---DP to SP
+#---SP means single precision. To run double precision change
+#---SP to DP
 export SCM_EXEC="${OIFS_BLD_PARENT}/bin/MASTER_scm.SP"
 
 #---Default assumed paths, only change if you know what you are doing
@@ -341,50 +341,50 @@ export SCM_LOGFILE="${SCM_RUNDIR}/scm_run_log.txt"
 
 SCM environment variables depend on the `OIFS_HOME` and `OIFS_EXPT`, which are also defined by sourcing `oifs-config.edit_me.sh`
 
-Before attempting to run the SCM, please follow the in instructions in section [Set up the platform configuration file](#set-up-the-platform-configuration-file).
+Before attempting to run the SCM, please follow the instructions in section [Set up the platform configuration file](#set-up-the-platform-configuration-file).
 
 ### SCM standard test-case package
 
-The standard test-case package consists of the 3 test-cases, each representative of different cloudy regimes
+The standard test-case package consists of 3 test-cases, each representative of different cloudy regimes:
 
 * DYCOMS - marine stratocumulus case
-* BOMEX - trade-wind cumulus case 
-* TWPICE - A multi-day deep convective case
+* BOMEX - trade-wind cumulus case
+* TWPICE - a multi-day deep convective case
 
-This package can be dowloaded clicking [scm_openifs_48r1.tar.gz](https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz) or using `wget`, e.g. `wget https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz`. 
+This package can be downloaded by clicking [scm_openifs_48r1.tar.gz](https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz) or using `wget`, e.g. `wget https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz`.
 
 Once downloaded unpack the package, e.g.
 
-```bash 
+```bash
 tar -xvf /path/to/scm_openifs_48r1.tar.gz
 ```
 
-For ease of use with the standard OpenIFS environment variables, we recommend that the SCM test-case package is installed in `$OIFS_EXPT`, e.g., 
+For ease of use with the standard OpenIFS environment variables, we recommend that the SCM test-case package is installed in `$OIFS_EXPT`, e.g.,
 
 ```bash
 cp path/to/scm_openifs_48r1.tar.gz $OIFS_EXPT
 cd $OIFS_EXPT
-tar -xvzf scm_openifs-48r1.tar.gz
+tar -xvzf scm_openifs_48r1.tar.gz
 ```
 
 Once installed it is important to ensure that the `$OIFS_EXPT` is set to the directory that `scm_openifs` has been installed in. For example, in the template `oifs-config.edit_me.sh`, `$OIFS_EXPT=${HOME}/openifs-expt`. In this scenario, the directory `scm_openifs` needs to be in `$OIFS_EXPT` or `${HOME}/openifs-expt/`.
 
-> Note: The untarred SCM package is small, ~45 Mb and data produced by a standard individual SCM simulation is also low. However, if I user is planning to perform many simulations and store the data, which is often the case, the disk space usage can become large. If this is the plan, then a user may need to consider installing the SCM test-case package on a larger disk area than $HOME. 
+> Note: The untarred SCM package is small, ~45 Mb and data produced by a standard individual SCM simulation is also low. However, if a user is planning to perform many simulations and store the data, which is often the case, the disk space usage can become large. If this is the plan, then a user may need to consider installing the SCM test-case package on a larger disk area than $HOME.
 
 ### Run the SCM
 
-Once the SCM test-case package is installed has been completed, the SCM is run using the `callscm` script, which is a wrapper for the main `run.scm`. Both scripts can found in `$SCM_TEST` , which is set in the `oifs-config.edit_me.sh` file to `${OIFS_HOME}/scripts/scm`.
+Once the SCM test-case package installation has been completed, the SCM is run using the `callscm` script, which is a wrapper for the main `run.scm`. Both scripts can be found in `$SCM_TEST`, which is set in the `oifs-config.edit_me.sh` file to `${OIFS_HOME}/scripts/scm`.
 
-`callscm`  includes default settings, which are the three cases, with a 450 s timestep and an experiment name of ref-oifs-scm . To run with these settings, enter the following
+`callscm`  includes default settings, which are the three cases, with a 450 s timestep and an experiment name of ref-oifs-scm. To run with these settings, enter the following
 
 ```bash
 cd $OIFS_HOME
 $SCM_TEST/callscm
 ```
 
-> Note: If running on the ECMWF HPC the mpi environment needs to be loaded to avoid runtime MPI errors and SCM fail with `callscm`. Use the following to load the environment
+> Note: If running on the ECMWF HPC the mpi environment needs to be loaded to avoid runtime MPI errors and SCM to fail with `callscm`. Use the following to load the environment
 
-```bash 
+```bash
 # If OpenIFS and SCM built with intel compiler use
 module load prgenv/intel
 module load intel-mpi
@@ -394,16 +394,16 @@ module load gcc/11.2.0
 module load openmpi/4.1.1.1
 ```
 
-`callscm`  (with defaults, i.e. no arguments) will run the DYCOMS, BOMEX and TWPICE cases with the SCM and create an output directory in `$SCM_RUNDIR/scmout_DYCOMS_ref-oifs-scm_450s` , which contains the diagnostic output from the SCM. In addition, the file scm_run_log.txt will be created in `$SCM_RUNDIR`. This file contains the print output from the SCM, which is useful for checking all the sources and paths for a simulation. 
+`callscm`  (with defaults, i.e. no arguments) will run the DYCOMS, BOMEX and TWPICE cases with the SCM and create an output directory in `$SCM_RUNDIR/scmout_DYCOMS_ref-oifs-scm_450s`, which contains the diagnostic output from the SCM. In addition, the file scm_run_log.txt will be created in `$SCM_RUNDIR`. This file contains the print output from the SCM, which is useful for checking all the sources and paths for a simulation.
 
 #### `callscm` command-line options
 
 Some of the `callscm` defaults can be changed through command-line options, e.g.
 
-```bash
+```
 callscm -h -c <case_name or list of case_names> -t <timestep or list of timesteps>
         -x <expt_name>
-where :
+where:
 -h is help which returns basic usage options and exits
 -c case_name or list of case_names (space delimited) of the case study
    used for namelist and output directory. Default list is
