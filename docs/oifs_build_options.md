@@ -1,6 +1,6 @@
 # OpenIFS build options (more detail)
 
-The OpenIFS build system is based on a combination of [ecbuild](https://github.com/ecmwf/ecbuild), which is an extension of the widely-used [CMake metabuilder](href{https://cmake.org/), and [ecbundle](href{https://github.com/ecmwf/ecbundle) software packages, which are both developed by ECMWF and used in the ECMWF IFS model. 
+The OpenIFS build system is based on a combination of [ecbuild](https://github.com/ecmwf/ecbuild), which is an extension of the widely-used [CMake metabuilder](https://cmake.org/), and [ecbundle](https://github.com/ecmwf/ecbundle) software packages, which are both developed by ECMWF and used in the ECMWF IFS model.
 
 In a similar fashion to the IFS, OpenIFS employs a software bundle through the `bundle.yml`, which defines the software packages and versions that are required for the build, i.e., ifs-source and ifs-test version plus all the associated software libraries, such as eccodes, multio, atlas etc. 
 
@@ -24,15 +24,15 @@ where
 
 and the command line options are
 
-* `-c`  creates `source` directory in `$OIFS_HOME`, which is used to collects all the sources defined in the `bundle.yml`, in preparation for the build
+* `-c`  creates `source` directory in `$OIFS_HOME`, which is used to collect all the sources defined in the `bundle.yml`, in preparation for the build
 * `-b`  builds the source. This step creates the directory `build` in `$OIFS_HOME`, which is used to build and store the OpenIFS and SCM executables.
-* `-t` will run the ifs-test t21 tests, which comprises of 21 coarse resolution (t21) 3-D NWP tests with and without chemistry and 1 SCM test (based on TWP-ICE)
+* `-t` will run the ifs-test t21 tests, which comprise 21 coarse resolution (t21) 3-D NWP tests with and without chemistry and 1 SCM test (based on TWP-ICE)
 
 This command and the associated options create and store 3-D OpenIFS double and single precision master executables, `ifsMASTER.DP` and `ifsMASTER.SP`, respectively. These executables are stored in `$OIFS_BLD_PARENT/bin`, which by default points to `$OIFS_HOME/build/bin`. Further, the location and name of the executable for OpenIFS experiments is defined as `$OIFS_EXEC`, which by default is the single precision executable, i.e., `${OIFS_BLD_PARENT}/bin/ifsMASTER.SP`.
 
 The standard build command also creates and stores the double and single precision Single Column Model (SCM) executables (`MASTER_scm.DP` and `MASTER_scm.SP`, respectively), which are also located in `$OIFS_HOME/build/bin` (`$OIFS_BLD_PARENT/bin`). The name and location of the SCM executable is defined by `$SCM_EXEC`, which, by default, is the single precision executable, i.e., `${OIFS_BLD_PARENT}/bin/MASTER_scm.SP`.
 
-## Aditional openifs-test build options
+## Additional openifs-test build options
 
 In addition to the `-cbt` options, the following additional options exist
 
@@ -50,7 +50,7 @@ In addition to the `-cbt` options, the following additional options exist
     * The default of 8 threads can be increased for larger systems. Such an increase may speed up the build. For advice on this please liaise with the system administrator.
     * It is important to note that 8 threads can be problematic for older and lower spec systems. For example, it will not work with a 4 core intel m3. In this case reduce the number of threads to 2 for example.
 
-* `-u` signals the `openifs-test.sh` to create (`-c`) the source directory using symbolic links that point to the central location for the non-OpenIFS sources, e.g. `eccodes`, `multio`, `fckit`, `eckit`, `metkit`, `fcb5`, `atlas` and `fcm`
+* `-u` signals the `openifs-test.sh` to create (`-c`) the source directory using symbolic links that point to the central location for the non-OpenIFS sources, e.g. `eccodes`, `multio`, `fckit`, `eckit`, `metkit`, `fdb5`, `atlas` and `fcm`
 * `-i` uses the `install.sh`, which is created by `ecbuild`, to install the OpenIFS in an install directory.
 
 `-u` and `-i` are useful options for significantly reducing the file numbers stored on a system following a successful installation and build of OpenIFS. For more information, please refer to [Minimal OpenIFS install](oifs_howto_setup_central_source.md).

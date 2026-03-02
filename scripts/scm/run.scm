@@ -3,24 +3,24 @@
 # Build & run script for IFS Single Column Model
 #------------------------------------------------
 # Modifications history:
-#  Mar 2020  R. Forbes  Heavily modified for 46r1 
+#  Mar 2020  R. Forbes  Heavily modified for 46r1
 #  Oct 2021  R.Forbes  Updated for 47r1/47r3
 #  Oct 2023  R.Forbes  Updated for 48r1
 #
-# To run the SCM: 
+# To run the SCM:
 #
 # Default with no arguments:
 #  run.scm
-#  will assume expt_name="ref", namelist="namelist", scm_in="scm_in.nc" 
+#  will assume expt_name="ref", namelist="namelist", scm_in="scm_in.nc"
 #  (all must be in the current scm-run directory)
 #
 # With options:
-#  run.scm [-c case_name] [-d duration] [-L nlevs] [-n namelist] [-o outdir] 
+#  run.scm [-c case_name] [-d duration] [-L nlevs] [-n namelist] [-o outdir]
 #          [-s scm_in] [-t timestep] [-v] [-x expt_name] [-X exec]
 #   -c case_name name of the case study used for namelist and output directory
 #   -d duration  duration of run in hours (default 72h)
 #   -L nlevs     number of levels (default 137)
-#   -n namelist  namelist file (default namelist.case_study if case_study defined, 
+#   -n namelist  namelist file (default namelist.case_study if case_study defined,
 #                 otherwise ./namelist in current directory
 #   -o outdir    working/output subdirectory (default current directory)
 #   -s scm_in    SCM input/forcing netcdf file (defaults ./scm_in.nc in current directory)
@@ -122,31 +122,31 @@ NFLEVG=${NFLEVG:-137}       # model level: 19,31,40,50,60,91,137
 
 # Check for subcase
 CASE1_NAME=`echo ${CASE_NAME} | cut -d':' -f1`
-CASE2_NAME=`echo ${CASE_NAME} | cut -d':' -f2` 
+CASE2_NAME=`echo ${CASE_NAME} | cut -d':' -f2`
 
 # Set input SCM forcing
 SCM_IN=${SCM_IN:-$RUNDIR/scm_in.nc}
 if [ "${USE_FORCING_DIR}" ] ; then
-  SCM_IN=${FORCINGDIR}/${CASE1_NAME}/${SCM_IN} 
+  SCM_IN=${FORCINGDIR}/${CASE1_NAME}/${SCM_IN}
 fi
 
 TIMESTEP=${TIMESTEPOPT:-900}
 DURATION=${DURATION:-'h72'}
 EXPT_NAME=${EXPT_NAME:-ref}
-      echo 0 $NAMELIST ${CASE2_NAME} 
+      [ $VERBOSE ] && echo 0 $NAMELIST ${CASE2_NAME}
 
 if [ ! ${NAMELIST} ] ; then
-  if [ ${CASE2_NAME} ] ; then 
+  if [ ${CASE2_NAME} ] ; then
     NAMELIST=$RUNDIR/namelist.${CASE2_NAME}
-      echo 1 $NAMELIST
+      [ $VERBOSE ] && echo 1 $NAMELIST
     if [ ! -f "${NAMELIST}" ] ; then
       NAMELIST=${NAMELISTDIR}/${CASE1_NAME}/namelist.${CASE2_NAME}
-      echo 2 $NAMELIST
+      [ $VERBOSE ] && echo 2 $NAMELIST
     fi
   else
     NAMELIST=$RUNDIR/namelist
   fi
-      echo 3 $NAMELIST ${CASE2_NAME} 
+      [ $VERBOSE ] && echo 3 $NAMELIST ${CASE2_NAME}
 fi
 
 SCMOUT_NAME=
@@ -208,10 +208,19 @@ cat vtable >> ${NAMELISTFILE}
 # Change number of vertical levels in namelist file
 # and timestep and duration of run
 rm -f fort.4
-sed -i "s/TSTEP.*/TSTEP=${TIMESTEP},/" ${NAMELISTFILE}
-sed -i "s/CSTOP.*/CSTOP='${DURATION}',/" ${NAMELISTFILE}
-sed -i "s/NFLEVG.*/NFLEVG=${NFLEVG},/" ${NAMELISTFILE}
-sed -i "s/NCEXTR.*/NCEXTR=${NFLEVG},/" ${NAMELISTFILE}
+
+# macOS (Darwin) based on FreeBSD, sed expects arg after -i option
+SYS=$(uname -s)
+if [ "${SYS}" = "Darwin" ]; then
+   I_OPT='-i.old'
+else
+   I_OPT='-i'
+fi
+
+sed ${I_OPT} "s/TSTEP.*/TSTEP=${TIMESTEP},/" ${NAMELISTFILE}
+sed ${I_OPT} "s/CSTOP.*/CSTOP='${DURATION}',/" ${NAMELISTFILE}
+sed ${I_OPT} "s/NFLEVG.*/NFLEVG=${NFLEVG},/" ${NAMELISTFILE}
+sed ${I_OPT} "s/NCEXTR.*/NCEXTR=${NFLEVG},/" ${NAMELISTFILE}
 mv ${NAMELISTFILE} fort.4
 cat ${VERSIONDIR}/scm-ancillary/namelist_extra >> fort.4
 
@@ -227,10 +236,5 @@ rm -f $IFSDATALIST
 
 # Change fort. output files to meaningful filenames
 mv fort.4 ${NAMELISTFILE}_input
-
-if [ $? -ne 0 ]; then
-   echo Executable failed.
-   exit 1
-fi
 
 exit

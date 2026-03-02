@@ -5,7 +5,7 @@
 #   Run script for OpenIFS 48R1
 #
 #
-#   This script should be either called interactively or 
+#   This script should be either called interactively or
 #   it can used in a batch job.
 #
 #   Use this in the experiment directory.
@@ -153,7 +153,7 @@ EXP_CFG="exp-config.h"         # experiment configuration file name
 
 # Environment variables
 export PATH=$PATH:${OIFS_BLD_PARENT}/bin
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${OIFS_BLD_PARENT}/ifs_dp
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}${OIFS_BLD_PARENT}/ifs_dp
 
 # This allows later to load the environment used during the build
 export BUILD_ENV=${OIFS_BLD_PARENT}/env.sh
@@ -217,7 +217,7 @@ parse_commandline "$@"
 
 #  Check mandatory variables are set
 test -z "${OIFS_HOME}"          &&  die "[ERROR] \$OIFS_HOME variable is not set."
-test -z "${OIFS_BLD_PARENT}".   &&  die "[ERROR] \$OIFS_BLD_PARENT variable is not set. Please check oifs-config.edit_me.sh"
+test -z "${OIFS_BLD_PARENT}"    &&  die "[ERROR] \$OIFS_BLD_PARENT variable is not set. Please check oifs-config.edit_me.sh"
 test -z "${OIFS_CYCLE}"         &&  die "[ERROR] \$OIFS_CYCLE variable is not set."
 test -z "${OIFS_CLIMATE}"       &&  die "[ERROR] \$OIFS_CLIMATE variable is not set."
 test -z "${OIFS_EXPID}"         &&  die "[ERROR] Experiment ID not set."

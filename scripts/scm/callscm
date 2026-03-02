@@ -1,12 +1,13 @@
-#===============================================================================
+#!/usr/bin/env bash
+##===============================================================================
 # Script to call IFS SCM (run.scm)                  (Richard Forbes, March 2020)
 # to efficiently loop over executables, cases and timesteps
 #
-# To run the SCM: 
+# To run the SCM:
 #
 # Default with no arguments:
-#  run.scm 
-#  will assume expt_name="ref", namelist="namelist", scm_in="scm_in.nc" 
+#  run.scm
+#  will assume expt_name="ref", namelist="namelist", scm_in="scm_in.nc"
 #  (the latter two must be in the current scm-run directory)
 #
 # With options:
@@ -44,10 +45,10 @@ usage_info()
   echo "        -x <expt_name>"
   echo "where :"
   echo "-h is help which returns basic usage options and exits"
-  echo "-c case_name or list of case_names (space delimited) of the case study" 
+  echo "-c case_name or list of case_names (space delimited) of the case study"
   echo "   used for namelist and output directory. Default list is"
   echo "   \"DYCOMS BOMEX TWPICE\" "
-  echo "-t timestep or list of timesteps in seconds. The default is 450s. An" 
+  echo "-t timestep or list of timesteps in seconds. The default is 450s. An"
   echo "   example of a list is \"1800 900 300\" "
   echo "-x expt_name shortname to identify experiment. Default is ref-oifs-scm"
   echo "----------------------------------------------------------------"
@@ -56,7 +57,7 @@ usage_info()
 #-------------------------------------------------------------------------------
 # Check for the SCM_LOGFILE and remove if it exists
 #-------------------------------------------------------------------------------
-if [ -e "${SCM_LOGFILE-}" ]; then 
+if [ -e "${SCM_LOGFILE-}" ]; then
   rm "${SCM_LOGFILE}" # remove logfile so not adding to old logs
 fi
 
@@ -73,7 +74,7 @@ PRINT_HELP=0
 EXPT_NAME='ref-oifs-scm'
 
 #-------------------------------------------------------------------------------
-# Set default CASE_LIST and TIMESTEP_LIST, which can be overwritten if user 
+# Set default CASE_LIST and TIMESTEP_LIST, which can be overwritten if user
 # provides optional arguments, when executing callscm
 # Both lists can be a single value or space-separated list to loop over
 #-------------------------------------------------------------------------------
@@ -95,7 +96,7 @@ fi
 # Check for user input to define case and/or timestep
 #-------------------------------------------------------------------------------
 while getopts hc:t:x: OPTION ; do
-  case "${OPTION}" in 
+  case "${OPTION}" in
     h) PRINT_HELP=1 ;;
     c) CASE_LIST="${OPTARG}" ;;
     t) TIMESTEP_LIST="${OPTARG}" ;;
@@ -121,16 +122,16 @@ log_echo "[INFO]: TIMESTEP= $TIMESTEP_LIST "
 #  SCM_IN: netcdf input file with initial profile and forcing
 #  DURATION: Number of hours to run the simulation
 #  There are also various plot attributes that can be set here
-#  Other options for run.scm are available - see the run.scm script header 
+#  Other options for run.scm are available - see the run.scm script header
 #-------------------------------------------------------------------------
 for CASE in ${CASE_LIST}
 do
- 
+
   #-------------------------------------
   # DYCOMS - stratocumulus
   #-------------------------------------
   if [ $CASE = 'DYCOMS' ] ; then
-    SCM_IN=$CASESDIR/scm_in.DYCOMS_137.nc
+    SCM_IN=scm_in.DYCOMS_137.nc
     DURATION=h48 # hours
 
     for TIMESTEP in ${TIMESTEP_LIST}
@@ -166,6 +167,6 @@ do
   fi
 
 done # loop over SCM cases
- 
+
 
 exit

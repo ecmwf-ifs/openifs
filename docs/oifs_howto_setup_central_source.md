@@ -4,11 +4,13 @@
 
 With the release of OpenIFS 48r1, the build system for OpenIFS moved from [Flexible Configuration Management (FCM) system](https://metomi.github.io/fcm/doc/user_guide/introduction.html) to [ecbuild](https://github.com/ecmwf/ecbuild) system. This change in build system, along with some code changes[^1], enables much closer alignment of OpenIFS with IFS and, importantly the ability to run and develop OpenIFS within the IFS framework. [ecbuild](https://github.com/ecmwf/ecbuild) is CMake-based build system that consists of collection of CMake macros and functions[^2], the "ease the managing of software build systems".
 
-ecbuild, just like CMake, uses out-of-source builds. In the context of OpenIFS (and IFS), the build is based on a defined software bundle for a given cycle, in which versions of the seperate required software, e.g. eccodes, openifs-source, eckit, are defined. The bonus of the bundle system, is that it is ensures that a user is building consistent libraries for a given cycle, which significantly simplifies the initial set-up of OpenIFS on a user system. The downside of the bundle build is that each new build will, by design, clone the repositories or link to local sources, mainly IFS/OpenIFS source,  of the defined bundle software. The cloning of repositories creates the `source` directory and is part of the `openifs-test` create step. The software packages in `source` will be built in the `build` directory. Both `source` and `build` are created by `ecbuild`, if they are not present.
+ecbuild, just like CMake, uses out-of-source builds. In the context of OpenIFS (and IFS), the build is based on a defined software bundle for a given cycle, in which versions of the separate required software, e.g. eccodes, openifs-source, eckit, are defined. The bonus of the bundle system, is that it is ensures that a user is building consistent libraries for a given cycle, which significantly simplifies the initial set-up of OpenIFS on a user system. The downside of the bundle build is that each new build will, by design, clone the repositories or link to local sources, mainly IFS/OpenIFS source,  of the defined bundle software. The cloning of repositories creates the `source` directory and is part of the `openifs-test` create step. The software packages in `source` will be built in the `build` directory. Both `source` and `build` are created by `ecbuild`, if they are not present.
 
-The process of cloning to `source` and building in `build` results in a lot of files (\<50000) for each IFS branch or OpenIFS package that is built. This can cause problems for systems that have low file quotas. This how-to presents details details about the standard build and then some extra build option to reduce the number of files per build.
+The process of cloning to `source` and building in `build` results in a lot of files (\<50000) for each IFS branch or OpenIFS package that is built. This can cause problems for systems that have low file quotas. This how-to presents details about the standard build and then some extra build options to reduce the number of files per build.
 
 ## Develop branch
+
+<!-- # TODO: git.ecmwf.int references need fixing -->
 
 The functionality described below can be found in the [OpenIFS-48r1 develop branch](https://git.ecmwf.int/projects/OIFS/repos/openifs-48r1/browse?at=refs%2Fheads%2Fdevelop). This branch is the latest tagged release of OpenIFS-48r1, with the merge of [Pull-Request for OIFS-605](https://git.ecmwf.int/projects/OIFS/repos/openifs-48r1/commits/f594a0c8269b24c4565869d8f1f7a3a767402dc7#scripts%2Fbuild_test%2Fopenifs-test.sh).
 
@@ -18,7 +20,7 @@ Since the OpenIFS 48r1, the build is controlled using the [`openifs-test.sh`](ht
 
 Details about how to perform a standard build with `openifs-test.sh` can be found in [OpenIFS 48r1 User Guide - 3. Build OpenIFS](https://confluence.ecmwf.int/display/OIFS/Getting+started#Gettingstarted-BuildOpenIFS).
 
-In addition to these instructions, `openifs-test.sh` has recently been expanded to include an install step, using `-i` option, i.e., 
+In addition to these instructions, `openifs-test.sh` has recently been expanded to include an install step, using `-i` option, i.e.,
 
 `$OIFS_TEST/openifs-test.sh -cbti`
 
@@ -33,18 +35,18 @@ The standard build retains (and uses) the source, build and more recently, insta
 
 ## Setup a central location for non-OpenIFS sources
 
-An alternative, reduced file build option is to create a central location for the bundled software packages that most users will never change. For example, with OpenIFS 48r1 these packages are  `ecbuild`, `eccodes`, `multio`, `fckit`, `eckit`, `metkit`, `fcb5`, `atlas` and `fcm`. A central source location can be set-up running
+An alternative, reduced file build option is to create a central location for the bundled software packages that most users will never change. For example, with OpenIFS 48r1 these packages are  `ecbuild`, `eccodes`, `multio`, `fckit`, `eckit`, `metkit`, `fdb5`, `atlas` and `fcm`. A central source location can be set-up running
 
 - [openifs-48r1/scripts/build_test/setup_central_source.sh](https://git.ecmwf.int/projects/OIFS/repos/openifs-48r1/browse/scripts/build_test/setup_central_source.sh?at=refs%2Fheads%2Ffeature%2FOIFS-605-implement-install-script)
   - At the time of writing this script is on a feature branch, awaiting merge.
 
 To use `setup_central_source.sh` do the following:
 
-- Set up the OpenIFS enviroment with `source /path/to/<openifs_package_dir>/oifs-config.edit_me.sh`, e.g. `source ~/openifs-48r1/oifs-config.edit_me.sh`
+- Set up the OpenIFS environment with `source /path/to/<openifs_package_dir>/oifs-config.edit_me.sh`, e.g. `source ~/openifs-48r1/oifs-config.edit_me.sh`
   - As well as the normal changes to oifs-config.edit_me.sh, it is important to set the following
-    - `OIFS_CENTRAL_SRC` - this is the path for the top-level central location, default is `$HOME/openifs-bundle-src`. This may need to be changed depending on your system. 
+    - `OIFS_CENTRAL_SRC` - this is the path for the top-level central location, default is `$HOME/openifs-bundle-src`. This may need to be changed depending on your system.
     - `OIFS_CYCLE` - A directory names OIFS_CYCLE will be created in OIFS_CENTRAL_SRC, e.g., for openifs-48r1, OIFS_CYCLE is 48r1, so by default the directory for the central location will be `$HOME/openifs-bundle-src/48r1`
-- Execute `setup_central_source.sh` with 
+- Execute `setup_central_source.sh` with
   - `./scripts/build_test/setup_central_source.sh` or `$OIFS_TEST/setup_central_source.sh`
   > Note: This script will download the non-OpenIFS sources to `$OIFS_CENTRAL_SRC/$CYCLE`.
 
@@ -59,10 +61,10 @@ Once complete, the central source will be installed and the build of OpenIFS can
 - Execute `$OIFS_TEST/openifs-test.sh -c`
   - This will create the standard `$OIFS_HOME/source` directory.
 - Once `$OIFS_TEST/openifs-test.sh -c` is complete, all the directories in `$OIFS_HOME/source` that are not symbolic links are copied to ``$OIFS_CENTRAL_SRC/$OIFS_CYCLE``
-  - At 48r1, the packages copied are  `ecbuild`, `eccodes`, `multio`, `fckit`, `eckit`, `metkit`, `fcb5`, `atlas` and `fcm`
+  - At 48r1, the packages copied are  `ecbuild`, `eccodes`, `multio`, `fckit`, `eckit`, `metkit`, `fdb5`, `atlas` and `fcm`
   - `setup_central_source.sh` checks that the directories copied are then same as a saved list. If not, then a warning will be logged. It is worth paying attention to the log output, particularly when changing the cycle.
-- Finally, `$OIFS_HOME/source` is removed. 
-  
+- Finally, `$OIFS_HOME/source` is removed.
+
 </details>
 </br>
 
@@ -72,7 +74,7 @@ To Build OpenIFS using the central location for the non-OpenIFS sources, first u
 
 `$OIFS_TEST/openifs-test.sh -c -u`
 
-where `-u` is a new argument that, rather than downloading/cloning the non-OpenIFS sources, signals the openifs-test to create (`-c`) the source directory using symbolic links that point to the central location for the non-OpenIFS sources, i.e., the `-u` invokes the following function,  
+where `-u` is a new argument that, rather than downloading/cloning the non-OpenIFS sources, signals the openifs-test to create (`-c`) the source directory using symbolic links that point to the central location for the non-OpenIFS sources, i.e., the `-u` invokes the following function,
 
 ``` bash
 set_ifs_bundle_dir () {
@@ -106,7 +108,7 @@ Once created then execute the normal OpenIFS build command:
 
 Option `-i` is not always needed but has to be used if there is an intention to reduce the file count by removing the `build` directory following a successful install.
 
-Once an install directory has been successfully produced using `-i`, then the `build` directory can be removed from a user directory, which reduces the the file count from ~26000 to ~300.
+Once an install directory has been successfully produced using `-i`, then the `build` directory can be removed from a user directory, which reduces the file count from ~26000 to ~300.
 
 > Note: Once the build directory has been removed, incremental builds are no longer an option, so any rebuild has to be a full build, which will increase the file count
 

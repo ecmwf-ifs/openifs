@@ -1,7 +1,7 @@
 # (C) Copyright 2011- ECMWF.
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-# 
+#
 # In applying this licence, ECMWF does not waive the privileges and immunities
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction
@@ -33,10 +33,10 @@ export OIFS_CLIMATE="climate.v020"
 #---in $HOME. Either these can be changed by the user------------
 export OIFS_HOME="${HOME}/openifs"
 
-#---Central location for non-openifs bundle source code, which 
-#---is required for the build and run. This only needs to be set 
+#---Central location for non-openifs bundle source code, which
+#---is required for the build and run. This only needs to be set
 #---if not using the standard download of source to OIFS_HOME.
-export OIFS_CENTRAL_SRC="${HOME}/openifs-bundle-src" 
+export OIFS_CENTRAL_SRC="${HOME}/openifs-bundle-src"
 
 #---It is recommended that the openifs-expt and oifs_data dir
 #---exist in a location designed for permanent storage-----------
@@ -48,20 +48,20 @@ export OIFS_DATA_DIR="${OIFS_HOME}/openifs-data"
 #---so set to an empty string OIFS_ARCH=""
 export OIFS_ARCH="./arch/${OIFS_HOST}/${OIFS_PLATFORM}"
 
-#---Set the path for the directory that contains bin and share, 
-#---both of which are produced by the OpenIFS build. As standard, 
+#---Set the path for the directory that contains bin and share,
+#---both of which are produced by the OpenIFS build. As standard,
 #---this will be build, but can be install if -i option is used
-#---in the build process. 
+#---in the build process.
 export OIFS_BLD_PARENT="${OIFS_HOME}/build"
 
 #---Path to the executable for 3d global model. This is the
 #---default path for the exe, produced by openifs-test.sh.
-#---DP means double precision. To run single precision change
-#---DP to SP
+#---SP means single precision. To run double precision change
+#---SP to DP
 export OIFS_EXEC="${OIFS_BLD_PARENT}/bin/ifsMASTER.SP"
 
 #---Default assumed paths, only change if you know what you are doing
-#---Path to the build script openifs-test.sh 
+#---Path to the build script openifs-test.sh
 export OIFS_TEST="${OIFS_HOME}/scripts/build_test"
 #---Path to log for openifs-test.sh  script
 export OIFS_LOGFILE="${OIFS_HOME}/openifs-test.log"
