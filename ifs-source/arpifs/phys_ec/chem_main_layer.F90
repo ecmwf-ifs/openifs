@@ -1,0 +1,282 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE CHEM_MAIN_LAYER(YDVAB,YDDIMV,YDSURF,&
+ ! Input quantities
+  & YDMODEL,KDIM, PAUX, STATE, PDIAG, SURFL, FLUX, PGFL, PTENGFL,&
+ ! Input/Output quantities
+  & GEMSL, PSURF, PCHEM2AER)
+
+!**** *CHEM_MAIN_LAYER* - Layer routine calling the chemistry
+
+!     PURPOSE.
+!     --------
+
+!**   INTERFACE.
+!     ----------
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!     ==== INPUTS ===
+! KDIM     : Derived variable for dimensions
+! PAUX     : Derived variables for general auxiliary quantities
+! state    : Derived variable for updated model state
+! PDIAG    : Derived variable for diagnostic quantities
+! SURFL    : Derived variable for local surface quantities 
+! FLUX     : Derived variable for fluxes
+! PGFL     : GFL arrays
+! PTENGFL  : GFL arrays tendency
+
+!     ==== Input/output ====
+! GEMSL    : Derived variables for local GEMS quantities
+! PSURF    : Derived variables for general surface quantities
+! PCHEM2AER  (KLON,KLEV,6)     : TENDENCY OF Selected TRACERS because specific
+!            reactions (kg/kg s-1)
+
+
+
+!        --------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS
+
+!     AUTHOR.
+!     -------
+!      Original : 10-Apr-2013 F. VANA (c) ECMWF
+
+!     MODIFICATIONS.
+!     --------------
+!      V. Huijnen August 2022: Add support for CHEM2GHG coupling    
+
+!-----------------------------------------------------------------------
+
+USE TYPE_MODEL         , ONLY : MODEL
+USE YOMVERT            , ONLY : TVAB
+USE YOMDIMV            , ONLY : TDIMV
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMPHYDER , ONLY : DIMENSION_TYPE, STATE_TYPE, AUX_TYPE, SURF_AND_MORE_TYPE,&
+   & FLUX_TYPE, GEMS_LOCAL_TYPE, SURF_AND_MORE_LOCAL_TYPE, AUX_DIAG_TYPE
+USE YOECLDP   , ONLY : NCLDQR, NCLDQS, NCLDQI, NCLDQL
+USE YOMCHEM   , ONLY : IEXTR_WD, IEXTR_DD, IEXTR_EM
+USE TM5_CHEM_MODULE    , ONLY : NCHEM2AER, NCHEM2GHG
+
+!-----------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(TVAB)                     , INTENT(IN)    :: YDVAB
+TYPE(TDIMV)                    , INTENT(IN)    :: YDDIMV
+TYPE(TSURF)                    , INTENT(INOUT) :: YDSURF
+TYPE(MODEL)                    , INTENT(INOUT) :: YDMODEL
+TYPE (DIMENSION_TYPE)          , INTENT(IN)    :: KDIM
+TYPE (AUX_TYPE)                , INTENT(IN)    :: PAUX
+TYPE (STATE_TYPE)              , INTENT(IN)    :: STATE
+TYPE (AUX_DIAG_TYPE)           , INTENT(IN)    :: PDIAG
+TYPE (SURF_AND_MORE_LOCAL_TYPE), INTENT(IN)    :: SURFL
+TYPE (FLUX_TYPE)               , INTENT(IN)    :: FLUX
+REAL(KIND=JPRB)                , INTENT(INOUT) :: PGFL(KDIM%KLON,KDIM%KLEV,YDMODEL%YRML_GCONF%YGFL%NDIM)
+REAL(KIND=JPRB)                , INTENT(IN)    :: PTENGFL(KDIM%KLON,KDIM%KLEV,YDMODEL%YRML_GCONF%YGFL%NDIM1)
+TYPE (SURF_AND_MORE_TYPE)      , INTENT(INOUT) :: PSURF
+TYPE (GEMS_LOCAL_TYPE)         , INTENT(INOUT) :: GEMSL
+REAL(KIND=JPRB)                , INTENT(OUT)   :: PCHEM2AER(KDIM%KLON,KDIM%KLEV,NCHEM2AER)
+!-----------------------------------------------------------------------
+INTEGER(KIND=JPIM)           ::  JL, JT, JK,  IDDFLXA, IWDFLXA, IDDVEL, IKCH4CHEM, IKCO2CHEM, JEXTR_DV
+REAL(KIND=JPRB) :: ZWND(KDIM%KLON)
+REAL(KIND=JPRB) :: ZPTROPO
+REAL(KIND=JPRB) :: ZCHEM2GHG(KDIM%KLON,KDIM%KLEV,NCHEM2GHG)
+INTEGER(KIND=JPIM) :: IKLEVTROP(KDIM%KLON)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!-----------------------------------------------------------------------
+
+#include "chem_main.intfb.h"
+#include "aer2massdia.intfb.h"
+#include "ghg_main.intfb.h"
+!     ------------------------------------------------------------------
+
+
+IF (LHOOK) CALL DR_HOOK('CHEM_MAIN_LAYER',0,ZHOOK_HANDLE)
+ASSOCIATE(YGFL=>YDMODEL%YRML_GCONF%YGFL, YDPHY2=>YDMODEL%YRML_PHY_MF%YRPHY2, &
+ & YDCHEM=>YDMODEL%YRML_CHEM%YRCHEM, YDCOMPO=>YDMODEL%YRML_CHEM%YRCOMPO)
+ASSOCIATE(IEXTR_FREE=>YDCHEM%IEXTR_FREE, LCHEM_DIA=>YDCOMPO%LCHEM_DIA, &
+ & AERO_SCHEME=>YDCOMPO%AERO_SCHEME, &
+ & KGHG_CHEMTEND_CH4=>YDCOMPO%KGHG_CHEMTEND_CH4, &
+ & NACTAERO=>YGFL%NACTAERO, NDIM=>YGFL%NDIM, NDIM1=>YGFL%NDIM1, &
+ & NCHEM=>YGFL%NCHEM, NGHG=>YGFL%NGHG, NAERO=>YGFL%NAERO, YEXT=>YGFL%YEXT, NGFL_EXT=>YGFL%NGFL_EXT, &
+ & YCHEM=>YGFL%YCHEM, YSD_VF=>YDSURF%YSD_VF,YSD_VD=>YDSURF%YSD_VD,TSPHY=>YDPHY2%TSPHY)
+
+!     ------------------------------------------------------------------
+
+!*         1.     UNROLL THE DERIVED STRUCTURES AND CALL CHEM_MAIN
+
+IF (NCHEM > 0 ) THEN  
+  DO JL=KDIM%KIDIA,KDIM%KFDIA
+    ZWND(JL)=SQRT( STATE%U(JL,KDIM%KLEV)*STATE%U(JL,KDIM%KLEV)&
+     &           + STATE%V(JL,KDIM%KLEV)*STATE%V(JL,KDIM%KLEV) )
+  ENDDO 
+
+  CALL CHEM_MAIN &
+    &( YDVAB, YDDIMV, YDMODEL, KDIM%KIDIA , KDIM%KFDIA , KDIM%KLON , KDIM%KLEV, KDIM%KVCLIS, GEMSL%ITRAC, GEMSL%ICHEM,&
+    &  TSPHY , KDIM%KGPLAT,  KDIM%KFLDX  , KDIM%KFLDX2 , KDIM%KLEVX,&
+    &  PSURF%PSD_XA , PSURF%PSD_X2,  PAUX%PDELP, PAUX%PAPRS, PAUX%PAPRSF, PAUX%PGEOMH, PAUX%PGEOM1, STATE%Q, STATE%T,&
+    &  STATE%CLD(:,:,NCLDQL), STATE%CLD(:,:,NCLDQI), STATE%CLD(:,:,NCLDQR), STATE%CLD(:,:,NCLDQS),  STATE%A, PDIAG%PQSAT, & 
+    &  FLUX%PFPLCL, FLUX%PFPLCN, FLUX%PFPLSL, FLUX%PFPLSN, PDIAG%PCOVPTOT,& 
+    &  SURFL%ZALBD(:,2), ZWND, PSURF%PSD_VF(:,YSD_VF%YLSM%MP),& 
+    &  PAUX%PMU0T, PAUX%PGELAT, PAUX%PGELAM, PAUX%PGEMU, GEMSL%ZKOZO, GEMSL%ZCFLX, GEMSL%ZCFLXO, GEMSL%ZCHEMDV, PGFL,&
+    &  GEMSL%ZAEROP(:,:,1:NACTAERO), &
+    &  GEMSL%ZWETDIAM, GEMSL%ZWETVOL, GEMSL%ZND, GEMSL%ZAERAOTLEV, GEMSL%ZAERAAOTLEV, GEMSL%ZAERASYLEV, &
+    &  PTENGFL, GEMSL%ZCEN, GEMSL%ZTENC, PSURF%PSD_VD(:,YSD_VD%YINEE%MP), PCHEM2AER,ZCHEM2GHG, IKLEVTROP )
+
+! copy total flux in surface field YSD_VF%YCHEMFLXO for output 
+! (instanstenous value - improve to hourly means in fullpos later
+  JT=0
+  DO JK=1,NCHEM 
+    IF (YCHEM(JK)%IGRBFLXO > 0 ) THEN 
+      JT=JT+1
+      PSURF%PSD_VF(KDIM%KIDIA:KDIM%KFDIA,YSD_VF%YCHEMFLXO(JT)%MP) = GEMSL%ZCFLXO(KDIM%KIDIA:KDIM%KFDIA,GEMSL%ICHEM(JK)) 
+    ENDIF 
+  ENDDO 
+! copy accumulated wet deposition flux, LCHEM_DIA has to be true
+  JT=0
+  DO JK=1,NCHEM 
+    IF (YCHEM(JK)%IGRBWDFLX > 0 .AND. LCHEM_DIA ) THEN 
+      JT=JT+1
+      PSURF%PSD_VF(KDIM%KIDIA:KDIM%KFDIA,YSD_VF%YCHEMWDFLX(JT)%MP) = PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,JK,IEXTR_WD)  
+    ENDIF 
+  ENDDO 
+! copy accumulated dry deposition flux, LCHEM_DIA has to be true
+  JT=0
+  DO JK=1,NCHEM 
+    IF (YCHEM(JK)%IGRBDDFLX > 0 .AND. LCHEM_DIA ) THEN 
+      JT=JT+1
+      PSURF%PSD_VF(KDIM%KIDIA:KDIM%KFDIA,YSD_VF%YCHEMDDFLX(JT)%MP) = PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,JK,IEXTR_DD)  
+    ENDIF 
+  ENDDO 
+ELSE
+  IF (LCHEM_DIA) THEN
+! if not calculated in chem_main - use at least static tropopause
+    DO JL=KDIM%KIDIA,KDIM%KFDIA
+      ZPTROPO=24000_JPRB - 14800_JPRB * (COS(PAUX%PGELAT(JL)))**4_JPIM
+      PSURF%PSD_XA(JL,IEXTR_FREE(1,6),IEXTR_EM) = ZPTROPO
+    ENDDO
+  ENDIF
+ENDIF
+
+IF ( NGHG > 0 )  THEN
+
+   CALL GHG_MAIN&
+  &( YDMODEL%YRML_CHEM,YGFL, &
+  & KDIM%KIDIA , KDIM%KFDIA , KDIM%KLON , KDIM%KLEV, KDIM%KFLDX, KDIM%KLEVX, GEMSL%ITRAC, TSPHY, PAUX%PAPRS, GEMSL%ZLRCH4,&
+  &  GEMSL%ZCFLX,  PSURF%PSD_VD(:,YSD_VD%YINEE%MP),  PAUX%PGELAT, PGFL, PTENGFL, PSURF%PSD_XA,  GEMSL%ZCEN, GEMSL%ZTENC )
+ENDIF 
+
+IF ( LCHEM_DIA .AND. NACTAERO > 0 ) THEN
+   CALL AER2MASSDIA&
+  &( YGFL, KDIM%KIDIA , KDIM%KFDIA , KDIM%KLON , KDIM%KLEV, KDIM%KVCLIS, GEMSL%ITRAC, GEMSL%ICHEM, GEMSL%IAERO,&
+  &  TSPHY ,  KDIM%KFLDX  , KDIM%KFLDX2 , KDIM%KLEVX,&
+  &  PSURF%PSD_XA ,GEMSL%ZAERDDP, GEMSL%ZAERSDM, GEMSL%ZAERSRC)
+ENDIF 
+
+IF ( LCHEM_DIA ) THEN
+  IDDFLXA=-999_JPIM
+  IWDFLXA=-999_JPIM
+  IDDVEL=-999_JPIM
+
+  DO JT=1,NGFL_EXT
+    IF ( YEXT(JT)%CNAME == 'DDVEL')    IDDVEL   = JT
+    IF ( YEXT(JT)%CNAME == 'DDFLXA')   IDDFLXA  = JT
+    IF ( YEXT(JT)%CNAME == 'WDFLXA')   IWDFLXA  = JT
+  ENDDO
+! cp PEXTR in YEXTR fields for output
+  IF ( IWDFLXA > 0  ) THEN
+     JT=0_JPIM
+     DO JK=1,NCHEM
+       IF ( YCHEM(JK)%HENRYA <=  0.0_JPRB ) CYCLE
+       JT=JT+1_JPIM
+       IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IWDFLXA)%MP9_PH) = PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,JK,IEXTR_WD)
+     ENDDO
+     DO JK=NCHEM+1,NCHEM+NACTAERO
+       JT=JT+1_JPIM
+         IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IWDFLXA)%MP9_PH) = PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,JK,IEXTR_WD)
+     ENDDO
+  ENDIF
+  IF ( IDDFLXA > 0  ) THEN
+    JT=0_JPIM
+    DO JK=1,NCHEM
+      IF ( YCHEM(JK)%IGRIBDV <=  0 ) CYCLE
+      JT=JT+1_JPIM
+       IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IDDFLXA)%MP9_PH) = PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,JK,IEXTR_DD)
+    ENDDO
+    DO JK=NCHEM+1,NCHEM+NACTAERO
+      JT=JT+1_JPIM
+        IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IDDFLXA)%MP9_PH) = PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,JK,IEXTR_DD)
+    ENDDO
+! write ligthning source 2d
+    JT=JT+1_JPIM
+    IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IDDFLXA)%MP9_PH) = &
+   &   PSURF%PSD_XA(KDIM%KIDIA:KDIM%KFDIA,IEXTR_FREE(1,2),IEXTR_EM)
+  ENDIF
+ENDIF
+
+IDDVEL=-999_JPIM
+
+DO JT=1,NGFL_EXT
+  IF ( YEXT(JT)%CNAME == 'DDVEL')    IDDVEL   = JT
+ENDDO
+IF ( IDDVEL > 0  ) THEN
+  JT=0_JPIM
+  DO JK=1,NCHEM
+    JEXTR_DV=NGHG+NAERO+JK
+    IF ( YCHEM(JK)%IGRIBDV <=  0 ) CYCLE
+    JT=JT+1_JPIM
+    IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IDDVEL)%MP9_PH) = GEMSL%ZDDVLC(KDIM%KIDIA:KDIM%KFDIA,JEXTR_DV)
+  ENDDO
+  DO JK=1,NACTAERO
+    JEXTR_DV=NGHG+JK
+    JT=JT+1_JPIM
+    IF (JT <= KDIM%KLEV) PGFL(KDIM%KIDIA:KDIM%KFDIA,JT,YEXT(IDDVEL)%MP9_PH) = GEMSL%ZDDVLC(KDIM%KIDIA:KDIM%KFDIA,JEXTR_DV)
+  ENDDO
+ENDIF 
+
+IF (KGHG_CHEMTEND_CH4 == 1 ) THEN
+  ! output CH4 loss rate, as created from chemistry module
+  IKCH4CHEM=-999_JPIM
+  DO JT=1,NGFL_EXT
+    IF ( YEXT(JT)%CNAME == 'KCH4CHEM') IKCH4CHEM  = JT
+  ENDDO
+  IF ( IKCH4CHEM > 0  ) THEN
+    PGFL(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV,YEXT(IKCH4CHEM)%MP9_PH) = ZCHEM2GHG(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV,1)
+  ENDIF
+
+  ! output CO2 production term from CO oxidation, as created from chemistry module
+  IKCO2CHEM=-999_JPIM
+  DO JT=1,NGFL_EXT
+    IF ( YEXT(JT)%CNAME == 'KCO2CHEM') IKCO2CHEM  = JT
+  ENDDO
+
+  IF ( IKCO2CHEM > 0  ) THEN
+    PGFL(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV,YEXT(IKCO2CHEM)%MP9_PH) = ZCHEM2GHG(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV,2)
+  ENDIF
+ENDIF
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CHEM_MAIN_LAYER',1,ZHOOK_HANDLE)
+END SUBROUTINE CHEM_MAIN_LAYER

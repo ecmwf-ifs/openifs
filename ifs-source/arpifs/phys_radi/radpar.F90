@@ -1,0 +1,558 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE RADPAR &
+ & ( YDMODEL,KIDIA,  KFDIA,  KLON,   KLEVS, KLEVSN, KSTGLO,&
+ & KTDIA,  KLEV,   KSTART, KSTEP,&
+ !-----------------------------------------------------------------------
+ ! - INPUT .
+ & PAPRS,  PAPRSF, PT,     PQ  ,  PU    , PV,&
+ & PL,     PI,     PA,&
+ & PSNS,   PRSN,&
+ & PTL,    PWL,    PWSA,   PVERVEL,&
+ & PHLICE, PTLICE, PCLAKE,&
+ & PALBF,  &
+ & PALCOEFF, &
+ & PASN,   PEMISF, PLSM   ,&
+ & PMU0M,  PGEMU,  PGZ0MCL,&
+ & PTVL,   PCO2TYP, PTVH,   PCVL,   PCVH ,PCUR,&
+ & PLAILC, PLAIHC, PSOTY, PHSTD,  PCI,&
+! & PAEROI,&
+ ! - UPDATED
+ & PNTOP,  PNBAS,  PACPR,&
+ ! - OUTPUT .
+ & LDLAND, PALBD,  PALBP,  PCCNL,  PCCNO,&
+ & PNEB,   PQICE,  PQLI,   PQSAT,&
+ & PCCC,   PHCC,   PLCC,   PMCC,   PTCC,   PSPECTRALEMISS, PEMIT,&
+ & PGZ0M  &
+ & )
+! &,PAERO )  
+
+!**** *RADPAR * - CALL ECMWF PHYSICS (TO SUPPORT RADINT)
+
+!     PURPOSE.
+!     --------
+!     - CALL THE SUBROUTINES OF THE E.C.M.W.F. PHYSICS PACKAGE,
+!       THAT ARE NECESSARY TO SUPPORT THE CALL TO RADINT
+
+!     ******************************************************************
+!     ****** IDIOSYNCRASIES *** IDIOSYNCRASIES *** IDIOSYNCRASIES ******
+!     ******************************************************************
+!     ***  HEALTH WARNING:                                           ***
+!     ***  ===============                                           ***
+!     ***  NOTE THAT WITHIN THE E.C.M.W.F. PHYSICS HALF-LEVELS       ***
+!     ***  ARE INDEXED FROM 1 TO NFLEVG+1 WHILE THEY ARE BETWEEN     ***
+!     ***  0 AND NFLEVG IN THE REST OF THE MODEL. THE CHANGE IS TAKEN***
+!     ***  CARE OF IN THE CALL TO THE VARIOUS SUBROUTINES OF THE     ***
+!     ***  PHYSICS PACKAGE                                           ***
+!     ***                                                            ***
+!     ***    THIS IS SUPPOSED TO BE A "TEMPORARY" FEATURE TO BE      ***
+!     ***    STRAIGHTENED OUT IN THE "NEAR" FUTURE                   ***
+!     ******************************************************************
+!     ******************************************************************
+
+!**   Interface.
+!     ----------
+!        *CALL* *RADPAR*
+
+!-----------------------------------------------------------------------
+
+! -   INPUT ARGUMENTS.
+!     -------------------
+
+! - DIMENSIONS ETC.
+
+! KIDIA   : START OF HORIZONTAL LOOP  
+! KFDIA   : START OF HORIZONTAL LOOP  
+! KLON    : HORIZONTAL DIMENSION                  
+! KLEVS   : NUMBER OF LEVELS IN SOIL 
+! KLEVSN  : NUMBER OF LEVLES IN SNOW
+! KTDIA   : START OF THE VERTICAL LOOP IN THE PHYSICS
+!            (IF SOME LEVELS ARE SKIPPED AT THE TOP OF THE MODEL).
+! KLEV    : END OF VERTICAL LOOP AND VERTICAL DIMENSION
+! KSTART  : FIRST STEP OF MODEL
+! KSTEP   : CURRENT TIME STEP
+
+! - 2D (0:KLEV) .
+
+! PAPRS      : PRESSURE ON HALF-LEVELS.
+
+! - 2D (1:KLEV) .
+
+! PAPRSF     : PRESSURE ON FULL LEVELS.
+! PT         : TEMPERATURE.
+! PQ         : SPECIFIC HUMIDITY OF WATER VAPOUR.
+! PU         : ZONAL WIND
+! PV         : MERIDIONAL WIND
+! PL         : CLOUD WATER
+! PI         : CLOUD ICE WATER
+! PA         : CLOUD FRACTION
+! PVERVEL    : VERTICAL VELOCITY
+
+! - 1D (PROGNOSTIC QUANTITIES) .
+
+! PSNS       : MASS OF SNOW PER UNIT SURFACE
+! PRSN       : DENSITY OF SNOW
+! PWSA       : MULTI-LAYER SOIL WETMESS
+! PTL        : SKIN (BRIGHTNESS) TEMPERATURE
+! PWL        : INTERCEPTION RESERVOIR CONTENT
+! PHLICE     : LAKE ICE DEPTH
+! PTLICE     : LAKE ICE TEMPERATURE
+! PCLAKE     : LAKE COVER
+
+! - 1D (GEOGRAPHICAL DISTRIBUTION) .
+
+! PALBF      : BACKGROUND SURFACE SHORTWAVE ALBEDO (SNOW-FREE).
+! PALCOEFF   : MODIS albedo coefficients
+! PASN       : SNOW ALBEDO
+! PEMISF     : BACKGROUND SURFACE LONGWAVE EMISSIVITY (SNOW-FREE).
+! PLSM       : LAND/SEA MASK.
+! PMU0M      : LOCAL COSINE OF INSTANTANEOUS MEAN SOLAR ZENITH ANGLE.
+! PGEMU      : SINE OF LATITUDE
+! PGZ0MCL    : GRAVITY * ROUGHNESS LENGTH
+! PTVH       : HIGH VEGETATION DOMINANT TYPE
+! PTVL       : LOW VEGETATION DOMINANT TYPE
+! PCO2TYP    : TYPE OF PHOTOSYNTHETIC PATHWAY FOR LOW VEGETATION (C3/C4)
+! PCVH       : HIGH VEGETATION COVER
+! PCVL       : LOW VEGETATION COVER
+! PCUR       : URBAN COVER (PASSIVE)
+! PLAIL*        LOW VEGETATION LAI                           m2/m2
+! PLAIH*        HIGH VEGETATION LAI                          m2/m2
+! PSOTY      : SOIL TYPE
+! PHSTD      : STANDARD DEVIATION OF OROGRAPHY (*RG)
+! PCI        : SEA-ICE FRACTION
+
+!-----------------------------------------------------------------------
+
+! -   UPDATED ARGUMENTS.
+!     --------------------
+
+! - 2D (1:KLEV) .
+
+! PTENV      : DYNAMICAL TENDENCY OF V-COMP. OF WIND.
+! PNTOP      : CONVECTIVE CLOUD TOP INDEX (TO BE CONVERTED TO INTEGER)
+! PNBAS      : CONVECTIVE CLOUD BASE INDEX (TO BE CONVERTED TO INTEGER)
+! PACPR      : CONVECTIVE RAINFALL ACCUMULATED BETWEEN TWO
+!              (FULL) RADIATION TIME STEPS
+!-----------------------------------------------------------------------
+
+! -   OUTPUT ARGUMENTS.
+!     --------------------
+
+! - 1D (DIAGNOSTIC) .
+
+! PSPECTRALEMISS : MODEL SURFACE LONGWAVE SPECTRAL EMISSIVITY.
+! PEMIT      : MODEL SURFACE LONGWAVE EMISSIVITY.
+! PCCC       : CONVECTIVE CLOUD COVER
+! PLCC       : LOW CLOUD COVER
+! PMCC       : MEDIUM CLOUD COVER
+! PHCC       : HIGH CLOUD COVER
+! PTCC       : TOTAL CLOUD COVER
+
+! - 2D (1:KLEV) .
+
+! PNEB       : FRACTIONAL CLOUDINESS FOR RADIATION.
+! PQICE      : SPECIFIC HUMIDITY OF SOLID WATER FOR RADIATION.
+! PQLI       : SPECIFIC HUMIDITY OF LIQUID WATER FOR RADIATION.
+! PQSAT      : SPECIFIC HUMIDITY AT SATURATION.
+
+! - 1D (GEOGRAPHICAL DISTRIBUTION) .
+
+! PGZ0M      : GRAVITY * ROUGHNESS LENGTH
+
+! - 2D (DIAGNOSTIC) .
+
+! PALBD      : DIFFUSE ALBEDO IN THE NTSW SW INTERVALS
+! PALBP      : PARALLEL ALBEDO IN THE NTSW SW INTERVALS
+! PCCNL      : CCN CONCENTRATION OVER LAND
+! PCCNO      : CCN CONCENTRATION OVER OCEAN 
+
+!-----------------------------------------------------------------------
+
+!     Externals.  SURFRAD-
+!     ---------   SATUR  -
+!                 CLOUD  -
+!                 RADINT -
+
+!     Method. See documentaion.
+!     -------
+
+!     AUTHOR.
+!     -------
+!      ORIGINAL 94-12-5 G.MOZDZYNSKI (BASED ON CALLPAR)
+
+!     MODIFICATIONS.
+!     --------------
+!      01-10-15 JJMorcrette: CCNs
+!      03-05    M.Janiskova: call for stat.cloud scheme
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      P.Viterbo     24-05-2004   Change surface units
+!      JJMorcrette 20060625 MODIS albedo
+!      G. Balsamo  20070115 Soil type
+!      G. Balsamo  20080418 Lake tile
+!      S. Boussetta/G.Balsamo   May 2009   (Add variable LAI)
+!      L. Magnusson 28-09-2010 For NEMO-LIM
+!      K. Yessad (July 2014): Move some variables.
+!      G.Balsamo   June 2013   Add LAKE active
+!      E.Dutra/G.Arduini Jan 2018 Snow multi-layer
+!      R. Hogan   15 Jan 2019  6-component MODIS albedo
+!      R. Hogan   23 Jan 2019  Spectral longwave emissivity in NLWEMISS intervals
+!      F. Vana    11-Sep-2020 Prognostic cloud scheme + cleaning
+!-----------------------------------------------------------------------
+
+USE TYPE_MODEL , ONLY : MODEL
+USE PARKIND1   , ONLY : JPIM     ,JPRB, JPRD
+USE YOMHOOK    , ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMCST     , ONLY : RG       ,RLVTT    ,RLSTT    ,RTT  ,RDAY
+USE YOETHF     , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
+ &                      R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
+ &                      RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
+ &                      RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOMRIP0    , ONLY : NINDAT   ,NSSSSS
+
+!-----------------------------------------------------------------------
+
+IMPLICIT NONE
+
+#include "surfrad.h"
+#include "surfbc.h"
+
+#include "cldpp.intfb.h"
+#include "ccloud.intfb.h"
+#include "satur.intfb.h"
+#include "updcal.intfb.h"
+
+TYPE(MODEL)       ,INTENT(INOUT) :: YDMODEL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVS 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVSN
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTGLO 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTART 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTEP 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPRS(KLON,0:KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPRSF(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PT(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQ(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PV(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PL(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PI(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PA(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSNS(KLON,KLEVSN) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRSN(KLON,KLEVSN) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWSA(KLON,KLEVS) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVERVEL(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHLICE(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTLICE(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLAKE(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PALBF(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PALCOEFF(:,:) ! (KLON,NALBEDOCOEFFS)
+! ARDU test albedo 2D
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PASN(KLON,KLEVSN) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEMISF(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLSM(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMU0M(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEMU(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGZ0MCL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTVH(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTVL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCO2TYP(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVH(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVL(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCUR(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLAILC(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLAIHC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSOTY(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHSTD(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCI(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PNTOP(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PNBAS(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PACPR(KLON) 
+LOGICAL           ,INTENT(OUT)   :: LDLAND(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PALBD(KLON,YDMODEL%YRML_PHY_RAD%YRERAD%NTSW) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PALBP(KLON,YDMODEL%YRML_PHY_RAD%YRERAD%NTSW) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCCNL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCCNO(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PNEB(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQICE(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQLI(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQSAT(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCCC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PHCC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PLCC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PMCC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTCC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSPECTRALEMISS(KLON,YDMODEL%YRML_PHY_RAD%YRERAD%NLWEMISS) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PEMIT(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGZ0M(KLON) 
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: ITOPC(KLON), IBASC(KLON)
+INTEGER(KIND=JPIM) :: ITVH(KLON),ITVL(KLON),ISOTY(KLON),ICO2TYP(KLON)
+INTEGER(KIND=JPIM) :: ID0, IM0, IY0, IDINCR,ISEC,IDD,IMM,IYY,ILMON(12)
+
+LOGICAL :: LLSICE(KLON),LLNH(KLON)
+LOGICAL :: LLLAKE(KLON)
+LOGICAL :: LLOCN_KPP(KLON)
+
+REAL(KIND=JPRB) :: ZAZ0M(KLON),ZWLM1M(KLON)
+REAL(KIND=JPRB) :: ZHSTD(KLON),ZWLMX(KLON),ZALB(KLON),ZWND(KLON)
+REAL(KIND=JPRB) :: ZFRTI(KLON,YDMODEL%YRML_PHY_G%YRDPHY%NTILES),ZCVH(KLON),ZCVL(KLON),ZCUR(KLON)
+REAL(KIND=JPRB) :: ZALBTI(KLON,YDMODEL%YRML_PHY_G%YRDPHY%NTILES)
+
+!    Local arrays for variable LAI
+REAL(KIND=JPRB) :: ZLAIL(KLON),ZLAIH(KLON)
+
+
+!    Local arrays for new cloud scheme of the linearized model
+
+REAL(KIND=JPRB) :: ZPA(KLON,KLEV)
+REAL(KIND=JPRB) :: ZPL(KLON,KLEV)
+REAL(KIND=JPRB) :: ZPI(KLON,KLEV)
+
+! NEMO/LIM
+REAL(KIND=JPRB) :: ZALBICE(KLON)
+
+! CTESSEL: carbon model (Local for PASSIVE introduction)
+REAL(KIND=JPRB) :: ZLAILI(KLON)
+REAL(KIND=JPRB) :: ZLAIHI(KLON)
+
+INTEGER(KIND=JPIM) :: IFLAG, JK, JL, JSW
+
+LOGICAL :: LLCLDCOVER
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "icestatenemo.intfb.h"
+#include "fcttre.func.h"
+#include "fcttim.func.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('RADPAR',0,ZHOOK_HANDLE)
+ASSOCIATE(YDPHNC=>YDMODEL%YRML_PHY_SLIN%YRPHNC,YDMCC=>YDMODEL%YRML_AOC%YRMCC,YDRIP=>YDMODEL%YRML_GCONF%YRRIP, &
+ & YDDPHY=>YDMODEL%YRML_PHY_G%YRDPHY, &
+ & YDERAD=>YDMODEL%YRML_PHY_RAD%YRERAD,YDNCL=>YDMODEL%YRML_PHY_SLIN%YRNCL,YDEPHY=>YDMODEL%YRML_PHY_EC%YREPHY)
+ASSOCIATE(NTILES=>YDDPHY%NTILES, &
+ & LEDCLD=>YDEPHY%LEDCLD, LEPCLD=>YDEPHY%LEPCLD, LERADS=>YDEPHY%LERADS, &
+ & YSURF=>YDEPHY%YSURF, &
+ & NRADPFR=>YDERAD%NRADPFR, NSW=>YDERAD%NSW, NTSW=>YDERAD%NTSW, NLWEMISS=>YDMODEL%YRML_PHY_RAD%YRERAD%NLWEMISS,&
+ & RCCNLND=>YDERAD%RCCNLND, RCCNSEA=>YDERAD%RCCNSEA, &
+ & LNEMOLIMALB=>YDMCC%LNEMOLIMALB, &
+ & LNCLIN=>YDNCL%LNCLIN, &
+ & LENCLD2=>YDPHNC%LENCLD2, LEPCLD2=>YDPHNC%LEPCLD2, &
+ & RSTATI=>YDRIP%RSTATI)
+!     ------------------------------------------------------------------
+
+!*       1.1   FIRST TIME-STEP
+
+! Initialize Ocean and Lake variable for passive introduction  
+LLOCN_KPP(:)=.FALSE.
+ZLAILI(:)=0.0_JPRB
+ZLAIHI(:)=0.0_JPRB
+
+IF (KSTEP == KSTART) THEN
+  PNTOP(KIDIA:KFDIA) = 1.0_JPRB
+  PNBAS(KIDIA:KFDIA) = 1.0_JPRB
+  PACPR(KIDIA:KFDIA) = 0.0_JPRB
+  PGZ0M(KIDIA:KFDIA)=PGZ0MCL(KIDIA:KFDIA)
+ENDIF
+
+!*       1.2   CHANGE UNITS/SCALINGS
+DO JL=KIDIA,KFDIA
+  IF (PLSM(JL) > 0.5_JPRB) THEN
+    ZHSTD (JL) = PHSTD(JL) /RG 
+  ELSE
+    ZHSTD (JL) = 0._JPRB
+  ENDIF
+ENDDO
+ZAZ0M(KIDIA:KFDIA)  = PGZ0M(KIDIA:KFDIA) /RG
+ZWLM1M(KIDIA:KFDIA) = PWL (KIDIA:KFDIA)
+
+!*      1.3   GLOBAL AUXILLIARY VARAIBLES
+
+!*      1.3a   AUXILLIARY VARIABLES FOR VDF, SRF AND SURFRAD
+
+CALL SURFBC (YDSURF=YSURF,KIDIA=KIDIA,KFDIA=KFDIA,KLON=KLON,KTILES=NTILES,KLEVSN=YDDPHY%NCSNEC,&
+ & PTVL=PTVL,PCO2TYP=PCO2TYP,PTVH=PTVH,PSOTY=PSOTY,PSDOR=ZHSTD,PCVLC=PCVL,PCVHC=PCVH,PCURC=PCUR,&
+ & PLAILC=PLAILC,PLAIHC=PLAIHC,PLAILI=ZLAILI,PLAIHI=ZLAIHI,&
+ & PLSM=PLSM,PCI=PCI,PCLAKE=PCLAKE,PHLICE=PHLICE,&
+ & PGEMU=PGEMU,PSNM1M=PSNS,PWLM1M=ZWLM1M,PRSNM1M=PRSN,&
+ & LDLAND=LDLAND,LDSICE=LLSICE,LDLAKE=LLLAKE,LDNH=LLNH,LDOCN_KPP=LLOCN_KPP,&
+ & KTVL=ITVL,KCO2TYP=ICO2TYP,KTVH=ITVH,KSOTY=ISOTY,&
+ & PCVL=ZCVL,PCVH=ZCVH,PCUR=ZCUR,PLAIL=ZLAIL,PLAIH=ZLAIH,&
+ & PWLMX=ZWLMX,PFRTI=ZFRTI)
+
+DO JL=KIDIA,KFDIA
+  ITOPC(JL) = INT(PNTOP(JL)+0.01_JPRB)
+  IBASC(JL) = INT(PNBAS(JL)+0.01_JPRB)
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*         2.     RADIATION TRANSFER
+!                 ------------------
+
+!*         2.2 SURFACE BOUNDARY CONDITIONS
+
+IF (LERADS) THEN
+    
+  DO JL=KIDIA,KFDIA
+    ZWND(JL)=SQRT(PU(JL,KLEV)*PU(JL,KLEV)+PV(JL,KLEV)*PV(JL,KLEV))
+  ENDDO  
+
+  IY0=NCCAA(NINDAT)
+  IM0=NMM(NINDAT)
+  ID0=NDD(NINDAT)
+  IDINCR=(NSSSSS+NINT(RSTATI))/NINT(RDAY)
+  ISEC=MOD(NSSSSS+NINT(RSTATI),NINT(RDAY))
+  ZALBICE(KIDIA:KFDIA) = 0.0_JPRB
+  IF (LNEMOLIMALB) THEN
+     CALL ICESTATENEMO(YDMCC,KSTGLO,KIDIA,KFDIA,PALBICE=ZALBICE(KIDIA:KFDIA))
+  ENDIF
+  CALL UPDCAL(ID0,IM0,IY0,IDINCR,IDD,IMM,IYY,ILMON,-1)
+  CALL SURFRAD(YDSURF=YSURF,KDD=IDD,KMM=IMM,KMON=ILMON,KSECO=ISEC,&
+   & KIDIA=KIDIA,KFDIA=KFDIA,KLON=KLON,KTILES=NTILES,KSW=NSW,KLW=NLWEMISS,&
+   & LDNH=LLNH,&
+   & PALBF=PALBF,PALBICEF=ZALBICE,PTVH=PTVH,&
+   & PALCOEFF=PALCOEFF,PCURC=PCUR,PCVH=PCVH,&
+   & PASN=PASN(:,1),PMU0=PMU0M,PTS=PTL,PWND=ZWND,&
+   & PWS1=PWSA(:,1),KSOTY=ISOTY,PFRTI=ZFRTI,PHLICE=PHLICE,PTLICE=PTLICE,&
+   & PALBD=PALBD(:,1:NSW),PALBP=PALBP(:,1:NSW),PALB=ZALB,&
+   & PSPECTRALEMISS=PSPECTRALEMISS,PEMIT=PEMIT,&
+   & PALBTI=ZALBTI,PCCNL=PCCNL,PCCNO=PCCNO,LNEMOLIMALB=LNEMOLIMALB )  
+
+  DO JSW=NSW+1,NTSW
+    PALBD(KIDIA:KFDIA,JSW)=PALBF(KIDIA:KFDIA)
+    PALBP(KIDIA:KFDIA,JSW)=PALBF(KIDIA:KFDIA)
+  ENDDO
+ELSE
+  DO JSW=1,NTSW
+    DO JL=KIDIA,KFDIA
+      PALBD(JL,JSW)=PALBF(JL)
+      PALBP(JL,JSW)=PALBF(JL)
+    ENDDO
+  ENDDO
+
+  DO JL=KIDIA,KFDIA
+    PSPECTRALEMISS(JL,:) = PEMISF(JL)
+    PEMIT(JL) = PEMISF(JL)
+    PCCNL(JL) = RCCNLND
+    PCCNO(JL) = RCCNSEA
+  ENDDO
+ENDIF
+
+!*         2.3 CLOUD 
+
+IFLAG=2
+CALL SATUR  (KIDIA , KFDIA , KLON  , KTDIA , KLEV, YDMODEL%YRML_PHY_SLIN%YREPHLI%LPHYLIN, &
+ & PAPRSF, PT    , PQSAT , IFLAG)  
+
+LLCLDCOVER=(NRADPFR /= 0)
+IF (LEDCLD) THEN
+  IF(LEPCLD) THEN
+    ! This call could probably be removed in the future, as PCCC etc.
+    ! are only used for some diagnostic prints from the radiation scheme
+    CALL  CLDPP &
+     & ( YDMODEL%YRML_PHY_RAD%YRADIATION,YDERAD,YDMODEL%YRML_PHY_RAD%YRERDI,YDMODEL%YRML_PHY_EC%YRECLD,YDRIP, &
+     & KIDIA , KFDIA , KLON   , KLEV,&
+     & PAPRS , PAPRSF, PA    , PL     , PI    , PT,&
+! Following line should be PGELAT,PGELAM, but not available in this 
+! routine and make little difference to the random number generator. 
+     & PGEMU, PGEMU,&
+     & LLCLDCOVER  , PCCC  , PHCC  , PLCC   , PMCC  , PTCC,&
+     & PNEB  , PQICE , PQLI )  
+
+  ELSEIF (LEPCLD2 .AND. (LNCLIN .OR. (KSTEP /= KSTART))) THEN
+    DO JK=1,KLEV
+      DO JL=KIDIA,KFDIA
+        ZPA(JL,JK) = PA(JL,JK)
+      ENDDO
+    ENDDO
+    CALL  CLDPP &
+     & ( YDMODEL%YRML_PHY_RAD%YRADIATION,YDERAD,YDMODEL%YRML_PHY_RAD%YRERDI,YDMODEL%YRML_PHY_EC%YRECLD,YDRIP, &
+     & KIDIA , KFDIA , KLON   , KLEV,&
+     & PAPRS , PAPRSF, ZPA   , PL    , PI   , PT,&
+! Following line should be PGELAT,PGELAM, but not available in this 
+! routine and make little difference to the random number generator. 
+     & PGEMU, PGEMU,&
+     & LLCLDCOVER  , PCCC  , PHCC  , PLCC   , PMCC  , PTCC,&
+     & PNEB  , PQICE , PQLI )  
+!or  ELSEIF (LENCLD2) THEN
+! preliminar modification before prognostic scheme is again called
+! during NL computation of 4D-Var
+  ELSEIF (LENCLD2 .AND. (LNCLIN .OR. (KSTEP /= KSTART))) THEN
+    DO JK=1,KLEV
+      DO JL=KIDIA,KFDIA
+        ZPA(JL,JK) = PA(JL,JK)
+        ZPL(JL,JK) = PL(JL,JK)
+        ZPI(JL,JK) = PI(JL,JK)
+      ENDDO
+    ENDDO
+    CALL  CLDPP &
+     & ( YDMODEL%YRML_PHY_RAD%YRADIATION,YDERAD,YDMODEL%YRML_PHY_RAD%YRERDI,YDMODEL%YRML_PHY_EC%YRECLD,YDRIP, &
+     &KIDIA , KFDIA , KLON   , KLEV,&
+     & PAPRS , PAPRSF, ZPA   , ZPL    , ZPI   , PT,&
+! Following line should be PGELAT,PGELAM, but not available in this 
+! routine and make little difference to the random number generator. 
+     & PGEMU, PGEMU,&
+     & LLCLDCOVER  , PCCC  , PHCC  , PLCC   , PMCC  , PTCC,&
+     & PNEB  , PQICE , PQLI )      
+  ELSE
+    CALL  CCLOUD &
+     & ( YDMODEL%YRML_PHY_SLIN%YREPHLI,YDMODEL%YRML_PHY_EC%YRECLD, &
+     & KIDIA , KFDIA , KLON   , KLEV,&
+     & IBASC , ITOPC,&
+     & PAPRSF, PACPR,&
+     & PQ    , PQSAT , PT     , PVERVEL,&
+     & PCCC  , PHCC  , PLCC   , PMCC,&
+     & PNEB  , PTCC  , PQICE , PQLI   )  
+  ENDIF
+
+
+  DO JL=KIDIA,KFDIA
+! Revert to bug? as before new surface fields
+!    PACPR(JL) = 0.0_JPRB
+    IBASC(JL) = 1
+    ITOPC(JL) = 1
+  ENDDO
+
+ELSE
+
+  DO JK=1,KLEV
+    DO JL=KIDIA,KFDIA
+      PNEB(JL,JK)  = 0.0_JPRB
+      PQLI(JL,JK)  = 0.0_JPRB
+      PQICE(JL,JK) = 0.0_JPRB
+    ENDDO
+  ENDDO
+
+  DO JL=KIDIA,KFDIA
+    PCCC(JL) = 0.0_JPRB
+    PHCC(JL) = 0.0_JPRB
+    PLCC(JL) = 0.0_JPRB
+    PMCC(JL) = 0.0_JPRB
+    PTCC(JL) = 0.0_JPRB
+  ENDDO
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('RADPAR',1,ZHOOK_HANDLE)
+END SUBROUTINE RADPAR

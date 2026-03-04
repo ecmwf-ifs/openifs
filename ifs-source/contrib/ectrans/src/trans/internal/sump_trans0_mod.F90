@@ -1,0 +1,115 @@
+! (C) Copyright 2000- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+MODULE SUMP_TRANS0_MOD
+CONTAINS
+SUBROUTINE SUMP_TRANS0
+
+! Set up distributed environment for the transform package (part 0)
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE MPL_MODULE  ,ONLY : MPL_GROUPS_CREATE, MPL_MYRANK, MPL_NPROC
+
+USE TPM_GEN         ,ONLY : NOUT, LMPOFF, NPRINTLEV
+USE TPM_DISTR       ,ONLY : LEQ_REGIONS, MTAGDISTGP, MTAGDISTSP, MTAGGL, &
+     &                      MTAGLETR, MTAGLG, MTAGLM, MTAGML, MTAGPART,  &
+     &                      MYSETV, MYSETW, NPRCIDS,                     &
+     &                      NPRGPEW, NPRGPNS, NPRTRNS, NPRTRV, NPRTRW,   &
+     &                      MYPROC, NPROC
+
+USE EQ_REGIONS_MOD  ,ONLY : EQ_REGIONS, MY_REGION_EW, MY_REGION_NS,      &
+     &                      N_REGIONS, N_REGIONS_EW, N_REGIONS_NS
+USE PE2SET_MOD      ,ONLY : PE2SET
+USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
+
+IMPLICIT NONE
+
+LOGICAL :: LLP1,LLP2
+INTEGER(KIND=JPIM) :: IPROC,JJ
+
+!     ------------------------------------------------------------------
+
+LLP1 = NPRINTLEV>0
+LLP2 = NPRINTLEV>1
+IF(LLP1) WRITE(NOUT,*) '=== ENTER ROUTINE SUMP_TRANS0 ==='
+
+
+NPROC = NPRGPNS*NPRGPEW
+NPRTRNS = NPRTRW
+IF(MOD(NPROC,NPRTRW) /= 0 .OR. NPRTRW > NPROC) THEN
+  CALL ABORT_TRANS('SUMP_TRANS0: NPROC INCONSISTENT WITH NPRTRW')
+ENDIF
+NPRTRV = NPROC/NPRTRW
+IF(LLP1) WRITE(NOUT,*)'NPROC =',NPROC,' NPRGPNS=',NPRGPNS,' NPRGPEW=',&
+ & NPRGPEW,' NPRTRW=',NPRTRW,' NPRTRV=',NPRTRV
+
+IF(NPROC > 1 ) THEN
+  IPROC = MPL_NPROC()
+  IF(IPROC /= NPROC) THEN
+    WRITE(NOUT,*) 'SUMP_TRANS0: NPROC=',NPROC,' BUT MPL_NPROC RETURNS',&
+                 &  IPROC
+    CALL ABORT_TRANS('SUMP_TRANS0: NPROC INCONSISTENT WITH MPL_NPROC')
+  ENDIF
+  MYPROC = MPL_MYRANK()
+ELSE
+  MYPROC = 1
+ENDIF
+
+IF (MYPROC > NPROC) THEN
+  CALL ABORT_TRANS('SUMP_TRANS0: INCONSISTENCY IN NUMBER OF PROCESSORS USED')
+ENDIF
+
+IF( LEQ_REGIONS )THEN
+  ALLOCATE(N_REGIONS(NPROC+2))
+  N_REGIONS(:)=0
+  CALL EQ_REGIONS(NPROC)
+ELSE
+  N_REGIONS_NS=NPRGPNS
+  ALLOCATE(N_REGIONS(N_REGIONS_NS))
+  N_REGIONS(:)=NPRGPEW
+  N_REGIONS_EW=NPRGPEW
+ENDIF
+CALL PE2SET(MYPROC,MY_REGION_NS,MY_REGION_EW,MYSETW,MYSETV)
+IF(LLP1) WRITE(NOUT,*)'MYPROC=',MYPROC,'MY_REGION_NS =',MY_REGION_NS,&
+ & ' MY_REGION_EW=',MY_REGION_EW,' MYSETW=',MYSETW,' MYSETV=',MYSETV
+
+
+ALLOCATE(NPRCIDS(NPROC))
+IF(LLP2)WRITE(NOUT,9) 'NPRCIDS   ',SIZE(NPRCIDS   ),SHAPE(NPRCIDS   )
+DO JJ=1,NPROC
+  NPRCIDS(JJ) = JJ
+ENDDO
+
+! Message passing tags
+
+MTAGLETR = 18000
+MTAGML   = 19000
+MTAGLG   = 20000
+MTAGPART = 21000
+MTAGDISTSP = 22000
+MTAGGL   = 23000
+MTAGLM   = 24000
+MTAGDISTGP = 25000
+
+! Create communicators for MPI groups
+
+IF (.NOT.LMPOFF) THEN
+  CALL MPL_GROUPS_CREATE(NPRTRW, NPRTRV)
+ENDIF
+
+! Setup labels for timing package (gstats)
+
+! CF ifs/utility    GSTATS_OUTPUT_IFS
+
+!     ------------------------------------------------------------------
+9 FORMAT(1X,'ARRAY ',A10,' ALLOCATED ',8I8)
+ 
+END SUBROUTINE SUMP_TRANS0
+END MODULE SUMP_TRANS0_MOD

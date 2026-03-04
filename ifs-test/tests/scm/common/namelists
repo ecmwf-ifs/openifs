@@ -1,0 +1,375 @@
+cat > fort.4 << EOF
+ &NAM1C
+    ! SCM forcing options
+    NSTRTINI = 1,         ! Timestep relative to start of forcing data to start run
+                          ! Dynamical forcing options
+    LDYNFOR  = True,      !  T = turn on dynamical forcing
+    LVARFOR  = True,      !  T = use time-varying forcing, F = use initial profile for forcing
+    LUGVG    = False,     !  T = turn on geostrophic U,V wind (horizontal pressure gradient) forcing
+                          ! Vertical advection
+    LVERVEL  = True,      !  T = use vertical velocity for vertical advection (omega or etadot)
+    LETADOT  = False,     !  T = use etadot (dp/deta) for vertical advection, F = use omega
+    LUPWIND  = True,      !  T = use forward-in-time upwind differencing for vertical advection
+                          !  F = use Lax forward-in-time, centred-in-space for vertical advection
+    LWADV    = True,      !  T = turn on vertical advection of T,Q,U,V
+    LWADVCLD = False,     !  T = turn on vertical advection of cloud variables (cloud fraction/liquid/ice
+                          ! Horizongal advective tendencies
+    LTADV    = True,      !  T = turn on horizontal advection tendencies for temperature (T)
+    LQADV    = True,      !  T = turn on horizontal advection tendencies for humidity (Q)
+    LUVADV   = False,     !  T = turn on horizontal advection tendencies for wind (U,V)
+                          ! Surface forcing
+    LVARSST  = True,      !  T = use time-varying surface temperature (and lat/lon) from input file
+    LSFCFLX  = False,     !  T = use surface flux boundary condition (sensible,latent) from input file
+                          ! Relaxation
+    LRELAX   = True,      !  T = turn on relaxation to reference profile
+    RDTRELAX = 28800,     !  relaxation timescale (seconds)
+    LUVREL   = True,      !  T = turn on relaxation for U,V
+    LTQREL   = False,     !  T = turn on relaxation for T,Q 
+    RUVREL_PLEV = 110000, !  only relax U,V above this pressure (Pa) (default=all)
+    RTQREL_PLEV = 2000,   !  only relax T,Q above this pressure (Pa) (default=all)
+                          ! Output info
+    OUTFORM  = 'netcdf',  !  SCM output format (netcdf or ascii)
+    CMODID   = '46r1',    !  SCM version identifier for output file metadata
+    CSIMID   = 'TWPICE', !  Simulation identifier for output file metadata
+/
+ &NAMRIP
+    ! Timestep info
+    TSTEP=900,
+    CSTOP='h12',
+/
+ &NAEPHY
+    ! Physics parametrization options
+    LEPHYS    = True,  ! physics parametrizations (all on or all off)
+    LERADI    = True,  ! radiation parametrization
+    LEVDIF    = True,  ! turbulent mixing parametrization
+    LECUMF    = True,  ! convection parametrization
+    LEPCLD    = True,  ! subgrid cloud and microphysics parametrization
+    LESURF    = True,  ! land surface parametrization
+    LEFLAKE   = True,  ! lake parametrization
+    LEGWDG    = True,  ! orographic gravity wave drag parametrization
+    LEGWWMS   = True,  ! non-orographic gravity wave drag parametrization
+    LEMETHOX  = True,  ! methane oxidation parametrization
+    LEQNGT    = True,  ! remove any negative humidities
+    LSLPHY    = False, ! semi-lagrangian averaging of slow physics tendencies
+    LBUD23    = False, ! top-level budget diagnostics for T,Q,U,V+
+    LERADIMPL = False, ! TO BE FIXED, should work with True as well
+/
+ &NAMDPHY
+    ! Output "extra" diagnostic fields dimensions
+    NVXTR2 = 0,      ! number of extra fields (single level)
+    NVEXTR = 0,     ! number of extra fields (profiles)
+    NCEXTR = 137,
+/
+ &NAERAD
+    ! Radiation options
+    NRADFR  = 1,     ! frequency of full radiation calculations (+ve timesteps, -ve hours, default=-3)
+    NRADINT = 0,     ! (must =0 for SCM, no interp) radiation grid interpolation 
+    NRPROMA = -1,    ! (must =-1 for SCM) vector length for compuations 
+    LAER3D  = F,     ! T = use 3D aerosol fields in radiation (default=T)
+/
+ &NAMDIM
+    ! General dimensions
+    NFLEVG=137,
+    NSMAX  = 799,    ! horizontal resolution (spectral trunction, affects convection in SCM)
+    NSTENCILWIDE =1, ! (must =1 for SCM) horizontal interpolation stencil width 
+    NPROMA = -1,     ! (must =-1 for SCM) dimension for horizontal grid vector length
+    NDGLG  = 1,      ! (must =1 for SCM) number of latitude rows
+    NDLON  = 1,      ! (must =1 for SCM) number of longitude rows 
+/
+ &NAMCT0
+    NFRPOS   = 1,    ! frequency of post-processing output (timesteps)
+    NUNDEFLD = 1,    ! (=1 for SCM to avoid unecessary bound checking failure)
+/ 
+ &NAMARG
+    NSUPERSEDE = 0,
+/
+ &NAMCVER
+    LVERTFE = False, ! (default=True) has no impact in SCM but avoids unnecessary code
+    LREGETA  = False,! T = use regular eta coords for advection interpolation (default=F)
+/
+  &NAMVV1
+   DVALH(0)=0.,
+     2.000365,
+     3.102241,
+     4.666084,
+     6.827977,
+     9.746966,
+    13.605424,
+    18.608931,
+    24.985718,
+    32.985710,
+    42.879242,
+    54.955463,
+    69.520576,
+    86.895882,
+   107.415741,
+   131.425507,
+   159.279404,
+   191.338562,
+   227.968948,
+   269.539581,
+   316.420746,
+   368.982361,
+   427.592499,
+   492.616028,
+   564.413452,
+   643.339905,
+   729.744141,
+   823.967834,
+   926.344910,
+  1037.201172,
+  1156.853638,
+  1285.610352,
+  1423.770142,
+  1571.622925,
+  1729.448975,
+  1897.519287,
+  2076.095947,
+  2265.431641,
+  2465.770508,
+  2677.348145,
+  2900.391357,
+  3135.119385,
+  3381.743652,
+  3640.468262,
+  3911.490479,
+  4194.930664,
+  4490.817383,
+  4799.149414,
+  5119.895020,
+  5452.990723,
+  5798.344727,
+  6156.074219,
+  6526.946777,
+  6911.870605,
+  7311.869141,
+  7727.412109,
+  8159.354004,
+  8608.525391,
+  9076.400391,
+  9562.682617,
+ 10065.978516,
+ 10584.631836,
+ 11116.662109,
+ 11660.067383,
+ 12211.547852,
+ 12766.873047,
+ 13324.668945,
+ 13881.331055,
+ 14432.139648,
+ 14975.615234,
+ 15508.256836,
+ 16026.115234,
+ 16527.322266,
+ 17008.789063,
+ 17467.613281,
+ 17901.621094,
+ 18308.433594,
+ 18685.718750,
+ 19031.289063,
+ 19343.511719,
+ 19620.042969,
+ 19859.390625,
+ 20059.931641,
+ 20219.664063,
+ 20337.863281,
+ 20412.308594,
+ 20442.078125,
+ 20425.718750,
+ 20361.816406,
+ 20249.511719,
+ 20087.085938,
+ 19874.025391,
+ 19608.572266,
+ 19290.226563,
+ 18917.460938,
+ 18489.707031,
+ 18006.925781,
+ 17471.839844,
+ 16888.687500,
+ 16262.046875,
+ 15596.695313,
+ 14898.453125,
+ 14173.324219,
+ 13427.769531,
+ 12668.257813,
+ 11901.339844,
+ 11133.304688,
+ 10370.175781,
+  9617.515625,
+  8880.453125,
+  8163.375000,
+  7470.343750,
+  6804.421875,
+  6168.531250,
+  5564.382813,
+  4993.796875,
+  4457.375000,
+  3955.960938,
+  3489.234375,
+  3057.265625,
+  2659.140625,
+  2294.242188,
+  1961.500000,
+  1659.476563,
+  1387.546875,
+  1143.250000,
+   926.507813,
+   734.992188,
+   568.062500,
+   424.414063,
+   302.476563,
+   202.484375,
+   122.101563,
+    62.781250,
+    22.835938,
+     3.757813,
+     0.000000,
+     0.000000,
+    DVBH(0)=    0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000000,
+ 0.0000000382,
+ 0.0000067607,
+ 0.0000243480,
+ 0.0000589220,
+ 0.0001119143,
+ 0.0001985774,
+ 0.0003403797,
+ 0.0005615553,
+ 0.0008896979,
+ 0.0013528055,
+ 0.0019918380,
+ 0.0028571242,
+ 0.0039709536,
+ 0.0053778146,
+ 0.0071333768,
+ 0.0092614600,
+ 0.0118060224,
+ 0.0148156285,
+ 0.0183184519,
+ 0.0223548450,
+ 0.0269635208,
+ 0.0321760960,
+ 0.0380263999,
+ 0.0445479602,
+ 0.0517730154,
+ 0.0597284138,
+ 0.0684482530,
+ 0.0779583082,
+ 0.0882857367,
+ 0.0994616672,
+ 0.1115046516,
+ 0.1244481280,
+ 0.1383128911,
+ 0.1531250328,
+ 0.1689104140,
+ 0.1856894493,
+ 0.2034912109,
+ 0.2223328650,
+ 0.2422440052,
+ 0.2632418871,
+ 0.2853540182,
+ 0.3085984588,
+ 0.3329390883,
+ 0.3582541943,
+ 0.3843633235,
+ 0.4111247659,
+ 0.4383912086,
+ 0.4660032988,
+ 0.4938003123,
+ 0.5216192007,
+ 0.5493011475,
+ 0.5766921639,
+ 0.6036480665,
+ 0.6300358176,
+ 0.6557359695,
+ 0.6806430221,
+ 0.7046689987,
+ 0.7277387381,
+ 0.7497965693,
+ 0.7707975507,
+ 0.7907167673,
+ 0.8095360398,
+ 0.8272560835,
+ 0.8438811302,
+ 0.8594318032,
+ 0.8739292622,
+ 0.8874075413,
+ 0.8999004960,
+ 0.9114481807,
+ 0.9220956564,
+ 0.9318807721,
+ 0.9408595562,
+ 0.9490644336,
+ 0.9565495253,
+ 0.9633517265,
+ 0.9695134163,
+ 0.9750784039,
+ 0.9800716043,
+ 0.9845418930,
+ 0.9884995222,
+ 0.9919840097,
+ 0.9950025082,
+ 0.9976301193,
+ 1.0000000000,
+/
+&NAMDYNA
+    LSLAG   = True,  ! T for semi-Lagrangian (vertical) advection, F for Euler
+    LTWOTL   = True, ! T = two time-level timestepping option (default=T)
+/
+&NAMGRIB
+    NCYCLE   = 0,    ! IFS Cycle identifier
+/
+EOF

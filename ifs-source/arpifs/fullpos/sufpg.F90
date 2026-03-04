@@ -1,0 +1,355 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE SUFPG(YDGEOMETRY,CDFPFMT,CDFPDOM,YDNAMFPD,YDNAMFPG)
+
+!**** *SUFPG*  - INITIALIZE OUTPUT GEOMETRY PARAMETRES (Full-POS)
+
+!     PURPOSE.
+!     --------
+!        SETS DEFAULT VALUES, THEN READS NAMELIST NAMFPG AND CHECKS IT.
+
+!**   INTERFACE. *CALL* *SUFPG*
+!     ----------
+
+!        EXPLICIT ARGUMENTS :
+!        ------------------
+!           CDFPFMT : output grid format
+!           CDFPDOM : names of the output domains
+
+!        IMPLICIT ARGUMENTS
+!        ------------------
+!        PARDIM, YOMDIM
+!        PARFPOS
+!        YOMFPC, YOMFPD
+!        YOMFPG, NAMFPG
+!        YOMGEM, YOMLEG
+!        YOMCST
+
+!     EXTERNALS.
+!     ----------
+
+!     AUTHOR.    RYAD EL KHATIB *METEO-FRANCE*
+!     -------
+!        970304 ORIGINAL from previous SUFPG+SUEFPG
+
+!     MODIFICATIONS.
+!     --------------
+!      M. Janousek : 01-04-13 New domain and projection definition
+!      R. El Khatib : 01-08-07 Pruning options + LLESAME
+!      R. El Khatib : 03-08-25 gfl
+!      R. El Khatib : 03-04-17 Fullpos improvments
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      JD. Gril     : 05-02-08 Initialization of LFPMRT
+!      N. Wedi and K. Yessad (Jan 2008): different dev for NH model and PC scheme
+!      K.Yessad (Nov 2008): rename arp/SUGAW into arp/SUGAWA.
+!      G.Mozdzynski (Feb 2011): OOPS cleaning, use of derived type TCSGLEG
+!      R. El Khatib : 26-Jul-2012 computation of linear grid and gaussian
+!                     latitudes moved to SUFPGAUSS + fusion with SUFPG1
+!      R. El Khatib : 31-Jul-2012 LLSAME replaced by (LFPNEWGRID,LFPNEWSPEC)
+!      R. El Khatib : 22-Aug-2012 LHPOS
+!      R. El Khatib 31-Aug-2012 new E-zone management
+!      R. El Khatib 27-Sep-2013 Boyd periodization in Fullpos-2
+!      T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!      K. Yessad (July 2014): Move some variables.
+!      R. El Khatib 04-Aug-2014 Pruning of the conf. 927/928
+!      R. El Khatib 27-Jan-2015 Change default value of NFPDISTRIB
+!      R. El Khatib 17-Aug-2016 Bugfix for LIOLEVG
+!      R. El Khatib 15-Sep-2016 NFPFFTW
+!      R. El Khatib 29-Mar-2017 Split => sufpg + sufpg1
+!      R. El Khatib 18-May-2018 Option NFPFLT to use Fast Legendre Transforms
+!-----------------------------------------------------------------------
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1,  ONLY : JPIM     ,JPRB
+USE PARFPOS,   ONLY : JPOSLE
+USE YOMHOOK,   ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOMLUN,    ONLY : NULOUT   ,NULNAM
+USE YOMCT0,    ONLY : LELAM    ,LARPEGEF
+USE YOMFPD,    ONLY : TNAMFPD
+USE YOMFPG,    ONLY : TNAMFPG
+USE YOMCST,    ONLY : RPI
+USE YOMTRANS , ONLY : LUSEFLT
+
+!-----------------------------------------------------------------------
+
+IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+
+TYPE(GEOMETRY),   INTENT(IN) :: YDGEOMETRY
+CHARACTER(LEN=*), INTENT(IN) :: CDFPFMT
+CHARACTER(LEN=*), INTENT(IN) :: CDFPDOM(:)
+TYPE(TNAMFPD),    INTENT(IN) :: YDNAMFPD
+TYPE(TNAMFPG), TARGET, INTENT(OUT) :: YDNAMFPG
+
+INTEGER(KIND=JPIM), POINTER :: NFPMAX(:)
+INTEGER(KIND=JPIM), POINTER :: NFPFFTW(:)
+INTEGER(KIND=JPIM), POINTER :: NFPFLT(:)
+INTEGER(KIND=JPIM), POINTER :: NFPRGRI(:)
+INTEGER(KIND=JPIM), POINTER :: NFPHTYP
+INTEGER(KIND=JPIM), POINTER :: NFPTTYP
+INTEGER(KIND=JPIM), POINTER :: NMFPMAX
+REAL(KIND=JPRB), POINTER :: FPMUCEN
+REAL(KIND=JPRB), POINTER :: FPLOCEN
+REAL(KIND=JPRB), POINTER :: FPSTRET
+REAL(KIND=JPRB), POINTER :: FPLON0
+REAL(KIND=JPRB), POINTER :: FPLAT0
+REAL(KIND=JPRB), POINTER :: FPNLGINC
+LOGICAL, POINTER :: LFPMAP
+LOGICAL, POINTER :: LFPMRT
+INTEGER(KIND=JPIM), POINTER :: NFPDISTRIB
+
+REAL(KIND=JPRB) :: FPRPK
+INTEGER(KIND=JPIM) :: NFPLEV
+REAL(KIND=JPRB) :: FPVALH(0:JPOSLE)
+REAL(KIND=JPRB) :: FPVBH(0:JPOSLE)
+
+INTEGER(KIND=JPIM) :: J, JGL, IFPDOM
+REAL(KIND=JPRB) :: Z1, Z2, ZEPS, ZNFMAX, ZRDTODG
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!-----------------------------------------------------------------------
+
+#include "posnam.intfb.h"
+
+!-----------------------------------------------------------------------
+
+#include "namfpg.nam.h"
+
+!-----------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPG',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDGEM=>YDGEOMETRY%YRGEM,YDEGEO=>YDGEOMETRY%YREGEO)
+ASSOCIATE(NDGLG=>YDDIM%NDGLG, NDGUXG=>YDDIM%NDGUXG, NDLON=>YDDIM%NDLON, &
+ & NDLUXG=>YDDIM%NDLUXG, NMSMAX=>YDDIM%NMSMAX, NSMAX=>YDDIM%NSMAX, &
+ & EDELX=>YDEGEO%EDELX, EDELY=>YDEGEO%EDELY, ELAT0=>YDEGEO%ELAT0, &
+ & ELATC=>YDEGEO%ELATC, ELON0=>YDEGEO%ELON0, ELONC=>YDEGEO%ELONC, &
+ & ELX=>YDEGEO%ELX, ELY=>YDEGEO%ELY, ERPK=>YDEGEO%ERPK, LMAP=>YDEGEO%LMAP, &
+ & LMRT=>YDEGEO%LMRT, &
+ & NHTYP=>YDGEM%NHTYP, NLOENG=>YDGEM%NLOENG, NSTTYP=>YDGEM%NSTTYP, &
+ & RLOCEN=>YDGEM%RLOCEN, RMUCEN=>YDGEM%RMUCEN, RSTRET=>YDGEM%RSTRET)
+
+!-----------------------------------------------------------------------
+
+WRITE(NULOUT,'(''- Set up F-post processing, horizontal geometries -'')')
+
+!*       0. POINTERS TO THE NAMELIST STRUCTURE
+!           ----------------------------------
+
+NFPMAX=>YDNAMFPG%NFPMAX(:)
+NFPFFTW=>YDNAMFPG%NFPFFTW(:)
+NFPFLT=>YDNAMFPG%NFPFLT(:)
+NFPRGRI=>YDNAMFPG%NFPRGRI(:)
+NFPHTYP=>YDNAMFPG%NFPHTYP
+NFPTTYP=>YDNAMFPG%NFPTTYP
+NMFPMAX=>YDNAMFPG%NMFPMAX
+FPMUCEN=>YDNAMFPG%FPMUCEN
+FPLOCEN=>YDNAMFPG%FPLOCEN
+FPSTRET=>YDNAMFPG%FPSTRET
+FPLON0=>YDNAMFPG%FPLON0
+FPLAT0=>YDNAMFPG%FPLAT0
+FPNLGINC=>YDNAMFPG%FPNLGINC
+LFPMAP=>YDNAMFPG%LFPMAP
+LFPMRT=>YDNAMFPG%LFPMRT
+NFPDISTRIB=>YDNAMFPG%NFPDISTRIB
+
+!*       1. SET DEFAULT VALUES
+!           -------------------
+
+IFPDOM=SIZE(CDFPDOM)
+
+NFPDISTRIB=1
+IF (LARPEGEF) THEN
+  NFPFFTW(:)=0
+ELSE
+  NFPFFTW(:)=1
+ENDIF
+IF (LUSEFLT) THEN
+  NFPFLT(:)=1
+ELSE
+  NFPFLT(:)=0
+ENDIF
+
+ZEPS = EPSILON(1.0_JPRB)*10000._JPRB
+ZRDTODG=180._JPRB/RPI
+
+IF (.NOT.LELAM) THEN
+  LFPMAP=.TRUE.
+  IF (CDFPFMT == 'GAUSS') THEN
+
+    FPSTRET = RSTRET
+    NFPTTYP = NSTTYP
+    FPMUCEN = RMUCEN
+    FPLOCEN = RLOCEN
+    IF (YDNAMFPD%NLAT(1) == NDGLG) THEN
+      NFPHTYP = NHTYP
+      DO JGL = 1,NDGLG
+        NFPRGRI(JGL) = NLOENG(JGL)
+      ENDDO
+    ELSE
+      NFPHTYP = 0
+      DO JGL = 1,YDNAMFPD%NLAT(1)
+        NFPRGRI(JGL) = YDNAMFPD%NLON(1)
+      ENDDO
+    ENDIF
+
+    NFPMAX(1) = NSMAX
+    NMFPMAX   = 1
+
+    FPLON0 = 0._JPRB
+    FPLAT0 = 0._JPRB
+    LFPMRT=.FALSE.
+
+  ELSEIF (CDFPFMT == 'LALON') THEN
+
+    FPSTRET = 1._JPRB
+    NFPTTYP = 1
+    FPMUCEN = 1._JPRB
+    FPLOCEN = 0._JPRB
+    NFPHTYP = 0
+
+    DO J = 1, IFPDOM
+      Z1=(360._JPRB*REAL(YDNAMFPD%NLON(J),JPRB)/ &
+       & MAX(YDNAMFPD%RDELX(J)*REAL(YDNAMFPD%NLON(J)-1,JPRB),ZEPS)-1.0_JPRB)/3._JPRB
+      Z2=(360._JPRB*REAL(YDNAMFPD%NLAT(J),JPRB)/ &
+       & MAX(YDNAMFPD%RDELY(J)*REAL(YDNAMFPD%NLAT(J)-1,JPRB),ZEPS)-1.0_JPRB)/3._JPRB
+      ZNFMAX=MIN(Z1,Z2)
+      NFPMAX(J)=INT(ZNFMAX)
+    ENDDO
+    NMFPMAX = 1
+
+    FPLON0 = 0._JPRB
+    FPLAT0 = 0._JPRB
+    LFPMRT=.FALSE.
+
+  ELSEIF (CDFPFMT == 'LELAM') THEN
+
+    FPSTRET = 1._JPRB
+    NFPTTYP = 1
+    FPMUCEN = 1._JPRB
+    FPLOCEN = 0._JPRB
+    NFPHTYP = 0
+    DO JGL = 1,YDNAMFPD%NLAT(1)
+      NFPRGRI(JGL) = YDNAMFPD%NLON(1)
+    ENDDO
+
+    Z1=(REAL(YDNAMFPD%NLAT(1),JPRB)-1.0_JPRB)/3._JPRB+ZEPS
+    Z2=(REAL(YDNAMFPD%NLON(1),JPRB)-1.0_JPRB)/3._JPRB+ZEPS
+    NFPMAX(1) = INT(Z1)
+    NMFPMAX   = INT(Z2)
+
+    IF     (CDFPDOM(1) == 'BELG') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 2.57831001_JPRB
+      FPLAT0= 46.46884918_JPRB
+    ELSEIF (CDFPDOM(1) == 'SLOV') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 17.0_JPRB
+      FPLAT0= 46.24470064_JPRB
+    ELSEIF (CDFPDOM(1) == 'MARO') THEN
+      LFPMRT=.FALSE.
+      FPLON0= -7.00000000000002_JPRB
+      FPLAT0= 31.56059436_JPRB
+    ELSEIF (CDFPDOM(1) == 'OPMA') THEN
+      LFPMRT=.FALSE.
+      FPLON0= -7.00000000000002_JPRB
+      FPLAT0= 31.56059436_JPRB
+    ELSEIF (CDFPDOM(1) == 'LACE12') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 17.0_JPRB
+      FPLAT0= 46.24470064_JPRB
+    ELSEIF (CDFPDOM(1) == 'LACE14') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 17.0_JPRB
+      FPLAT0= 46.24470064_JPRB
+    ELSEIF (CDFPDOM(1) == 'LACE20') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 17.0_JPRB
+      FPLAT0= 46.24470064_JPRB
+    ELSEIF (CDFPDOM(1) == 'ROUM') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 25.0_JPRB
+      FPLAT0= 44.77301983_JPRB
+    ELSEIF (CDFPDOM(1) == 'FRAN') THEN
+      LFPMRT=.FALSE.
+      FPLON0= 2.57831001_JPRB
+      FPLAT0= 46.46884918_JPRB
+    ELSE
+!           Old domain ALADIN-FRANCE
+      LFPMRT=.FALSE.
+      FPLON0= 2.57831001_JPRB
+      FPLAT0= 46.46884918_JPRB
+    ENDIF
+
+  ENDIF
+ELSE
+  LFPMAP=LMAP
+  IF (CDFPFMT == 'LALON') THEN
+
+    FPSTRET = 1._JPRB
+    NFPTTYP = 1
+    FPMUCEN = SIN(ELAT0)
+    FPLOCEN = ELON0
+    NFPHTYP = 0
+
+    DO J = 1, IFPDOM
+      Z1=(REAL(YDNAMFPD%NLAT(1),JPRB)-1.0_JPRB)/3._JPRB+ZEPS
+      Z2=(REAL(YDNAMFPD%NLON(1),JPRB)-1.0_JPRB)/3._JPRB+ZEPS
+      ZNFMAX=MIN(Z1,Z2)
+      NFPMAX(J) = INT(ZNFMAX)
+    ENDDO
+    NMFPMAX = 1
+
+    FPLON0=ELON0*ZRDTODG
+    FPLAT0=ELAT0*ZRDTODG
+    LFPMRT=.FALSE.
+
+  ELSE
+
+    FPSTRET = 1._JPRB
+    NFPTTYP = 1
+    FPMUCEN = SIN(ELAT0)
+    FPLOCEN = ELON0
+    NFPHTYP = 0
+    DO JGL = 1,YDNAMFPD%NLAT(1)
+      NFPRGRI(JGL) = YDNAMFPD%NLON(1)
+    ENDDO
+
+    Z1=(REAL(YDNAMFPD%NLAT(1),JPRB)-1.0_JPRB)/3._JPRB+ZEPS
+    Z2=(REAL(YDNAMFPD%NLON(1),JPRB)-1.0_JPRB)/3._JPRB+ZEPS
+    IF (CDFPFMT=='MODEL') THEN
+      NFPMAX(1) = NSMAX
+      NMFPMAX   = NMSMAX
+    ELSE
+      NFPMAX(1) = INT(Z1)
+      NMFPMAX   = INT(Z2)
+    ENDIF
+
+    FPLON0=ELON0*ZRDTODG
+    FPLAT0=ELAT0*ZRDTODG
+    LFPMRT=LMRT
+
+  ENDIF
+ENDIF
+
+!*       2. READ NAMELIST
+!           -------------
+
+!     Read everything
+CALL POSNAM(NULNAM,'NAMFPG')
+READ(NULNAM,NAMFPG)
+
+! FPSTRET < 0 was used instead of a variable LFPMAP=.F in namelist for aladin.
+! Now LFPMAP is in namelist, but for continuity FPSTRET < 0 sets LFPMAP=.F
+
+LFPMAP=FPSTRET >= 0._JPRB
+
+WRITE(UNIT=NULOUT,FMT='('' COMMON YOMFPG'')')
+WRITE(UNIT=NULOUT,FMT='('' (J NFPFFTW NFPLFLT'')')
+WRITE(UNIT=NULOUT,FMT='(10('' ('',I2,2X,I2,2X,I2,'')''))') (J,NFPFFTW(J),NFPFLT(J), J = 1,IFPDOM)
+!-----------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUFPG',1,ZHOOK_HANDLE)
+END SUBROUTINE SUFPG

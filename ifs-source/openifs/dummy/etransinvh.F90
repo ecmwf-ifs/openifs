@@ -1,0 +1,26 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE ETRANSINVH(YDGEOMETRY,YDGFL,YDGMV,YDML_DIAG,YDML_GCONF,CDCONF,YDSP,YDMTRAJ)
+USE MODEL_DIAGNOSTICS_MOD , ONLY : MODEL_DIAGNOSTICS_TYPE
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE MTRAJ_MOD , ONLY : MTRAJ
+USE YOMGFL , ONLY : TGFL
+USE YOMGMV , ONLY : TGMV
+USE SPECTRAL_FIELDS_MOD
+TYPE(GEOMETRY), INTENT(IN) :: YDGEOMETRY
+TYPE(TGFL) , INTENT(INOUT) :: YDGFL
+TYPE(TGMV) , INTENT(INOUT) :: YDGMV
+TYPE(MODEL_DIAGNOSTICS_TYPE),INTENT(INOUT):: YDML_DIAG
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(INOUT):: YDML_GCONF
+CHARACTER(LEN=9) ,INTENT(IN) :: CDCONF
+TYPE(SPECTRAL_FIELD), INTENT(INOUT) :: YDSP
+TYPE(MTRAJ), INTENT(INOUT), OPTIONAL :: YDMTRAJ
+call abor1("etransinvh.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE ETRANSINVH

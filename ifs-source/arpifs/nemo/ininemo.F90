@@ -1,0 +1,261 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE ININEMO(YDGEOMETRY,YDSURF,YDMCC,YDRIP)
+!
+!**** *ININEMO*  - Initialize the NEMO model.
+!
+!     Purpose.
+!     --------
+!       Set up all necessary information for the inline nemo model.
+!
+!**   Interface.
+!     ----------
+!       *CALL*  *ININEMO*
+!
+!     Input:
+!     -----
+!
+!     Output:
+!     ------
+!
+!     Method:
+!     ------
+!       
+!     Externals:
+!     ---------
+!
+!     Reference:
+!     ---------
+!
+!     Author:
+!     -------
+!       K. Mogensen, ECMWF
+!
+!     Modifications.
+!     --------------
+!       S. Keeley + K. Mogensen Januar 2012 update to support LIM2.
+!       T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!       K. Yessad (July 2014): Move some variables.
+!     F. Vana  05-Mar-2015  Support for single precision
+!     -----------------------------------------------------------
+   
+! Kinds, Dr Hook + Output unit.
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE PARKIND1 , ONLY : JPRD, JPRB, JPIM
+USE PARKIND_OCEAN, ONLY : JPRO
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN   , ONLY : NULOUT
+! MPP Stuff and coupling time step.
+USE MPL_MODULE, ONLY : MPL_COMM
+USE YOMCT0   , ONLY : NFRCO
+USE YOMMP0   , ONLY : MYPROC, MY_REGION_NS, MY_REGION_EW, NPROC, LOUTPUT
+! Number of gridpoints  etc.
+! Grid point fields
+! Initial time of the atmosphere
+USE YOMRIP0  , ONLY : NINDAT, NSSSSS
+! Time steps of the atmosphere
+USE YOMRIP   , ONLY : TRIP
+USE YOMCT2   , ONLY : NSTAR2, NSTOP2
+! NEMO time step control
+USE YOMNEMO  , ONLY : NEMOCSTEP, NEMONSTEP
+! Coupling controls
+USE YOMMCC   , ONLY : TMCC
+
+!     -----------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY),INTENT(IN)    :: YDGEOMETRY
+TYPE(TSURF)   ,INTENT(INOUT) :: YDSURF
+TYPE(TMCC)    ,INTENT(INOUT) :: YDMCC
+TYPE(TRIP)    ,INTENT(INOUT) :: YDRIP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!INTEGER(KIND=JPIM) :: IGLOBAL(YDGEOMETRY%YRDIM%NDLON,YDGEOMETRY%YRDIM%NDGLG)
+INTEGER(KIND=JPIM), ALLOCATABLE :: IGLOBAL(:,:)
+INTEGER(KIND=JPIM) :: ILOCLSM(YDGEOMETRY%YRGEM%NGPTOT), IGLOIND(YDGEOMETRY%YRGEM%NGPTOT)
+INTEGER(KIND=JPIM) :: IDATE, ITIME, ITINI, ITEND
+REAL(KIND=JPRO) :: ZTSTEP_O
+REAL(KIND=JPRB) :: ZTSTEP
+INTEGER(KIND=JPIM) :: I, ISTA, IEND, IBLK, IGL
+INTEGER(KIND=JPIM) :: JGL, JKL
+REAL(KIND=JPRO), ALLOCATABLE, DIMENSION(:) :: ZNEMOLVLS
+REAL(KIND=JPRO), ALLOCATABLE, DIMENSION(:,:) :: ZNEMOMASK
+
+!     -----------------------------------------------------------
+
+#include "abor1.intfb.h"
+
+!     -----------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('ININEMO',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP)
+ASSOCIATE(NDGLG=>YDDIM%NDGLG, NDLON=>YDDIM%NDLON, NPROMA=>YDDIM%NPROMA, &
+ & NGPTOT=>YDGEM%NGPTOT, NLOENG=>YDGEM%NLOENG, &
+ & NFRSTLAT=>YDMP%NFRSTLAT, NLSTLAT=>YDMP%NLSTLAT, NONL=>YDMP%NONL, &
+ & NPTRFRSTLAT=>YDMP%NPTRFRSTLAT, NSTA=>YDMP%NSTA, &
+ & TSTEP=>YDRIP%TSTEP, &
+ & SD_VF=>YDSURF%SD_VF, YSD_VF=>YDSURF%YSD_VF, &
+ & LNEMOIFSLOG=>YDMCC%LNEMOIFSLOG, &
+ & LNEMOGRIB3D=>YDMCC%LNEMOGRIB3D, NNEMO3DLEVS=>YDMCC%NNEMO3DLEVS)
+!     -----------------------------------------------------------
+
+! Initialize NEMO
+
+#ifdef WITH_NEMO
+IF (LNEMOIFSLOG) THEN
+  WRITE(NULOUT,*)
+  WRITE(NULOUT,*)'INITIALIZING NEMO.'
+  WRITE(NULOUT,*)
+  CALL NEMOGCMCOUP_INIT( MYPROC-1, MPL_COMM, IDATE, ITIME, ITINI, ITEND,&
+    & ZTSTEP_O, .FALSE., NULOUT, LOUTPUT )
+ELSE
+  CALL NEMOGCMCOUP_INIT( MYPROC-1, MPL_COMM, IDATE, ITIME, ITINI, ITEND,&
+    & ZTSTEP_O, .FALSE., -1, LOUTPUT )
+ENDIF
+#else
+CALL ABOR1('ININEMO: COMPILED WITHOUT WITH_NEMO')
+#endif
+
+ZTSTEP = REAL(ZTSTEP_O,JPRB)
+
+! Setup NEMO time step control
+
+NEMOCSTEP = ITINI
+NEMONSTEP = NINT(NFRCO*TSTEP/ZTSTEP)
+
+WRITE(NULOUT,*)
+WRITE(NULOUT,*)'INFORMATION FROM NEMO:'
+WRITE(NULOUT,*)'INITIAL DATE : ', IDATE
+WRITE(NULOUT,*)'INITIAL TIME : ', ITIME
+WRITE(NULOUT,*)'INITIAL STEP : ', ITINI
+WRITE(NULOUT,*)'FINAL STEP   : ', ITEND
+WRITE(NULOUT,*)'TIME STEP    : ', ZTSTEP
+WRITE(NULOUT,*)'NEMONSTEP    : ', NEMONSTEP
+IF (JPRO == JPRD) THEN
+   WRITE(NULOUT,*) 'NEMO IS DOUBLE-PRECISION'
+ELSE
+   WRITE(NULOUT,*) 'NEMO IS SINGLE-PRECISION'
+ENDIF
+WRITE(NULOUT,*)
+WRITE(NULOUT,*)'INFORMATION FROM IFS:'
+WRITE(NULOUT,*)'INITIAL DATE : ', NINDAT
+WRITE(NULOUT,*)'INITIAL TIME : ', NSSSSS
+WRITE(NULOUT,*)'INITIAL STEP : ', NSTAR2
+WRITE(NULOUT,*)'FINAL STEP   : ', NSTOP2
+WRITE(NULOUT,*)'TIME STEP    : ', TSTEP
+WRITE(NULOUT,*)'NFRCO        : ', NFRCO
+WRITE(NULOUT,*)
+
+! Check consistency on initial date. The time is ignored for now.
+
+IF ((IDATE/=NINDAT).AND.(NSTAR2==0)) THEN
+   WRITE(NULOUT,*)'Inconsistent NEMO and IFS initial dates.'
+   CALL ABOR1('ININEMO: ABOR1 CALLED')
+ENDIF
+
+! Runtime and coupling interval to nearest second.
+
+IF (NINT((NSTOP2-NSTAR2)*TSTEP)/=NINT(ZTSTEP*(ITEND-ITINI+1))) THEN
+   WRITE(NULOUT,*)'Inconsistent NEMO and IFS run times.'
+   WRITE(NULOUT,*)'IFS run time is  : ',(NSTOP2-NSTAR2)*TSTEP
+   WRITE(NULOUT,*)'NEMO run time is : ',ZTSTEP*(ITEND-ITINI+1)
+   CALL ABOR1('ININEMO: ABOR1 CALLED')
+ENDIF
+
+IF (NINT(NFRCO*TSTEP)/=NINT(ZTSTEP*NEMONSTEP)) THEN
+   WRITE(NULOUT,*)'Inconsistent NEMO and IFS coupling intervals:'
+   WRITE(NULOUT,*)'IFS coupling interval is  : ',NFRCO*TSTEP
+   WRITE(NULOUT,*)'NEMO coupling interval is : ',ZTSTEP*NEMONSTEP
+   CALL ABOR1('ININEMO: ABOR1 CALLED')
+ENDIF
+
+! Construct global indicies
+
+ALLOCATE(IGLOBAL(YDGEOMETRY%YRDIM%NDLON,YDGEOMETRY%YRDIM%NDGLG))
+I=0
+IGLOBAL(:,:)=0
+DO JGL=1,NDGLG
+   DO JKL=1,NLOENG(JGL)
+      I=I+1
+      IGLOBAL(JKL,JGL) = I
+   ENDDO
+ENDDO
+
+! Extract the floating point LSM.
+
+DO JKL=1,NGPTOT,NPROMA
+   ISTA=1
+   IEND=MIN(NPROMA,NGPTOT-JKL+1)
+   IBLK=(JKL-1)/NPROMA+1
+   DO I=ISTA,IEND
+      ! Convert to integer (to be merged later).
+      IF (SD_VF(I,YSD_VF%YLSM%MP,IBLK) > 0.5_JPRB) THEN
+        ILOCLSM(I+JKL-1)=0
+      ELSE
+        ILOCLSM(I+JKL-1)=1
+      ENDIF
+   ENDDO
+ENDDO
+
+! Set global indicies for communication.
+
+I=0
+DO JGL=NFRSTLAT(MY_REGION_NS),NLSTLAT(MY_REGION_NS)
+   IGL=NPTRFRSTLAT(MY_REGION_NS)+JGL-NFRSTLAT(MY_REGION_NS)
+   DO JKL=NSTA(IGL,MY_REGION_EW),NSTA(IGL,MY_REGION_EW)+NONL(IGL,MY_REGION_EW)-1
+      I=I+1
+      IGLOIND(I) = IGLOBAL(JKL,JGL)
+   ENDDO
+ENDDO
+DEALLOCATE(IGLOBAL)
+
+! Initialization of coupling
+
+#ifdef WITH_NEMO
+CALL NEMOGCMCOUP_COUPINIT( MYPROC-1, NPROC, MPL_COMM, NGPTOT,&
+   & ILOCLSM, IGLOIND  )
+#else
+CALL ABOR1('ININEMO: COMPILED WITHOUT WITH_NEMO')
+#endif
+
+! Coupling of 3D fields
+
+#ifdef WITH_NEMO
+IF (LNEMOGRIB3D) THEN
+   ALLOCATE(ZNEMOLVLS(NNEMO3DLEVS),ZNEMOMASK(NGPTOT,NNEMO3DLEVS))
+   CALL NEMOGCMCOUP_MLINIT( MYPROC-1, NPROC, MPL_COMM, NNEMO3DLEVS, NGPTOT, &
+      & ZNEMOLVLS, ZNEMOMASK )
+   DO JKL=1,NNEMO3DLEVS
+      WRITE(NULOUT,*)'ZNEMOMASK',JKL,MAXVAL(ZNEMOMASK(:,JKL)),MINVAL(ZNEMOMASK(:,JKL)),SUM(ZNEMOMASK(:,JKL))
+   ENDDO
+   WRITE(NULOUT,*)
+   IF (ALLOCATED(YDMCC%RNEMOLVLS)) DEALLOCATE(YDMCC%RNEMOLVLS)
+   IF (ALLOCATED(YDMCC%RNEMOMASK)) DEALLOCATE(YDMCC%RNEMOMASK)
+   ALLOCATE(YDMCC%RNEMOLVLS(NNEMO3DLEVS),YDMCC%RNEMOMASK(NGPTOT,NNEMO3DLEVS))
+   YDMCC%RNEMOLVLS(1:NNEMO3DLEVS)=ZNEMOLVLS(1:NNEMO3DLEVS)
+   YDMCC%RNEMOMASK(1:NGPTOT,1:NNEMO3DLEVS)=ZNEMOMASK(1:NGPTOT,1:NNEMO3DLEVS)
+   DEALLOCATE(ZNEMOLVLS,ZNEMOMASK)
+   WRITE(NULOUT,*)'DEPTH OF LEVELS FROM NEMO:'
+   DO JKL=1,NNEMO3DLEVS
+      WRITE(NULOUT,*)JKL,YDMCC%RNEMOLVLS(JKL)
+   ENDDO
+   WRITE(NULOUT,*)
+ENDIF
+#else
+CALL ABOR1('ININEMO: COMPILED WITHOUT WITH_NEMO')
+#endif
+
+!     -----------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('ININEMO',1,ZHOOK_HANDLE)
+END SUBROUTINE ININEMO

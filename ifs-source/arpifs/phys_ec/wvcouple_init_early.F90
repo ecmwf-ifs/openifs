@@ -1,0 +1,157 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE WVCOUPLE_INIT_EARLY(YREWCOU, YDGEOMETRY, PTSTEP)
+#ifdef WITH_WAVE
+
+!----------------------------------------------------------------------
+
+!**** *WVCOUPLE_INIT_EARLY* PERFORMS SOME INITIALIZATION OF THE WAVE
+!     MODEL WHEN COUPLED TO IFS.
+
+!     J. HAWKES    ECMWF NVOEMBER 2017
+
+!*    PURPOSE.
+!     --------
+
+!     IT IS PRIMARILY USED TO SET UP PARTS OF THE MODEL IN
+!     CNT0 (WHEREAS MOST WAM INITIALIZATION HAPPENS THE FIRST
+!     TIME THE WAVE MODEL IS CALLED). IMPORTANT FOR THE IO SERVER
+!     WHICH REQUIRES GRIB HEADERS AND LOCAL-TO-GLOBAL 
+!	  MAPPINGS AT INITIALIZATION.
+
+!**   INTERFACE.
+!     ----------
+
+!     SUBROUTINE WVCOUPLE_INIT_EARLY
+!                INPUT: YDGEOMETRY
+!                OUTPUT:
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+!	  WVCOUPLE
+!     SU0YOMB
+
+!     REFERENCE.
+!     ----------
+
+!       NONE.
+
+!-------------------------------------------------------------------
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE PARKIND1     , ONLY : JPIM, JPRB
+USE YOEWCOU      , ONLY : TEWCOU
+USE YOMCT0       , ONLY : LFDBOP
+USE YOMCT3       , ONLY : NSTEP
+USE YOMLUN       , ONLY : NULOUT
+USE YOMDYNCORE   , ONLY : LPPSTEPS
+USE YOWGRIB_HANDLES, ONLY: NGRIB_HANDLE_WAM_S, NGRIB_HANDLE_WAM_I, NGRIB_HANDLE_IFS
+
+IMPLICIT NONE
+
+#include "preset_wgrib_template.intfb.h"
+#include "setmarstype.intfb.h"
+#include "wvcouple_update_grib_handles.intfb.h"
+#include "wvwamdecomp.intfb.h"
+#include "wvwaminit.intfb.h"
+#include "wvwaminit1.intfb.h"
+
+TYPE(TEWCOU),    INTENT(INOUT) :: YREWCOU
+TYPE(GEOMETRY),  INTENT(IN)    :: YDGEOMETRY
+REAL(KIND=JPRB), INTENT(IN)    :: PTSTEP
+
+LOGICAL :: LLRNL
+INTEGER(KIND=JPIM) :: IGPTOTG,IGPTOT
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+
+!-------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('WVCOUPLE_INIT_EARLY',0,ZHOOK_HANDLE)
+
+ASSOCIATE(YDGEM=>YDGEOMETRY%YRGEM)
+ASSOCIATE( &
+& NGPTOT=>YDGEM%NGPTOT, &
+& NGPTOTG=>YDGEM%NGPTOTG, &
+& LWFRSTIME=>YREWCOU%LWFRSTIME, &
+& LWCOU=>YREWCOU%LWCOU, &
+& LWINIT=>YREWCOU%LWINIT, &
+& LWCOU2W=>YREWCOU%LWCOU2W, &
+& LWCOURNW=>YREWCOU%LWCOURNW, &
+& LWCOUHMF=>YREWCOU%LWCOUHMF, &
+& LWFLUX=>YREWCOU%LWFLUX, &
+& NGAUSSW=>YREWCOU%NGAUSSW, &
+& NLONW=>YREWCOU%NLONW, &
+& NLATW=>YREWCOU%NLATW, &
+& RNORTW=>YREWCOU%RNORTW, &
+& RSOUTW=>YREWCOU%RSOUTW, &
+& RDEGREW=>YREWCOU%RDEGREW, &
+& LWVIN_MASK_NOT_SET=>YREWCOU%LWVIN_MASK_NOT_SET, &
+& LWVIN_UNINITIALISED=>YREWCOU%LWVIN_UNINITIALISED, &
+& LWVOUT_MASK_NOT_SET=>YREWCOU%LWVOUT_MASK_NOT_SET, &
+& NWV_W2IWGHT=>YREWCOU%NWV_W2IWGHT, &
+& LWCOUNORMS=>YREWCOU%LWCOUNORMS, &
+& NGRIB_HANDLE_FOR_WAM=>YREWCOU%NGRIB_HANDLE_FOR_WAM, &
+& KSTPW=>YREWCOU%NSTPW &
+&)
+
+! -- Initialize WAM variables and read WAM namelist
+IF (.NOT.LWINIT .OR. .NOT.ALLOCATED(YREWCOU%MASK_WAVE_OUT)) THEN
+
+  LLRNL=.TRUE.
+  CALL WVWAMINIT(LWCOU,NULOUT,LLRNL,NGAUSSW,NLONW,NLATW,RSOUTW,RNORTW)
+
+  RDEGREW=(RNORTW-RSOUTW)/(NLATW-1)
+
+  ! Allocate and initialise masks for optimised coupling communications
+  IGPTOTG=NGPTOTG
+  IGPTOT=NGPTOT
+  ALLOCATE(YREWCOU%MASK_WAVE_IN(IGPTOTG))
+  ALLOCATE(YREWCOU%MASK_WAVE_OUT(NLONW,NLATW))
+  YREWCOU%MASK_WAVE_IN(:)=0
+  YREWCOU%MASK_WAVE_OUT(:,:)=0
+  ! Set flags to indicate mask and comms data structures are not initialised
+  LWVIN_MASK_NOT_SET=.TRUE.
+  LWVOUT_MASK_NOT_SET=.TRUE.
+  LWVIN_UNINITIALISED=.TRUE.
+  ! Inactive until WV_W2IWGHT is defined.
+  NWV_W2IWGHT=0
+  ! Set default for producing global norms
+  LWCOUNORMS=.FALSE.
+
+ENDIF
+
+! -- Perform WAM decomposition and create GRIB templates
+IF(.NOT.LWINIT) THEN
+
+  CALL WVWAMINIT1(LWCOU, LWCOU2W, LWCOURNW, LWCOUHMF, LWFLUX, LFDBOP)
+  CALL WVWAMDECOMP
+  CALL SETMARSTYPE
+
+  ! Initialize and update GRIB handles for WAM (integrated and spectral)
+  CALL WVCOUPLE_UPDATE_GRIB_HANDLES(LWINIT, KSTPW, PTSTEP, NSTEP, LPPSTEPS, NGRIB_HANDLE_FOR_WAM)
+  NGRIB_HANDLE_IFS=NGRIB_HANDLE_FOR_WAM
+  CALL PRESET_WGRIB_TEMPLATE("I",NGRIB_HANDLE_WAM_I)
+  CALL PRESET_WGRIB_TEMPLATE("S",NGRIB_HANDLE_WAM_S)
+
+ENDIF
+
+LWINIT=.TRUE.
+
+END ASSOCIATE
+END ASSOCIATE
+
+IF (LHOOK) CALL DR_HOOK('WVCOUPLE_INIT_EARLY',1,ZHOOK_HANDLE)
+
+#endif
+END SUBROUTINE WVCOUPLE_INIT_EARLY 

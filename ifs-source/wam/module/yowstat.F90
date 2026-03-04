@@ -1,0 +1,253 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+      MODULE YOWSTAT
+
+      USE PARKIND_WAVE, ONLY : JWIM, JWRB, JWRU
+
+      IMPLICIT NONE
+
+!*    ** *STATUS* - TIME STATUS OF INTEGRATION, WIND INPUT,
+!                         OUTPUT OF RESULTS, MODEL OPTIONS,
+!                         AND ALTIMETER DATA ASSIMILATION WINDOW.
+
+
+      CHARACTER(LEN=2) :: MARSTYPE
+      CHARACTER(LEN=2) ::  YCLASS
+      CHARACTER(LEN=4) ::  YEXPVER
+
+      CHARACTER(LEN=14) ::  CDATEA
+      CHARACTER(LEN=14) ::  CDATEE
+      CHARACTER(LEN=14) ::  CDATEF
+      CHARACTER(LEN=14) ::  CDTPRO
+      CHARACTER(LEN=14), ALLOCATABLE :: CDTW_LST(:)
+
+      CHARACTER(LEN=14) ::  CDTRES
+      CHARACTER(LEN=14) ::  CDTBC
+      CHARACTER(LEN=14) ::  CDATER
+      CHARACTER(LEN=14) ::  CDATES
+      CHARACTER(LEN=14) ::  CDTINTT
+      CHARACTER(LEN=25) ::  CMETER
+      CHARACTER(LEN=25) ::  CEVENT
+
+      INTEGER(KIND=JWIM) :: IFRELFMAX 
+      REAL(KIND=JWRB) ::    DELPRO_LF
+      INTEGER(KIND=JWIM) :: IDELPRO 
+      INTEGER(KIND=JWIM) :: IDELT 
+      INTEGER(KIND=JWIM) :: IDELWI 
+      INTEGER(KIND=JWIM), ALLOCATABLE :: IDELWI_LST(:) 
+      INTEGER(KIND=JWIM) :: IDELWO 
+      INTEGER(KIND=JWIM), ALLOCATABLE :: IDELWO_LST(:) 
+      INTEGER(KIND=JWIM) :: NDELW_LST
+      INTEGER(KIND=JWIM) :: IDELALT
+      INTEGER(KIND=JWIM) :: IREST
+      INTEGER(KIND=JWIM) :: IDELRES
+      INTEGER(KIND=JWIM) :: IDELBC
+      INTEGER(KIND=JWIM) :: IDELINT
+      INTEGER(KIND=JWIM) :: IDELINS
+      INTEGER(KIND=JWIM) :: IDELSPT
+      INTEGER(KIND=JWIM) :: IDELSPS
+      INTEGER(KIND=JWIM) :: ICASE
+      INTEGER(KIND=JWIM) :: ISHALLO
+      INTEGER(KIND=JWIM) :: ISNONLIN
+      INTEGER(KIND=JWIM) :: IPHYS
+      INTEGER(KIND=JWIM) :: IREFRA
+      INTEGER(KIND=JWIM) :: IPROPAGS=-1
+      INTEGER(KIND=JWIM) :: IDAMPING
+      INTEGER(KIND=JWIM) :: IASSI
+      INTEGER(KIND=JWIM) :: IASSI_ORIG
+      INTEGER(KIND=JWIM) :: NENSFNB
+      INTEGER(KIND=JWIM) :: NTOTENS
+      INTEGER(KIND=JWIM) :: NSYSNB
+      INTEGER(KIND=JWIM) :: NMETNB
+      INTEGER(KIND=JWIM) :: ISTREAM
+      INTEGER(KIND=JWIM) :: NLOCGRB
+      INTEGER(KIND=JWIM) :: NCONSENSUS
+      INTEGER(KIND=JWIM) :: NDWD
+      INTEGER(KIND=JWIM) :: NMFR
+      INTEGER(KIND=JWIM) :: NNCEP
+      INTEGER(KIND=JWIM) :: NUKM
+      INTEGER(KIND=JWIM) :: IREFDATE
+
+      LOGICAL :: LANAONLY
+      LOGICAL :: L4VTYPE
+      LOGICAL :: LFRSTFLD
+      LOGICAL :: LALTAS
+      LOGICAL :: LSARAS
+      LOGICAL :: LSARINV
+      LOGICAL :: LGUST
+      LOGICAL :: LADEN
+      LOGICAL :: LRELWIND
+      LOGICAL :: LSUBGRID
+      LOGICAL :: LBIWBK
+      LOGICAL :: LLSOURCE
+      LOGICAL :: LNSESTART
+      LOGICAL :: LSMSSIG_WAM
+
+!*     VARIABLE.   TYPE.     PURPOSE.
+!      ---------   -------   --------
+!      *MARSTYPE*  CHAR*2    CHARACTER STRING INDICATING THE CURRENT
+!                            STATUS OF THE MODEL.
+!      *YCLASS*    CHAR*2    CHARACTER STRING INDICATING THE CLASS OF
+!                            THE CURRENT RUN.
+!      *YEXPVER*   CHAR*4    CHARACTER STRING INDICATING THE EXPERIMENT
+!                            VERSION NUMBER OF THE CURRENT RUN.
+
+!      *CDATEA*    CHAR*14   START DATE OF RUN  (YYYYMMDDHHMMSS).
+!      *CDATEE*    CHAR*14   END DATE OF RUN (YYYYMMDDHHMMSS).
+!      *CDATEF*    CHAR*14   END DATE OF ANALYSIS RUN (YYYYMMDDHHMM).
+!      *CDTPRO*    CHAR*14   END DATE OF PROPAGATION.
+!      *CDTW_LST*  CHAR*14   LIST OF END DATES OF WIND INPUT TIMES.
+!                            MUST BE INPUT IN CHRONOLOGICAL ORDER !!!
+!      *CDTRES*    CHAR*14   NEXT DATE TO SAVE OUTPUT AND RESTART FILES.
+!      *CDTBC*     CHAR*14   NEXT DATE TO SAVE BC FILES.
+!      *CDATER*    CHAR*14   DATE FOR OUTPUT OF BOTH RESTART FILES
+!                            IF NOT SET  (ie: BLANK LINE IN WAMINFO)
+!                            OR SET TO 00000000000000 THEN
+!                            OUTPUT WILL OCCUR AS SPECIFIED IN THE
+!                            INPUT FILE TO THE WAVE MODEL.
+!                            IF SET BUT NOT BETWEEN CDATEA AND CDATEE,
+!                            THEN IT WILL BE SET TO CDATEE.
+!      *CDATES*    CHAR*14   LAST DATE FOR OUTPUT OF RESTART FILES
+!                            IF NOT SET IT WILL BE SET BY DEFAULT TO
+!                            CDATEE
+!      *CDTINTT*   CHAR*14   NEXT DATE TO WRITE INTEG. PARAMETERS.
+
+!      *IFRELFMAX* INTEGER   FREQUENCY INDEX FOR THE LOW FREQUENCY WAVES (see DELPRO_LF below)
+!      *DELPRO_LF* REAL      TIMESTEP WAM PROPAGATION IN SECONDS FOR LOW FREQUENCY WAVES (can be fraction od seconds)
+!                            FOR ALL WAVES WITH FREQUENCY <= FR(IFRELFMAX), IF IFRELFMAX>0
+!                            !!! this option is only possible when no refraction effects are used (IREFRA=0)
+!                            !!! and only if IPROPAGS = 2 (I could not be bother to code if for the other options)
+!      *IDELPRO*   INTEGER   TIMESTEP WAM PROPAGATION IN full SECONDS FOR ALL WAVES IF IFRELFMAX=0,
+!                            OR ALL WAVES WITH FREQUENCIES > FR(IFRELFMAX)a (see above).
+!      *IDELT*     INTEGER   TIMESTEP SOURCE FUNCTION IN SECONDS.
+!      *IDELWI*    INTEGER   INPUT WIND TIMESTEP PREWIND IN SECONDS.
+!      *IDELWI_LST*INTEGER   LIST OF IDELWI'S. (!!! ALWAYS IN SECONDS!!!)
+!      *IDELWO*    INTEGER   OUTPUT WIND TIMESTEP IN SECONDS
+!                            EQUAL TO INPUT WIND TIMESTEP INTO WAMODEL.
+!      *IDELWO_LST*INTEGER   LIST OF IDELWO'S. (!!! ALWAYS IN SECONDS!!!)
+!      *NDELW_LST* INTEGER   NUMBER OF ENTRIES IN LISTS IDELWI_LST and
+!                            IDELWO_LST
+!      *IDELALT*   INTEGER   LENGTH IN SECONDS OF THE CENTERED TIME
+!                            WINDOW FOR THE ALTIMETER DATA ASSIMILATION
+!                            AT EACH ASSIMILATION TIME. IF NOT
+!                            PRESCRIBED, IT WILL BE SET TO IDELWO.
+!      *IREST*     INTEGER   RESTART FILE SAVE OPTION.
+!                            = 1  RESTART FILES ARE SAVED
+!                            = 2  RESTART FILES ARE SAVED IN SPLIT MODE
+!                            = 3  RESTART FILES ARE SAVED AND
+!                                 PREALLOCATION OF THE OUTPUT FILE WHICH
+!                                 IS SAVED TO A VFL FILE SYSTEM
+!                            = 4  RESTART FILES ARE SAVED IN SPLIT MODE
+!                                 OF THE OUTPUT FILE WHICH IS SAVED TO
+!                                 A VFL FILE SYSTEM
+!                            OTHERWISE RESTART FILES ARE NOT SAVED.
+!      *IDELRES*   INTEGER   OUTPUT AND RESTART FILE DISPOSE TIMESTEP.
+!      *IDELBC*   INTEGER    OUTPUT BC FILE DISPOSE TIMESTEP.
+!      *IDELINT*   INTEGER   INTEG. PARAMETER (TOTAL SEA)  OUTPUT
+!                            TIMESTEP IN SECONDS.
+!      *IDELINS*   INTEGER   INTEG. PARAMETER (SEA + SWELL) OUTPUT
+!                            TIMESTEP IN SECONDS.
+!      *IDELSPT*   INTEGER   SPECTRA (TOTAL) OUTPUT TIMESTEP IN SECONDS.
+!      *IDELSPS*   INTEGER   SPECTRA (SEA + SWELL) OUTPUT
+!                            TIMESTEP IN SECONDS.
+
+!      *ICASE*     INTEGER   PROPAGATION FLAG
+!                            = 1  SPHERICAL COORDINATES
+!                            OTHERWISE CARTESIAN COORDINATES.
+!      *ISHALLO*   INTEGER   SHALLOW WATER MODEL FLAG  !!! no longer used. It is always shallow water option
+!                            = 1  DEEP WATER MODEL
+!                            OTHERWISE  SHALLOW WATER MODEL.
+!      *ISNONLIN*  INTEGER   SNONLIN FLAG
+!                            = 0 THE OLD FORMULATION IS USED.
+!      *IREFRA*    INTEGER   REFRACTION OPTION..
+!                            = 0  NO REFRACTION.
+!                            = 1 DEPTH REFRACTION ONLY.
+!                            = 2 CURRENT REFRACTION ONLY.
+!                            = 2 DEPTH AND CURRENT REFRACTION.
+!      *IPROPAGS*  INTEGER   PROPAGATION SCHEME OPTION.
+!                            = 0 ORIGINAL FIRST ORDER SCHEME ON QUADRANT.
+!                            = 1 FIRST ORDER SCHEME ON TWO QUADRANTS
+!      *IDAMPING*  INTEGER   WAVE DAMPING CONTROL
+!                            = 0 NO WAVE DAMPING
+!                            = 1 WAVE DAMPING IS ON.
+!      *IASSI*     INTEGER   ASSIMILATION MODEL FLAG
+!                            = 1  ASSIMILATION IS DONE IF ANALYSIS RUN
+!                            OTHERWISE  NO ASSIMILATION.
+!      *NENSFNB*   INTEGER   ENSEMBLE FORECAST NUMBER (DEFAULT=0)
+!      *NTOTENS*   INTEGER   TOTAL ENSEMBLE FORECAST MEMBERS (DEFAULT=0)
+!      *NSYSNB*    INTEGER   SYSTEM NUMBER TO BE USED FOR GRIBBING OF
+!                            SEASONAL DATA (DEFAULT=-1).
+!      *NMETNB*    INTEGER   METHOD NUMBER TO BE USED FOR GRIBBING OF
+!                            SEASONAL DATA (DEFAULT=-1).
+!      *LANAONLY*  LOGICAL   CONTROLS WHETHER ANALYSIS IS RUN WITHOUT
+!                            PRIOR ADVECTION STEPS
+!      *L4VTYPE*   LOGICAL   CONTROLS WHETHER MARS TYPE 4V IS USED
+!                            INSTEAD OF TYPE FG.
+!      *LFRSTFLD*  LOGICAL   CONTROLS WHETHER INITIAL OUTPUT INTEGRATED
+!                            PARAMETERS ARE PRODUCED BASED ON THE INITIAL
+!                            CONDITIONS. IT WILL ONLY OUTPUT PARAMETERS
+!                            THAT ARE NOT USED AS INPUT (233, 245, 251)
+!                            OR CONNECTED TO THE ALTIMETER WAVE HEIGHT
+!                            CORRECTION (246, 247, 248).
+!      *LALTAS*    LOGICAL   CONTROLS WHETHER ALTAS IS CALLED FOR THE
+!                            ASSIMILATION.
+!      *LSARAS*    LOGICAL   CONTROLS WHETHER SARAS IS CALLED FOR THE
+!                            ASSIMILATION.
+!      *LSARINV*   LOGICAL   CONTROLS WHETHER SARINVERT IS CALLED FOR
+!                            THE SAR INVERSION.
+!      *ISTREAM*   INTEGER   STREAM NUMBER WHEN CODING DATA IN GRID
+!                            IF SET TO 0 IT WILL NOT BE USED AND
+!                            INSTEAD MARSTYPE WILL BVE USED TO DETERMINE
+!                            THE STREAM.
+!      *LGUST*     LOGICAL   CONTROLS WHETHER WIND GUSTINESS EFFECT WILL
+!                            BE USED IN COMPUTATIONS
+!      *LADEN*     LOGICAL   CONTROLS WHETHER COMPUTED AIR DENSITY WILL
+!                            BE USED IN COMPUTATIONS
+!      *LRELWIND*  LOGICAL   CONTROLS WHETHER RELATIVE WINDS WITH RESPECT TO
+!                            SURFACE CURRENTS ARE USED OR NOT.
+!                            FOR COUPLED RUNS, THE WINDS PASSED By THE IFS
+!                            ARE ALREADY RELATIVE. ON THE OTHEr HAND,
+!                            STANDALONE MODE, THE INPUT WIND SHOULD BE IN
+!                            ABSOLUTE TERMS.
+!      *LBIWBK*    LOGICAL   CONTROLS WHETHER BOTTOM INDUCED WAVE BREAKING
+!                            IS SHITCHED ON.
+!      *LSUBGRID*  LOGICAL   CONTROLS WHETHER THE SUB-GRID SCALE
+!                            PARAMETRISATION IS USED OR RESET TO THE
+!                            IMPACT OF NOT HAVING SUB-GRID SCALE.
+!      *LLSOURCE*  LOGICAL   CONTROLS WHETHER SOURCE TERM CONTRIBUTION IS
+!                            COMPUTED.
+!      *LNSESTART* LOGICAL   IF TRUE INITIAL CONDITIONS WILL BE SET TO
+!                            NOISE LEVEL.
+!      *NLOCGRB*   INTEGER   LOCAL GRIB TABLE NUMBER.
+!      *NCONCENSUS*INTEGER   ONLY USED IN THE CONTEXT OF MULTI-ANALYSIS
+!                            ENSEMBLE FORECASTS. IT SPECIFIED WHETHER
+!                            ONE (NCONCENSUS=0) OR MORE ANALYSES ARE
+!                            USED IN THE INITIAL CONDITIONS.
+!      *NDWD*      INTEGER   ONLY USED IN THE CONTEXT OF MULTI-ANALYSIS
+!                            ENSEMBLE FORECASTS. IT SPECIFIED WHETHER
+!                            DWD IS USED IN THE INITIAL CONDITIONS.
+!      *NMFR*      INTEGER   ONLY USED IN THE CONTEXT OF MULTI-ANALYSIS
+!                            ENSEMBLE FORECASTS. IT SPECIFIED WHETHER
+!                            METEO FRANCE IS USED IN THE INITIAL
+!                            CONDITIONS.
+!      *NNCEP*     INTEGER   ONLY USED IN THE CONTEXT OF MULTI-ANALYSIS
+!                            ENSEMBLE FORECASTS. IT SPECIFIED WHETHER
+!                            NCEP IS USED IN THE INITIAL CONDITIONS.
+!      *NUKM*      INTEGER   ONLY USED IN THE CONTEXT OF MULTI-ANALYSIS
+!                            ENSEMBLE FORECASTS. IT SPECIFIED WHETHER
+!                            THE MET OFFICE IS USED IN THE INITIAL
+!                            CONDITIONS.
+!      *IREFDATE*  INTEGER   REFERENCE DATE FOR MONTHLY FORECAST
+!                            HINDCAST RUNS.
+!
+!      *LSMSSIG_WAM* LOGICAL .T. = send signals to SMS or ECFLOW (ECMWF supervisor)
+!      *CMETER*   CHARACTER  SMS or ECFLOW meter command (ECMWF supervisor)
+!      *CEVENT*   CHARACTER  SMS or ECFLOW event command (ECMWF supervisor)
+! ----------------------------------------------------------------------
+      END MODULE YOWSTAT

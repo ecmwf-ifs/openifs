@@ -1,0 +1,248 @@
+! (C) Copyright 1990- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE VEVAPS_MOD
+CONTAINS
+SUBROUTINE VEVAPS(KIDIA,KFDIA,KLON,PTMST,PRVDIFTS,KTILE,&
+ & PWLMX ,PTMLEV ,PQMLEV ,PAPHMS ,PTSKM1M ,PTSAM1M ,&
+ & PQS   ,PCFQ   ,PWETB  ,PWETL  ,PWETH   ,PWETHS  ,&
+ & YDCST ,YDVEG  ,&
+ & PCPTS ,PCSAT  ,PCAIR  ,PCSNW )  
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF  , ONLY : RVTMP2
+USE YOS_CST  , ONLY : TCST
+USE YOS_VEG  , ONLY : TVEG
+
+!     ------------------------------------------------------------------
+
+!**   *VEVAPS* - COMPUTE EQUIVALENT EVAPOTRANSPIRATION EFFICIENCY
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.     18/01/90.
+
+!     OBUKHOV-L UPDATE      ACMB           26/03/90.
+!     (MAINLY TECHNICAL; TO MAKE CODE MORE READABLE)
+!     Tiling of land surface ACMB          26/03/99.
+!     Change surface units  P Viterbo      24/05/2004
+!     Move to SURF library  P Viterbo      15/05/2005
+!          (based on VDFEVAP)
+!     Code re-organization  M.Janiskova    16/02/2006
+!     for efficient TL/AD versions
+
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE EQUIVALENT EVAPOTRANSPIRATION EFFICIENCY
+
+!     INTERFACE
+!     ---------
+
+!     *VEVAP* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILE*        TILE INDEX
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        TIME STEP
+!     *PRVDIFTS*     Semi-implicit factor for vertical diffusion discretization
+!     *PWLMX*        MAXIMUM INTERCEPTION LAYER CAPACITY
+!     *PTMLEV*       TEMPERATURE AT T-1, lowest atmospheric level
+!     *PQMLEV*       SPECIFIC HUMUDITY AT T-1, lowest atmospheric level
+!     *PAPHMS*       PRESSURE AT T-1, surface
+!     *PTSKM1M*      SKIN TEMPERATURE
+!     *PTSAM1M*      SURFACE TEMPERATURE
+!     *PQS*          SATURATION Q AT SURFACE
+!     *PCFQ*         PROP. TO EXCH. COEFF. FOR MOISTURE(C-STAR IN DOC.)
+!                    (SURFACE LAYER ON;Y)
+!     *PWETB*        BARE SOIL RESISTANCE
+!     *PWETL*        STOMATAL RESISTANCE LOW VEGETATION
+!     *PWETH*        STOMATAL RESISTANCE HIGH VEGETATION, SNOW FREE
+!     *PWETHS*       STOMATAL RESISTANCE HIGH VEGETATION WITH SNOW
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PCPTS*        DRY STATIC ENRGY AT SURFACE
+!     *PCSAT*        MULTIPLICATION FACTOR FOR QS AT SURFACE
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCAIR*        MULTIPLICATION FACTOR FOR Q AT LOWEST MODEL LEVEL
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCSNW*        MULTIPLICATION FACTOR FOR MOISTURE FLUX
+!                    COMPUTATION FROM SNOW THROUGH CANOPY (TILE 7)
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTMST 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRVDIFTS
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTILE 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWLMX(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPHMS(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSKM1M(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSAM1M(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQS(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCFQ(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWETB(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWETL(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWETH(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWETHS(:) 
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TVEG)        ,INTENT(IN)    :: YDVEG
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCPTS(:) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCSAT(:) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCAIR(:) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCSNW(:) 
+INTEGER(KIND=JPIM) :: JL
+
+REAL(KIND=JPRB) :: ZCONS, ZCONS12, ZZWET, ZZWETS, ZRAS, ZCONS16, ZEP, ZEMAX
+REAL(KIND=JPRB) :: ZCAIR, ZDIV1, ZDIV2, ZDIV3, ZDIV4, ZDIV5
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!*    LOCAL STORAGE
+!     ----- -------
+
+!     ------------------------------------------------------------------
+
+!*       1.     INITIALIZE CONSTANTS
+!               ---------- ----------
+
+! aerodynamic resistance for moisture transport from 
+! top of high vegetation canopy to underlying snow (s/m)
+! The value 1200. below is an estimate of rho*Cp at the surface
+
+IF (LHOOK) CALL DR_HOOK('VEVAPS_MOD:VEVAPS',0,ZHOOK_HANDLE)
+ASSOCIATE(RCPD=>YDCST%RCPD, RD=>YDCST%RD, RETV=>YDCST%RETV, RG=>YDCST%RG, &
+ & RLHAERO=>YDVEG%RLHAERO, RLHAEROS=>YDVEG%RLHAEROS)
+ZCONS12=PRVDIFTS*PTMST*RG/RD
+ZCONS16=1./(RG*PTMST*PRVDIFTS)
+
+!     ------------------------------------------------------------------
+
+!          2.    COMPUTE EQUIVALENT EFFICIENCY FOR EVAPORATION
+!                ------- ---------- ---------- --- -----------
+
+PCSAT(KIDIA:KFDIA)=1.0_JPRB
+PCAIR(KIDIA:KFDIA)=1.0_JPRB
+
+!      interception reservoir
+
+IF(KTILE == 3)THEN
+  DO JL=KIDIA,KFDIA
+    ZEP=ZCONS16*PCFQ(JL)*(PQMLEV(JL)-PQS(JL))
+    ZEMAX=-PWLMX(JL)/PTMST
+    IF (ZEP < 0.0_JPRB .AND. ZEMAX < 0.0_JPRB .AND. ZEP < ZEMAX) THEN
+      ZDIV1 = 1.0_JPRB/ZEP
+      ZCAIR = ZEMAX*ZDIV1
+      IF (ZCAIR < 1.0_JPRB) THEN
+        PCAIR (JL) = ZCAIR
+      ELSE
+        PCAIR (JL) = 1.0_JPRB
+      ENDIF
+      PCSAT(JL)=PCAIR(JL)
+    ENDIF
+  ENDDO
+ENDIF
+
+!      LOW VEGETATION
+
+IF (KTILE  ==  4) THEN
+  DO JL=KIDIA,KFDIA
+    IF (PQMLEV(JL)  <=  PQS(JL)) THEN
+      ZDIV2 = 1.0_JPRB/(PTMLEV(JL)*(1.0_JPRB+RETV*PQMLEV(JL)))
+      ZCONS = ZCONS12*PAPHMS(JL)*ZDIV2
+      ZDIV3 = 1.0_JPRB/ZCONS
+      ZZWET = PWETL(JL)*ZDIV3
+      PCSAT(JL)=1.0_JPRB/(1.0_JPRB+PCFQ(JL)*ZZWET)
+      PCAIR(JL)=PCSAT(JL)
+    ENDIF
+  ENDDO
+ENDIF
+
+!      HIGH VEGETATION (NO SNOW)
+
+IF (KTILE  ==  6) THEN
+  DO JL=KIDIA,KFDIA
+    IF (PQMLEV(JL)  <=  PQS(JL)) THEN
+      ZDIV2 = 1.0_JPRB/(PTMLEV(JL)*(1.0_JPRB+RETV*PQMLEV(JL)))
+      ZCONS = ZCONS12*PAPHMS(JL)*ZDIV2
+      ZDIV3 = 1.0_JPRB/ZCONS
+      ZZWET=PWETH(JL)*ZDIV3
+      PCSAT(JL)=1.0_JPRB/(1.0_JPRB+PCFQ(JL)*ZZWET)
+      PCAIR(JL)=PCSAT(JL)
+    ENDIF
+  ENDDO
+ENDIF
+
+!      HIGH VEGETATION (WITH UNDERLYING SNOW)
+
+IF (KTILE == 7) THEN
+  PCSNW(KIDIA:KFDIA)=0.0_JPRB
+  DO JL=KIDIA,KFDIA
+    IF (PQMLEV(JL) <= PQS(JL)) THEN
+      IF(PTSKM1M(JL) > PTSAM1M(JL)) THEN
+        ZRAS=1200._JPRB/RLHAEROS  
+      ELSE
+        ZRAS=1200._JPRB/RLHAERO  
+      ENDIF
+      ZDIV2 = 1.0_JPRB/(PTMLEV(JL)*(1.0_JPRB+RETV*PQMLEV(JL)))
+      ZCONS = ZCONS12*PAPHMS(JL)*ZDIV2
+      ZDIV3 = 1.0_JPRB/ZCONS
+      ZZWET=PWETHS(JL)*ZDIV3
+      ZZWETS=ZRAS*ZDIV3
+      ZDIV4 = 1.0_JPRB/(ZZWETS+ZZWET*PCFQ(JL)*ZZWETS+ZZWET)
+      PCSAT(JL) = ZZWETS*ZDIV4
+      PCAIR(JL)=PCSAT(JL)
+      IF (PWETHS(JL) > 1.0_JPRB) THEN
+        ZDIV5 = 1.0_JPRB/(ZZWET+ZZWETS*PCFQ(JL)*ZZWET+ZZWETS)
+        PCSNW(JL) = ZZWET*ZDIV5
+      ENDIF
+    ENDIF
+  ENDDO
+ENDIF
+
+!      BARE SOIL
+
+IF (KTILE  ==  8) THEN
+  DO JL=KIDIA,KFDIA
+    IF (PQMLEV(JL)  <=  PQS(JL)) THEN
+      ZDIV2 = 1.0_JPRB/(PTMLEV(JL)*(1.0_JPRB+RETV*PQMLEV(JL)))
+      ZCONS = ZCONS12*PAPHMS(JL)*ZDIV2
+      ZDIV3 = 1.0_JPRB/ZCONS
+      ZZWET=PWETB(JL)*ZDIV3
+      PCSAT(JL)=1.0_JPRB/(1.0_JPRB+PCFQ(JL)*ZZWET)
+      PCAIR(JL)=PCSAT(JL)
+    ENDIF
+  ENDDO
+ENDIF
+
+DO JL=KIDIA,KFDIA
+  PCPTS(JL)=PTSKM1M(JL)*RCPD*(1.0_JPRB+RVTMP2*&
+   & (PCSAT(JL)*PQS(JL)+(1.0_JPRB-PCAIR(JL))*PQMLEV(JL)))  
+ENDDO
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('VEVAPS_MOD:VEVAPS',1,ZHOOK_HANDLE)
+END SUBROUTINE VEVAPS
+END MODULE VEVAPS_MOD

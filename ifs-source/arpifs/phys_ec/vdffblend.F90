@@ -1,0 +1,118 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE VDFFBLEND(KIDIA,KFDIA,KLON,KLEV,&
+ & PUM1  ,PVM1  ,PGEOM1, PUCURR, PVCURR, PBLEND,&
+ ! OUTPUTS
+ & PFBLEND )
+
+!     ------------------------------------------------------------------
+
+!**   *VDFFBLEND* - COMPUTES THE WIND SPEED AT THE BLENDING HEIGHT
+
+!     P. VITERBO         E.C.M.W.F.    10/06/2005. (BASED ON VDFPPCFL)
+!     T. Stockdale       E.C.M.W.F.    10/12/2005  Include surface currents
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE WIND SPEED AT BLENDING HEIGHT TO BE USE LATER BY CFL INTERPOLATION
+!      METHOD
+
+!     INTERFACE
+!     ---------
+
+!     *VDFFBLEND* IS CALLED BY *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLEV*         NUMBER OF LEVELS
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PUM1*         U-COMPONENT WIND AT T-1
+!     *PVM1*         V-COMPONENT WIND AT T-1
+!     *PGEOM1*       GEOPOTENTIAL AT T-1
+!     *PUCURR*       U-COMPONENT OF OCEAN SFC CURRENT
+!     *PVCURR*       V-COMPONENT OF OCEAN SFC CURRENT
+!     *PBLEND*       HEIGHT FROM WHICH WIND SPEED IS INTERPOLATED TO 10 M
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PFBLEND*      WIND SPEED AT BLENDING HEIGHT
+
+!     METHOD
+!     ------
+
+!     LINEAR INTERPOLATION IN PRESSURE FROM THE MODEL LEVEL WIND SPEED TO THE
+!      BLENDING HEIGHT
+
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMCST   , ONLY : RG
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUCURR(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVCURR(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBLEND(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFBLEND(KLON) 
+
+REAL(KIND=JPRB) :: ZBLENDR(KLON)
+
+INTEGER(KIND=JPIM) :: JK, JL
+
+REAL(KIND=JPRB) :: ZUU, ZVV
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('VDFFBLEND',0,ZHOOK_HANDLE)
+
+DO JL=KIDIA,KFDIA
+  IF (PBLEND(JL)*RG  <  PGEOM1(JL,KLEV)) THEN
+    ZUU=PUM1(JL,KLEV)-PUCURR(JL)
+    ZVV=PVM1(JL,KLEV)-PVCURR(JL)
+    PFBLEND(JL)=SQRT(ZUU**2+ZVV**2)
+    ZBLENDR(JL)=PGEOM1(JL,KLEV)
+  ELSE
+    ZBLENDR(JL)=PBLEND(JL)*RG
+  ENDIF
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  DO JK=KLEV,2,-1
+    IF (ZBLENDR(JL)  <  PGEOM1(JL,JK-1) .AND.&
+      & ZBLENDR(JL)  >=  PGEOM1(JL,JK)) THEN  
+      ZUU=( PUM1(JL,JK-1)*(ZBLENDR(JL)-PGEOM1(JL,JK))&
+       & +PUM1(JL,JK)*(PGEOM1(JL,JK-1)-ZBLENDR(JL))&
+       & )/(PGEOM1(JL,JK-1)-PGEOM1(JL,JK))  
+      ZVV=( PVM1(JL,JK-1)*(ZBLENDR(JL)-PGEOM1(JL,JK))&
+       & +PVM1(JL,JK)*(PGEOM1(JL,JK-1)-ZBLENDR(JL))&
+       & )/(PGEOM1(JL,JK-1)-PGEOM1(JL,JK))  
+      PFBLEND(JL)=SQRT((ZUU-PUCURR(JL))**2+(ZVV-PVCURR(JL))**2)
+      EXIT
+    ENDIF
+  ENDDO
+ENDDO
+
+IF (LHOOK) CALL DR_HOOK('VDFFBLEND',1,ZHOOK_HANDLE)
+END SUBROUTINE VDFFBLEND

@@ -1,0 +1,136 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE SUFPOROG(KFIELDS,KXPHIS,YDFPGEO,KFPDOM,KFPRESOL,KSPEC2,PBUF)
+
+!**** *SUFPOROG*  - SETUP OUTPUT OROGRAPHY
+
+!     PURPOSE.
+!     --------
+!        TO FIT IN SPECTRAL SPACE THE INTERPOLATED MODEL OROGRAPHY
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *SUFPOROG*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!           KFIELDS : number of fields in array
+!           KXPHIS  : pointer of interpolated orography in array
+!           YDFPGEO : post-processing mixt geometries
+!           KFPDOM  : number of subdomains
+!           KFPRESOL: output resolution tag
+!           KSPEC2  : number of spectral coefficients
+!           PBUF    : array of data
+
+!        IMPLICIT ARGUMENTS
+!        ------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!        See documentation about FULL-POS.
+
+!     AUTHOR.
+!     -------
+!      RYAD EL KHATIB *METEO-FRANCE*
+!      ORIGINAL : 29-Aug-2012
+
+!     MODIFICATIONS.
+!     --------------
+!      R. El Khatib 13-Dec-2012 Fullpos buffers reshaping
+!     ------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM     ,JPRB
+USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMLUN   , ONLY : NULOUT
+USE YOMFPGEO , ONLY : TFPGEO
+USE YOMCST   , ONLY : RG
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM), INTENT(IN) :: KFIELDS
+INTEGER(KIND=JPIM), INTENT(IN) :: KXPHIS
+TYPE(TFPGEO),       INTENT(IN) :: YDFPGEO
+INTEGER(KIND=JPIM), INTENT(IN) :: KFPDOM
+INTEGER(KIND=JPIM), INTENT(IN) :: KFPRESOL(KFPDOM)
+INTEGER(KIND=JPIM), INTENT(IN) :: KSPEC2(KFPDOM)
+REAL(KIND=JPRB)   , INTENT(INOUT) :: PBUF(YDFPGEO%NFPROMA,KFIELDS,YDFPGEO%NFPBLOCS)
+
+LOGICAL :: LLETRANS
+INTEGER(KIND=JPIM) :: IEND, IST, JBLOC, IRESOL, JI, IVSET(1)
+REAL(KIND=JPRB) :: ZBACK(YDFPGEO%NFPROMA,YDFPGEO%NFPBLOCS)
+REAL(KIND=JPRB) :: ZMAXPHI, ZDIFMAX
+REAL(KIND=JPRB),ALLOCATABLE :: ZSPEC(:,:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "dir_trans.h"
+#include "edir_trans.h"
+#include "inv_trans.h"
+#include "einv_trans.h"
+
+#include "abor1.intfb.h"
+
+#include "updtrans.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPOROG',0,ZHOOK_HANDLE)
+ASSOCIATE(NFPBLOCS=>YDFPGEO%NFPBLOCS, NFPROMA=>YDFPGEO%NFPROMA, NFPEND=>YDFPGEO%NFPEND)
+
+WRITE(NULOUT,*) 'FULLPOS : PROCEEDING TO SPECTRAL FIT OF OUTPUT OROGRAPHY' 
+IF (KFPDOM > 1) CALL ABOR1 ('SUFPOROG : NOT READY FOR MULTI-SPECTRAL FIT')
+IRESOL=KFPRESOL(1)
+CALL UPDTRANS(IRESOL,LLETRANS)
+ALLOCATE(ZSPEC(1,KSPEC2(1)))
+
+DO JBLOC=1,NFPBLOCS
+  IST =1
+  IEND=NFPEND(JBLOC)
+  ZBACK(IST:IEND,JBLOC)=PBUF(IST:IEND,KXPHIS,JBLOC)
+ENDDO
+IVSET(:)=1
+IF (LLETRANS) THEN
+  CALL EDIR_TRANS(KRESOL=IRESOL,PSPSC2=ZSPEC(:,:),KPROMA=NFPROMA, &
+   & PGP2=PBUF(:,KXPHIS:KXPHIS,:),KVSETSC2=IVSET(:))
+  CALL EINV_TRANS(KRESOL=IRESOL,PSPSC2=ZSPEC(:,:),KPROMA=NFPROMA, &
+   & PGP2=PBUF(:,KXPHIS:KXPHIS,:),KVSETSC2=IVSET(:))
+ELSE
+  CALL DIR_TRANS(KRESOL=IRESOL,PSPSC2=ZSPEC(:,:),KPROMA=NFPROMA, &
+   & PGP2=PBUF(:,KXPHIS:KXPHIS,:),KVSETSC2=IVSET(:))
+  CALL INV_TRANS(KRESOL=IRESOL,PSPSC2=ZSPEC(:,:),KPROMA=NFPROMA, &
+   & PGP2=PBUF(:,KXPHIS:KXPHIS,:),KVSETSC2=IVSET(:))
+ENDIF
+
+DEALLOCATE(ZSPEC)
+ZMAXPHI=4000._JPRB*RG
+DO JBLOC=1,NFPBLOCS
+  IST =1
+  IEND=NFPEND(JBLOC)
+  ZDIFMAX=0.0_JPRB
+  DO JI=IST,IEND
+    ZDIFMAX=MAX(ZDIFMAX,ABS(PBUF(JI,KXPHIS,JBLOC)-ZBACK(JI,JBLOC)))
+  ENDDO
+  IF (ZDIFMAX > ZMAXPHI) THEN
+    WRITE (NULOUT,FMT='(''MAXIMUM LOCAL DIFFERENCE BETWEEN FITTED AND '',&
+     & ''UNFITTED OUTPUT OROGRAPHIES : '',F9.2, '' J/kg '')') ZDIFMAX  
+    WRITE (NULOUT,FMT='('' ALLOWED DIFFERENCE : '',F9.2,'' J/kg '')') ZMAXPHI
+    WRITE (NULOUT,FMT='('' TOO MUCH DIFFERENCE '')')
+    CALL ABOR1('SUFPOROG : ABOR1 CALLED')
+  ENDIF
+ENDDO
+  
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUFPOROG',1,ZHOOK_HANDLE)
+
+END SUBROUTINE SUFPOROG

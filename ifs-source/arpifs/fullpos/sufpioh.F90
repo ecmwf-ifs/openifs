@@ -1,0 +1,121 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE SUFPIOH(KFPSURFEX,YDNAMFPIOS,CDFPFN,CDFPCLIFNAME,CDFPSFXFNAME,YDFPGEOMETRY,YDFPVAB,YDFPIOH)
+
+!**** *SUFPIOH*  - INITIALIZE FULLPOS I/O PARAMETERS
+
+!     PURPOSE.
+!     --------
+!          INITIALIZE GENERAL INPUT/OUTPUT CONTROL PARAMETERS
+!          INITIALIZE INPUT/OUTPUT FULLPOS FILENAMES
+!          INITIALIZE FA OR GRIB FILE SPECIFIC PARAMETERS FOR FULLPOS FILES
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *SUFPIOH*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!          CDFPFN       : array of partial output filenames (filenames without extensions)
+!          CDFPCLIFNAME : array of filename of climatology file on target geometry
+!          CDFPSFXFNAME : array of filename of surfex climatology file on target geometries
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+!        NONE.
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     AUTHOR.
+!     -------
+!      RYAD EL KHATIB *METEO-FRANCE*
+!      ORIGINAL : 20-Sep-2017 from subfpos
+
+!     MODIFICATIONS.
+!     --------------
+!     R. El Khatib 15-Jun-2018 option NFPWRITE=-1 to disable norms
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM    ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK   ,DR_HOOK, JPHOOK
+
+USE YOMLUN   , ONLY : NULOUT
+USE YOMCT0   , ONLY : LARPEGEF
+USE YOMFPGEOMETRY, ONLY : TFPGEOMETRY
+USE YOMVERT  , ONLY : TVAB
+USE YOMFPOP  , ONLY : TFPIOH
+USE YOMFPIOS , ONLY : TNAMFPIOS
+                        
+IMPLICIT NONE           
+                        
+
+INTEGER(KIND=JPIM), INTENT(IN)  :: KFPSURFEX
+TYPE(TNAMFPIOS),    INTENT(IN)  :: YDNAMFPIOS
+CHARACTER(LEN=*),   INTENT(IN)  :: CDFPFN(:)
+CHARACTER(LEN=*),   INTENT(IN)  :: CDFPCLIFNAME(:)
+CHARACTER(LEN=*),   INTENT(IN)  :: CDFPSFXFNAME(:)
+TYPE(TFPGEOMETRY)  ,INTENT(IN)  :: YDFPGEOMETRY
+TYPE(TVAB)         ,INTENT(IN)  :: YDFPVAB
+TYPE(TFPIOH)       ,INTENT(OUT) :: YDFPIOH
+
+INTEGER(KIND=JPIM) :: J, IFPDOM
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "sufpoph.intfb.h"
+#include "sufpgrib.intfb.h"
+
+#include "abor1.intfb.h"
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPIOH',0,ZHOOK_HANDLE)
+
+YDFPIOH%YNAMFPIOS=YDNAMFPIOS
+YDFPIOH%YNAMFPIOS%NFPWRITE=MAX(-1,MIN(1,YDFPIOH%YNAMFPIOS%NFPWRITE))
+
+WRITE(UNIT=NULOUT,FMT='(A)') ' '
+WRITE(NULOUT,'('' SUFPIOH PRINTS OUT'')')
+WRITE(NULOUT,'('' NFPXFLD = '',I6, '' NFPWRITE = '',I2,'' NFPDIGITS = '',I3)') &
+ & YDFPIOH%YNAMFPIOS%NFPXFLD, YDFPIOH%YNAMFPIOS%NFPWRITE, YDFPIOH%YNAMFPIOS%NFPDIGITS
+IF (KFPSURFEX == 1) THEN
+  WRITE(NULOUT,'('' LFPPGDFWR = '',L2,'' LFPHISFWR = '',L2)') YDFPIOH%YNAMFPIOS%LFPPGDFWR, YDFPIOH%YNAMFPIOS%LFPHISFWR
+ENDIF
+
+IFPDOM=SIZE(YDFPGEOMETRY%YFPUSERGEO)
+
+ALLOCATE(YDFPIOH%YFPOPH(IFPDOM))
+ALLOCATE(YDFPIOH%YFPOFN(IFPDOM))
+
+DO J=1,IFPDOM
+  IF (LARPEGEF) THEN
+  ! INITIALIZE PARAMETERS FOR FA ENCODING 
+    CALL SUFPOPH(KFPSURFEX,CDFPFN(J),CDFPCLIFNAME(J),CDFPSFXFNAME(J),YDFPGEOMETRY%YFPUSERGEO(J),YDFPVAB, &
+     & YDFPIOH%YFPOPH(J),YDFPIOH%YFPOFN(J))
+  ELSE
+    ! INITIALIZE PARAMETERS FOR GRIB ENCODING 
+    IF (J > 1) THEN
+      CALL ABOR1('SUFPIOH : SUFPGRIB NOT READY FOR MULTI-DOMAINS')
+    ELSE
+      WRITE(UNIT=NULOUT,FMT='('' I/O PARAMETERS FOR OUTPUT DOMAIN : '')')
+      CALL SUFPGRIB(CDFPCLIFNAME,YDFPGEOMETRY%YFPGEO,IFPDOM,YDFPGEOMETRY%YFPUSERGEO,YDFPIOH%YFPOFN)
+    ENDIF
+  ENDIF
+  WRITE(UNIT=NULOUT,FMT='('' '')')
+ENDDO
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPIOH',1,ZHOOK_HANDLE)
+
+END SUBROUTINE SUFPIOH

@@ -1,0 +1,780 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#ifdef RS6K
+@PROCESS NOCHECK
+#endif
+SUBROUTINE LATTEX(YDGEOMETRY,YDGMV,&
+ ! --- INPUT --------------------------------------------------
+ & YDLDDH,YDMDDH,YDML_GCONF,YDML_DYN,KST,KPROF,PDTS2,PBT,PBDT,PESGP,PESGM,&
+ & KIBL,POROGL,POROGM,PHIF0,&
+ & PGAGT0L,PGAGT0M,PTOD0,PSPDS0,PLPD0,&
+ & PGAGT9L,PGAGT9M,PTOD9,PSPDS9,PLPD9,&
+ & PRDELP,PEVEL,PATND,&
+ & PNHXT0,PGWT0,PGWFT0,PNHXT9,PGWT9,PGFL,PMIXNL,&
+ ! --- INPUT/OUTPUT -------------------------------------------
+ & PGMV,PGMVT1,PGMVTNDSI,PB1,&
+ ! --- OUTPUT -------------------------------------------------
+ & PB2)
+
+!**** *LATTEX*   Semi-Lagrangian scheme.
+!                Computation of the t and t-dt useful quantities at grid-points.
+!                 Equations for tri-dimensional variables.
+!                Abbreviation "vwv" stands for "vertical wind variable".
+
+!     Purpose.
+!     --------
+!        * This subroutine computes the equation quantities to be
+!          interpolated at each grid-point of the colocation grid
+!          (Gauss grid at all levels).
+!          The terms considered here are the explicit terms and
+!          the explicit part of the semi-implicit scheme (terms
+!          previously computed in LASSIE or LANHSI).
+!          Equations considered here are equations for tri-dimensional
+!          variables: momentum, temperature, NH variables, GFL.
+!        * Remark 1: when an alternate averaging is used for linear terms
+!          in the 2TL SL scheme, the first timestep is treated differently
+!          (first order uncentering), no uncentering is applied to the
+!          total term ("cursive A") and the term saved in PGMV(1,1,YT9%M[X]NL)
+!          is [ (Delta t/2) ("cursive A" - (1 + xidt) beta "cursive B") ]
+!          instead of [ (Delta t/2) ("cursive A" - beta "cursive B") ].
+!        * Remark 2: for lsettls=true, uncentering is applied to
+!          the 'stable' extrapolation if vesl > 0 to avoid instability
+!          in the momentum equation.
+!        * Remark 3: for lgwadv=true in the NH models, variable
+!          "gw" is advected instead of vertical divergence; it is advected at
+!          half levels if lvfe_gw=f, full levels if lvfe_gw=t.
+!          That means that PLPD0,PLPD9,PATND(.,.,YYTTND%M_TNDGW),PGWT0,PGWT9 contain:
+!          - half level values 0 to nflevg-1 if LVFE_GW=F.
+!          - full level values 1 to nflevg if LVFE_GW=T.
+!        * Remark 4: for PC schemes:
+!          - this routine is called for nsiter=0.
+!          - this routine is called for the predictor of lpc_full.
+!          - this routine is called for the corrector of lpc_full.
+
+!**   Interface.
+!     ----------
+!        *CALL* *LATTEX(..)
+
+!        Explicit arguments :
+!        --------------------
+
+!        INPUT:
+!          KST         - first element of work.
+!          KPROF       - depth of work.
+!          PDTS2       - 0.5*time step for the first time-integration step of
+!                        a leap-frog scheme or all time-integration steps of
+!                        a two-time level scheme; time step for the following
+!                        time-integration steps of a leap-frog scheme.
+!          PBT         - PDTS2*BETADT (BETADT is in YOMDYN).
+!          PBDT        - PBT if semi-implicit scheme with unreduced
+!                        divergence, PBT*(c**2/GM**2) if semi-implicit
+!                        scheme with reduced divergence.
+!          PESGP       - (1 + uncentering factor).
+!          PESGM       - (1 - uncentering factor).
+!          KIBL        - index into YDGSGEOM instance in YDGEOMETRY
+!          POROGL      - zonal component of "grad(surf orography)"
+!          POROGM      - meridian component of "grad(surf orography)"
+!          PHIF0       - geop. height at full levels
+!          PGAGT0L     - semi-implicit term at time t for U-wind equation.
+!          PGAGT0M     - semi-implicit term at time t for V-wind equation.
+!          PTOD0       - semi-implicit term at time t for temperature equation.
+!          PSPDS0      - semi-implicit term at time t for press dep equation.
+!          PLPD0       - semi-implicit term at time t for vert div equation.
+!          PGAGT9L     - semi-implicit term at time t-dt for U-wind equation.
+!          PGAGT9M     - semi-implicit term at time t-dt for V-wind equation.
+!          PTOD9       - semi-implicit term at time t-dt for temperature eqn.
+!          PSPDS9      - semi-implicit term at time t-dt for press dep equation.
+!          PLPD9       - semi-implicit term at time t-dt for vert div equation.
+!          PRDELP      - "1/(pressure depth of layers)" at t.
+!          PEVEL       - "etadot (d prehyd/d eta)" at half levels at t.
+!          PATND       - adiabatic Lagrangian tendencies.
+!          PNHXT0      - "X" at full levels at t, diagnosed in CPG_GP.
+!          PGWT0       - "gw" at t (LGWADV=T only; layers: see in CPG_GP).
+!          PGWFT0      - "gw" at full levels at t (LGWADV=T only; layers: see in CPG_GP).
+!          PNHXT9      - "X" at full levels at t-dt, diagnosed in CPG_GP.
+!          PGWT9       - "gw" at t-dt (LGWADV=T only; layers: see in CPG_GP).
+!          PGFL        - unified_treatment grid-point fields
+!          PMIXNL      - extrapolation control variable for mixed NESC/SETTLS scheme
+
+!        INPUT/OUTPUT:
+!          PGMV        - GMV variables at t-dt and t.
+!          PGMVT1      - GMV variables at t+dt.
+!          PGMVTNDSI   - GMV: tendency due to linear terms (for DDH).
+!          PB1         - "SLBUF1" buffer for interpolations.
+
+!        OUTPUT:
+!          PB2         - "SLBUF2" buffer.
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!           none
+!           Called by LACDYN.
+
+!     Reference.
+!     ----------
+!             Arpege documentation about semi-Lagrangian scheme.
+
+!     Author.
+!     -------
+!      K. YESSAD (METEO FRANCE/CNRM/GMAP) after old part 3.2 of LACDYN.
+!      Original : AUGUST 1995.
+
+! Modifications
+! -------------
+!   N. Wedi and K. Yessad (Jan 2008): different dev for NH model and PC scheme
+!   K. Yessad Aug 2008: rationalisation of dummy argument interfaces
+!   P. Bechtold+A. Untch 26-10-2008: add LEGWWMS switch for non-orogr. GWD
+!   F. Vana  15-Oct-2009: option NSPLTHOI
+!   K. Yessad (Nov 2009): cleanings, DT/Dt now pre-computed in CPG_GP.
+!   K. Yessad (Jan 2011): introduce INTDYN_MOD structures.
+!   F. Vana  22-Feb-2011: diff of phys. tendencies and LTDIABLIN attribute
+!   K. Yessad (Dec 2011): various contributions.
+!   T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!   K. Yessad (Oct 2013): allow NESC without ICI-PC scheme.
+!   K. Yessad (July 2014): Rename some variables, move some variables.
+!   K. Yessad (Dec 2016): Prune obsolete options.
+!   K. Yessad (June 2017): Introduce NHQE model.
+!   K. Yessad (Feb 2018): remove deep-layer formulations.
+!   J. Vivoda (July 2018): mixed NESC/SETTLS scheme.
+!   R. El Khatib 27-02-2019 Use pointer function SC2PRG to avoid bounds violation
+!   F. Vana  11-Jul-2019: Option LRHS_CURV
+!   I. Polichtchouk Jul-2021: Introduce LSACC model
+! End Modifications
+!------------------------------------------------------------------------------
+
+USE MODEL_DYNAMICS_MOD     , ONLY : MODEL_DYNAMICS_TYPE
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD           , ONLY : GEOMETRY
+USE YOMGMV                 , ONLY : TGMV
+USE PARKIND1               , ONLY : JPIM, JPRB
+USE YOMHOOK                , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE SC2PRG_MOD             , ONLY : SC2PRG
+USE YOMCST                 , ONLY : RD, RG, RA, ROMEGA
+USE YOMSTA                 , ONLY : RTSUR
+USE YOMCT3                 , ONLY : NSTEP
+USE YOMMDDH                , ONLY : TMDDH
+USE YOMLDDH                , ONLY : TLDDH
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGMV)        ,INTENT(INOUT) :: YDGMV
+TYPE(TLDDH)       ,INTENT(IN)    :: YDLDDH
+TYPE(TMDDH)       ,INTENT(IN)    :: YDMDDH
+TYPE(MODEL_DYNAMICS_TYPE),INTENT(IN):: YDML_DYN
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(IN):: YDML_GCONF
+INTEGER(KIND=JPIM),INTENT(IN)    :: KST
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROF
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDTS2
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBT
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PBDT(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PESGP
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PESGM
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIBL
+REAL(KIND=JPRB)   ,INTENT(IN)    :: POROGL(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: POROGM(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHIF0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAGT0L(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAGT0M(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTOD0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSPDS0(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLPD0(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAGT9L(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAGT9M(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTOD9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSPDS9(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLPD9(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRDELP(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEVEL(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PATND(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YRDYNA%YYTTND%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHXT0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGWT0(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGWFT0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHXT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGWT9(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGFL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_GCONF%YGFL%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMIXNL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%NDIMGMV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%YT1%NDIM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVTNDSI(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMDDH%NDIMSIGMV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PB1(YDGEOMETRY%YRDIM%NPROMA,YDML_DYN%YRPTRSLB1%NFLDSLB1)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PB2(YDGEOMETRY%YRDIM%NPROMA,YDML_DYN%YRPTRSLB2%NFLDSLB2)
+!     ------------------------------------------------------------------
+REAL(KIND=JPRB)               :: ZWT0(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) , ALLOCATABLE :: ZUSI9(:,:)
+REAL(KIND=JPRB) , ALLOCATABLE :: ZVSI9(:,:)
+REAL(KIND=JPRB) , ALLOCATABLE :: ZTSI9(:,:)
+REAL(KIND=JPRB) , ALLOCATABLE :: ZSPDSI9(:,:)
+REAL(KIND=JPRB) , ALLOCATABLE :: ZVWVSI9(:,:)
+REAL(KIND=JPRB)               :: ZMOY1U(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)               :: ZMOY1V(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)               :: ZMOY1T(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)               :: ZMOY1SPD(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)               :: ZMOY1VWV(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)               :: ZUSELESS(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLSA:YDGEOMETRY%YRDIMV%NFLEN)
+REAL(KIND=JPRB)               :: ZUCOMP(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+
+INTEGER(KIND=JPIM) :: IPX, IPXSP, IPQ
+INTEGER(KIND=JPIM) :: JLEV, JGFL, JROF
+
+LOGICAL :: LLSETTLSW, LLCT, LLCTC
+LOGICAL :: LLTDIABLIN
+
+!     -------------------------------------------------------
+
+REAL(KIND=JPRB) :: ZCMSLP, ZRTWORGRA, ZRGOM
+
+REAL(KIND=JPRB), POINTER :: ZT0SPD(:,:), ZT0SVD(:,:), ZT0T(:,:), ZT0U(:,:)
+REAL(KIND=JPRB), POINTER :: ZT0V(:,:), ZT1NHX(:,:), ZT1SPD(:,:), ZT1SVD(:,:)
+REAL(KIND=JPRB), POINTER :: ZT1T(:,:), ZT1U(:,:), ZT1V(:,:), ZT9CSPDNL(:,:)
+REAL(KIND=JPRB), POINTER :: ZT9CTNL(:,:), ZT9CUNL(:,:), ZT9CVNL(:,:), ZT9CVWVNL(:,:)
+REAL(KIND=JPRB), POINTER :: ZT9GW(:,:), ZT9NHX(:,:), ZT9SPD(:,:), ZT9SPDNL(:,:)
+REAL(KIND=JPRB), POINTER :: ZT9SVD(:,:), ZT9T(:,:), ZT9TNL(:,:), ZT9U(:,:)
+REAL(KIND=JPRB), POINTER :: ZT9UNL(:,:), ZT9V(:,:), ZT9VNL(:,:), ZT9VWVNL(:,:)
+REAL(KIND=JPRB), POINTER :: ZSLB1PD0(:), ZSLB1PD9(:), ZSLB1PD9_NL(:), ZSLB1PD9_SI(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1T0(:), ZSLB1T9(:), ZSLB1T9_NL(:), ZSLB1T9_SI(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1TF9(:), ZSLB1U0(:), ZSLB1U9(:), ZSLB1U9_NL(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1U9_SI(:), ZSLB1UF9(:), ZSLB1V0(:), ZSLB1V9(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1V9_NL(:), ZSLB1V9_SI(:), ZSLB1VD0(:), ZSLB1VD9(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1VD9_NL(:), ZSLB1VD9_SI(:), ZSLB1VDF9(:), ZSLB1VF9(:)
+REAL(KIND=JPRB), POINTER :: ZSLB2PDSI(:), ZSLB2TSI(:), ZSLB2USI(:), ZSLB2VDSI(:)
+REAL(KIND=JPRB), POINTER :: ZSLB2VSI(:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "lattex_dnt.intfb.h"
+#include "lattex_tnt.intfb.h"
+#include "vspltrans.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('LATTEX',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDVAB=>YDGEOMETRY%YRVAB, &
+ & YDVSPLIP=>YDML_DYN%YRSLINT%YRVSPLIP, &
+ & YDGSGEOM=>YDGEOMETRY%YRGSGEOM(KIBL), YDOROG=>YDGEOMETRY%YROROG(KIBL), YDDYN=>YDML_DYN%YRDYN, &
+ & YDDYNA=>YDML_DYN%YRDYNA, YDPTRSLB1=>YDML_DYN%YRPTRSLB1,YDRIP=>YDML_GCONF%YRRIP, &
+ & YDPTRSLB2=>YDML_DYN%YRPTRSLB2,YGFL=>YDML_GCONF%YGFL)
+
+ASSOCIATE(NDIM=>YGFL%NDIM, NUMFLDS=>YGFL%NUMFLDS, YCOMP=>YGFL%YCOMP, &
+ & YCVGQ=>YGFL%YCVGQ, YQ=>YGFL%YQ, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & NPROMNH=>YDDIM%NPROMNH, &
+ & NFLEN=>YDDIMV%NFLEN, NFLEVG=>YDDIMV%NFLEVG, NFLSA=>YDDIMV%NFLSA, &
+ & LADVF=>YDDYN%LADVF, LSPLTHOIGFL=>YDDYN%LSPLTHOIGFL, LRHS_CURV=>YDDYN%LRHS_CURV, &
+ & NCURRENT_ITER=>YDDYN%NCURRENT_ITER, NSPDLAG=>YDDYN%NSPDLAG, &
+ & NSPLTHOI=>YDDYN%NSPLTHOI, NSVDLAG=>YDDYN%NSVDLAG, NTLAG=>YDDYN%NTLAG, &
+ & NWLAG=>YDDYN%NWLAG, RCMSLP0=>YDDYN%RCMSLP0, RCORDIF=>YDDYN%RCORDIF, &
+ & RCORDIH=>YDDYN%RCORDIH, RINTOPT=>YDDYN%RINTOPT, &
+ & NFOST=>YDRIP%NFOST, &
+ & NDIMGMV=>YDGMV%NDIMGMV, YT0=>YDGMV%YT0, YT1=>YDGMV%YT1, YT9=>YDGMV%YT9, &
+ & LRSIDDH=>YDLDDH%LRSIDDH, &
+ & MSIDDH_PD0=>YDMDDH%MSIDDH_PD0, MSIDDH_PD9=>YDMDDH%MSIDDH_PD9, &
+ & MSIDDH_T0=>YDMDDH%MSIDDH_T0, MSIDDH_T9=>YDMDDH%MSIDDH_T9, &
+ & MSIDDH_U0=>YDMDDH%MSIDDH_U0, MSIDDH_U9=>YDMDDH%MSIDDH_U9, &
+ & MSIDDH_V0=>YDMDDH%MSIDDH_V0, MSIDDH_V9=>YDMDDH%MSIDDH_V9, &
+ & MSIDDH_VD0=>YDMDDH%MSIDDH_VD0, MSIDDH_VD9=>YDMDDH%MSIDDH_VD9, &
+ & NDIMSIGMV=>YDMDDH%NDIMSIGMV, &
+ & MSLB1GFL9=>YDPTRSLB1%MSLB1GFL9, MSLB1GFLF9=>YDPTRSLB1%MSLB1GFLF9, &
+ & MSLB1GFLSP9=>YDPTRSLB1%MSLB1GFLSP9, MSLB1GFLSPF9=>YDPTRSLB1%MSLB1GFLSPF9, &
+ & MSLB1NHX9=>YDPTRSLB1%MSLB1NHX9, MSLB1PD0=>YDPTRSLB1%MSLB1PD0, &
+ & MSLB1PD9=>YDPTRSLB1%MSLB1PD9, MSLB1PD9_SI=>YDPTRSLB1%MSLB1PD9_SI, &
+ & MSLB1T0=>YDPTRSLB1%MSLB1T0, &
+ & MSLB1T9=>YDPTRSLB1%MSLB1T9, MSLB1T9_SI=>YDPTRSLB1%MSLB1T9_SI, &
+ & MSLB1TF9=>YDPTRSLB1%MSLB1TF9, MSLB1U0=>YDPTRSLB1%MSLB1U0, &
+ & MSLB1U9=>YDPTRSLB1%MSLB1U9, MSLB1U9_SI=>YDPTRSLB1%MSLB1U9_SI, &
+ & MSLB1Z9=>YDPTRSLB1%MSLB1Z9, MSLB1Z0=>YDPTRSLB1%MSLB1Z0, &
+ & MSLB1UF9=>YDPTRSLB1%MSLB1UF9, MSLB1V0=>YDPTRSLB1%MSLB1V0, &
+ & MSLB1V9=>YDPTRSLB1%MSLB1V9, MSLB1V9_SI=>YDPTRSLB1%MSLB1V9_SI, &
+ & MSLB1VD0=>YDPTRSLB1%MSLB1VD0, MSLB1VD9=>YDPTRSLB1%MSLB1VD9, &
+ & MSLB1VD9_SI=>YDPTRSLB1%MSLB1VD9_SI, MSLB1VDF9=>YDPTRSLB1%MSLB1VDF9, &
+ & MSLB1VF9=>YDPTRSLB1%MSLB1VF9, NFLDSLB1=>YDPTRSLB1%NFLDSLB1, &
+ & MSLB2PDSI=>YDPTRSLB2%MSLB2PDSI, MSLB2TSI=>YDPTRSLB2%MSLB2TSI, &
+ & MSLB2USI=>YDPTRSLB2%MSLB2USI, MSLB2VDSI=>YDPTRSLB2%MSLB2VDSI, &
+ & MSLB2VSI=>YDPTRSLB2%MSLB2VSI, NFLDSLB2=>YDPTRSLB2%NFLDSLB2, &
+ & MSLB1PD9_NL=>YDPTRSLB1%MSLB1PD9_NL, MSLB1T9_NL=>YDPTRSLB1%MSLB1T9_NL, &
+ & MSLB1U9_NL=>YDPTRSLB1%MSLB1U9_NL, MSLB1V9_NL=>YDPTRSLB1%MSLB1V9_NL, &
+ & MSLB1VD9_NL=>YDPTRSLB1%MSLB1VD9_NL)
+
+CALL SC2PRG(MSLB1PD0  ,PB1     ,ZSLB1PD0)
+CALL SC2PRG(MSLB1PD9  ,PB1     ,ZSLB1PD9)
+CALL SC2PRG(MSLB1PD9_NL,PB1    ,ZSLB1PD9_NL)
+CALL SC2PRG(MSLB1PD9_SI,PB1    ,ZSLB1PD9_SI)
+CALL SC2PRG(MSLB1T0   ,PB1     ,ZSLB1T0)
+CALL SC2PRG(MSLB1T9   ,PB1     ,ZSLB1T9)
+CALL SC2PRG(MSLB1T9_NL,PB1     ,ZSLB1T9_NL)
+CALL SC2PRG(MSLB1T9_SI,PB1     ,ZSLB1T9_SI)
+CALL SC2PRG(MSLB1TF9  ,PB1     ,ZSLB1TF9)
+CALL SC2PRG(MSLB1U0   ,PB1     ,ZSLB1U0)
+CALL SC2PRG(MSLB1U9   ,PB1     ,ZSLB1U9)
+CALL SC2PRG(MSLB1U9_NL,PB1     ,ZSLB1U9_NL)
+CALL SC2PRG(MSLB1U9_SI,PB1     ,ZSLB1U9_SI)
+CALL SC2PRG(MSLB1UF9  ,PB1     ,ZSLB1UF9)
+CALL SC2PRG(MSLB1V0   ,PB1     ,ZSLB1V0)
+CALL SC2PRG(MSLB1V9   ,PB1     ,ZSLB1V9)
+CALL SC2PRG(MSLB1V9_NL,PB1     ,ZSLB1V9_NL)
+CALL SC2PRG(MSLB1V9_SI,PB1     ,ZSLB1V9_SI)
+CALL SC2PRG(MSLB1VD0  ,PB1     ,ZSLB1VD0)
+CALL SC2PRG(MSLB1VD9  ,PB1     ,ZSLB1VD9)
+CALL SC2PRG(MSLB1VD9_NL,PB1    ,ZSLB1VD9_NL)
+CALL SC2PRG(MSLB1VD9_SI,PB1    ,ZSLB1VD9_SI)
+CALL SC2PRG(MSLB1VDF9 ,PB1     ,ZSLB1VDF9)
+CALL SC2PRG(MSLB1VF9  ,PB1     ,ZSLB1VF9)
+CALL SC2PRG(MSLB2PDSI ,PB2     ,ZSLB2PDSI)
+CALL SC2PRG(MSLB2TSI  ,PB2     ,ZSLB2TSI)
+CALL SC2PRG(MSLB2USI  ,PB2     ,ZSLB2USI)
+CALL SC2PRG(MSLB2VDSI ,PB2     ,ZSLB2VDSI)
+CALL SC2PRG(MSLB2VSI  ,PB2     ,ZSLB2VSI)
+CALL SC2PRG(YT0%MSPD  ,PGMV    ,ZT0SPD)
+CALL SC2PRG(YT0%MSVD  ,PGMV    ,ZT0SVD)
+CALL SC2PRG(YT0%MT    ,PGMV    ,ZT0T)
+CALL SC2PRG(YT0%MU    ,PGMV    ,ZT0U)
+CALL SC2PRG(YT0%MV    ,PGMV    ,ZT0V)
+CALL SC2PRG(YT1%MNHX  ,PGMVT1  ,ZT1NHX)
+CALL SC2PRG(YT1%MSPD  ,PGMVT1  ,ZT1SPD)
+CALL SC2PRG(YT1%MSVD  ,PGMVT1  ,ZT1SVD)
+CALL SC2PRG(YT1%MT    ,PGMVT1  ,ZT1T)
+CALL SC2PRG(YT1%MU    ,PGMVT1  ,ZT1U)
+CALL SC2PRG(YT1%MV    ,PGMVT1  ,ZT1V)
+CALL SC2PRG(YT9%MCSPDNL,PGMV   ,ZT9CSPDNL)
+CALL SC2PRG(YT9%MCTNL ,PGMV    ,ZT9CTNL)
+CALL SC2PRG(YT9%MCUNL ,PGMV    ,ZT9CUNL)
+CALL SC2PRG(YT9%MCVNL ,PGMV    ,ZT9CVNL)
+CALL SC2PRG(YT9%MCVWVNL,PGMV   ,ZT9CVWVNL)
+CALL SC2PRG(YT9%MGW   ,PGMV    ,ZT9GW)
+CALL SC2PRG(YT9%MNHX  ,PGMV    ,ZT9NHX)
+CALL SC2PRG(YT9%MSPD  ,PGMV    ,ZT9SPD)
+CALL SC2PRG(YT9%MSPDNL,PGMV    ,ZT9SPDNL)
+CALL SC2PRG(YT9%MSVD  ,PGMV    ,ZT9SVD)
+CALL SC2PRG(YT9%MT    ,PGMV    ,ZT9T)
+CALL SC2PRG(YT9%MTNL  ,PGMV    ,ZT9TNL)
+CALL SC2PRG(YT9%MU    ,PGMV    ,ZT9U)
+CALL SC2PRG(YT9%MUNL  ,PGMV    ,ZT9UNL)
+CALL SC2PRG(YT9%MV    ,PGMV    ,ZT9V)
+CALL SC2PRG(YT9%MVNL  ,PGMV    ,ZT9VNL)
+CALL SC2PRG(YT9%MVWVNL,PGMV    ,ZT9VWVNL)
+!     ------------------------------------------------------------------
+
+!*      1.  PRELIMINARY INITIALISATIONS.
+!       --------------------------------
+
+!       1.1  Allocate arrays for 3TL scheme:
+
+IF(.NOT.YDDYNA%LTWOTL)THEN
+  ALLOCATE( ZUSI9(NPROMA,NFLEVG))
+  ALLOCATE( ZVSI9(NPROMA,NFLEVG))
+  ALLOCATE( ZTSI9(NPROMA,NFLEVG))
+  IF( YDDYNA%LNHEE ) ALLOCATE( ZSPDSI9(NPROMNH,NFLEVG))
+  IF( YDDYNA%LNHDYN ) ALLOCATE( ZVWVSI9(NPROMNH,NFLEVG))
+ENDIF
+
+!       1.2  Scalar initialisations:
+
+LLCT =YDDYNA%LPC_FULL .AND. NCURRENT_ITER > 0  ! corrector step
+LLCTC=YDDYNA%LPC_CHEAP .AND. NCURRENT_ITER > 0
+
+ZCMSLP=RCMSLP0/(RD*RTSUR)
+
+!       1.3  reset to zero ddh arrays and pointers
+
+IF (LRSIDDH) THEN
+  PGMVTNDSI(KST:KPROF,1:NFLEVG,MSIDDH_U0)=0.0_JPRB
+  PGMVTNDSI(KST:KPROF,1:NFLEVG,MSIDDH_V0)=0.0_JPRB
+  PGMVTNDSI(KST:KPROF,1:NFLEVG,MSIDDH_T0)=0.0_JPRB
+  DO JLEV=1,NFLEVG
+    PB1(KST:KPROF,MSLB1U9_SI+JLEV-NFLSA)=0.0_JPRB
+    PB1(KST:KPROF,MSLB1V9_SI+JLEV-NFLSA)=0.0_JPRB
+    PB1(KST:KPROF,MSLB1T9_SI+JLEV-NFLSA)=0.0_JPRB
+  ENDDO
+  IF (YDDYNA%LNHDYN) THEN !! ?????? LNHDYN or LNHEE?
+    PGMVTNDSI(KST:KPROF,1:NFLEVG,MSIDDH_PD0)=0.0_JPRB
+  ENDIF
+  IF (YDDYNA%LNHDYN) THEN
+    PGMVTNDSI(KST:KPROF,1:NFLEVG,MSIDDH_VD0)=0.0_JPRB
+  ENDIF
+  IF (YDDYNA%LNHEE) THEN
+    DO JLEV=1,NFLEVG
+      PB1(KST:KPROF,MSLB1PD9_SI+JLEV-NFLSA)=0.0_JPRB
+    ENDDO
+  ENDIF
+  IF (YDDYNA%LNHDYN) THEN
+    DO JLEV=1,NFLEVG
+      PB1(KST:KPROF,MSLB1VD9_SI+JLEV-NFLSA)=0.0_JPRB
+    ENDDO
+  ENDIF
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*      2.  TREATMENT OF GMV VARIABLES.
+!       -------------------------------
+
+!*       2.1   Momentum equation.
+
+! * LSETTLS is replaced by LLSETTLSW=.FALSE. for wind-eqn if VESL>0 because
+!   stable extrapolation deteriorates scores without improving stability.
+
+IF (PESGP > PESGM) THEN
+  LLSETTLSW=.FALSE.
+ELSE
+  LLSETTLSW=YDDYNA%LSETTLS
+ENDIF
+
+ZRTWORGRA=2._JPRB/(RG*RA)
+ZRGOM=2._JPRB*ROMEGA/RG
+DO JLEV=1,NFLEVG
+
+  DO JROF=KST,KPROF
+    PB2(JROF,MSLB2USI+JLEV-1)=PBT*PGAGT0L(JROF,JLEV)
+    PB2(JROF,MSLB2VSI+JLEV-1)=PBT*PGAGT0M(JROF,JLEV)
+  ENDDO
+
+  ! * Add pressure gradient term + Rayleigh friction in the wind equation.
+  DO JROF=KST,KPROF
+    ZMOY1U(JROF,JLEV)=PDTS2*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDU_NOC)
+    ZMOY1V(JROF,JLEV)=PDTS2*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDV_NOC)
+  ENDDO
+
+  ! * Add "- 2 Omega vec V" explicit contribution when required.
+  ! suitabley modified for the shallow-atmosphere complete-coriolis formulation
+  IF (.NOT.LADVF) THEN
+    IF (YDDYNA%LSACC) THEN
+      DO JROF=KST,KPROF
+        ZMOY1U(JROF,JLEV)=ZMOY1U(JROF,JLEV)&
+         & +PDTS2*YDGSGEOM%RCORI(JROF)*ZT0V(JROF,JLEV)&
+         & +PDTS2*ZRTWORGRA*YDGSGEOM%RCORI(JROF)*ZT0V(JROF,JLEV)*PHIF0(JROF,JLEV)&
+         & -PDTS2*ZRGOM*PGWFT0(JROF,JLEV)*(1._JPRB-YDGSGEOM%GEMU(JROF)*YDGSGEOM%GEMU(JROF))
+        ZMOY1V(JROF,JLEV)=ZMOY1V(JROF,JLEV)&
+         & -PDTS2*YDGSGEOM%RCORI(JROF)*ZT0U(JROF,JLEV)&
+         & -PDTS2*ZRTWORGRA*YDGSGEOM%RCORI(JROF)*ZT0U(JROF,JLEV)*PHIF0(JROF,JLEV)
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        ZMOY1U(JROF,JLEV)=ZMOY1U(JROF,JLEV)&
+         & +PDTS2*YDGSGEOM%RCORI(JROF)*ZT0V(JROF,JLEV)
+        ZMOY1V(JROF,JLEV)=ZMOY1V(JROF,JLEV)&
+         & -PDTS2*YDGSGEOM%RCORI(JROF)*ZT0U(JROF,JLEV)
+      ENDDO
+    ENDIF
+  ENDIF
+ENDDO
+IF (YDDYNA%LTWOTL) THEN
+
+  CALL LATTEX_DNT(YDGEOMETRY,YDLDDH,YDRIP,YDDYN,YDDYNA,KST,KPROF,LLSETTLSW,NWLAG,PESGP,PESGM,&
+   & ZT0U,ZT9U,ZMOY1U,PMIXNL,&
+   & ZSLB2USI,ZT9UNL,ZT1U,&
+   & ZSLB1U0,ZSLB1U9,ZSLB1UF9,ZT9CUNL,&
+   & PGMVTNDSI(1,1,MSIDDH_U0),PGMVTNDSI(1,1,MSIDDH_U9),ZSLB1U9_SI,&
+   & ZSLB1U9_NL)
+
+  CALL LATTEX_DNT(YDGEOMETRY,YDLDDH,YDRIP,YDDYN,YDDYNA,KST,KPROF,LLSETTLSW,NWLAG,PESGP,PESGM,&
+   & ZT0V,ZT9V,ZMOY1V,PMIXNL,&
+   & ZSLB2VSI,ZT9VNL,ZT1V,&
+   & ZSLB1V0,ZSLB1V9,ZSLB1VF9,ZT9CVNL,&
+   & PGMVTNDSI(1,1,MSIDDH_V0),PGMVTNDSI(1,1,MSIDDH_V9),ZSLB1V9_SI,&
+   & ZSLB1V9_NL)
+
+ELSE
+
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZUSI9(JROF,JLEV)=PBT*PGAGT9L(JROF,JLEV)
+      ZVSI9(JROF,JLEV)=PBT*PGAGT9M(JROF,JLEV)
+    ENDDO
+  ENDDO
+
+  CALL LATTEX_TNT(YDGEOMETRY,YDLDDH,YDDYN,KST,KPROF,NWLAG,PESGP,PESGM,ZT9U,ZMOY1U,ZUSI9,&
+   & ZSLB2USI,ZT1U,ZSLB1U0,ZSLB1U9,&
+   & ZSLB1UF9,PGMVTNDSI(1,1,MSIDDH_U0),ZSLB1U9_SI)
+  CALL LATTEX_TNT(YDGEOMETRY,YDLDDH,YDDYN,KST,KPROF,NWLAG,PESGP,PESGM,ZT9V,ZMOY1V,ZVSI9,&
+   & ZSLB2VSI,ZT1V,ZSLB1V0,ZSLB1V9,&
+   & ZSLB1VF9,PGMVTNDSI(1,1,MSIDDH_V0),ZSLB1V9_SI)
+
+ENDIF
+
+IF(LADVF) THEN
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZT1U(JROF,JLEV)=ZT1U(JROF,JLEV)-YDGSGEOM%GOMVRL(JROF)
+      ZT1V(JROF,JLEV)=ZT1V(JROF,JLEV)-YDGSGEOM%GOMVRM(JROF)
+    ENDDO
+  ENDDO
+ENDIF
+
+!*       2.2   Temperature equation.
+
+DO JLEV=1,NFLEVG
+
+  DO JROF=KST,KPROF
+    PB2(JROF,MSLB2TSI+JLEV-1)=PBDT(JROF)*PTOD0(JROF,JLEV)
+  ENDDO
+
+  ! * compute ZMOY1T
+  IF(YDGEOMETRY%YRCVER%LVERTFE) THEN
+    DO JROF=KST,KPROF
+      ZWT0(JROF)=PEVEL(JROF,JLEV)*PRDELP(JROF,JLEV)
+    ENDDO
+  ELSE
+    DO JROF=KST,KPROF
+      ZWT0(JROF)=0.5_JPRB*(PEVEL(JROF,JLEV)&
+       & +PEVEL(JROF,JLEV-1))*PRDELP(JROF,JLEV)
+    ENDDO
+  ENDIF
+  DO JROF=KST,KPROF
+    ZMOY1T(JROF,JLEV)=&
+     & PDTS2*ZCMSLP*RCORDIF(JLEV)*ZT0U(JROF,JLEV)*POROGL(JROF)&
+     & +PDTS2*ZCMSLP*RCORDIF(JLEV)*ZT0V(JROF,JLEV)*POROGM(JROF)
+  ENDDO
+  DO JROF=KST,KPROF
+    ZMOY1T(JROF,JLEV)=ZMOY1T(JROF,JLEV)&
+     & +PDTS2*PATND(JROF,JLEV,YDDYNA%YYTTND%M_TNDT)&
+     & +PDTS2*ZCMSLP*(RCORDIH(JLEV)-RCORDIH(JLEV-1))*ZWT0(JROF)*YDOROG%OROG(JROF)
+  ENDDO
+
+ENDDO
+
+IF (YDDYNA%LTWOTL) THEN
+
+  CALL LATTEX_DNT(YDGEOMETRY,YDLDDH,YDRIP,YDDYN,YDDYNA,KST,KPROF,YDDYNA%LSETTLS,NTLAG,PESGP,PESGM,&
+   & ZT0T,ZT9T,ZMOY1T,PMIXNL,&
+   & ZSLB2TSI,ZT9TNL,ZT1T,&
+   & ZSLB1T0,ZSLB1T9,ZSLB1TF9,ZT9CTNL,&
+   & PGMVTNDSI(1,1,MSIDDH_T0),PGMVTNDSI(1,1,MSIDDH_T9),ZSLB1T9_SI,&
+   & ZSLB1T9_NL)
+
+ELSE
+
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZTSI9(JROF,JLEV)=PBDT(JROF)*PTOD9(JROF,JLEV)
+    ENDDO
+  ENDDO
+
+  CALL LATTEX_TNT(YDGEOMETRY,YDLDDH,YDDYN,KST,KPROF,NTLAG,PESGP,PESGM,ZT9T,ZMOY1T,ZTSI9,&
+   & ZSLB2TSI,ZT1T,ZSLB1T0,ZSLB1T9,&
+   & ZSLB1TF9,PGMVTNDSI(1,1,MSIDDH_T0),ZSLB1T9_SI)
+
+ENDIF
+
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    ZT1T(JROF,JLEV)=ZT1T(JROF,JLEV)&
+     & -RCORDIF(JLEV)*ZCMSLP*YDOROG%OROG(JROF)
+  ENDDO
+  IF (.NOT.LLCTC) THEN
+    DO JROF=KST,KPROF
+      PB1(JROF,MSLB1T9+JLEV-NFLSA)=PB1(JROF,MSLB1T9+JLEV-NFLSA)&
+       & +RCORDIF(JLEV)*ZCMSLP*YDOROG%OROG(JROF)
+    ENDDO
+  ENDIF
+ENDDO
+
+!*       2.3   Anhydrostatic variables equations: "pressure departure".
+!*      3.  TREATMENT OF GFL VARIABLES.
+!       --------------------------------
+
+IF (YDDYNA%LTWOTL) THEN
+
+  IF(LLCT.AND.(.NOT.LLCTC))THEN
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LADV) THEN
+        IPX=(YCOMP(JGFL)%MP_SL1-1)*(NFLEN-NFLSA+1)
+        LLTDIABLIN=YCOMP(JGFL)%LTDIABLIN
+        IF (LSPLTHOIGFL.AND.(NSPLTHOI==0).AND.(.NOT.LLTDIABLIN)) THEN
+          DO JLEV=1,NFLEVG
+            DO JROF=KST,KPROF
+              PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+               & +PB1(JROF,MSLB1GFLF9+IPX+JLEV-NFLSA)+PGFL(JROF,JLEV,YCOMP(JGFL)%MP9)
+            ENDDO
+          ENDDO
+        ELSE
+          DO JLEV=1,NFLEVG
+            DO JROF=KST,KPROF
+              PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+               & +PGFL(JROF,JLEV,YCOMP(JGFL)%MP9)
+            ENDDO
+          ENDDO
+        ENDIF
+      ENDIF
+    ENDDO
+  ELSEIF (.NOT.LLCT) THEN
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LADV) THEN
+        IPX=(YCOMP(JGFL)%MP_SL1-1)*(NFLEN-NFLSA+1)
+        LLTDIABLIN=YCOMP(JGFL)%LTDIABLIN
+        IF (LSPLTHOIGFL.AND.(NSPLTHOI==0).AND.(.NOT.LLTDIABLIN)) THEN
+          DO JLEV=1,NFLEVG
+            DO JROF=KST,KPROF
+              PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+               & +PB1(JROF,MSLB1GFLF9+IPX+JLEV-NFLSA)+PGFL(JROF,JLEV,YCOMP(JGFL)%MP)
+            ENDDO
+          ENDDO
+        ELSE
+          DO JLEV=1,NFLEVG
+            DO JROF=KST,KPROF
+              PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+               & +PGFL(JROF,JLEV,YCOMP(JGFL)%MP)
+            ENDDO
+          ENDDO
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDIF
+
+!  Qv in YCVGQ for computation of SL Moisture Convergence for French physics
+
+  IF (YCVGQ%LGP .AND. (.NOT.LLCTC)) THEN
+    IPX=(YCVGQ%MP_SL1-1)*(NFLEN-NFLSA+1)
+    IPQ=(YQ%MP_SL1-1)*(NFLEN-NFLSA+1)
+    LLTDIABLIN=YCVGQ%LTDIABLIN
+    IF ((NSPLTHOI /= 0).OR.LLTDIABLIN) THEN
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PB1(JROF,MSLB1GFLF9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFLF9+IPQ+JLEV-NFLSA)
+        ENDDO
+      ENDDO
+    ENDIF
+    DO JLEV=1,NFLEVG
+      DO JROF=KST,KPROF
+        PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPQ+JLEV-NFLSA)
+      ENDDO
+    ENDDO
+    LLTDIABLIN=YCVGQ%LTDIABLIN.AND.YQ%LTDIABLIN
+    IF ((NSPLTHOI == 0).AND.LLTDIABLIN) THEN
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+           & +PB1(JROF,MSLB1GFLF9+IPQ+JLEV-NFLSA)
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+ELSE
+
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LADV) THEN
+      IPX=(YCOMP(JGFL)%MP_SL1-1)*(NFLEN-NFLSA+1)
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+           & +PGFL(JROF,JLEV,YCOMP(JGFL)%MP9)
+        ENDDO
+      ENDDO
+      LLTDIABLIN=YCOMP(JGFL)%LTDIABLIN
+      IF (LSPLTHOIGFL.AND.(NSPLTHOI==0).AND.(.NOT.LLTDIABLIN)) THEN
+        DO JLEV=1,NFLEVG
+          DO JROF=KST,KPROF
+            PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+             & +PB1(JROF,MSLB1GFLF9+IPX+JLEV-NFLSA)
+          ENDDO
+        ENDDO
+      ENDIF
+    ENDIF
+  ENDDO
+
+ENDIF
+
+! Optimize dynamic rande for interpolation
+IF (RINTOPT /= 1._JPRB) THEN
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LADV) THEN
+    IPX=(YCOMP(JGFL)%MP_SL1-1)*(NFLEN-NFLSA+1)
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)&
+            & *RINTOPT
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDDO
+ENDIF
+
+! * Transform the fields to be interpolated with cubic spline in the
+!   vertical to "B-spline space".
+
+IF (.NOT.LLCTC) THEN
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LADV .AND. YCOMP(JGFL)%CSLINT=='LAITVSPCQM  ' ) THEN
+      IPX=(YCOMP(JGFL)%MP_SL1-1)*(NFLEN-NFLSA+1)
+      IPXSP=(YCOMP(JGFL)%MP_SPL-1)*(NFLEN-NFLSA+1)
+      LLTDIABLIN=YCOMP(JGFL)%LTDIABLIN
+      IF ((NSPLTHOI /= 0).OR.LLTDIABLIN) THEN
+        DO JLEV=1,NFLEVG
+          DO JROF=KST,KPROF
+            PB1(JROF,MSLB1GFLSPF9+IPXSP+JLEV-NFLSA)=PB1(JROF,MSLB1GFLF9+IPX+JLEV-NFLSA)
+          ENDDO
+        ENDDO
+        CALL VSPLTRANS(YDVSPLIP,NPROMA,KST,KPROF,NFLEVG,NFLSA,NFLEN,PB1(1,MSLB1GFLSPF9+IPXSP))
+      ENDIF
+      DO JLEV=1,NFLEVG
+        DO JROF=KST,KPROF
+          PB1(JROF,MSLB1GFLSP9+IPXSP+JLEV-NFLSA)=PB1(JROF,MSLB1GFL9+IPX+JLEV-NFLSA)
+        ENDDO
+      ENDDO
+      CALL VSPLTRANS(YDVSPLIP,NPROMA,KST,KPROF,NFLEVG,NFLSA,NFLEN,PB1(1,MSLB1GFLSP9+IPXSP))
+    ENDIF
+  ENDDO
+ENDIF
+
+
+! Conversions to Cartesian system for wind variables
+IF (LRHS_CURV) THEN
+  DO JLEV=1,NFLEVG
+    ZUCOMP(KST:KPROF,JLEV)=PB1(KST:KPROF,MSLB1U9+JLEV-NFLSA)
+    PB1(KST:KPROF,MSLB1Z9+JLEV-NFLSA)=PB1(KST:KPROF,MSLB1V9+JLEV-NFLSA)*YDGSGEOM%GSQM2(KST:KPROF)
+    PB1(KST:KPROF,MSLB1U9+JLEV-NFLSA)=-PB1(KST:KPROF,MSLB1U9+JLEV-NFLSA)*YDGSGEOM%GESLO(KST:KPROF) &
+     &             -PB1(KST:KPROF,MSLB1V9+JLEV-NFLSA)*YDGSGEOM%GECLO(KST:KPROF)*YDGSGEOM%GEMU(KST:KPROF)
+    PB1(KST:KPROF,MSLB1V9+JLEV-NFLSA)= ZUCOMP(KST:KPROF,JLEV)*YDGSGEOM%GECLO(KST:KPROF) &
+     &             -PB1(KST:KPROF,MSLB1V9+JLEV-NFLSA)*YDGSGEOM%GESLO(KST:KPROF)*YDGSGEOM%GEMU(KST:KPROF)
+  ENDDO
+  IF ((NWLAG >= 3) .OR. (NSPLTHOI /= 0)) THEN
+    DO JLEV=1,NFLEVG
+      ZUCOMP(KST:KPROF,JLEV)=PB1(KST:KPROF,MSLB1U0+JLEV-NFLSA)
+      PB1(KST:KPROF,MSLB1Z0+JLEV-NFLSA)=PB1(KST:KPROF,MSLB1V0+JLEV-NFLSA)*YDGSGEOM%GSQM2(KST:KPROF)
+      PB1(KST:KPROF,MSLB1U0+JLEV-NFLSA)=-PB1(KST:KPROF,MSLB1U0+JLEV-NFLSA)*YDGSGEOM%GESLO(KST:KPROF) &
+       &             -PB1(KST:KPROF,MSLB1V0+JLEV-NFLSA)*YDGSGEOM%GECLO(KST:KPROF)*YDGSGEOM%GEMU(KST:KPROF)
+      PB1(KST:KPROF,MSLB1V0+JLEV-NFLSA)= ZUCOMP(KST:KPROF,JLEV)*YDGSGEOM%GECLO(KST:KPROF) &
+       &             -PB1(KST:KPROF,MSLB1V0+JLEV-NFLSA)*YDGSGEOM%GESLO(KST:KPROF)*YDGSGEOM%GEMU(KST:KPROF)
+    ENDDO
+  ENDIF
+  ! perhaps the MSLB1[u/v]F9 and MSLB1[u/v]9_SI should be treated the same way here...
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*      4.  DEALLOCATIONS.
+!       ------------------
+
+IF(.NOT.YDDYNA%LTWOTL)THEN
+  IF( ALLOCATED( ZUSI9 ) ) DEALLOCATE( ZUSI9 )
+  IF( ALLOCATED( ZVSI9 ) ) DEALLOCATE( ZVSI9 )
+  IF( ALLOCATED( ZTSI9 ) ) DEALLOCATE( ZTSI9 )
+  IF( ALLOCATED( ZVWVSI9 ) ) DEALLOCATE( ZVWVSI9 )
+  IF( ALLOCATED( ZSPDSI9 ) ) DEALLOCATE( ZSPDSI9 )
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('LATTEX',1,ZHOOK_HANDLE)
+END SUBROUTINE LATTEX

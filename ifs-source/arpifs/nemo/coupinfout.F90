@@ -1,0 +1,206 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE COUPINFOUT(YDGEOMETRY,YDSURF,YDMCC,YDRIP)
+!
+!**** *COUPINFOUT*  - Write out the information normally passed to ininemo
+!                     in GRIB
+!
+!     Purpose.
+!     --------
+!       Output all necessary information for the inline nemo model.
+!
+!**   Interface.
+!     ----------
+!       *CALL*  *COUPINFOUT*
+!
+!     Input:
+!     -----
+!
+!     Output:
+!     ------
+!
+!     Method:
+!     ------
+!       
+!     Externals:
+!     ---------
+!
+!     Reference:
+!     ---------
+!
+!     Author:
+!     -------
+!       K. Mogensen, ECMWF
+!
+!     Modifications.
+!     --------------
+!
+!     -----------------------------------------------------------
+   
+! Kinds, Dr Hook + Output unit.
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE PARKIND1 , ONLY : JPRD, JPRB, JPIM
+USE PARKIND_OCEAN, ONLY : JPRO
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN   , ONLY : NULOUT
+! MPP Stuff and coupling time step.
+USE MPL_MODULE, ONLY : MPL_COMM
+USE YOMCT0   , ONLY : NFRCO
+USE YOMMP0   , ONLY : MYPROC, MY_REGION_NS, MY_REGION_EW, NPROC, LOUTPUT
+! Number of gridpoints  etc.
+! Grid point fields
+! Initial time of the atmosphere
+USE YOMRIP0  , ONLY : NINDAT, NSSSSS
+! Time steps of the atmosphere
+USE YOMRIP   , ONLY : TRIP
+USE YOMCT2   , ONLY : NSTAR2, NSTOP2
+! NEMO time step control
+USE YOMNEMO  , ONLY : NEMOCSTEP, NEMONSTEP
+! Coupling controls
+USE YOMMCC   , ONLY : TMCC
+! GRIB codes
+USE YOM_GRIB_CODES
+! IO routines
+USE IOSTREAM_MIX, ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST, IO_PUT,&
+   & CLOSE_IOSTREAM, CLOSE_IOREQUEST, TYPE_IOSTREAM, TYPE_IOREQUEST
+USE YOMCT3,  ONLY : NSTEP
+
+!     -----------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY),INTENT(IN)    :: YDGEOMETRY
+TYPE(TSURF)   ,INTENT(INOUT) :: YDSURF
+TYPE(TMCC)    ,INTENT(INOUT) :: YDMCC
+TYPE(TRIP)    ,INTENT(INOUT) :: YDRIP
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!INTEGER(KIND=JPIM) :: IGLOBAL(YDGEOMETRY%YRDIM%NDLON,YDGEOMETRY%YRDIM%NDGLG)
+INTEGER(KIND=JPIM), ALLOCATABLE :: IGLOBAL(:,:)
+INTEGER(KIND=JPIM) :: ILOCLSM(YDGEOMETRY%YRGEM%NGPTOT), IGLOIND(YDGEOMETRY%YRGEM%NGPTOT)
+INTEGER(KIND=JPIM) :: I, ISTA, IEND, IBLK, IGL
+INTEGER(KIND=JPIM) :: JGL, JKL
+INTEGER(KIND=JPIM) :: IFIELDS, ISTEP, JSTGLO, JROF
+INTEGER(KIND=JPIM), DIMENSION(:), ALLOCATABLE :: IGRIB2D,ILEVS2D
+REAL(KIND=JPRB), DIMENSION(:,:,:), ALLOCATABLE :: ZFIELD
+CHARACTER(LEN=128) :: CDNAME 
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+!     -----------------------------------------------------------
+
+#include "abor1.intfb.h"
+
+!     -----------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('COUPINFOUT',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP)
+ASSOCIATE(NDGLG=>YDDIM%NDGLG, NDLON=>YDDIM%NDLON, NPROMA=>YDDIM%NPROMA, &
+ & NGPTOT=>YDGEM%NGPTOT, NLOENG=>YDGEM%NLOENG, &
+ & NFRSTLAT=>YDMP%NFRSTLAT, NLSTLAT=>YDMP%NLSTLAT, NONL=>YDMP%NONL, &
+ & NPTRFRSTLAT=>YDMP%NPTRFRSTLAT, NSTA=>YDMP%NSTA, &
+ & TSTEP=>YDRIP%TSTEP, &
+ & SD_VF=>YDSURF%SD_VF, YSD_VF=>YDSURF%YSD_VF)
+!     -----------------------------------------------------------
+
+! Construct global indicies
+
+ALLOCATE(IGLOBAL(YDGEOMETRY%YRDIM%NDLON,YDGEOMETRY%YRDIM%NDGLG))
+I=0
+IGLOBAL(:,:)=0
+DO JGL=1,NDGLG
+   DO JKL=1,NLOENG(JGL)
+      I=I+1
+      IGLOBAL(JKL,JGL) = I
+   ENDDO
+ENDDO
+
+! Extract the floating point LSM.
+
+DO JKL=1,NGPTOT,NPROMA
+   ISTA=1
+   IEND=MIN(NPROMA,NGPTOT-JKL+1)
+   IBLK=(JKL-1)/NPROMA+1
+   DO I=ISTA,IEND
+      ! Convert to integer (to be merged later).
+      IF (SD_VF(I,YSD_VF%YLSM%MP,IBLK) > 0.5_JPRB) THEN
+        ILOCLSM(I+JKL-1)=0
+      ELSE
+        ILOCLSM(I+JKL-1)=1
+      ENDIF
+   ENDDO
+ENDDO
+
+! Set global indicies for communication.
+
+I=0
+DO JGL=NFRSTLAT(MY_REGION_NS),NLSTLAT(MY_REGION_NS)
+   IGL=NPTRFRSTLAT(MY_REGION_NS)+JGL-NFRSTLAT(MY_REGION_NS)
+   DO JKL=NSTA(IGL,MY_REGION_EW),NSTA(IGL,MY_REGION_EW)+NONL(IGL,MY_REGION_EW)-1
+      I=I+1
+      IGLOIND(I) = IGLOBAL(JKL,JGL)
+   ENDDO
+ENDDO
+DEALLOCATE(IGLOBAL)
+
+! Write out the information
+
+ISTEP=NSTEP
+NSTEP=0
+CDNAME='ifs_model_mpi_decomposition.grb'
+IFIELDS=7
+ALLOCATE(IGRIB2D(IFIELDS))
+ALLOCATE(ILEVS2D(IFIELDS))
+ALLOCATE(ZFIELD(YDGEOMETRY%YRDIM%NPROMA,IFIELDS,YDGEOMETRY%YRDIM%NGPBLKS))
+IGRIB2D(1)=80
+ILEVS2D(1)=0
+IGRIB2D(2)=81
+ILEVS2D(2)=0
+IGRIB2D(3)=82
+ILEVS2D(3)=0
+IGRIB2D(4)=83
+ILEVS2D(4)=0
+IGRIB2D(5)=84
+ILEVS2D(5)=0
+IGRIB2D(6)=85
+ILEVS2D(6)=0
+IGRIB2D(7)=86
+ILEVS2D(7)=0
+DO JSTGLO=1,NGPTOT,YDGEOMETRY%YRDIM%NPROMA
+   IEND=MIN(YDGEOMETRY%YRDIM%NPROMA,NGPTOT-JSTGLO+1)
+   ISTA=1
+   IBLK=(JSTGLO-1)/YDGEOMETRY%YRDIM%NPROMA+1
+   DO JROF=1,IEND
+      ZFIELD(JROF,1,IBLK)=MOD(MYPROC,65536)
+      ZFIELD(JROF,2,IBLK)=MYPROC/65536
+      ZFIELD(JROF,3,IBLK)=ILOCLSM(JSTGLO+JROF-1)
+      ZFIELD(JROF,4,IBLK)=MOD(IGLOIND(JSTGLO+JROF-1),65536)
+      ZFIELD(JROF,5,IBLK)=IGLOIND(JSTGLO+JROF-1)/65536
+      ZFIELD(JROF,6,IBLK)=MOD(JSTGLO+JROF-1,65536)
+      ZFIELD(JROF,7,IBLK)=(JSTGLO+JROF-1)/65536
+   ENDDO
+ENDDO
+CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',CDNAME,CDMODE='w',KIOMASTER=1)
+CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,&
+   & KGRIB2D=IGRIB2D,KLEVS2D=ILEVS2D,CDLEVTYPE='SFC',KPROMA&
+   &=YDGEOMETRY%YRDIM%NPROMA,KRESOL=YDGEOMETRY%YRDIM%NRESOL) !,PTSTEP=YDRIP%TSTEP)
+CALL IO_PUT(YL_IOSTREAM,YL_IOREQUEST,PR3=ZFIELD)
+CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+DEALLOCATE(IGRIB2D)
+DEALLOCATE(ILEVS2D)
+DEALLOCATE(ZFIELD)
+NSTEP=ISTEP
+
+!     -----------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('COUPINFOUT',1,ZHOOK_HANDLE)
+END SUBROUTINE COUPINFOUT

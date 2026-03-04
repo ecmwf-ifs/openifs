@@ -1,0 +1,380 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE OPENFPFA(YDFPUSERGEO,KULFP,CDFPFN,CDLEC,KFILE,KDATE,LDFILAF,KNLATI,&
+                   &KNXLON,CDFPCACREATE,KFPCHKDAT,YDVAB)
+
+!**** *OPENFPFA*  - OPEN AN EXISTING POST-PROCESSING FILE
+
+!     PURPOSE.
+!     --------
+!        To open an existing file of post-processing format, and 
+!        control the framework (namelist vs file frame).
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *OPENFPFA*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!        KULFP  : logical unit number of file
+!        CDFPFN : file name
+!        CDLEC  : File frame name if reading
+!        KFILE  : kind of file :
+!                 0 => ordinary file
+!                 1 => constant climatology values
+!                 2 or 3 => monthly climatology values
+!                 4 => SURFEX PGD
+!        KDATE  : expected date in file
+!        KNLATI : number of latitudes in file
+!        KNXLON : number of longitudes in file
+!        LDFILAF: .TRUE. to list the content of file
+!        CDFPCACREATE: cadre FA is file should be created
+!        KFPCHKDAT : check date (1) or not (0)
+
+!        IMPLICIT ARGUMENTS
+!        ------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!        Documentation about FULL-POS.
+
+!     AUTHOR.
+!     -------
+!        RYAD EL KHATIB *METEO-FRANCE*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 99-07-19 from RDCLIMO
+!        MODIFIED :
+!            01-11-27  Martin Janousek: new definition of LAM geometry
+!        R. El Khatib : 01-08-07 Pruning options
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        JD. Gril : 10-02-2005 Mercator Rotated/Tilted
+!        K. Yessad (Jan 2010): externalisation of group EGGX in XRD/IFSAUX
+!        D. Degrauwe Feb 2012: boyd periodization
+!        O. Vignes (Feb 2012): remove hardcoded max grid dimensions
+!        R. El Khatib 05-Sep-2012 New E-zone management
+!      R. El Khatib 27-Sep-2013 Boyd window in frame
+!      R. El Khatib 04-Aug-2014 Pruning of the conf. 927/928 + remove sunmen
+!      R. El Khatib 21-Apr-2016 Remove geometry
+!     ------------------------------------------------------------------
+
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMLUN   , ONLY : NULOUT
+USE TYPE_FPUSERGEO, ONLY : TFPUSERGEO
+USE YOMCST   , ONLY : RPI
+USE YOMVERT  , ONLY : VP00, TVAB, ALLOC_INIT_TVAB
+
+IMPLICIT NONE
+
+TYPE (TFPUSERGEO), INTENT(IN)    :: YDFPUSERGEO
+INTEGER(KIND=JPIM),INTENT(IN)    :: KULFP
+CHARACTER(LEN=*)  ,INTENT(IN)    :: CDFPFN
+CHARACTER(LEN=*)  ,INTENT(IN)    :: CDLEC
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFILE
+INTEGER(KIND=JPIM),INTENT(IN),  OPTIONAL :: KDATE(:)
+LOGICAL           ,INTENT(IN),  OPTIONAL :: LDFILAF
+INTEGER(KIND=JPIM),INTENT(OUT), OPTIONAL :: KNLATI
+INTEGER(KIND=JPIM),INTENT(OUT), OPTIONAL :: KNXLON
+CHARACTER(LEN=*)  ,INTENT(IN),  OPTIONAL :: CDFPCACREATE
+INTEGER(KIND=JPIM),INTENT(IN),  OPTIONAL :: KFPCHKDAT
+TYPE(TVAB)       , INTENT(IN),  OPTIONAL :: YDVAB
+
+!     ------------------------------------------------------------------
+
+! ITEST : level of test for framework
+! CLLEC : file frame name
+
+CHARACTER (LEN = 8), PARAMETER ::  CLPIDEN='FULLPOS'
+INTEGER(KIND=JPIM), PARAMETER :: JPXGEO=18, JPXIND=1, JPXPAH=8
+
+INTEGER(KIND=JPIM), ALLOCATABLE :: INLOPA(:),INOZPA(:)
+INTEGER(KIND=JPIM) :: INLOP(JPXPAH), INOZP(JPXIND)
+INTEGER(KIND=JPIM) :: IDATEF(11), INLATI, INXLON, ILON, ILAT
+LOGICAL :: LLFICP
+
+REAL(KIND=JPRB), ALLOCATABLE :: ZVALH(:), ZVBH(:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZSINLA(:)
+REAL(KIND=JPRB)    :: ZSIN(JPXGEO)
+
+INTEGER(KIND=JPIM) :: IFILE
+INTEGER(KIND=JPIM) :: INBARI, INIVER, IREP, ILEV,&
+ & IFPMAX, ITRUN, ITYPTR, JI, ITEST, INFPMAX, IQUAD,&
+ & IMAXLEV, IMAXGL, IMAXLON, IMAXTRUNC, INBARP
+
+LOGICAL :: LLMAP, LLGARD, LLDATEOK, LLCREATED, LLEXIST
+
+REAL(KIND=JPRB) :: ZCLOPO, ZCODIL, ZEPS, ZREF, ZSLAPO, ZSLOPO
+
+REAL(KIND=JPRB) :: Z0VALH(0:1), Z0VBH(0:1)
+TYPE(TVAB) :: YLVAB
+
+CHARACTER (LEN = 16) ::  CLLEC
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "newfa.intfb.h"
+
+#include "chien.h"
+#include "echien.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('OPENFPFA',0,ZHOOK_HANDLE)
+ASSOCIATE(NLAT=>YDFPUSERGEO%NLAT, NLON=>YDFPUSERGEO%NLON, RLATC=>YDFPUSERGEO%RLATC, &
+ & NFPRGRI=>YDFPUSERGEO%NFPRGRI, LFPMAP=>YDFPUSERGEO%LFPMAP, NFPHTYP=>YDFPUSERGEO%NFPHTYP, &
+ & NFPTTYP=>YDFPUSERGEO%NFPTTYP, FPMUCEN=>YDFPUSERGEO%FPMUCEN, FPLOCEN=>YDFPUSERGEO%FPLOCEN, &
+ & FPSTRET=>YDFPUSERGEO%FPSTRET, FPLX=>YDFPUSERGEO%FPLX, FPLY=>YDFPUSERGEO%FPLY, &
+ & FPLON0=>YDFPUSERGEO%FPLON0, FPLAT0=>YDFPUSERGEO%FPLAT0, LFPMRT=>YDFPUSERGEO%LFPMRT, &
+ & RLONC=>YDFPUSERGEO%RLONC, RDELX=>YDFPUSERGEO%RDELX, RDELY=>YDFPUSERGEO%RDELY, &
+ & NFPLUX=>YDFPUSERGEO%NFPLUX, NFPGUX=>YDFPUSERGEO%NFPGUX, NFPBWX=>YDFPUSERGEO%NFPBWX, &
+ & NFPMAX=>YDFPUSERGEO%NFPMAX,  NMFPMAX=>YDFPUSERGEO%NMFPMAX,NFPEDOM=>YDFPUSERGEO%NFPEDOM, &
+ & NFPBZONL=>YDFPUSERGEO%NFPBZONL, NFPBZONG=>YDFPUSERGEO%NFPBZONG, &
+ & NFPBWY=>YDFPUSERGEO%NFPBWY,CFPGRID=>YDFPUSERGEO%CFPGRID)
+!     ------------------------------------------------------------------
+
+LLCREATED = .FALSE.
+
+IFILE = KFILE
+
+IF (PRESENT (CDFPCACREATE)) THEN
+
+  INQUIRE (FILE=CDFPFN, EXIST=LLEXIST)
+
+  IF (.NOT. LLEXIST) THEN
+
+    INBARP=0
+    CALL NEWFA (INBARP, CDFPCACREATE, KULFP, CDFPFN, .TRUE., &
+              & 0_JPIM, CLPIDEN, KDATE)
+    LLCREATED = .TRUE.
+
+    CLLEC = CDFPCACREATE
+    
+    IF (LHOOK) CALL DR_HOOK('OPENFPFA',1,ZHOOK_HANDLE)
+    RETURN
+  
+  ELSE
+
+    IFILE = 0
+
+  ENDIF
+
+ENDIF
+
+!*       0. Get software limits
+!           -------------------
+
+CALL FALIMU(IMAXLEV,IMAXTRUNC,IMAXGL,IMAXLON)
+
+ALLOCATE(INLOPA(IMAXGL))
+ALLOCATE(INOZPA(IMAXGL))
+ALLOCATE(ZSINLA(IMAXGL))
+ALLOCATE(ZVALH(0:IMAXLEV))
+ALLOCATE(ZVBH(0:IMAXLEV))
+
+!*       1. PREPARATIONS
+!           ------------
+
+INLOP(:)=0
+INOZP(:)=0
+ZSIN (:)=0.0_JPRB
+ZEPS=2._JPRB*EPSILON(1.0_JPRB)*10000._JPRB
+LLDATEOK=.TRUE.
+
+!*       2. OPEN AND CHECK FILE
+!           -------------------
+
+!*         2.1 OPEN FILE
+
+IF (.NOT. LLCREATED) THEN
+
+  IREP=0
+  INBARI=0
+  CLLEC=CDLEC
+  CALL FAITOU(IREP,KULFP,.TRUE.,CDFPFN,'OLD',.TRUE.,.TRUE.,0,1,INBARI,CLLEC)
+  CALL LFIMST(IREP,KULFP,.FALSE.)
+  
+  IF (PRESENT (LDFILAF)) THEN
+    IF (LDFILAF) THEN
+      CALL LFILAF(IREP,KULFP,.FALSE.)
+    ENDIF
+  ENDIF
+  
+!*         2.2 CHECK DATE
+  
+  IF (IFILE == 1) THEN
+    WRITE(NULOUT,*) ' YOU READ TARGET CLIMATOLOGY CONSTANT FIELDS'
+  ELSEIF (PRESENT (KDATE)) THEN
+    CALL FADIES(IREP,KULFP,IDATEF)
+    IF (IFILE >= 2) THEN
+      WRITE(NULOUT,*)&
+       & ' YOU READ TARGET CLIMATOLOGIC FIELDS FOR THE MONTH : ',IDATEF(2)  
+      IF (IDATEF(2) /= KDATE(2)) THEN
+        WRITE(NULOUT,*) ' EXPECTED MONTH : ',KDATE(2)
+        WRITE(NULOUT,*) &
+         & 'TARGET CLIM. AND INITIAL FILE OR MODEL DISAGREE ON MONTH'  
+        CALL ABOR1('OPENFPFA : ABOR1 CALLED')
+      ENDIF
+    ELSEIF(IFILE == 0) THEN
+!   Full date check : 
+      DO JI=1,11
+        IF (IDATEF(JI) /= KDATE(JI)) THEN
+          LLDATEOK=.FALSE.
+        ENDIF
+      ENDDO
+      IF (.NOT.LLDATEOK) THEN
+        WRITE(NULOUT,*) 'DATE IN FILE  : ',IDATEF
+        WRITE(NULOUT,*) 'DATE COMPUTED : ',KDATE
+        IF (PRESENT(KFPCHKDAT)) THEN
+          IF (KFPCHKDAT == 0) THEN
+            WRITE(NULOUT,*) 'WARNING : DATES ARE DIFFERENT'
+          ELSE
+            CALL ABOR1(' OPENFPFA : ERROR IN DATE')
+          ENDIF
+        ELSE  
+          CALL ABOR1(' OPENFPFA : ERROR IN DATE')
+        ENDIF
+      ENDIF
+    ELSE
+      WRITE(NULOUT,*) ' INTERNAL ERROR IFILE : ', IFILE
+      CALL ABOR1('OPENFPFA : ABOR1 CALLED')
+    ENDIF
+  ENDIF
+
+ENDIF
+
+!*         2.3 CHECK FRAMEWORK
+
+IF (IFILE == 0) THEN
+! Test everything
+  ITEST=0
+  IF (PRESENT(YDVAB)) THEN
+    ILEV=UBOUND(YDVAB%VBH,DIM=1)
+  ELSE
+    WRITE(NULOUT,*) 'INPUT VERTICAL COORDINATE IS MISSING !'
+    CALL ABOR1('OPENFPFA : ABOR1 CALLED')
+  ENDIF
+ELSE
+  IF (CFPGRID=='GAUSS') THEN
+!   Do not test vertical coordinate
+    ITEST=-1
+  ELSE
+!   Do not test vertical coordinate ; allow extension zone or not
+    ITEST=-3
+  ENDIF
+  ! Then we don't need a vertical coordinate
+  Z0VALH(:)=0._JPRB
+  Z0VBH(0)=0._JPRB
+  Z0VBH(1)=1._JPRB
+  CALL ALLOC_INIT_TVAB(1,Z0VALH(0:1),Z0VBH(0:1),YLVAB)
+  ILEV=UBOUND(YLVAB%VBH,DIM=1)
+ENDIF
+
+
+IF (CFPGRID=='GAUSS') THEN
+  IQUAD=1
+  IF (ITEST==0) THEN
+    CALL CHIEN(CLLEC,NFPTTYP,FPMUCEN,FPLOCEN,FPSTRET,NFPMAX,NLAT,&
+     & NLON,NFPRGRI,YDFPUSERGEO%NFPMEN,NFPHTYP,ILEV,VP00,YDVAB%VALH,YDVAB%VBH,IQUAD,&
+     & ITEST,1,NLAT,ZEPS,LLFICP,NULOUT)  
+  ELSE
+    CALL CHIEN(CLLEC,NFPTTYP,FPMUCEN,FPLOCEN,FPSTRET,NFPMAX,NLAT,&
+     & NLON,NFPRGRI,YDFPUSERGEO%NFPMEN,NFPHTYP,ILEV,VP00,YLVAB%VALH,YLVAB%VBH,IQUAD,&
+     & ITEST,1,NLAT,ZEPS,LLFICP,NULOUT)  
+  ENDIF
+  IF (LLFICP) CALL ABOR1('OPENFPFA : LLFICP=.TRUE.')
+  INLATI=NLAT
+  INXLON=NLON
+ELSE
+  IF (LFPMRT) THEN
+    ZSIN (1)  = -2._JPRB  ! Mercator Rotated/Tilted
+  ELSE
+    ZSIN (1)  = -1._JPRB
+  ENDIF
+  ZSIN (3)  = FPLON0*RPI/180._JPRB
+  ZSIN (4)  = FPLAT0*RPI/180._JPRB
+  ZSIN (5)  = RLONC*RPI/180._JPRB
+  ZSIN (6)  = RLATC*RPI/180._JPRB
+  ! Since the projection parameter has been computed by eggx, only the sign is tested :
+  IF (CFPGRID == 'LALON' .OR. .NOT.LFPMAP) THEN
+    ZSIN (2)=-9._JPRB
+  ELSE
+    ZSIN (2)=0.5_JPRB
+  ENDIF
+  IF(CFPGRID == 'LALON') THEN
+    ZSIN (7)  = RDELX*RPI/180._JPRB
+    ZSIN (8)  = RDELY*RPI/180._JPRB
+  ELSE
+    ZSIN (7)  = RDELX
+    ZSIN (8)  = RDELY
+  ENDIF
+  ZSIN ( 9) = FPLX
+  ZSIN (10) = FPLY
+  INLOP(2)  = NFPEDOM
+  INLOP(3)  = 1
+  INLOP(5)  = 1
+  INLOP(7)  = NFPBZONL
+  INLOP(8)  = NFPBZONG
+  IF (CFPGRID /= 'LALON') THEN
+    ZSIN (11) = 2.0_JPRB*RPI/FPLX
+    ZSIN (12) = 2.0_JPRB*RPI/FPLY
+    INLOP(1)  = MAX(0,MIN(11,NMFPMAX,NFPMAX)-1)
+    ILON      = NLON
+    ILAT      = NLAT
+    INLOP(4)  = NFPLUX
+    INLOP(6)  = NFPGUX
+    IFPMAX=NFPMAX
+    INFPMAX=NMFPMAX
+    LLMAP=LFPMAP
+  ELSE
+    ZSIN (11) = 0.0_JPRB
+    ZSIN (12) = 0.0_JPRB
+    INLOP(1)  = 10 ! arbitrary value
+    INLOP(4)  = NLON
+    INLOP(6)  = NLAT
+    ILON      = NLON
+    ILAT      = NLAT
+    IFPMAX=2
+    INFPMAX=NFPMAX
+    LLMAP=.TRUE.
+  ENDIF
+  ZSIN(17)=NFPBWX
+  ZSIN(18)=NFPBWY
+  IF (ITEST==0) THEN
+    CALL ECHIEN(CLLEC,INFPMAX,LLMAP,IFPMAX,ILAT,ILON,INLOP,&
+     & ZSIN,ILEV,VP00,YDVAB%VALH,YDVAB%VBH,ITEST,ZEPS,NULOUT)  
+  ELSE
+    CALL ECHIEN(CLLEC,INFPMAX,LLMAP,IFPMAX,ILAT,ILON,INLOP,&
+     & ZSIN,ILEV,VP00,YLVAB%VALH,YLVAB%VBH,ITEST,ZEPS,NULOUT)  
+  ENDIF
+  LLGARD=.FALSE.
+  CALL FACIES(CLLEC,ITYPTR,ZSLAPO,ZCLOPO,ZSLOPO,ZCODIL,ITRUN,INLATI,INXLON,&
+   & INLOPA,INOZPA,ZSINLA,INIVER,ZREF,ZVALH,ZVBH,LLGARD)  
+ENDIF
+
+IF (PRESENT (KNLATI)) KNLATI = INLATI
+IF (PRESENT (KNXLON)) KNXLON = INXLON
+
+DEALLOCATE(ZVBH)
+DEALLOCATE(ZVALH)
+DEALLOCATE(ZSINLA)
+DEALLOCATE(INOZPA)
+DEALLOCATE(INLOPA)
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('OPENFPFA',1,ZHOOK_HANDLE)
+END SUBROUTINE OPENFPFA

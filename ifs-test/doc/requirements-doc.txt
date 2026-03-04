@@ -1,0 +1,1 @@
+git+ssh://git.ecmwf.int/rdx/ford.git@ifs#egg=ford

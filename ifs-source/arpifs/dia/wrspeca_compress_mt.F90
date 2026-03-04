@@ -1,0 +1,89 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE WRSPECA_COMPRESS_MT (YDFA, KUNIT, PSPBUF, PVALCO, YDFLDSC, YDCPDSC)
+
+!**** *WRSPECA_COMPRESS_MT*  - Compress spectral fields on behalf of the model itself or the IO server
+
+!     Author. 
+!     ------- 
+!      Philippe Marguinaud *METEO-FRANCE*
+!      Original : 01-01-2011
+
+!     Modifications :
+!     P. Marguinaud : 10-10-2013 : Fix intents
+!     P. Marguinaud : 10-10-2014 : Use FACONO
+
+!     R. El Khatib 21-May 2015 Bugfix
+!     P. Marguinaud : 04-10-2016 : Port to single precision
+
+USE PARKIND1, ONLY : JPIM, JPRB
+USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
+USE FA_MOD,   ONLY : FA_COM, JPPRCM
+USE IOFLDDESC_MOD, ONLY : IOFLDDESC
+USE IOCPTDESC_MOD, ONLY : IOCPTDESC
+
+IMPLICIT NONE
+
+TYPE (FA_COM),       INTENT (INOUT)         :: YDFA
+INTEGER (KIND=JPIM), INTENT (IN)            :: KUNIT
+REAL (KIND=JPRB),    INTENT (IN)            :: PSPBUF (:)
+REAL (KIND=JPRB),    INTENT (INOUT)         :: PVALCO (:)
+TYPE (IOFLDDESC),    INTENT (IN)            :: YDFLDSC
+TYPE (IOCPTDESC),    INTENT (INOUT)         :: YDCPDSC
+
+#include "facono_mt.h"
+
+INTEGER (KIND=JPIM) :: IREP, IUNTIN, INGRIB, INGRIG, INBPDG, INBCSP, ISTRON, IPUILA, IDMOPL
+INTEGER (KIND=JPIM) :: ILONGD
+LOGICAL, PARAMETER  :: LLCOSP = .TRUE.
+INTEGER (KIND=JPIM) :: ILEV
+
+REAL (KIND=JPHOOK) :: ZHOOK_HANDLE
+
+IF (LHOOK) CALL DR_HOOK ('WRSPECA_COMPRESS_MT',0,ZHOOK_HANDLE)
+
+IUNTIN = KUNIT
+
+IF (YDFLDSC%LIOLV) THEN
+  ILEV = YDFLDSC%IOLEV
+ELSE
+  ILEV = YDFLDSC%ILEVG
+ENDIF
+
+CALL FAVEUR_MT(YDFA,IREP,IUNTIN,INGRIB,INBPDG,INBCSP,ISTRON,IPUILA,IDMOPL)
+
+IF ((YDFLDSC%NGRIBL <= 3) .AND. (YDFLDSC%JBITS == 64)) THEN
+! Do not pack field
+  IF (INGRIB==-1 .OR. INGRIB==3) THEN
+    INGRIG=-1
+  ELSE
+    INGRIG=0
+  ENDIF
+  CALL FAGOTE_MT(YDFA,IREP,IUNTIN,INGRIG,YDFLDSC%JBITS,YDFLDSC%JBITS,ISTRON,IPUILA,IDMOPL)
+ELSE
+  CALL FAGOTE_MT(YDFA,IREP,IUNTIN,YDFLDSC%NGRIBL,YDFLDSC%JBITS,YDFLDSC%JBITS,ISTRON,IPUILA,IDMOPL)
+ENDIF
+
+ILONGD = SIZE (PVALCO) / JPPRCM
+CALL FACONO_MT(YDFA,IREP,IUNTIN,YDFLDSC%CPREF,ILEV,YDFLDSC%CSUFF,&
+             & PSPBUF,LLCOSP,YDCPDSC%CNOMA,YDCPDSC%ILNOMA,       &
+             & PVALCO,ILONGD)
+YDCPDSC%ILONGD = ILONGD
+
+
+! Reset packing options
+CALL FAGOTE_MT(YDFA,IREP,IUNTIN,INGRIB,INBPDG,INBCSP,ISTRON,IPUILA,IDMOPL)
+
+IF (LHOOK) CALL DR_HOOK ('WRSPECA_COMPRESS_MT',1,ZHOOK_HANDLE)
+
+END SUBROUTINE WRSPECA_COMPRESS_MT
+

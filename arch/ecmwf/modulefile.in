@@ -1,0 +1,143 @@
+# (C) Copyright 2011- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+
+#%Module -  ECMWF Production Environment
+
+source "/usr/local/apps/modulefiles/include/ecmwf-utilities.tcl"
+
+# Default prefix is /usr/local/apps/
+# If installed somewhere else, change it
+# Don't change this unless you know what you are doing
+set prefix "@MODULE_PREFIX@"
+
+# This will find out the installation directory for the package
+# For packages with only binaries and no libraries to export:
+# <prefix>/<package_name>/<package_version>
+# For packages with libraries, it will try to give the directory:
+# <prefix>/<package_name>/<package_version>/<compiler_family>/<compiler_version>
+set DIRECTORY [find-path $prefix]
+
+prepend-path     PATH $DIRECTORY/bin
+
+# ifs
+conflict         $current_package
+setenv           ifs_DIR $DIRECTORY
+setenv           IFS_DIR $DIRECTORY
+setenv           IFS_VERSION ${current_version}
+setenv           IFS_GIT_COMMIT @IFS_GIT_SHA1@
+
+# eckit
+conflict         eckit
+setenv           eckit_DIR $DIRECTORY
+setenv           ECKIT_DIR $DIRECTORY
+setenv           ECKIT_PATH $DIRECTORY
+setenv           eckit_VERSION @ECKIT_VERSION@
+setenv           ECKIT_VERSION @ECKIT_VERSION@
+setenv           ECKIT_GIT_COMMIT @ECKIT_GIT_SHA1@
+
+# eccodes
+conflict         eccodes
+conflict         grib_api
+setenv           eccodes_DIR $DIRECTORY
+setenv           ECCODES_DIR $DIRECTORY
+setenv           ECCODES_PATH $DIRECTORY
+setenv           eccodes_VERSION @ECCODES_VERSION@
+setenv           ECCODES_VERSION @ECCODES_VERSION@
+setenv           ECCODES_GIT_COMMIT @ECCODES_GIT_SHA1@
+
+# fdb
+conflict         fdb
+setenv           fdb_DIR $DIRECTORY
+setenv           FDB_DIR $DIRECTORY
+setenv           fdb_VERSION @FDB_VERSION@
+setenv           FDB_VERSION @FDB_VERSION@
+setenv           FDB_GIT_COMMIT @FDB_GIT_SHA1@
+
+# emos
+conflict         emos
+setenv           emos_DIR $DIRECTORY
+setenv           EMOS_DIR $DIRECTORY
+setenv           emos_VERSION @LIBEMOS_VERSION@
+setenv           EMOS_VERSION @LIBEMOS_VERSION@
+setenv           EMOS_GIT_COMMIT @LIBEMOS_GIT_SHA1@
+
+# odb_api
+conflict         odb_api
+setenv           odb_api_DIR $DIRECTORY
+setenv           ODB_API_DIR $DIRECTORY
+setenv           odb_api_VERSION @ODB_API_VERSION@
+setenv           ODB_API_VERSION @ODB_API_VERSION@
+setenv           ODB_API_GIT_COMMIT @ODB_API_GIT_SHA1@
+setenv           ODB_API_CODES /usr/local/apps/odb_api/codes
+
+# odb
+conflict         odb
+setenv           odb_DIR $DIRECTORY
+setenv           ODB_DIR $DIRECTORY
+setenv           ODB_ROOT $DIRECTORY
+setenv           odb_VERSION @ODB_VERSION@
+setenv           ODB_VERSION @ODB_VERSION@
+setenv           ODB_GIT_COMMIT @IFS_GIT_SHA1@
+setenv           ODB_SYSDBPATH $DIRECTORY/share/odb
+setenv           ODB_FEBINPATH $DIRECTORY/bin
+setenv           ODB_SYSPATH $DIRECTORY/include
+setenv           ODB_BINPATH $DIRECTORY/bin
+setenv           ODB_IOASSIGN_PARAMS "-r 1m -w 1m"
+setenv           ODB_IOASSIGN_MAXPROC 32
+
+# atlas
+conflict         atlas
+setenv           atlas_DIR $DIRECTORY
+setenv           ATLAS_DIR $DIRECTORY
+setenv           ATLAS_PATH $DIRECTORY
+setenv           atlas_VERSION @ATLAS_VERSION@
+setenv           ATLAS_VERSION @ATLAS_VERSION@
+setenv           ATLAS_GIT_COMMIT @ATLAS_GIT_SHA1@
+
+# multio
+conflict         multio
+setenv           multio_DIR $DIRECTORY
+setenv           MULTIO_DIR $DIRECTORY
+setenv           multio_VERSION @MULTIO_VERSION@
+setenv           MULTIO_VERSION @MULTIO_VERSION@
+setenv           MULTIO_GIT_COMMIT @MULTIO_GIT_SHA1@
+
+###############################################################################
+
+# ------------------
+# Information & help
+# ------------------
+
+# Print an info message with a summary of the environment variables changed
+# Change it to reflect your additions to the modulefile.
+print-info ""
+module-whatis "Set environment variables to enable the usage of the $current_package $current_version"
+
+# Help procedure: called by "module help <package_name>"
+proc ModulesHelp {} {
+
+  source "/usr/local/apps/modulefiles/include/ecmwf-utilities.tcl"
+
+  set DIRECTORY [find-path]
+
+  if [ catch {
+    set fp [open "$DIRECTORY/README.txt" r]
+    set info [read $fp]
+    close $fp
+  }] {
+    set info "No extra info about this module"
+  }
+
+# Output help message
+  puts stderr "
+**** ECMWF Production Environment ****\n
+modulefile \"$current_name\"\n
+Set environment variables to enable the usage of the $current_package $current_version.\n
+$info\n"
+  return 0
+}

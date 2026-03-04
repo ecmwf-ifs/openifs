@@ -1,0 +1,115 @@
+SUBROUTINE SRTM_CMBGB24
+
+!     BAND 24:  12850-16000 cm-1 (low - H2O,O2; high - O2)
+!-----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM , JPRB
+USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
+
+USE YOESRTM  , ONLY : NGN
+USE YOESRTWN , ONLY : NGC, NGS, RWGT
+!USE YOESRTWN , ONLY : NGC, NGS, NGN, RWGT
+USE YOESRTA24, ONLY : KA, KB, SELFREF, FORREF, SFLUXREF, &
+                    & ABSO3A, ABSO3B, RAYLA, RAYLB, &
+                    & KAC, KBC, SELFREFC, FORREFC, SFLUXREFC, &
+                    & ABSO3AC, ABSO3BC, RAYLAC, RAYLBC
+
+IMPLICIT NONE
+
+! Local variables
+INTEGER(KIND=JPIM) :: JN, JT, JP, IGC, IPR, IPRSM
+REAL(KIND=JPRB)    :: ZSUMK, ZSUMF1, ZSUMF2, ZSUMF3
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SRTM_CMBGB24',0,ZHOOK_HANDLE)
+
+DO JN = 1,9
+  DO JT = 1,5
+    DO JP = 1,13
+      IPRSM = 0
+      DO IGC = 1,NGC(9)
+        ZSUMK = 0.
+        DO IPR = 1, NGN(NGS(8)+IGC)
+          IPRSM = IPRSM + 1
+          ZSUMK = ZSUMK + KA(JN,JT,JP,IPRSM)*RWGT(IPRSM+128)
+        ENDDO
+        KAC(JN,JT,JP,IGC) = ZSUMK
+      ENDDO
+    ENDDO
+  ENDDO
+ENDDO
+
+DO JT = 1,5
+  DO JP = 13,59
+    IPRSM = 0
+    DO IGC = 1,NGC(9)
+      ZSUMK = 0.
+      DO IPR = 1, NGN(NGS(8)+IGC)
+        IPRSM = IPRSM + 1
+        ZSUMK = ZSUMK + KB(JT,JP,IPRSM)*RWGT(IPRSM+128)
+      ENDDO
+      KBC(JT,JP,IGC) = ZSUMK
+    ENDDO
+  ENDDO
+ENDDO
+
+DO JT = 1,10
+  IPRSM = 0
+  DO IGC = 1,NGC(9)
+    ZSUMK = 0.
+    DO IPR = 1, NGN(NGS(8)+IGC)
+      IPRSM = IPRSM + 1
+      ZSUMK = ZSUMK + SELFREF(JT,IPRSM)*RWGT(IPRSM+128)
+    ENDDO
+    SELFREFC(JT,IGC) = ZSUMK
+  ENDDO
+ENDDO
+
+DO JT = 1,3
+  IPRSM = 0
+  DO IGC = 1,NGC(9)
+    ZSUMK = 0.
+    DO IPR = 1, NGN(NGS(8)+IGC)
+      IPRSM = IPRSM + 1
+      ZSUMK = ZSUMK + FORREF(JT,IPRSM)*RWGT(IPRSM+128)
+    ENDDO
+    FORREFC(JT,IGC) = ZSUMK
+  ENDDO
+ENDDO
+
+IPRSM = 0
+DO IGC = 1,NGC(9)
+  ZSUMF1 = 0.
+  ZSUMF2 = 0.
+  ZSUMF3 = 0.
+  DO IPR = 1, NGN(NGS(8)+IGC)
+    IPRSM = IPRSM + 1
+    ZSUMF1 = ZSUMF1 + RAYLB(IPRSM)*RWGT(IPRSM+128)
+    ZSUMF2 = ZSUMF2 + ABSO3A(IPRSM)*RWGT(IPRSM+128)
+    ZSUMF3 = ZSUMF3 + ABSO3B(IPRSM)*RWGT(IPRSM+128)
+  ENDDO
+  RAYLBC(IGC) = ZSUMF1
+  ABSO3AC(IGC) = ZSUMF2
+  ABSO3BC(IGC) = ZSUMF3
+ENDDO
+
+DO JP = 1,9
+  IPRSM = 0
+  DO IGC = 1,NGC(9)
+    ZSUMF1 = 0.
+    ZSUMF2 = 0.
+    DO IPR = 1, NGN(NGS(8)+IGC)
+      IPRSM = IPRSM + 1
+      ZSUMF1 = ZSUMF1 + SFLUXREF(IPRSM,JP)
+      ZSUMF2 = ZSUMF2 + RAYLA(IPRSM,JP)*RWGT(IPRSM+128)
+    ENDDO
+    SFLUXREFC(IGC,JP) = ZSUMF1
+    RAYLAC(IGC,JP) = ZSUMF2
+  ENDDO
+ENDDO
+
+!     -----------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SRTM_CMBGB24',1,ZHOOK_HANDLE)
+END SUBROUTINE SRTM_CMBGB24
+

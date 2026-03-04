@@ -1,0 +1,399 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUDYN_STABILITY(YDGEOMETRY,YDDYN,LDNHDYN,LDNESC,KULOUT)
+
+!------------------------------------------------------------------------------
+!**** *SUDYN_STABILITY*   - perform analysis of stability of NH or HY model
+!                           with respect to T or pi_s residual with
+!                           isothermal atmosphere
+!
+!     Purpose is to have tool to test stability properties of time stepping
+!     when we change vertical discretization or number of vertical levels.
+!
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Jozef Vivoda ** ECMWF stay
+!      Original : 2019-03-28
+
+! Modifications
+! -------------
+! End Modifications
+!-------------------------------------------------------------------------------
+
+USE YOMDYN   , ONLY : TDYN
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1     , ONLY : JPIM, JPRB, JPRD
+USE YOMCST       , ONLY : RPI
+USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TDYN)        ,INTENT(INOUT) :: YDDYN
+LOGICAL           ,INTENT(IN)    :: LDNESC
+LOGICAL           ,INTENT(IN)    :: LDNHDYN
+INTEGER(KIND=JPIM),INTENT(IN)    :: KULOUT
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: JDIM, JSTEP, ITRUNC, IRES, ITER, ISTOP, IER, JL1
+REAL(KIND=JPRB)    :: ZKWAVE,ZSITR,ZSIPR,ZTAU,ZTSTEP, ZEMAX, ZEMIN
+
+REAL(KIND=JPRB) :: ZSITRAM(YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZLAPL(YDGEOMETRY%YRDIMV%NFLEVG,YDGEOMETRY%YRDIMV%NFLEVG)
+
+REAL(KIND=JPRB), ALLOCATABLE   :: ZFR(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZFI(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZABS(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZMO(:,:)
+INTEGER(KIND=JPIM), ALLOCATABLE:: IWO(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZWO(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZID(:,:)
+
+! JDIM allocations
+REAL(KIND=JPRB), ALLOCATABLE :: ZIDM  (:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZMTL  (:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZRES  (:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZA_COR(:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZTMP  (:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZB_COR(:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZIMPL (:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZIMPLI(:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZEXPL (:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZMSI  (:,:)
+
+! JSTEP allocations
+REAL(KIND=JPRB), ALLOCATABLE   :: ZSTEP(:,:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZFRM(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZFIM(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZABSM(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZMOM(:,:)
+INTEGER(KIND=JPIM), ALLOCATABLE:: IWOM(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZWOM(:)
+
+! JDIM allocations ???
+REAL(KIND=JPRB), ALLOCATABLE   :: ZFRS(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZFIS(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZABSS(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZMOS(:,:)
+INTEGER(KIND=JPIM), ALLOCATABLE:: IWOS(:)
+REAL(KIND=JPRB), ALLOCATABLE   :: ZWOS(:)
+
+CHARACTER(LEN=240) :: CTAG
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "siseve.intfb.h"
+#include "eigsol.h"
+#include "minv_caller.h"
+#include "scordo.intfb.h"
+
+IF (LHOOK) CALL DR_HOOK('SUDYN_STABILITY',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP,  &
+ & YDVAB=>YDGEOMETRY%YRVAB, YDVETA=>YDGEOMETRY%YRVETA, YDVFE=>YDGEOMETRY%YRVFE, YDSTA=>YDGEOMETRY%YRSTA,  &
+ & YDLAP=>YDGEOMETRY%YRLAP, YDCSGLEG=>YDGEOMETRY%YRCSGLEG,YDCVER=>YDGEOMETRY%YRCVER,  &
+ & YDCSGEOM=>YDGEOMETRY%YRCSGEOM, &
+  & YDCSGEOM_NB=>YDGEOMETRY%YRCSGEOM_NB, YDGSGEOM=>YDGEOMETRY%YRGSGEOM, YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB,  &
+  & YDSPGEOM=>YDGEOMETRY%YSPGEOM)
+ASSOCIATE(NFLEVG=>YDDIMV%NFLEVG, &
+ & LSIDG=>YDDYN%LSIDG, SIALPH=>YDDYN%SIALPH, SIB=>YDDYN%SIB, SIBI=>YDDYN%SIBI, &
+ & SIDELP=>YDDYN%SIDELP, SIDPHI=>YDDYN%SIDPHI, SILNPR=>YDDYN%SILNPR, &
+ & SIMI=>YDDYN%SIMI, SIMO=>YDDYN%SIMO, SIPR=>YDDYN%SIPR, SIRDEL=>YDDYN%SIRDEL, &
+ & SITIME=>YDDYN%SITIME, SITLAF=>YDDYN%SITLAF, SITLAH=>YDDYN%SITLAH, &
+ & SITR=>YDDYN%SITR, SIVP=>YDDYN%SIVP, VNORM=>YDDYN%VNORM &
+ & )
+!     ------------------------------------------------------------------
+
+
+IF(LDNHDYN)THEN
+  JDIM    = 4 * NFLEVG + 1
+  ZSITRAM = YDDYN%SITRAM
+ELSE
+  JDIM    = 2 * NFLEVG + 1
+ENDIF
+
+IF(LDNESC)THEN
+  JSTEP = JDIM
+ELSE
+  JSTEP = 2 * JDIM
+ENDIF
+
+ZSITR   = SITR
+ZSIPR   = SIPR
+
+WRITE(KULOUT,*) "================================="
+WRITE(KULOUT,*) "ANALYSIS OF STABILITY            "
+WRITE(KULOUT,*) "================================="
+
+ALLOCATE(ZIDM  (JDIM,JDIM))
+ALLOCATE(ZMSI  (JDIM,JDIM))
+ALLOCATE(ZMTL  (JDIM,JDIM))
+ALLOCATE(ZRES  (JDIM,JDIM))
+ALLOCATE(ZA_COR(JDIM,JDIM))
+ALLOCATE(ZB_COR(JDIM,JDIM))
+ALLOCATE(ZTMP  (JDIM,JDIM))
+ALLOCATE(ZIMPL (JDIM,JDIM))
+ALLOCATE(ZIMPLI(JDIM,JDIM))
+ALLOCATE(ZEXPL (JDIM,JDIM))
+
+ALLOCATE(ZID  (NFLEVG,NFLEVG))
+
+ALLOCATE(ZSTEP(JSTEP, JSTEP))
+ALLOCATE(ZFRM (JSTEP))
+ALLOCATE(ZFIM (JSTEP))
+ALLOCATE(ZABSM(JSTEP))
+ALLOCATE(ZMOM (JSTEP, JSTEP))
+ALLOCATE(IWOM (JSTEP + 1))
+ALLOCATE(ZWOM (JSTEP + 1))
+
+ALLOCATE(ZFRS (JDIM))
+ALLOCATE(ZFIS (JDIM))
+ALLOCATE(ZABSS(JDIM))
+ALLOCATE(ZMOS (JDIM, JDIM))
+ALLOCATE(IWOS (JDIM + 1))
+ALLOCATE(ZWOS (JDIM + 1))
+
+ALLOCATE(ZFR (NFLEVG))
+ALLOCATE(ZFI (NFLEVG))
+ALLOCATE(ZABS(NFLEVG))
+ALLOCATE(ZMO (NFLEVG, NFLEVG))
+ALLOCATE(IWO (NFLEVG + 1))
+ALLOCATE(ZWO (NFLEVG + 1))
+
+ZTSTEP = 600.0
+ZTAU = ZTSTEP  * 0.5_JPRB
+
+! * ZID and ZIDM contain the identity matrix "I":
+ZIDM = 0.0_JPRB
+DO JL1=1,JDIM
+  ZIDM(JL1,JL1)=1.0_JPRB
+ENDDO
+
+ZID = 0.0_JPRB
+DO JL1=1,NFLEVG
+    ZID(JL1,JL1)=1.0_JPRB
+ENDDO
+
+DO ITRUNC = 1000, 1000, 100
+
+  ! ZKWAVE = 2.0_JPRB * RPI / (40000000.) * REAL(ITRUNC,JPRB)
+  ZKWAVE = 1.0_JPRB
+
+  IF(LDNHDYN)THEN
+
+
+
+    call abor1("oifs - CALL NH_MATRIX (Non-Hydrostatic core) in sudyn_stability should never be called - EXIT")
+
+  ELSE
+    CALL HY_MATRIX(YDGEOMETRY,YDDYN,.TRUE.,NFLEVG,ZKWAVE,ZSITR,ZSIPR,JDIM,ZMSI)
+  ENDIF
+
+  ! print linear model matrix
+  CTAG = "ZMSI ::"
+  CALL PRINT_MATRIX(CTAG,JDIM, JDIM, ZMSI)
+
+  ZIMPL = ZIDM - ZTAU * ZMSI
+  ZEXPL = ZIDM + ZTAU * ZMSI
+
+  CALL MINV_CALLER(.TRUE.,JDIM,ZIMPL,ZIMPLI)
+
+  WRITE(KULOUT,'("----------------------")')
+  CALL FLUSH(KULOUT)
+
+  ! temperature residual check
+  DO IRES = 0, 10
+
+    ! compute isothermal matrix with T profile different that SITR
+    ! this represents full model and therefore only one T profile can be used
+    ZSITR = (370.0_JPRB - 150.0_JPRB) * REAL(IRES,JPRB) / 10.00_JPRB +  150.0_JPRB
+    ZSIPR   = SIPR
+
+    IF(LDNHDYN)THEN
+      ZSITRAM = ZSITR
+
+
+
+      call abor1("oifs - CALL NH_MATRIX (Non-Hydrostatic core) in sudyn_stability should never be called - EXIT")
+
+    ELSE
+      CALL HY_MATRIX(YDGEOMETRY,YDDYN,.TRUE.,NFLEVG,ZKWAVE,ZSITR,ZSIPR,JDIM,ZMTL)
+    ENDIF
+
+    ZRES  = ZTAU * (ZMTL - ZMSI)
+
+    IF(LDNESC)THEN
+      ZSTEP  = MATMUL(ZIMPLI, ZEXPL + 2.0_JPRB * ZRES)
+    ELSE
+      ZSTEP(       1:       JDIM,        1:       JDIM)  = MATMUL(ZIMPLI, ZEXPL + 3.0_JPRB/2.0_JPRB * ZRES)
+      ZSTEP(       1:       JDIM, JDIM + 1:JDIM + JDIM)  = MATMUL(ZIMPLI,       - 1.0_JPRB/2.0_JPRB * ZRES)
+      ZSTEP(JDIM + 1:JDIM + JDIM,        1:       JDIM)  = ZIDM
+      ZSTEP(JDIM + 1:JDIM + JDIM, JDIM + 1:JDIM + JDIM)  = 0.0_JPRB
+    ENDIF
+
+    ZA_COR = MATMUL(ZIMPLI, ZRES)
+
+    ZTMP = ZA_COR
+    CALL EIGSOL(JDIM,JDIM,ZTMP,ZFRS,ZFIS,1,ZMOS,IWOS,ZWOS,IER)
+    IF(IER /= 0)THEN
+      CALL ABOR1('SUSI: ABORT IN SUSI AFTER CALL TO EIGSOL')
+    ENDIF
+    CALL SCORDO(JDIM,ZFRS,ZFIS,ZMOS,ZTMP)
+
+    DO JL1 = 1, JDIM
+      ZABSS(JL1) = SQRT(ZFRS(JL1)**2 + ZFIS(JL1)**2)
+    ENDDO
+
+    IF(YDDYN%NSITER > 0)THEN
+      ! corrector step
+      ZB_COR = MATMUL(ZIMPLI, ZEXPL + ZRES)
+
+      IF(LDNESC)THEN
+        ZSTEP  = MATMUL(ZA_COR, ZSTEP) + ZB_COR
+      ELSE
+        ZSTEP(       1:       JDIM,        1:       JDIM)  = ZA_COR
+        ZSTEP(       1:       JDIM, JDIM + 1:JDIM + JDIM)  = ZB_COR
+        ZSTEP(JDIM + 1:JDIM + JDIM,        1:       JDIM)  = 0.0_JPRB
+        ZSTEP(JDIM + 1:JDIM + JDIM, JDIM + 1:JDIM + JDIM)  = ZIDM
+      ENDIF
+    ENDIF
+
+    CALL EIGSOL(JSTEP,JSTEP,ZSTEP,ZFRM,ZFIM,1,ZMOM,IWOM,ZWOM,IER)
+    IF(IER /= 0)THEN
+      CALL ABOR1('SUSI: ABORT IN SUSI AFTER CALL TO EIGSOL')
+    ENDIF
+    CALL SCORDO(JSTEP,ZFRM,ZFIM,ZMOM,ZSTEP)
+
+    DO JL1 = 1, JSTEP
+      ZABSM(JL1) = SQRT(ZFRM(JL1)**2 + ZFIM(JL1)**2)
+    ENDDO
+
+    WRITE(KULOUT,'("T_STABILITY",";",2(I5,";"),6(F15.10,";"),5(F15.2,";"))') &
+        & YDCVER%NVFE_TYPE, ITRUNC, YDCVER%RVFE_ALPHA, YDCVER%RVFE_BETA, MAXVAL(ZABSM), MINVAL(ZABSM), MAXVAL(ZABSS), MINVAL(ZABSS), SITR, ZSITR, SIPR, ZSIPR
+    CALL FLUSH(KULOUT)
+
+  ENDDO
+
+  WRITE(KULOUT,'("----------------------")')
+  CALL FLUSH(KULOUT)
+
+  DO IRES = 0,20
+
+    ZSITR = SITR
+    ZSITRAM = ZSITR
+    ZSIPR = (110000.0_JPRB - 60000.0_JPRB) * REAL(IRES,JPRB) / 20.00_JPRB +  60000.0_JPRB
+
+    IF(LDNHDYN)THEN
+
+
+
+      call abor1("oifs - CALL NH_MATRIX (Non-Hydrostatic core) in sudyn_stability should never be called - EXIT")
+
+    ELSE
+      CALL HY_MATRIX(YDGEOMETRY,YDDYN,.TRUE.,NFLEVG,ZKWAVE,ZSITR,ZSIPR,JDIM,ZMTL)
+    ENDIF
+
+    ! NESC predictor
+    ZRES  = ZTAU * (ZMTL - ZMSI)
+
+    IF(LDNESC)THEN
+      ZSTEP  = MATMUL(ZIMPLI, ZEXPL + 2.0_JPRB * ZRES)
+    ELSE
+      ZSTEP(       1:       JDIM,        1:       JDIM)  = MATMUL(ZIMPLI, ZEXPL + 3.0_JPRB/2.0_JPRB * ZRES)
+      ZSTEP(       1:       JDIM, JDIM + 1:JDIM + JDIM)  = MATMUL(ZIMPLI,       - 1.0_JPRB/2.0_JPRB * ZRES)
+      ZSTEP(JDIM + 1:JDIM + JDIM,        1:       JDIM)  = ZIDM
+      ZSTEP(JDIM + 1:JDIM + JDIM, JDIM + 1:JDIM + JDIM)  = 0.0_JPRB
+    ENDIF
+
+    ZA_COR = MATMUL(ZIMPLI, ZRES)
+
+    ZTMP = ZA_COR
+    CALL EIGSOL(JDIM,JDIM,ZTMP,ZFRS,ZFIS,1,ZMOS,IWOS,ZWOS,IER)
+    IF(IER /= 0)THEN
+      CALL ABOR1('SUSI: ABORT IN SUSI AFTER CALL TO EIGSOL')
+    ENDIF
+    CALL SCORDO(JDIM,ZFRS,ZFIS,ZMOS,ZTMP)
+
+    DO JL1 = 1, JDIM
+      ZABSS(JL1) = SQRT(ZFRS(JL1)**2 + ZFIS(JL1)**2)
+    ENDDO
+
+    ! corrector step
+    IF(YDDYN%NSITER > 0)THEN
+      ZB_COR = MATMUL(ZIMPLI, ZEXPL + ZRES)
+
+      IF(LDNESC)THEN
+        ZSTEP  = MATMUL(ZA_COR, ZSTEP) + ZB_COR
+      ELSE
+        ZSTEP(       1:       JDIM,        1:       JDIM)  = ZA_COR
+        ZSTEP(       1:       JDIM, JDIM + 1:JDIM + JDIM)  = ZB_COR
+        ZSTEP(JDIM + 1:JDIM + JDIM,        1:       JDIM)  = 0.0_JPRB
+        ZSTEP(JDIM + 1:JDIM + JDIM, JDIM + 1:JDIM + JDIM)  = ZIDM
+      ENDIF
+    ENDIF
+
+    CALL EIGSOL(JSTEP,JSTEP,ZSTEP,ZFRM,ZFIM,1,ZMOM,IWOM,ZWOM,IER)
+    IF(IER /= 0)THEN
+      CALL ABOR1('SUSI: ABORT IN SUSI AFTER CALL TO EIGSOL')
+    ENDIF
+    CALL SCORDO(JSTEP,ZFRM,ZFIM,ZMOM,ZSTEP)
+
+    DO JL1 = 1, JSTEP
+      ZABSM(JL1) = SQRT(ZFRM(JL1)**2 + ZFIM(JL1)**2)
+    ENDDO
+
+    WRITE(KULOUT,'("P_STABILITY",";",2(I5,";"),6(F15.10,";"),5(F15.2,";"))') &
+        & YDCVER%NVFE_TYPE, ITRUNC, YDCVER%RVFE_ALPHA, YDCVER%RVFE_BETA, MAXVAL(ZABSM), MINVAL(ZABSM), MAXVAL(ZABSS), MINVAL(ZABSS), SITR, ZSITR, SIPR, ZSIPR
+    CALL FLUSH(KULOUT)
+
+  ENDDO
+
+ENDDO
+
+IF(LDNHDYN)THEN
+  ! construct laplacian operator (it is wave number independent)
+  CALL SISEVE(YDGEOMETRY,YDDYN,1,NFLEVG,ZID,ZLAPL,NFLEVG,LD_LSTAR=.TRUE.)
+
+  CTAG = "ZLAPL ::"
+  CALL PRINT_MATRIX(CTAG, NFLEVG, NFLEVG, ZLAPL)
+
+  ! eigenvalues of laplacian operator
+  CALL EIGSOL(NFLEVG,NFLEVG,ZLAPL,ZFR,ZFI,1,ZMO,IWO,ZWO,IER)
+  IF(IER /= 0)THEN
+    CALL ABOR1('SUSI: ABORT IN SUSI AFTER CALL TO EIGSOL')
+  ENDIF
+  CALL SCORDO(NFLEVG,ZFR,ZFI,ZMO,ZLAPL)
+
+  WRITE(KULOUT,'("----------------------")')
+  WRITE(KULOUT,'("LAPL_STABILITY",";",1(I5,";"),2(F15.10,";"),2(1X,G15.7,";"))') &
+     & YDCVER%NVFE_TYPE, YDCVER%RVFE_ALPHA, YDCVER%RVFE_BETA, MAXVAL(ZFRS), MAXVAL(ZFIS)
+  CALL FLUSH(KULOUT)
+
+ENDIF
+
+! switch off analysis to avoid another call
+YDCVER%LDYN_ANALYSIS_STABILITY = .FALSE.
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUDYN_STABILITY',1,ZHOOK_HANDLE)
+END SUBROUTINE SUDYN_STABILITY

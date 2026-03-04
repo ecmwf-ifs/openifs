@@ -1,0 +1,62 @@
+! (C) Copyright 1989- Meteo-France.
+
+      SUBROUTINE GETZON(KINDEX,KST,PON,PPRES,PDELP,KPZL,KZL,KVERT)
+C
+C     FILLS AND SCALES ONE ENTIRE FIELD FOR ZONAL MEANS
+C
+C
+C     INPUT
+C     -----
+C
+C     VAR        DIMENSION   DESCRIPTION
+C
+C  INTEGER
+C
+C     KINDEX                 INDEX OF THE VARIABLE TO BE PLOTTED
+C     KST                    1 FOR FIRST STEP (NSTEPB)
+C                            2 FOR SECOND STEP (NSTEPE)
+C     KPZL                   DIMENSION OF PON
+C
+C
+C     OUTPUT
+C     ------
+C
+C  INTEGER
+C
+C     KZL                    HORIZONTAL 'DIMENSI0N' OF PON
+C     KVERT                  VERTICAL 'DIMENSION' OF PON 
+C
+C  REAL
+C
+C     PON        KPZL        ARRAY TO CONTAIN VALUES
+C     PPRES      KPZL        ARRAY TO CONTAIN PRESSURE
+C
+C
+C     
+C     PEDRO VITERBO         E.C.M.W.F.    03/94.                            
+C
+#include "param.h"
+C
+      REAL PON(KPZL),PPRES(KPZL),PDELP(KPZL)
+#include "comddh.h"
+C
+C
+C     1. FILLS THE FIELD IN THE RIGHT ORDER
+C
+      KZL=0
+      DO 110 JZONE=1,NAREAS
+      CALL GETAREA(KINDEX,KST,JZONE,PON(KZL+1),PPRES(KZL+1),
+     *             PDELP(KZL+1),JPLEVP1,KVERT)
+      KZL=KZL+KVERT
+ 110  CONTINUE
+C
+C     2. SECONDARY (SECOND) SCALING - GETS THE PRE-SPECIFIED UNITS
+C
+      IF (GAIN(KINDEX).NE.1.OR.OFFSET(KINDEX).NE.0.) THEN
+         DO 210 J=1,KZL
+         PON(J)=GAIN(KINDEX)*(PON(J)-OFFSET(KINDEX))
+ 210     CONTINUE
+      ENDIF
+C
+      RETURN
+      END

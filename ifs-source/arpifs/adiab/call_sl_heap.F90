@@ -1,0 +1,116 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE CALL_SL_HEAP(YDGEOMETRY,YDGMV,&
+ & YDMODEL,PGFL,&
+ & YDSL,KVSEPC,KVSEPL,PB1,PB2,PWRL9,PGMVT1,PGMVT1S,PGFLT1,PGFLPC,&
+ & KL0,PLSCAW,PUP9,PVP9,PTP9,PGFLP9)
+
+!****-------------------------------------------------------------------
+!**** *CALL_SL_HEAP* - Semi-lagrangian driver preferring memory on heap
+!****-------------------------------------------------------------------
+!     Purpose.   call_sl driver using memory on heap for large arrays
+!     --------
+
+!**   Interface.
+!     ----------
+!        *CALL* *CALL_SL_HEAP (..)
+
+!        Explicit arguments :  CDCONF - configuration of work (see doc.)
+!        --------------------
+
+!        Implicit arguments :  None.
+!        --------------------
+
+!     Method.
+!     -------
+
+!     Externals.   See includes below.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!        R. El Khatib *Meteo-France* 02-Oct-2014
+
+! Modifications
+! -------------
+! End Modifications
+!-------------------------------------------------------------------------------
+
+USE TYPE_MODEL   , ONLY : MODEL
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YOMGMV       , ONLY : TGMV
+USE PARKIND1     , ONLY : JPIM, JPRB
+USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
+
+USE EINT_MOD     , ONLY : SL_STRUCT
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGMV)        ,INTENT(INOUT) :: YDGMV
+TYPE(MODEL)       ,INTENT(INOUT) :: YDMODEL
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_GCONF%YGFL%NDIM, &
+ &                                       YDGEOMETRY%YRDIM%NGPBLKS) 
+TYPE(SL_STRUCT)   ,INTENT(INOUT) :: YDSL
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KVSEPC(YDGEOMETRY%YRDIM%NGPBLKS) 
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KVSEPL(YDGEOMETRY%YRDIM%NGPBLKS) 
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KL0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,0:3,YDGEOMETRY%YRDIM%NGPBLKS)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PB1(YDSL%NASLB1,YDMODEL%YRML_DYN%YRPTRSLB1%NFLDSLB1) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PB2(YDGEOMETRY%YRDIM%NPROMA,YDMODEL%YRML_DYN%YRPTRSLB2%NFLDSLB2,YDGEOMETRY%YRDIM%NGPBLKS)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWRL9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGEOMETRY%YRDIM%NGPBLKS)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%YT1%NDIM,&
+ &                                         YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGMVT1S(YDGEOMETRY%YRDIM%NPROMA,YDGMV%YT1%NDIMS,YDGEOMETRY%YRDIM%NGPBLKS)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFLT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_GCONF%YGFL%NDIM1, &
+ &                                         YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFLPC(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_GCONF%YGFL%NDIMPC,&
+ &                                         YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PUP9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVP9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTP9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGFLP9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_GCONF%YGFL%NDIMSLP,&
+ &                                         YDGEOMETRY%YRDIM%NGPBLKS)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PLSCAW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_DYN%YYTLSCAW%NDIM,&
+ &                                         YDGEOMETRY%YRDIM%NGPBLKS)
+!     ------------------------------------------------------------------
+INTEGER(KIND=JPIM), ALLOCATABLE :: ILH0 (:,:,:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZRSCAW(:,:,:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: ZSCO(:,:,:,:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "call_sl.intfb.h"
+
+IF (LHOOK) CALL DR_HOOK('CALL_SL_HEAP',0,ZHOOK_HANDLE)
+
+ALLOCATE(ILH0 (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,0:3,YDGEOMETRY%YRDIM%NGPBLKS))
+ALLOCATE(ZRSCAW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_DYN%YYTRSCAW%NDIM,YDGEOMETRY%YRDIM%NGPBLKS))
+ALLOCATE(ZSCO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_DYN%YYTSCO%NDIM,YDGEOMETRY%YRDIM%NGPBLKS))
+CALL CALL_SL(YDGEOMETRY,YDGMV,&
+ & YDMODEL,PGFL,&
+ & YDSL,KVSEPC,KVSEPL,PB1,PB2,PWRL9,PGMVT1,PGMVT1S,PGFLT1,PGFLPC,&
+ & KL0,PLSCAW,PUP9,PVP9,PTP9,PGFLP9,ILH0,ZRSCAW,ZSCO)
+DEALLOCATE(ZSCO)
+DEALLOCATE(ZRSCAW)
+DEALLOCATE(ILH0)
+
+IF (LHOOK) CALL DR_HOOK('CALL_SL_HEAP',1,ZHOOK_HANDLE)
+
+END SUBROUTINE CALL_SL_HEAP

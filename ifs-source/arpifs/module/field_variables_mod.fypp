@@ -1,0 +1,286 @@
+#! Read variable and field configurations from file
+#:set config_file = os.path.dirname(_THIS_FILE_) + '/field_config.yaml'
+#:set config = field_config.VariableConfiguration(config_file)
+#:set gmv = config.groups['GMV']
+#:set gmvs = config.groups['GMVS']
+#:set gfl = config.groups['GFL']
+#:set variables = gmv.variables + gmvs.variables + gfl.variables
+
+MODULE FIELD_VARIABLES_MOD
+  ! The FIELD_VARIABLES type provides namespaced access to all core
+  ! VARIABLE objects used.
+  !
+  ! These VARIABLE objects are currently wrappers around GMV and GFL
+  ! fields and provide accessor methods to the individual FIELD
+  ! storage objects and NPROMA array views (sub-array blocks) in
+  ! OpenMP loops. The FIELD_VARIABLES%UPDATE_VIEW(BLOCK_INDEX) utility
+  ! ensures that all block pointers provided by the stored variable
+  ! objects are pointing to the correct sub-arrry block.
+
+USE PARKIND1, ONLY: JPIM, JPRB
+USE VARIABLE_MODULE, ONLY: VARIABLE_2D, VARIABLE_3D, VARIABLE_4D
+USE YOMGMV, ONLY : TGMV
+USE YOMGFL, ONLY : TGFL
+
+
+IMPLICIT NONE
+
+TYPE GEOMETRY_VARIABLES
+  ! Variables for arrays specific to the geometry
+  TYPE(VARIABLE_2D) :: RCORI
+  TYPE(VARIABLE_2D) :: RCORIC
+  TYPE(VARIABLE_2D) :: GEMU
+  TYPE(VARIABLE_2D) :: GSQM2
+  TYPE(VARIABLE_2D) :: GELAM
+  TYPE(VARIABLE_2D) :: GELAT
+  TYPE(VARIABLE_2D) :: GECLO
+  TYPE(VARIABLE_2D) :: GESLO
+  TYPE(VARIABLE_2D) :: GM
+  TYPE(VARIABLE_2D) :: GMAPPA
+  TYPE(VARIABLE_2D) :: GOMVRL
+  TYPE(VARIABLE_2D) :: GOMVRM
+  TYPE(VARIABLE_2D) :: GNORDL
+  TYPE(VARIABLE_2D) :: GNORDM
+  TYPE(VARIABLE_2D) :: GNORDLCL
+  TYPE(VARIABLE_2D) :: GNORDMCL
+  TYPE(VARIABLE_2D) :: GNORDMCM
+  TYPE(VARIABLE_2D) :: GAW
+  TYPE(VARIABLE_2D) :: OROG
+  TYPE(VARIABLE_2D) :: OROGL
+  TYPE(VARIABLE_2D) :: OROGM
+END TYPE GEOMETRY_VARIABLES
+
+TYPE ECPHYS_VARIABLES
+  ! Variables for arrays in EC_PHYS_FIELDS_MOD
+  TYPE(VARIABLE_3D) :: USTRTI  ! E-W  SURFACE STRESS
+  TYPE(VARIABLE_3D) :: VSTRTI  ! N-S  SURFACE STRESS
+  TYPE(VARIABLE_3D) :: AHFSTI  ! SURFACE SENSIBLE HEAT FLUX
+  TYPE(VARIABLE_3D) :: EVAPTI  ! EVAPORATION
+  TYPE(VARIABLE_3D) :: TSKTI   ! SKIN TEMPERATURE
+END TYPE ECPHYS_VARIABLES
+
+TYPE RADIATION_VARIABLES
+  ! Variables for arrays specific to radiation
+  TYPE(VARIABLE_3D) :: EMTD      ! longwave net flux
+  TYPE(VARIABLE_3D) :: TRSW      ! shortwave net transmissivity (multiply by incoming SW to get flux)
+  TYPE(VARIABLE_3D) :: EMTC      ! clear-sky net longwave flux
+  TYPE(VARIABLE_3D) :: TRSC      ! clear-sky net shortwave transmissivity
+  TYPE(VARIABLE_3D) :: EMTU
+  TYPE(VARIABLE_4D) :: TAUAER    ! prognostic aerosol variable for radiation and clouds
+  TYPE(VARIABLE_2D) :: SRSWD     ! downward SW radiation at the surface
+  TYPE(VARIABLE_3D) :: SRLWD     ! downward LW radiation at the surface
+  TYPE(VARIABLE_2D) :: SRLWDC    ! clear-sky downward LW radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWDC    ! clear-sky downward SW radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWDCS   ! clear-sky NET SW radiation at the surface
+  TYPE(VARIABLE_2D) :: SRLWDCS   ! clear-sky NET LW radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWDV    ! downward SW visible radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWDUV   ! downward SW ultraviolet/visible radiation at the surface
+  TYPE(VARIABLE_2D) :: EDRO
+  TYPE(VARIABLE_2D) :: SRSWPAR   ! downward SW PAR radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWUVB   ! downward UV-B radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWPARC  ! downward clear-sky SW PAR radiation at the surface
+  TYPE(VARIABLE_2D) :: SRSWTINC  ! TOA incident solar radiation
+  TYPE(VARIABLE_2D) :: RMOON     ! M-F military application
+  TYPE(VARIABLE_2D) :: SRFDIR    ! total sky direct downward SW radiation
+  TYPE(VARIABLE_2D) :: SRCDIR    ! clear-sky direct downward SW radiation
+  TYPE(VARIABLE_3D) :: DERIVATIVELW  ! derivative to update LW radiation between calls to full radiation scheme
+END TYPE RADIATION_VARIABLES
+
+TYPE FIELD_VARIABLES
+#:for v in variables
+#:if v.array == 1
+  TYPE(VARIABLE_${v.dim}$D), ALLOCATABLE :: ${v.name}$_G(:)  ! ${v.comment}$
+  TYPE(VARIABLE_${v.dim}$D), POINTER :: ${v.name}$(:)  ! ${v.comment}$
+#:else
+  TYPE(VARIABLE_${v.dim}$D) :: ${v.name}$  ! ${v.comment}$
+#:endif
+#:endfor
+
+  TYPE(GEOMETRY_VARIABLES) :: GEOMETRY
+  TYPE(ECPHYS_VARIABLES) :: ECPHYS
+  TYPE(RADIATION_VARIABLES) :: RADIATION
+
+CONTAINS
+  ! PROCEDURE :: CLONE => FIELD_VARIABLES_CLONE
+  PROCEDURE :: CLONE_ARRAYS => FIELD_VARIABLES_CLONE_ARRAYS
+  PROCEDURE :: UPDATE_VIEW => FIELD_VARIABLES_UPDATE_VIEW
+  PROCEDURE :: RESET_ARRAYS => FIELD_VARIABLES_RESET_ARRAYS
+  PROCEDURE :: FINAL => FIELD_VARIABLES_FINAL
+  ! Timestepping utilities
+  PROCEDURE :: GFL_PH9TOT0 => FIELD_VARIABLES_GFL_PH9TOT0
+  PROCEDURE :: GFL_PH9TOT9 => FIELD_VARIABLES_GFL_PH9TOT9
+  PROCEDURE :: GMV_RESET_PH9 => FIELD_VARIABLES_GMV_RESET_PH9
+END TYPE FIELD_VARIABLES
+
+CONTAINS
+
+!   FUNCTION FIELD_VARIABLES_CLONE(SELF) RESULT(NEWOBJ)
+!     ! Replicate objects by deep-copying through associated object pointers
+!     !
+!     ! This is required create per-thread replication of the data view pointers
+!     ! under the fields associated with these variables.
+!     CLASS(FIELD_VARIABLES) :: SELF
+!     TYPE(FIELD_VARIABLES) :: NEWOBJ
+!     INTEGER(KIND=JPIM) :: I
+
+! #:for v in variables
+! #:if v.array == 1
+!     IF (ALLOCATED(SELF%${v.name}$)) THEN
+!       ALLOCATE(NEWOBJ%${v.name}$(SIZE(SELF%${v.name}$)))
+!       DO I=1, SIZE(SELF%${v.name}$)
+!         NEWOBJ%${v.name}$(I) = SELF%${v.name}$(I)%CLONE()
+!       END DO
+!     END IF
+! #:else
+!     NEWOBJ%${v.name}$ = SELF%${v.name}$%CLONE()
+! #:endif
+! #:endfor
+!   END FUNCTION FIELD_VARIABLES_CLONE
+
+  SUBROUTINE FIELD_VARIABLES_CLONE_ARRAYS(SELF)
+    ! Replicate variable arrays by allocating a thread-local copy and
+    ! associating its variables with the underpinning storage fields.
+    !
+    ! This is required ensure that per-thread data view pointers under
+    ! variables don't alias.
+    CLASS(FIELD_VARIABLES) :: SELF
+    INTEGER(KIND=JPIM) :: I
+
+#:for v in variables
+#:if v.array == 1
+    ! Allocate a thread-local copy of the array
+    NULLIFY(SELF%${v.name}$)
+    ALLOCATE(SELF%${v.name}$(SIZE(SELF%${v.name}$_G)))
+
+    DO I=1, SIZE(SELF%${v.name}$_G)
+      ! Associate underpinning storage objects with thread-local variables
+      IF (ASSOCIATED(SELF%${v.name}$_G(I)%FT0))  SELF%${v.name}$(I)%FT0 => SELF%${v.name}$_G(I)%FT0
+      IF (ASSOCIATED(SELF%${v.name}$_G(I)%FT1))  SELF%${v.name}$(I)%FT1 => SELF%${v.name}$_G(I)%FT1
+      IF (ASSOCIATED(SELF%${v.name}$_G(I)%FT9))  SELF%${v.name}$(I)%FT9 => SELF%${v.name}$_G(I)%FT9
+      IF (ASSOCIATED(SELF%${v.name}$_G(I)%FPH9)) SELF%${v.name}$(I)%FPH9=> SELF%${v.name}$_G(I)%FPH9
+      IF (ASSOCIATED(SELF%${v.name}$_G(I)%FDL))  SELF%${v.name}$(I)%FDL => SELF%${v.name}$_G(I)%FDL
+      IF (ASSOCIATED(SELF%${v.name}$_G(I)%FDM))  SELF%${v.name}$(I)%FDM => SELF%${v.name}$_G(I)%FDM
+    END DO
+#:endif
+#:endfor
+  END SUBROUTINE FIELD_VARIABLES_CLONE_ARRAYS
+
+  SUBROUTINE FIELD_VARIABLES_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    ! Update the internal data view pointers of all associated variables
+    CLASS(FIELD_VARIABLES) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+    INTEGER(KIND=JPIM) :: I
+
+#:for v in variables
+#:if v.array == 1
+    ! Note, we assume allocation of size 0 for inactive variables!
+    DO I=1, SIZE(SELF%${v.name}$)
+      CALL SELF%${v.name}$(I)%UPDATE_VIEW(BLOCK_INDEX)
+    END DO
+#:else
+    CALL SELF%${v.name}$%UPDATE_VIEW(BLOCK_INDEX)
+#:endif
+#:endfor
+
+    ! Manually update variables in ECPHYS sub-type
+    CALL SELF%ECPHYS%USTRTI%UPDATE_VIEW(BLOCK_INDEX)
+    CALL SELF%ECPHYS%VSTRTI%UPDATE_VIEW(BLOCK_INDEX)
+    CALL SELF%ECPHYS%AHFSTI%UPDATE_VIEW(BLOCK_INDEX)
+    CALL SELF%ECPHYS%EVAPTI%UPDATE_VIEW(BLOCK_INDEX)
+    CALL SELF%ECPHYS%TSKTI%UPDATE_VIEW(BLOCK_INDEX)
+  END SUBROUTINE FIELD_VARIABLES_UPDATE_VIEW
+
+  SUBROUTINE FIELD_VARIABLES_FINAL(SELF)
+    ! Update the internal data view pointers of all associated variables
+    CLASS(FIELD_VARIABLES) :: SELF
+    INTEGER(KIND=JPIM) :: I
+
+#:for v in variables
+#:if v.array == 1
+    IF (ALLOCATED(SELF%${v.name}$_G)) THEN
+      DO I=1, SIZE(SELF%${v.name}$)
+        CALL SELF%${v.name}$(I)%FINAL()
+      END DO
+      DEALLOCATE(SELF%${v.name}$_G)
+      NULLIFY(SELF%${v.name}$)
+    END IF
+#:else
+    CALL SELF%${v.name}$%FINAL()
+#:endif
+#:endfor
+  END SUBROUTINE FIELD_VARIABLES_FINAL
+
+  SUBROUTINE FIELD_VARIABLES_RESET_ARRAYS(SELF)
+    ! Deallocate and reset thread-local variables arrays.
+    !
+    ! This ensures we are not leaking thread-local objects and should
+    ! be done after parallel regions.
+    CLASS(FIELD_VARIABLES), TARGET :: SELF
+    INTEGER(KIND=JPIM) :: I
+
+#:for v in variables
+#:if v.array == 1
+    ! Deallocate and reset thread-local variables arrays
+    DEALLOCATE(SELF%${v.name}$)
+    SELF%${v.name}$ => SELF%${v.name}$_G
+#:endif
+#:endfor
+  END SUBROUTINE FIELD_VARIABLES_RESET_ARRAYS
+
+  SUBROUTINE FIELD_VARIABLES_GFL_PH9TOT0(SELF)
+    ! Utility routine that aliases the PH9 field of GLF variables with T0
+    CLASS(FIELD_VARIABLES) :: SELF
+    INTEGER(KIND=JPIM) :: I
+
+#:for v in gfl.variables
+#:if v.array == 1
+    DO I=1, SIZE(SELF%${v.name}$)
+      CALL SELF%${v.name}$(I)%PH9TOT0()
+    END DO
+#:else
+    CALL SELF%${v.name}$%PH9TOT0()
+#:endif
+#:endfor
+  END SUBROUTINE FIELD_VARIABLES_GFL_PH9TOT0
+
+  SUBROUTINE FIELD_VARIABLES_GFL_PH9TOT9(SELF)
+    ! Utility routine that aliases the PH9 field of GLF variables with T9
+    CLASS(FIELD_VARIABLES) :: SELF
+    INTEGER(KIND=JPIM) :: I
+
+#:for v in gfl.variables
+#:if v.array == 1
+    DO I=1, SIZE(SELF%${v.name}$)
+      CALL SELF%${v.name}$(I)%PH9TOT9()
+    END DO
+#:else
+    CALL SELF%${v.name}$%PH9TOT9()
+#:endif
+#:endfor
+  END SUBROUTINE FIELD_VARIABLES_GFL_PH9TOT9
+
+  SUBROUTINE FIELD_VARIABLES_GMV_RESET_PH9(SELF, YDGMV, YDGFL)
+    ! Re-associate the PH9 field pointers of GMV variables
+    !
+    ! This is needed to ensure that certain time-stepping
+    ! schemes pass the right fields into the physics routines.
+    CLASS(FIELD_VARIABLES) :: SELF
+    TYPE(TGMV), TARGET, INTENT(INOUT) :: YDGMV
+    TYPE(TGFL), TARGET, INTENT(INOUT) :: YDGFL
+
+    SELF%U%FPH9%PTR => YDGMV%GMV(:,:,YDGMV%YPH9%MU,:)
+    SELF%V%FPH9%PTR => YDGMV%GMV(:,:,YDGMV%YPH9%MV,:)
+    SELF%T%FPH9%PTR => YDGMV%GMV(:,:,YDGMV%YPH9%MT,:)
+    SELF%SP%FPH9%PTR => YDGMV%GMVS(:,YDGMV%YPH9%MSP,:)
+
+    IF(ASSOCIATED(SELF%Q%FPH9))  SELF%Q%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YQ%MP9_PH,:)
+    IF(ASSOCIATED(SELF%A%FPH9))  SELF%A%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YA%MP9_PH,:)
+    IF(ASSOCIATED(SELF%O3%FPH9)) SELF%O3%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YO3%MP9_PH,:)
+    IF(ASSOCIATED(SELF%L%FPH9))  SELF%L%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YL%MP9_PH,:)
+    IF(ASSOCIATED(SELF%I%FPH9))  SELF%I%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YI%MP9_PH,:)
+    IF(ASSOCIATED(SELF%R%FPH9))  SELF%R%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YR%MP9_PH,:)
+    IF(ASSOCIATED(SELF%S%FPH9))  SELF%S%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YS%MP9_PH,:)
+    IF(ASSOCIATED(SELF%TKE%FPH9))SELF%TKE%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YTKE%MP9_PH,:)
+  END SUBROUTINE FIELD_VARIABLES_GMV_RESET_PH9
+
+END MODULE FIELD_VARIABLES_MOD

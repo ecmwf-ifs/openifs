@@ -1,0 +1,831 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE SUINIF1C_NC(YDGEOMETRY,YDMODEL,YDSURF)
+
+!**** *SUINIF1C_NC*  - Routine to initialize the fields of the model.
+
+!     Purpose.
+!     --------
+!           Initialize the fields of the single column model.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUINIF1C_NC*
+
+!        Explicit arguments :
+!        --------------------
+!         NONE
+
+!        Implicit arguments :
+!        --------------------
+!         NONE
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by CNT1C
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the SCM
+
+
+!     Author.
+!     -------
+!        Joao Teixeira   *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original      94-01-11
+!        M. Ko"hler  2000-12-04  modification to NetCDF 
+!        M. Ko"hler    6-6-2006  Single Column Model integration within IFS 
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD       , ONLY : GEOMETRY
+USE TYPE_MODEL   , ONLY : MODEL
+USE PARKIND1 , ONLY : JPIM     ,JPRB     ,JPRM
+USE YOMHOOK  , ONLY : LHOOK    ,DR_HOOK, JPHOOK
+USE PARDIM1C
+USE PARDIM
+USE YOMPHYDS
+USE YOMCT0   , ONLY : REXTSHF  ,REXTLHF
+USE YOMLUN   , ONLY : NULOUT   ,NINIGG
+USE YOETHF   , ONLY : RHOH2O
+USE YOMCST   , ONLY : RG
+USE YOMGP1C0 , ONLY : TSA0     ,WSA0     ,TIA0     ,SNS0     ,&
+                     &TL0      ,WL0      ,RSN0     ,ASN0     ,&
+                     &TSN0
+USE YOMGPD1C , ONLY : VEXTRA   ,VEXTR2
+USE YOMGT1C0 , ONLY : UT0      ,VT0      ,TT0      ,QT0      ,&
+                     &WT0      ,ST0      ,AT0      ,SPT0     ,&
+                     &RNT0     ,SNT0
+USE YOMGF1C  , ONLY : UG0      ,VG0      ,VVEL0    ,UADV     ,&
+                     &VADV     ,TADV     ,QADV     ,ETADOTDPDETA
+USE YOMLOG1C , ONLY : LDYNFOR  ,LUGVG    ,LVERVEL  ,LETADOT  ,&
+                     &LTADV    ,LQADV    ,LUVADV   ,NSTRTINI ,&
+                     &LVARFOR
+USE SURFACE_FIELDS_MIX, ONLY : TSURF
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(INOUT) :: YDGEOMETRY
+TYPE(MODEL),    INTENT(INOUT) :: YDMODEL
+TYPE(TSURF) ,INTENT(INOUT) :: YDSURF
+INTEGER(KIND=JPIM) :: ICSS
+
+REAL(KIND=JPRM)    :: TEMP0, TEMP1A(YDGEOMETRY%YRDIMV%NFLEVG), TEMP2A(0:YDGEOMETRY%YRDIMV%NFLEVG), TEMP1S(YDSURF%YSP_SBD%NLEVS), SFC_PRES
+REAL(KIND=JPRB)    :: ZRDAW(YDSURF%YSP_SBD%NLEVS), ZRHOMINSN, ZRALFMAXSN
+
+INTEGER(KIND=JPIM) :: IALEV, ISLEV, JSLEV, I
+INTEGER(KIND=JPIM) :: INCID, VARID, ISTATUS, NT
+INTEGER(KIND=JPIM) :: START1, COUNT1, START2(2), COUNT2(2), START2S(2), COUNT2S(2)
+INTEGER(KIND=JPIM) :: NLEV(YDGEOMETRY%YRDIMV%NFLEVG), NLEVS(YDSURF%YSP_SBD%NLEVS)
+
+REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+
+#include "netcdf.inc"
+
+!     ------------------------------------------------------------------
+#include "surf_inq.h"
+
+#include "handle_err_nc.intfb.h"
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUINIF1C_NC',0,ZHOOK_HANDLE)
+ASSOCIATE(YDEPHY=>YDMODEL%YRML_PHY_EC%YREPHY)
+ASSOCIATE(NFLEVG=>YDGEOMETRY%YRDIMV%NFLEVG, &
+ & LEFLAKE=>YDEPHY%LEFLAKE, YSURF=>YDEPHY%YSURF, &
+ & YSD_VF=>YDSURF%YSD_VF, YSD_VFD=>YDSURF%YSD_VFD, &
+ & YSD_X2D=>YDSURF%YSD_X2D, YSD_XAD=>YDSURF%YSD_XAD, &
+ & YSP_SBD=>YDSURF%YSP_SBD, YSP_SL=>YDSURF%YSP_SL, YSP_SLD=>YDSURF%YSP_SLD, &
+ & SD_VF=>YDSURF%SD_VF,SP_SL=>YDSURF%SP_SL)
+ICSS=YSP_SBD%NLEVS
+
+! Init pointers for SCM (perhaps a better place could be found for it....)
+
+! Extra fields
+IF (.NOT. ASSOCIATED (VEXTRA)) THEN
+  ALLOCATE (VEXTRA(1,MAX(1,YSD_XAD%NLEVS),MAX(1,YSD_XAD%NUMFLDS)))
+  VEXTRA(:,:,:)= 0._JPRB
+ENDIF
+IF (.NOT. ASSOCIATED (VEXTR2)) THEN
+  ALLOCATE (VEXTR2(1,MAX(1,YSD_X2D%NUMFLDS)))
+  VEXTR2(:,:)  = 0._JPRB
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       1.    OPEN INPUT FILE.
+!              ----------------
+
+ISTATUS = NF_OPEN ('scm_in.nc', NF_NOWRITE, INCID)
+CALL HANDLE_ERR_NC(ISTATUS)
+
+
+!*       2.    READ PROFILES OF PROGNOSTIC VARIABLES.
+!              --------------------------------------
+
+!...assuming 7 prognostic variables (incl. ql, qi, a)
+NT = NSTRTINI             !# of step in initial condition data used
+START2 = (/ 1    , NT /)
+COUNT2 = (/ NFLEVG, 1  /)
+
+ISTATUS = NF_INQ_VARID     (INCID, 'u', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+CALL HANDLE_ERR_NC(ISTATUS)
+UT0(1:NFLEVG) = TEMP1A
+
+ISTATUS = NF_INQ_VARID     (INCID, 'v', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+CALL HANDLE_ERR_NC(ISTATUS)
+VT0(1:NFLEVG) = TEMP1A
+
+ISTATUS = NF_INQ_VARID     (INCID, 't', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+CALL HANDLE_ERR_NC(ISTATUS)
+TT0(1:NFLEVG) = TEMP1A
+
+ISTATUS = NF_INQ_VARID     (INCID, 'q', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+CALL HANDLE_ERR_NC(ISTATUS)
+!gsa !To avoid negative Q values
+ DO I=1,NFLEVG
+  IF(TEMP1A(I).LE.0.)TEMP1A(I)=1.E-12_JPRB
+ ENDDO
+!gse
+QT0(1:NFLEVG) = TEMP1A
+
+ISTATUS = NF_INQ_VARID     (INCID, 'ql', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: ql profile not available, put 0: ATTENTION'
+  WT0(1:NFLEVG) = 0.0_JPRB  
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  WT0(1:NFLEVG) = TEMP1A
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'qi', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: qi profile not available, put 0: ATTENTION'
+  ST0(1:NFLEVG) = 0.0_JPRB  
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  ST0(1:NFLEVG) = TEMP1A
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'cloud_fraction', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: cloud fraction profile not available, put 0: ATTENTION'
+  AT0(1:NFLEVG) = 0.0_JPRB  
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  AT0(1:NFLEVG) = TEMP1A
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'qr',  VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: qr profile not available, put 0: ATTENTION'
+  RNT0(1:NFLEVG) = 0.0_JPRB  
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+  CALL HANDLE_ERR_NC(ISTATUS)
+RNT0(1:NFLEVG) = TEMP1A
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'qsn',  VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: snow profile not available, put 0: ATTENTION'
+  SNT0(1:NFLEVG) = 0.0_JPRB  
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SNT0(1:NFLEVG) = TEMP1A
+ENDIF
+
+
+!*       3.    READ SURFACE PRESSURE VARIABLE (LOG).
+!              -------------------------------------
+
+START1 = NT
+COUNT1 = 1
+
+ISTATUS = NF_INQ_VARID     (INCID, 'ps', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, SFC_PRES)
+CALL HANDLE_ERR_NC(ISTATUS)
+SPT0 = LOG(SFC_PRES)
+
+!*       4.   READ SURFACE CLIMATOLOGICAL PARAMETERS.
+!             ---------------------------------------
+
+!*       4.0   READ SEA-ICE FRACTION AND (OPEN) SEA SURFACE TEMPERATURE
+!              --------------------------------------------------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'sea_ice_frct', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YCI%MP,1)  = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'open_sst', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YSST%MP,1) = TEMP0
+
+
+!*       4.1  READ LAND-SEA FRACTION
+!             ----------------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'lsm', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YLSM%MP,1) = TEMP0
+
+
+! ===========================================================
+!
+!* IF LAND OR SEA-ICE THEN READ IN LAND/SEA-ICE VARIABLES
+!
+! ===========================================================
+IF (SD_VF(1,YSD_VF%YLSM%MP,1) > 0.0_JPRB .OR. &
+  & SD_VF(1,YSD_VF%YCI%MP,1)  > 0.0_JPRB) THEN
+
+
+!*       4.2  READ VEGETATION COVER AND TYPE AND LEAF AREA INDEX.
+!             ---------------------------------------------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'high_veg_type',  VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YTVH%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'low_veg_type',   VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YTVL%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'high_veg_cover', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YCVH%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'low_veg_cover',  VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YCVL%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'soty',  VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: SOTY soil type not available, put defaut value 2 :ATTENTION'
+  SD_VF(:,YSD_VF%YSOTY%MP,1) = 2.0_JPRB   !put default value consistent with pre-32r3 (pre-HTESSEL)
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YSOTY%MP,1) = TEMP0
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'lail',  VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: LAIL leaf area index not available, put default value 2 :ATTENTION'
+  SD_VF(:,YSD_VF%YLAIL%MP,1) = 2.0_JPRB
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YLAIL%MP,1) = TEMP0
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'laih',  VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: LAIL leaf area index not available, put default value 2 :ATTENTION'
+  SD_VF(:,YSD_VF%YLAIH%MP,1)  = 2.0_JPRB
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YLAIH%MP,1)  = TEMP0
+ENDIF
+
+
+!*       4.3  READ ROUGHNESS LENGTH FOR MOMENTUM AND HEAT.
+!             --------------------------------------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'mom_rough', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YZ0F%MP,1)   = RG*TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'heat_rough', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(1,YSD_VF%YLZ0H%MP,1) = LOG(TEMP0)
+
+
+!*       4.4  READ ALBEDO.
+!             ------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'albedo', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(:,YSD_VF%YALBF%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'aluvp', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: aluvp not available, put broadband albedo :ATTENTION'
+  SD_VF(:,YSD_VF%YALUVP%MP,1)  =  SD_VF(:,YSD_VF%YALBF%MP,1)  !put default broadband value
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YALUVP%MP,1) = TEMP0
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'aluvd', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: aluvd not available, put broadband albedo :ATTENTION'
+  SD_VF(:,YSD_VF%YALUVD%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1)   !put default broadband value
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YALUVD%MP,1) = TEMP0
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'alnip', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION:  alnip not available, put broadband albedo:ATTENTION'
+  SD_VF(:,YSD_VF%YALNIP%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1)   !put default broadband value
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YALNIP%MP,1) = TEMP0
+ENDIF
+
+ISTATUS = NF_INQ_VARID     (INCID, 'alnid', VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: alnid not available, put broadband albedo :ATTENTION'
+  SD_VF(:,YSD_VF%YALNID%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1)   !put default broadband value
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(:,YSD_VF%YALNID%MP,1) = TEMP0
+ENDIF
+
+
+!*       4.4  SPECIFY  BACKGROUND EMISSIVITY.
+!             -------------------------------
+!             (only used if radiation off - no impact but
+!              needed to avoid uninitialized variable)
+
+SD_VF(:,YSD_VF%YEMISF%MP,1) = 0.95
+
+
+!*       4.5  READ OROGRAPHY.
+!             ---------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'orog', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+YDGEOMETRY%YROROG(1)%OROG = TEMP0
+
+
+!*       4.6  READ DIRECTIONAL VARIANCES OF OROGRAPHY.
+!             -----------------------------------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'sdor', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(1,YSD_VF%YGETRL%MP,1) = RG*TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'isor', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(1,YSD_VF%YVRLAN%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'anor', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(1,YSD_VF%YVRLDI%MP,1) = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'slor', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SD_VF(1,YSD_VF%YSIG%MP,1) = TEMP0
+
+!        standard deviation of orography used for the form drag formulation
+
+ISTATUS = NF_INQ_VARID     (INCID, 'sdfor', VARID)
+IF (ISTATUS .EQ. NF_NOERR) THEN
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  SD_VF(1,YSD_VF%YSDFOR%MP,1) = TEMP0
+ELSE
+  SD_VF(1,YSD_VF%YSDFOR%MP,1) = SD_VF(1,YSD_VF%YGETRL%MP,1) !good default value if sdfor not available in scm_in.nc
+ENDIF
+
+
+!*       5.    READ SURFACE PROGNOSTIC VARIABLES.
+!              ----------------------------------
+
+
+!*       5.1   READ SOIL TEMPERATURE, SOIL MOISTURE AND SEA ICE TEMPERATURE.
+!              -------------------------------------------------------------
+
+START2S = (/ 1   , NT /)
+COUNT2S = (/ ICSS, 1  /)
+
+ISTATUS = NF_INQ_VARID     (INCID, 't_soil', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2S, COUNT2S, TEMP1S)
+CALL HANDLE_ERR_NC(ISTATUS)
+TSA0(1:ICSS) = TEMP1S
+
+ISTATUS = NF_INQ_VARID     (INCID, 'q_soil', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2S, COUNT2S, TEMP1S)
+CALL HANDLE_ERR_NC(ISTATUS)
+WSA0(1:ICSS) = TEMP1S
+
+ISTATUS = NF_INQ_VARID     (INCID, 't_sea_ice', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2S, COUNT2S, TEMP1S)
+CALL HANDLE_ERR_NC(ISTATUS)
+TIA0(1:ICSS) = TEMP1S
+
+
+!*       5.2   READ SKIN TEMPERATURE AND INTERCEPTION LAYER CONTENT.
+!              -------------------------------------------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 't_skin', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+TL0 = TEMP0
+
+ISTATUS = NF_INQ_VARID     (INCID, 'q_skin', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+WL0 = RHOH2O * TEMP0
+
+
+!*       5.3   READ SNOW DEPTH.
+!              ----------------
+
+ISTATUS = NF_INQ_VARID     (INCID, 'snow', VARID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+CALL HANDLE_ERR_NC(ISTATUS)
+SNS0 = RHOH2O * TEMP0
+
+!*      OTHER SNOW VARIABLES
+
+TSN0 = 0.0_JPRB
+ISTATUS = NF_INQ_VARID     (INCID, 't_snow', VARID)
+IF (ISTATUS == NF_NOERR) THEN
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  TSN0 = TEMP0
+
+  ISTATUS = NF_INQ_VARID     (INCID, 'albedo_snow', VARID)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  ASN0 = TEMP0
+
+  ISTATUS = NF_INQ_VARID     (INCID, 'density_snow', VARID)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  RSN0 = TEMP0
+ENDIF
+IF (TSN0(1) .LT. 100.0_JPRB) THEN
+  WRITE(*,*) 'WARNING   WARNING   WARNING   WARNING   WARNING   WARNING'
+  WRITE(*,*) 'The initial data does not contain the following variables:'
+  WRITE(*,*) 'Snow temperature, snow albedo, snow density'
+  WRITE(*,*) 'They will be initialised to "default" values'
+  WRITE(*,*) 'If you are running a winter case, you should consider recreating the initial conditions'
+  WRITE(*,*) 'WARNING   WARNING   WARNING   WARNING   WARNING   WARNING'
+  CALL SURF_INQ(YSURF,PRHOMINSN=ZRHOMINSN, PRALFMAXSN=ZRALFMAXSN)
+  RSN0 = ZRHOMINSN
+  ASN0 = ZRALFMAXSN
+  TSN0 = TSA0(1)
+ENDIF
+
+ELSE ! on sea point
+
+
+  ! Initialise all to defaults
+
+  ! Vegetation cover, type and leaf area index
+  SD_VF(:,YSD_VF%YTVH%MP,1)  = 0.0_JPRB ! high_veg_type
+  SD_VF(:,YSD_VF%YTVL%MP,1)  = 0.0_JPRB ! low_veg_type
+  SD_VF(:,YSD_VF%YCVH%MP,1)  = 0.0_JPRB ! high_veg_cover
+  SD_VF(:,YSD_VF%YCVL%MP,1)  = 0.0_JPRB ! low_veg_cover
+  SD_VF(:,YSD_VF%YSOTY%MP,1) = 2.0_JPRB ! soty
+  SD_VF(:,YSD_VF%YLAIL%MP,1) = 2.0_JPRB ! lail
+  SD_VF(:,YSD_VF%YLAIH%MP,1) = 2.0_JPRB ! laih
+
+  ! Roughness lengths
+  SD_VF(:,YSD_VF%YZ0F%MP,1)  = 0.0_JPRB ! mom_rough
+  SD_VF(:,YSD_VF%YLZ0H%MP,1) = 0.0_JPRB ! heat_rough
+
+  ! Albedo
+  SD_VF(:,YSD_VF%YALBF%MP,1)  = 0.0_JPRB ! albedo
+  SD_VF(:,YSD_VF%YALUVP%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1) ! aluvp
+  SD_VF(:,YSD_VF%YALUVD%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1) ! aluvd
+  SD_VF(:,YSD_VF%YALNIP%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1) ! alnip
+  SD_VF(:,YSD_VF%YALNID%MP,1) = SD_VF(:,YSD_VF%YALBF%MP,1) ! alnid
+
+  ! Specify background emissivity (only used if radiation off)
+  SD_VF(:,YSD_VF%YEMISF%MP,1) = 0.95
+
+  !Orography
+  YDGEOMETRY%YROROG(1)%OROG = 0.0_JPRB ! orog
+
+  ! Directional variances of orography
+  SD_VF(:,YSD_VF%YGETRL%MP,1) = 0.0_JPRB ! sdor
+  SD_VF(:,YSD_VF%YVRLAN%MP,1) = 0.0_JPRB ! isor
+  SD_VF(:,YSD_VF%YVRLDI%MP,1) = 0.0_JPRB ! anor
+  SD_VF(:,YSD_VF%YSIG%MP,1)   = 0.0_JPRB ! slor
+  SD_VF(:,YSD_VF%YSDFOR%MP,1) = 0.0_JPRB ! sdfor
+
+  TSA0(1:ICSS) = SD_VF(1,YSD_VF%YSST%MP,1) ! t_soil
+  WSA0(1:ICSS) = 0.0_JPRB ! q_soil
+  TIA0(1:ICSS) = 0.0_JPRB ! t_sea_ice 
+
+  TL0  = SD_VF(:,YSD_VF%YSST%MP,1) ! t_skin
+  WL0  = 0.0_JPRB ! q_skin
+  SNS0 = 0.0_JPRB ! snow depth
+
+  CALL SURF_INQ(YSURF,PRHOMINSN=ZRHOMINSN, PRALFMAXSN=ZRALFMAXSN)
+  TSN0 = TSA0(1)    !  t_snow
+  ASN0 = ZRALFMAXSN ! albedo_snow
+  RSN0 = ZRHOMINSN  ! density_snow
+
+ENDIF
+
+
+!*       5.5   READ LAKE VARIABLES
+!              -------------------
+
+IF (LEFLAKE) THEN
+
+  ! Lake depth
+  ISTATUS = NF_INQ_VARID     (INCID, 'dl', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SD_VF(:,YSD_VF%YDL%MP,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake depth not available, put 30 m. :ATTENTION'
+    SD_VF(:,YSD_VF%YDL%MP,1) = 30._JPRB  ! m
+  ENDIF
+  ! Lake mix-layer temperature
+  ISTATUS = NF_INQ_VARID     (INCID, 'lmlt', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLMLT%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake mix-layer temperature not available, put 293 K. :ATTENTION'
+    SP_SL(:,YSP_SL%YLMLT%MP9,1) = 293._JPRB ! K
+  ENDIF
+  ! Lake mix-layer depth
+  ISTATUS = NF_INQ_VARID     (INCID, 'lmld', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLMLD%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake mix-layer depth not available, put 10 m. :ATTENTION'
+    SP_SL(:,YSP_SL%YLMLD%MP9,1) = 10._JPRB   ! m
+  ENDIF
+  ! Lake bottom temperature
+  ISTATUS = NF_INQ_VARID     (INCID, 'lblt', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLBLT%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake bottom temperature not available, put 293 K. :ATTENTION'
+    SP_SL(:,YSP_SL%YLBLT%MP9,1) = 293._JPRB ! K
+  ENDIF
+  ! Lake total layer temperature
+  ISTATUS = NF_INQ_VARID     (INCID, 'ltlt', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLTLT%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake total layer temperature not available, put 293 K. :ATTENTION'
+    SP_SL(:,YSP_SL%YLTLT%MP9,1) = 293._JPRB ! K
+  ENDIF
+  ! Lake shape factor
+  ISTATUS = NF_INQ_VARID     (INCID, 'lshf', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLSHF%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake shape factor not available, put 0.5 . :ATTENTION'
+    SP_SL(:,YSP_SL%YLSHF%MP9,1) = 0.5_JPRB ! -
+  ENDIF
+  ! Lake ice temperature
+  ISTATUS = NF_INQ_VARID     (INCID, 'lict', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLICT%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake ice temperature not available, put 272 K. :ATTENTION'
+    SP_SL(:,YSP_SL%YLICT%MP9,1) = 272._JPRB ! K
+  ENDIF
+  ! Lake ice depth
+  ISTATUS = NF_INQ_VARID     (INCID, 'licd', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SP_SL(:,YSP_SL%YLICD%MP9,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'ATTENTION: Lake ice depth not available, put 0 m. :ATTENTION'
+    SP_SL(:,YSP_SL%YLICD%MP9,1) = 0._JPRB ! m
+  ENDIF
+  ! Lake cover
+  ISTATUS = NF_INQ_VARID     (INCID, 'cl', VARID)
+  IF (ISTATUS == NF_NOERR) THEN
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    SD_VF(:,YSD_VF%YCLK%MP,1) = TEMP0
+  ELSE
+    WRITE(*,*) 'WARNING   WARNING   WARNING   WARNING   WARNING   WARNING'
+    WRITE(*,*) 'Lake cover not available, assuming there is no lake.'
+    WRITE(*,*) 'This implies all the lake related copmputation will not be accounted.'
+    WRITE(*,*) 'WARNING   WARNING   WARNING   WARNING   WARNING   WARNING'
+    SD_VF(:,YSD_VF%YCLK%MP,1) = 0.0_JPRB  ! = no lake
+  ENDIF
+
+ENDIF
+
+
+!        6.    READ GEOSTROPHIC WIND AND VERTICAL VELOCITY.
+!              --------------------------------------------
+
+IF ( .NOT. LVARFOR ) THEN
+
+  IF ( LDYNFOR ) THEN
+
+    ISTATUS = NF_INQ_VARID     (INCID, 'ug', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    UG0(1:NFLEVG) = TEMP1A
+
+    ISTATUS = NF_INQ_VARID     (INCID, 'vg', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    VG0(1:NFLEVG) = TEMP1A
+
+    ISTATUS = NF_INQ_VARID     (INCID, 'omega', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    VVEL0(1,1:NFLEVG) = TEMP1A
+
+    COUNT2 = (/ NFLEVG+1, 1  /)
+    ISTATUS = NF_INQ_VARID     (INCID, 'etadotdpdeta', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP2A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ETADOTDPDETA(0:NFLEVG) = TEMP2A
+
+    IF (.NOT.LUGVG) THEN
+      UG0   =0.0_JPRB
+      VG0   =0.0_JPRB
+    ENDIF
+    IF (.NOT.LVERVEL) THEN
+      VVEL0 =0.0_JPRB
+    ENDIF
+    IF (.NOT.LETADOT) THEN
+      ETADOTDPDETA=0.0_JPRB
+    ENDIF
+
+
+!        7.    READ HORIZONTAL ADVECTION.
+!              --------------------------
+
+    COUNT2 = (/ NFLEVG, 1  /)
+    ISTATUS = NF_INQ_VARID     (INCID, 'uadv', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    UADV(1:NFLEVG) = TEMP1A
+
+    ISTATUS = NF_INQ_VARID     (INCID, 'vadv', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    VADV(1:NFLEVG) = TEMP1A
+
+    ISTATUS = NF_INQ_VARID     (INCID, 'tadv', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    TADV(1:NFLEVG) = TEMP1A
+
+    ISTATUS = NF_INQ_VARID     (INCID, 'qadv', VARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    QADV(1:NFLEVG) = TEMP1A
+
+    IF (.NOT.LUVADV) THEN
+      UADV=0.0_JPRB
+      VADV=0.0_JPRB
+    ENDIF
+    IF (.NOT.LTADV) THEN
+      TADV=0.0_JPRB
+    ENDIF
+    IF (.NOT.LQADV) THEN
+      QADV=0.0_JPRB
+    ENDIF
+
+  ELSE
+
+    UG0  =0.0_JPRB
+    VG0  =0.0_JPRB
+    VVEL0=0.0_JPRB
+    UADV =0.0_JPRB
+    VADV =0.0_JPRB
+    TADV =0.0_JPRB
+    QADV =0.0_JPRB
+    ETADOTDPDETA =0.0_JPRB
+
+  ENDIF
+
+
+!        8.    READ SURFACE FLUXES.
+!              --------------------
+ 
+  START1 = NT
+  COUNT1 = 1
+
+  ISTATUS = NF_INQ_VARID     (INCID, 'sfc_sens_flx', VARID)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  REXTSHF=TEMP0
+
+  ISTATUS = NF_INQ_VARID     (INCID, 'sfc_lat_flx', VARID)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START1, COUNT1, TEMP0)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  REXTLHF=TEMP0
+
+ENDIF
+
+
+!        9.    CLOSE INPUT FILE.
+!              -----------------
+
+ISTATUS = NF_CLOSE (INCID)
+CALL HANDLE_ERR_NC(ISTATUS)
+
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUINIF1C_NC',1,ZHOOK_HANDLE)
+END SUBROUTINE SUINIF1C_NC
+
+

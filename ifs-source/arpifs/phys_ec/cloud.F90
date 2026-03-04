@@ -1,0 +1,479 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE CLOUD ( YDEPHLI,YDECLD,KIDIA  , KFDIA , KLON   , KLEV,&
+ & KBASECM, KTOPCM,&
+ & PAPM1  , PARPRCM,&
+ & PQM1   , PQS   , PTM1   , PVERVEL,&
+ & PCC    , PCH   , PCL    , PCM,&
+ & PCLC   , PCT   , PQIWP  , PQLWP )  
+
+!**** *CLOUD*  - COMPUTES CLOUD COVER AND LIQUID WATER PATH
+
+!     PURPOSE.
+!     --------
+!         THIS ROUTINE COMPUTES CLOUD AMOUNTS WHICH ARE REQUIRED BY THE
+!     RADIATION SCHEME FOR COMPUTATION OF THE FLUXES.FOUR SPECIFIC CLOUD
+!     TYPES ARE ALLOWED FOR.
+!        (1) CONVECTIVE CLOUD(CC).CLOUD AMOUNTS ARE DERIVED FROM
+!            TIME AVERAGED PRECIPITATION RATES FROM *CUM* SCHEME.
+!            AN EMPIRICAL SCALING BASED ON CLOUD DATA FROM GATE
+!            IS USED TO CONVERT THEM TO CLOUD AMOUNTS.
+!            BASE AND TOP LEVELS ARE ALSO PASSED.
+!            THE CONVECTIVE CLOUD COVER IS RESTRICTED TO A MAXIMUM OF
+!            80%.
+!                WHEN CC EXISTS IN A LAYER THE RELATIVE HUMIDITY OF THE
+!            ENVIRONMENT IS ADJUSTED ASSUMING THAT THE AIR IN
+!            THE CLOUDY PART IS SATURATED.THIS ADJUSTED RELATIVE
+!            HUMIDITY IS USED IN THE CALCULATION OF LAYER CLOUD AMOUNTS.
+
+!        (2) HIGH CLOUD(CH).WHEN STRONG DEEP CONVECTION EXISTS (CC>40%
+!            AND CC TOP ABOVE 400MB)THEN HIGH (ANVIL CIRRUS) CLOUD
+!            COVER IS A LINEAR FUNCTION OF CC.OTHERWISE CH IS COMPUTED
+!            AS A FUNCTION OF RELATIVE HUMIDITY.
+
+!        (3) MIDDLE CLOUD(CM).AMOUNTS OF MIDDLE LEVEL CLOUD ARE
+!            COMPUTED FROM A FUNCTION OF RELATIVE HUMIDITY AND
+!            VERTICAL VELLCITY.
+
+!        (4) LOW CLOUD(CL).THREE PARAMETERS ARE USED FOR THE
+!            CALCULATION OF LOW CLOUD AMMOUNTS.
+!            (A) STABILITY.THE VERTICAL GRADIENT OF POTENTIAL
+!                TEMPERATURE IS USED TO PREDICT SUBTROPICAL COASTAL
+!                STRATUS/SRATOCUMULUS,EXTRATROPICAL ANTICYCLONIC STRATUS
+!                AND SUMMERTIME ARCTIC STRATUS.CLOUD COVER IS ALSO
+!                DEPENDENT ON THE RELATIVE HUMIDITY AT THE BASE OF THE
+!                INVERSION.
+!            (B) RELATIVE HUMIDITY AND VERTICAL VELLCITY ARE USED TO
+!                PREDICT FRONTAL STRATUS ASSOCIATED WITH RISING AIR.
+
+!**   INTERFACE.
+!     ----------
+!              *CLOUD* IS CALLED FROM *CALLPAR*
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*        START POINT
+!    *KFDIA*        END POINT
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KLEV*         NUMBER OF LEVELS
+!    *KBASECM*      CONVECTIVE CLOUD BASE
+!    *KTOPCM*       CONVECTIVE CLOUD TOP
+
+!    INPUT PARAMETERS (REAL):
+
+!    *PQM1*         SPECIFIC HUMIDITY AT T-1                     KG/KG
+!    *PQS*          SATURATION SPECIFIC HUMIDITY                 KG/KG
+!    *PTM1*         TEMPERATURE AT T-1                             K
+!    *PAPM1*        PRESSURE AT FULL LEVELS AT T-1                PA    [#]
+!    *PVERVEL*      VERTICAL VELOCITY                            PA/S  
+!    *PARPRCM*      CONVECTIVE PRECIPITATION                      MM
+
+!    OUTPUT PARAMETERS (REAL):
+
+!    *PCLC*         CLOUD COVER OF INDIVIDUAL LAYER
+!    *PCT*          TOTAL CLOUD COVER
+!    *PQIWP*        ICE WATER CONTENT                             KG/KG
+!    *PQLWP*        LIQUID WATER CONTENT                          KG/KG
+!    *PCC*          TOTAL CONVECTIVE CLOUD COVER                        [#]
+!    *PCH*          CLOUD COVER AT HIGH LEVELS                          [#]
+!    *PCL*          CLOUD COVER AT LOW LEVELS                           [#]
+!    *PCM*          CLOUD COVER AT MEDIUM LEVELS                        [#]
+
+!     REMARK: [#] UNUSED PARAMETERS IN TANGENT LINEAR AND ADJOINT VERSIONS
+!     ------
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!          NONE
+
+!     REFERENCE.
+!     ----------
+
+!        SEE RADIATION'S PART OF THE MODEL'S DOCUMENTATION AND
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE "I.F.S"
+
+!     AUTHOR.
+!     -------
+!      JULIA M. SLINGO  E.C.M.W.F.    85/01/10
+
+!     MODIFICATIONS.
+!     --------------
+!      2002-05-10 : - different computation of RHcrit    |
+!                   - modified ZOELFA for TL/AD versions |-> M. Janiskova  
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!-----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMCST   , ONLY : RD       ,RCPD     ,RLVTT    ,RLSTT    ,RTT
+USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
+ & R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
+ & RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
+ & RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOECLD   , ONLY : TECLD
+USE YOEPHLI  , ONLY : TEPHLI
+
+IMPLICIT NONE
+
+TYPE(TECLD)       ,INTENT(INOUT) :: YDECLD
+TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KBASECM(KLON) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTOPCM(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PARPRCM(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQS(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTM1(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVERVEL(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCC(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCH(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCM(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCLC(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCT(KLON) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQIWP(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQLWP(KLON,KLEV) 
+
+!     -----------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: INVB(KLON)
+
+LOGICAL :: LLCC(KLON), LLHH(KLON), LLLL(KLON), LLMM(KLON)
+
+REAL(KIND=JPRB) :: ZCC(KLON)&
+ & ,  ZDTHMIN(KLON) , ZFICE(KLON)&
+ & ,  ZRH(KLON,KLEV), ZTHETA(KLON,KLEV),ZWCRIT(KLEV)  
+
+INTEGER(KIND=JPIM) :: IANV, IB, ILEV2, ILEV2P1, JK, JL
+INTEGER(KIND=JPIM) :: IPCLO1,IPCLO2
+
+LOGICAL :: LLM
+
+REAL(KIND=JPRB) :: Z1S, ZCANV, ZCLL, ZCLL1, ZCLOUD, ZCRH, ZDTHDP,&
+ & ZFACTW, ZOEALFA, ZQLAY, ZRDCPD, ZRHB, ZZRH  
+REAL(KIND=JPRB) :: ZEPS1,ZHUCOE,ZHUTIL
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+#include "fcttre.func.h"
+!     ------------------------------------------------------------------
+
+!*         1.     SET-UP INPUT QUANTITIES
+!                 -----------------------
+
+IF (LHOOK) CALL DR_HOOK('CLOUD',0,ZHOOK_HANDLE)
+ASSOCIATE(CETA=>YDECLD%CETA, LOMEGA=>YDECLD%LOMEGA, RANVA=>YDECLD%RANVA, &
+ & RANVB=>YDECLD%RANVB, RANVH=>YDECLD%RANVH, RCCA=>YDECLD%RCCA, &
+ & RCCB=>YDECLD%RCCB, RCCC=>YDECLD%RCCC, RCFCT=>YDECLD%RCFCT, &
+ & RCLWMR=>YDECLD%RCLWMR, RCSCAL=>YDECLD%RCSCAL, REPSCR=>YDECLD%REPSCR, &
+ & REPSEC=>YDECLD%REPSEC, RETAHB=>YDECLD%RETAHB, RETAMB=>YDECLD%RETAMB, &
+ & RGAMMAS=>YDECLD%RGAMMAS, RLOIA=>YDECLD%RLOIA, RLOIB=>YDECLD%RLOIB, &
+ & RLOIC=>YDECLD%RLOIC, RLOID=>YDECLD%RLOID, RLONIA=>YDECLD%RLONIA, &
+ & RLONIB=>YDECLD%RLONIB, RRHH=>YDECLD%RRHH, RRHL=>YDECLD%RRHL, &
+ & LPHYLIN=>YDEPHLI%LPHYLIN, RLPTRC=>YDEPHLI%RLPTRC)
+ZEPS1  = 1.E-12_JPRB
+ZHUCOE = 1.8_JPRB
+ZHUTIL = 0.9_JPRB
+IPCLO1 = 1
+IPCLO2 = 1
+
+!     ------------------------------------------------------------------
+
+!*         1.1    COMPUTE RELATIVE HUMIDITY WITHOUT VERTICAL SMOOTING
+!                 ---------------------------------------------------
+
+DO JK=1,KLEV
+  DO JL=KIDIA,KFDIA
+    ZRH(JL,JK)=PQM1(JL,JK)/PQS(JL,JK)
+    ZRH(JL,JK)=MIN(1.0_JPRB,MAX(0.0_JPRB,ZRH(JL,JK)))
+  ENDDO
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*         1.2    COMPUTE ETA AT FULL LEVELS
+!                 --------------------------
+
+DO JK=1,KLEV
+  LLM     =CETA(JK) > RETAHB.AND.CETA(JK) <= RETAMB
+  ZFACTW = MAX( 0.0_JPRB , MIN (1.0_JPRB, (CETA(JK)-RETAHB)/(RETAMB-RETAHB)  )  )
+  IF (LLM     .AND..NOT.LOMEGA) ZFACTW=0.0_JPRB
+  ZWCRIT(JK)=ZFACTW*RLONIA
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*         1.3    CLEAR CLOUD ARRAYS
+!                 ------------------
+
+DO JK=1,KLEV
+  DO JL=KIDIA,KFDIA
+    PCLC(JL,JK)=0.0_JPRB
+    PQIWP(JL,JK)=0.0_JPRB
+    PQLWP(JL,JK)=0.0_JPRB
+  ENDDO
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  ZCC(JL)=0.0_JPRB
+  PCT(JL)=0.0_JPRB
+  ZDTHMIN(JL)=0.0_JPRB
+  INVB(JL)=1
+  LLCC(JL)=.FALSE.
+  LLHH(JL)=.FALSE.
+  LLLL(JL)=.FALSE.
+  LLMM(JL)=.FALSE.
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*         1.4    CALCULATE POTENTIAL TEMPERATURES
+!                 --------------------------------
+
+ILEV2=KLEV/2
+ZRDCPD=RD/RCPD
+DO JK=KLEV,ILEV2,-1
+  DO JL=KIDIA,KFDIA
+    ZTHETA(JL,JK)=PTM1(JL,JK)*(1.0E5_JPRB/PAPM1(JL,JK))**ZRDCPD
+  ENDDO
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*        2. COMPUTE CONVECTIVE CLOUD COVER FOR EACH LEVEL
+!            ---------------------------------------------
+
+DO JL=KIDIA,KFDIA
+  IF(PARPRCM(JL) > 0.0_JPRB) THEN
+    ZCC(JL)= RCCA * LOG(MAX(REPSCR ,PARPRCM(JL)*RCSCAL))-RCCB
+    ZCC(JL)= MIN(RCCC ,MAX(0.0_JPRB,ZCC(JL)))
+  ENDIF
+  ZCANV=RANVA*(ZCC(JL)-RANVB)
+  IANV=KTOPCM(JL)
+  IF(ZCC(JL) >= RANVH.AND.CETA(KTOPCM(JL)) <= RETAHB) THEN
+    PCLC(JL,IANV)= MAX(ZCC(JL)*RCFCT,ZCANV)
+  ELSE
+    PCLC(JL,IANV)=       ZCC(JL)*RCFCT
+  ENDIF
+  PQLWP(JL,IANV)=RGAMMAS*PQS(JL,IANV)*PCLC(JL,IANV)
+  ZRH(JL,IANV)=ZRH(JL,IANV)-PCLC(JL,IANV)
+ENDDO
+
+!*         2.1    ADJUST RELATIVE HUMIDITY FOR PRESENCE OF CONVECTION
+!                 ---------------------------------------------------
+
+DO JK=1,KLEV
+  DO JL=KIDIA,KFDIA
+    ZZRH=ZRH(JL,JK)-ZCC(JL)*RCFCT
+    ZQLAY=RCLWMR       *ZCC(JL)*RCFCT
+    IF(JK > KTOPCM(JL).AND.JK <= KBASECM(JL)) THEN
+      ZRH  (JL,JK)=ZZRH
+      PCLC (JL,JK)=ZCC(JL)*RCFCT
+      PQLWP(JL,JK)=ZQLAY
+    ENDIF
+    ZRH(JL,JK)=MIN(1.0_JPRB,MAX(0.0_JPRB,ZRH(JL,JK)))
+  ENDDO
+ENDDO
+
+!*         2.2    CHECK FOR PRESENCE OF LOW-LEVEL INVERSION
+!                 -----------------------------------------
+
+ILEV2P1=ILEV2+1
+DO JK=KLEV-3,ILEV2P1,-1
+  DO JL=KIDIA,KFDIA
+    ZDTHDP=(ZTHETA(JL,JK)-ZTHETA(JL,JK-1))* RLOIA /(PAPM1(JL,JK)&
+     & -PAPM1(JL,JK-1))  
+    IF(ZDTHDP < ZDTHMIN(JL)) THEN
+      ZDTHMIN(JL)=ZDTHDP
+      INVB   (JL)=JK
+    ENDIF
+  ENDDO
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*        3. COMPUTE LAYER CLOUD AMOUNTS
+!            ---------------------------
+
+DO JK=2,KLEV-1
+
+  IF (LPHYLIN) THEN
+! new version
+    ZCRH = 1.0_JPRB-MAX( ZHUCOE*CETA(JK)**IPCLO1*&
+     & (1.0_JPRB-CETA(JK))**IPCLO2*&
+     & (1.0_JPRB+SQRT(ZHUTIL)*(CETA(JK)-0.5_JPRB)),ZEPS1)  
+  ELSE
+! original version
+    ZCRH = MIN(MAX(RRHL,RRHL+(RRHH-RRHL)*&
+     & (RETAMB-CETA(JK))/(RETAMB-RETAHB)),RRHH)  
+  ENDIF
+
+  DO JL=KIDIA,KFDIA
+    ZQLAY=RGAMMAS*PQS(JL,JK)
+    Z1S = (ZRH(JL,JK)-ZCRH)/(1.0_JPRB-ZCRH)
+    IF (Z1S < 0.0_JPRB) THEN
+      Z1S = 0.0_JPRB
+    ENDIF
+    ZCLOUD=Z1S*Z1S
+
+!*    MEDIUM AND LOW (NO INVERSION) CLOUD - NONE IF SUBSIDENCE
+
+    IF (.NOT. LPHYLIN) THEN
+! original version
+      IF(CETA(JK) > RETAHB)THEN
+        IF(PVERVEL(JL,JK) >= 0.0_JPRB)THEN
+          ZCLOUD=0.0_JPRB
+        ELSEIF(PVERVEL(JL,JK) >= ZWCRIT(JK))THEN
+          ZCLOUD=ZCLOUD*PVERVEL(JL,JK)* RLONIB
+        ENDIF
+      ENDIF
+    ENDIF
+
+    PCLC(JL,JK) =PCLC(JL,JK)+ZCLOUD
+    PQLWP(JL,JK)=PQLWP(JL,JK)+ZCLOUD*ZQLAY
+  ENDDO
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*       3.5 COMPUTE LOW CLOUD ASSOCIATED WITH INVERSIONS
+!            --------------------------------------------
+
+IF (.NOT.LPHYLIN) THEN
+  DO JL=KIDIA,KFDIA
+    ZCLL1= RLOIB * ZDTHMIN(JL) + RLOIC
+    ZCLL1=MIN(1.0_JPRB,MAX(0.0_JPRB,ZCLL1))
+    IB=INVB(JL)
+    ZQLAY=RGAMMAS*PQS(JL,IB)
+    ZRHB=ZRH(JL,IB)
+! original version
+    ZCRH=MIN(MAX(RRHL,RRHL+(RRHH-RRHL)*(RETAMB-CETA(IB))/&
+     & (RETAMB-RETAHB)),RRHH)  
+
+    IF(ZCLL1 > 0.0_JPRB.AND.ZRHB < ZCRH)THEN
+      ZCLL=ZCLL1*(1.0_JPRB-(ZCRH-ZRHB)*RLOID)
+    ELSE
+      ZCLL=ZCLL1
+    ENDIF
+    ZCLL=MIN(1.0_JPRB,MAX(0.0_JPRB,ZCLL))
+    LLLL(JL)=ZCLL > PCLC(JL,IB)
+    IF(LLLL(JL)) THEN
+      PCLC(JL,IB) = ZCLL
+      PQLWP(JL,IB)= ZCLL*ZQLAY
+    ENDIF
+  ENDDO
+
+  DO JK=KLEV,ILEV2P1,-1
+    DO JL=KIDIA,KFDIA
+      IF (LLLL(JL).AND.JK > INVB(JL)) THEN
+        PCLC(JL,JK)=0.0_JPRB
+        PQLWP(JL,JK)=0.0_JPRB
+      ENDIF
+    ENDDO
+  ENDDO
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*        4. COMPUTE CLOUD LIQUID PATH AND TOTAL CLOUDINESS
+!            ----------------------------------------------
+
+DO JL=KIDIA,KFDIA
+  PCLC(JL,1)=MIN(1.0_JPRB,MAX(0.0_JPRB,PCLC(JL,1)))
+  PCC(JL)=ZCC(JL)*RCFCT
+  PCT(JL)=1.0_JPRB-PCLC(JL,1)
+  PCH(JL)=1.0_JPRB-PCLC(JL,1)
+  IF(CETA(KTOPCM(JL)) <= RETAHB.AND.CETA(KBASECM(JL)) > RETAHB)THEN
+    PCM(JL)=1.0_JPRB-PCC(JL)
+  ELSE
+    PCM(JL)=1.0_JPRB
+  ENDIF
+  IF(CETA(KTOPCM(JL)) <= RETAMB.AND.CETA(KBASECM(JL)) > RETAMB)THEN
+    PCL(JL)=1.0_JPRB-PCC(JL)
+  ELSE
+    PCL(JL)=1.0_JPRB
+  ENDIF
+  IF (LPHYLIN) THEN
+! original version
+!    ZOEALFA = _HALF_*(TANH(RLPAL1*(PTM1(JL,1)-RLPTRC))+_ONE_)
+!    ZFICE(JL)=_ONE_-ZOEALFA
+
+! new version
+    ZOEALFA = 0.545_JPRB*(TANH(0.17_JPRB*(PTM1(JL,1)-RLPTRC))+1.0_JPRB)
+    IF (PTM1(JL,1) < RTT) THEN
+      ZFICE(JL)=1.0_JPRB-ZOEALFA
+    ELSE
+      ZFICE(JL)=0.0_JPRB
+    ENDIF
+  ELSE
+    ZFICE(JL)=1.0_JPRB-FOEALFA(PTM1(JL,1))
+  ENDIF
+  PQIWP(JL, 1)=PQLWP(JL, 1)*ZFICE(JL)
+  PQLWP(JL, 1)=PQLWP(JL, 1)*(1.0_JPRB-ZFICE(JL))
+ENDDO
+
+DO JK=2,KLEV
+  DO JL=KIDIA,KFDIA
+    PCLC(JL,JK)=MIN(1.0_JPRB,MAX(0.0_JPRB,PCLC(JL,JK)))
+    PCT(JL)=PCT(JL)*(1.0_JPRB-MAX(PCLC(JL,JK),PCLC(JL,JK-1)))&
+     & /(1.0_JPRB-MIN(PCLC(JL,JK-1),1.0_JPRB-REPSEC))  
+    IF(CETA(JK) <= RETAHB)THEN
+      PCH(JL)=PCH(JL)*(1.0_JPRB-MAX(PCLC(JL,JK),PCLC(JL,JK-1)))&
+       & /(1.0_JPRB-MIN(PCLC(JL,JK-1),1.0_JPRB-REPSEC))  
+    ELSEIF(CETA(JK) <= RETAMB)THEN
+      PCM(JL)=PCM(JL)*(1.0_JPRB-MAX(PCLC(JL,JK),PCLC(JL,JK-1)))&
+       & /(1.0_JPRB-MIN(PCLC(JL,JK-1),1.0_JPRB-REPSEC))  
+    ELSE
+      PCL(JL)=PCL(JL)*(1.0_JPRB-MAX(PCLC(JL,JK),PCLC(JL,JK-1)))&
+       & /(1.0_JPRB-MIN(PCLC(JL,JK-1),1.0_JPRB-REPSEC))  
+    ENDIF
+    IF (LPHYLIN) THEN
+! original version
+!      ZOEALFA = _HALF_*(TANH(RLPAL1*(PTM1(JL,JK)-RLPTRC))+_ONE_)
+!      ZFICE(JL)=_ONE_-ZOEALFA
+
+! new version
+      ZOEALFA = 0.545_JPRB*(TANH(0.17_JPRB*(PTM1(JL,JK)-RLPTRC))+1.0_JPRB)
+      IF (PTM1(JL,JK) < RTT) THEN
+        ZFICE(JL)=1.0_JPRB-ZOEALFA
+      ELSE
+        ZFICE(JL)=0.0_JPRB
+      ENDIF
+    ELSE
+      ZFICE(JL)=1.0_JPRB-FOEALFA(PTM1(JL,JK))
+    ENDIF
+    PQIWP(JL,JK)=PQLWP(JL,JK)*ZFICE(JL)
+    PQLWP(JL,JK)=PQLWP(JL,JK)*(1.0_JPRB-ZFICE(JL))
+  ENDDO
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  PCT(JL)=1.0_JPRB-PCT(JL)
+  PCH(JL)=1.0_JPRB-PCH(JL)
+  PCM(JL)=1.0_JPRB-PCM(JL)
+  PCL(JL)=1.0_JPRB-PCL(JL)
+ENDDO
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CLOUD',1,ZHOOK_HANDLE)
+END SUBROUTINE CLOUD

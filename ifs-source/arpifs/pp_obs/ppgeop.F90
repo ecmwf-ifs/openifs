@@ -1,0 +1,357 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE PPGEOP(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,&
+ & PRES,PLNPRES,LDBELO,LDBELS,LDBLOW,LDBLES,LDEXTR,POROG,PVERT_GEOM,&
+ & PRXP,PRXPD,PTSTAR,PR0,PLNPR,PALPH,&
+ & PTF,PZPP,PSTTF,PRRED)  
+
+!**** *PPGEOP* - POST-PROCESS GEOPOTENTIAL.
+
+!     PURPOSE.
+!     --------
+!           COMPUTES GEOPOTENTIAL AT FULL LEVELS AND
+!       PERFORMS THE VERTICAL INTERPOLATION TO A GIVEN
+!       MODEL CO-ORDINATE LEVEL. ALSO EXTRAPOLATES GEOPOTENTIAL
+!       IF SO REQUESTED. THE INTERPOLATION IS DONE IN TERMS OF
+!       GEOPOTENTIAL DEPARTURES FROM THE ICAO STANDARD ATMOSPHERE.
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *PPGEOP(...)
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+
+!        KPROMA                    - HORIZONTAL DIMENSION.             (INPUT-C)
+!        KSTART                    - START OF WORK.                    (INPUT-C)
+!        KPROF                     - DEPTH OF WORK.                    (INPUT-C)
+!        KFLEV                     - NUMBER OF INPUT PRESSURE LEVELS   (INPUT-C)
+!        KLEVP                     - NUMBER OF OUTPUT PRESSURE LEVELS  (INPUT-C)
+!        KLOLEV                    - BEGINING FOR THE INTERPOLATION    (INPUT-C)
+!        KLEVB(KPROMA,KLEVP,KPPM)  - INPUT LEVEL BELOW PRES (PLNPRES)  (INPUT-C)
+!                                    (SEE PPFLEV)
+!        PRES(KPROMA,KLEVP)        - POST-PROCESSING LEVEL PRESSURE    (INPUT-C)
+!        PLNPRES(KPROMA,KLEVP)     - LOG(POST-PROCESSING LEVEL PRES.)  (INPUT-C)
+!        LDBELO(KPROMA,KLEVP)      - .TRUE. IF PRESSURE IS UNDER
+!                                     LOWEST (FULL) MODEL LEVEL        (INPUT-C)
+!        LDBELS(KPROMA,KLEVP)      - .TRUE. IF PRESSURE IS UNDER
+!                                     MODEL SURFACE                    (INPUT-C)
+!        LDBLOW(KLEVP)             - .TRUE. IF LDBELO(J) IS CONTAINING
+!                                    AT LEAST ONE .TRUE.               (INPUT-C)
+!        LDBLES(KLEVP)             - .TRUE. IF LDBELS(J) IS CONTAINING
+!                                    AT LEAST ONE .TRUE.               (INPUT-C)
+!        LDEXTR                    - .TRUE. IF EXTRAPOLATION REQUESTED (INPUT-C)
+!        POROG(KPROMA)             - MODEL OROGRAPHY.                  (INPUT-C)
+!        PVERT_GEOM                - model vertical geometry profiles  (INPUT-C)
+!        PRXP(KPROMA,0:KFLEV,KPPM) - HALF,FULL AND LN HALF,FULL LEVEL
+!                                    PRESSURES (SEE PPINIT)            (INPUT)
+!        PRXPD(KPROMA,0:KFLEV,KPPM)- 1./D(P) AND 1./D(LN(P))           (INPUT)
+!        PTSTAR(KPROMA)            - SURFACE TEMPERATURE               (INPUT)
+!        PR0(KPROMA,KFLEV)         - R                                 (INPUT)
+!        PLNPR(KPROMA,KFLEV)       - LOGARITHM OF RATIO OF PRESSURE
+!                                    (PREVIOUSLY COMPUTED IN GPXYB)    (INPUT)
+!        PALPH(KPROMA,KFLEV)       - COEFFICIENTS OF THE HYDROSTATICS
+!                                    (PREVIOUSLY COMPUTED IN GPXYB)    (INPUT)
+!        PTF(KPROMA,0:KFLEV)       - TEMPERATURE ON FULL INPUT LEVELS. (INPUT)
+
+!        PZPP(KPROMA,KLEVP)        - POST-PROCESSED GEOPOTENTIAL       (OUTPUT)
+!        PSTTF(KPROMA,0:KFLEV)     - ICAO TEMPERATURES ON FULL LEVELS  (OPT-INPUT)
+!        PRRED(KPROMA,KFLEV)       - (pre/prehyd)*R                    (OPT-INPUT)
+
+!        IMPLICIT ARGUMENTS :  CONSTANTS FROM YOMCST,YOMGEM,YOMSTA.
+!        --------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.  GPGEO  - COMPUTE GEOPOTENTIAL ON HALF LEVELS
+!     ----------  PPINTP - LINEAR INTERPOLATION
+!                 PPSTA  - TEMP. AND GEOPOTENTIAL OF THE STANDARD ATM.
+!                 PPITPQ - QUADRATIC INTERPOLATION FOR TOP LEVELS
+
+!     AUTHOR.
+!     -------
+!      MATS HAMRUD AND PHILIPPE COURTIER  *ECMWF*
+!      ORIGINAL : 89-01-26
+
+!     MODIFICATIONS.
+!     --------------
+!      K.Yessad (may 2009): merge PPGEOP_OLD and PPGEOP
+!      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!      K. Yessad (Feb 2018): remove deep-layer formulations.
+!     ------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST   , ONLY : RG, RD
+USE YOMSTA   , ONLY : RDTDZ1
+USE YOMCT0   , ONLY : LOLDPP
+USE YOMVERT  , ONLY : TVERTICAL_GEOM
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KPROMA 
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KFLEV 
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KLEVP 
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KSTART 
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KPROF 
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KLOLEV 
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KPPM
+INTEGER(KIND=JPIM)  ,INTENT(IN)           :: KLEVB(KPROMA,KLEVP,KPPM) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PRES(KPROMA,KLEVP) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PLNPRES(KPROMA,KLEVP) 
+LOGICAL             ,INTENT(IN)           :: LDBELO(KPROMA,KLEVP) 
+LOGICAL             ,INTENT(IN)           :: LDBELS(KPROMA,KLEVP) 
+LOGICAL             ,INTENT(IN)           :: LDBLOW(KLEVP) 
+LOGICAL             ,INTENT(IN)           :: LDBLES(KLEVP) 
+LOGICAL             ,INTENT(IN)           :: LDEXTR 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: POROG(KPROMA) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PRXP(KPROMA,0:KFLEV,KPPM) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PRXPD(KPROMA,0:KFLEV,KPPM) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PTSTAR(KPROMA) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PR0(KPROMA,KFLEV) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PLNPR(KPROMA,KFLEV) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PALPH(KPROMA,KFLEV) 
+REAL(KIND=JPRB)     ,INTENT(IN)           :: PTF(KPROMA,KFLEV) 
+TYPE(TVERTICAL_GEOM),INTENT(IN)           :: PVERT_GEOM
+REAL(KIND=JPRB)     ,INTENT(INOUT)        :: PZPP(KPROMA,KLEVP) 
+REAL(KIND=JPRB)     ,INTENT(IN), OPTIONAL :: PSTTF(KPROMA,0:KFLEV)
+REAL(KIND=JPRB)     ,INTENT(IN), OPTIONAL :: PRRED(KPROMA,KFLEV)
+
+!     ------------------------------------------------------------------
+
+REAL(KIND=JPRB) :: ZRRED(KPROMA,KFLEV)
+REAL(KIND=JPRB) ::    ZSTTF(KPROMA,0:KFLEV),     ZSTZF(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) ::    ZFLDH(KPROMA,0:KFLEV),     ZFLDF(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) ::    ZSTTH(KPROMA),             ZSTZH(KPROMA)
+REAL(KIND=JPRB) ::    ZTSTAR(KPROMA),            ZALPHA(KPROMA)
+REAL(KIND=JPRB) ::    ZSTTP(KPROMA,KLEVP),       ZSTZP(KPROMA,KLEVP)
+
+INTEGER(KIND=JPIM) :: ISLCT, IBL, JL, JLEV, JLEVP
+
+REAL(KIND=JPRB) :: ZALFLPR, ZCOEF, ZDTDZSG, ZGAM, ZLNPRT, ZOROG
+REAL(KIND=JPRB) :: ZT0, ZTX, ZTY, ZVAL, ZXX
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "gpgeo.intfb.h"
+#include "ppintp.intfb.h"
+#include "ppitpq.intfb.h"
+#include "ppsta.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('PPGEOP',0,ZHOOK_HANDLE)
+!     ------------------------------------------------------------------
+
+!*       1.    POST-PROCESS GEOPOTENTIAL.
+!              --------------------------
+
+!*       1.1   COMPUTE GEOPOTENTIAL ON MODEL LEVELS. DEP FROM ICAO.
+!           ZSTTF FIRST CONTAINS ICAO TEMPERATURES ON FULL LEVELS, THEN
+!           IT IS CHANGED TO CONTAIN 'MOIST' DEPARTURES FROM ICAO.
+
+IF (.NOT.LOLDPP .AND. PRESENT(PSTTF)) THEN
+  ZSTTF(KSTART:KPROF,1:KFLEV)=PSTTF(KSTART:KPROF,1:KFLEV)
+ELSE
+  CALL PPSTA('PPREF',KPROMA,KSTART,KPROF,KFLEV+1,1,PRXP(1,0,2),PRXP(1,0,4),&
+   & ZSTTF,ZSTZF)
+ENDIF
+
+IF (PRESENT(PRRED)) THEN
+  ZRRED(:,:)=PRRED(:,:)
+ELSE
+  ZRRED(:,:)=PR0(:,:)
+ENDIF
+
+DO JLEV=1,KFLEV
+  DO JL=KSTART,KPROF
+    ! ky: this is surely PR0 there
+    ZSTTF(JL,JLEV)=PTF(JL,JLEV)-ZSTTF(JL,JLEV)*RD/PR0(JL,JLEV)
+  ENDDO
+ENDDO
+
+DO JL=KSTART,KPROF
+  ZFLDH(JL,KFLEV)=0.0_JPRB
+ENDDO
+! ky: this is surely ZRRED there to take properly account of NH effects.
+CALL GPGEO(KPROMA,KSTART,KPROF,KFLEV,ZFLDH,ZFLDF(1,1),ZSTTF(1,1),&
+ & ZRRED,PLNPR,PALPH, PVERT_GEOM)  
+
+IF (LOLDPP) THEN
+  ! PROVISIONAL DEFINITION OF ZFLDF(-,0) FOR HIGH LEVEL INTERPOLATION
+  DO JL=KSTART,KPROF
+    ZFLDF(JL,0)=ZFLDH(JL,0)
+  ENDDO
+ELSE
+  DO JLEV=1,KFLEV
+    DO JL=KSTART,KPROF
+      ! ky: this is probably PR0 there (but I am not completely sure)
+      ZSTTF(JL,JLEV)=ZSTTF(JL,JLEV)*PR0(JL,JLEV)
+    ENDDO
+  ENDDO
+  DO JL=KSTART,KPROF
+    ZSTTF(JL,0)=ZSTTF(JL,1)
+  ENDDO
+ENDIF
+
+!*       1.2   INTERPOLATE GEOPOTENTIAL DEPARTURE FROM ICAO.
+!              ISLCT=3 GOES WITH ZFLDH (HALF LEVELS)
+!              ISLCT=4 GOES WITH ZFLDF (FULL LEVELS)
+
+IF (LOLDPP) THEN
+  ISLCT=4
+  CALL PPINTP(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,ISLCT,&
+   & LDBELO,LDBLOW,PLNPRES,PRXP,PRXPD,ZFLDF,PZPP)
+ENDIF
+
+!*       1.3   INTERPOLATE BETWEEN LOWEST LEVEL AND SURFACE.
+
+IF (LOLDPP) THEN
+
+  IF(MOD(ISLCT,2) == 0) THEN
+    DO JLEVP=KLOLEV,KLEVP
+      IF (LDBLOW(JLEVP)) THEN
+        DO JL=KSTART,KPROF
+          IF (LDBELO(JL,JLEVP).AND..NOT.LDBELS(JL,JLEVP) ) THEN
+            ZCOEF=(PRXP(JL,KFLEV,ISLCT-1)-PLNPRES(JL,JLEVP))/&
+             & (PRXP(JL,KFLEV,ISLCT-1)-PRXP(JL,KFLEV,ISLCT))
+            PZPP(JL,JLEVP)=ZCOEF*ZFLDF(JL,KFLEV)
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDIF
+
+ELSE
+
+  DO JLEVP = KLOLEV, KLEVP
+    IF (.NOT. LDBLOW(JLEVP)) THEN
+      DO JL = KSTART, KPROF
+        IBL = KLEVB(JL,JLEVP,4)
+        ZXX = (PRXP(JL,IBL,4)-PLNPRES(JL,JLEVP))&
+         & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))  
+        ZGAM= (PRXP(JL,IBL-1,4)+PRXP(JL,IBL,4)-2.0_JPRB*PRXP(JL,IBL-1,3))&
+         & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))  
+        ZVAL= (0.5_JPRB + ZGAM * (ZXX - 1.5_JPRB)) * ZXX
+        PZPP(JL,JLEVP) = ZFLDF(JL,IBL) +&
+         & (PRXP(JL,IBL,4)-PLNPRES(JL,JLEVP)) *&
+         & ( ZSTTF(JL,IBL) + (ZSTTF(JL,IBL-1)-ZSTTF(JL,IBL)) * ZVAL )  
+      ENDDO
+    ELSE
+      DO JL = KSTART, KPROF
+        IF (.NOT.LDBELO(JL,JLEVP)) THEN
+          IBL = KLEVB(JL,JLEVP,4)
+          ZXX = (PRXP(JL,IBL,4)-PLNPRES(JL,JLEVP))&
+           & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))  
+          ZGAM=(PRXP(JL,IBL-1,4)+PRXP(JL,IBL,4)-2.0_JPRB*PRXP(JL,IBL-1,3))&
+           & /(PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))  
+          
+          ZVAL= (0.5_JPRB + ZGAM * (ZXX - 1.5_JPRB)) * ZXX
+          PZPP(JL,JLEVP) = ZFLDF(JL,IBL) +&
+           & (PRXP(JL,IBL,4)-PLNPRES(JL,JLEVP)) *&
+           & ( ZSTTF(JL,IBL) + (ZSTTF(JL,IBL-1)-ZSTTF(JL,IBL)) * ZVAL )  
+        ELSEIF (LDBELO(JL,JLEVP).AND..NOT.LDBELS(JL,JLEVP) ) THEN
+          ZXX = (PRXP(JL,KFLEV,3) - PLNPRES(JL,JLEVP))&
+           & / (PRXP(JL,KFLEV,3) - PRXP(JL,KFLEV,4))  
+          PZPP(JL,JLEVP) = ZXX * ZFLDF(JL,KFLEV)
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDDO
+
+ENDIF
+
+!*       1.4   MODIFY INTERPOLATION/EXTRAPOLATION ABOVE SECOND
+!*          FULL MODEL LEVEL. FIT QUADRATIC POLYNOMIAL IN LN(P).
+
+IF (LOLDPP) THEN
+  CALL PPITPQ(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,ISLCT,&
+   & PLNPRES,PRXP,ZFLDF,PZPP)
+ENDIF
+
+!*       1.5   CALCULATE ICAO GEOPOTENTIAL ON PRESSURE LEVELS.
+!*          ADD ICAO GEOPOTENTIAL TO THE POST-PROCESSED DEPARTURES.
+!*          ALSO CALCULATE ICAO HEIGHTS AT MODEL SURFACE AND
+!*          ADD TO POST-PROCESSED GEOPOTENTIAL.
+
+CALL PPSTA('PPREF',KPROMA,KSTART,KPROF,KLEVP,KLOLEV,PRES,PLNPRES,ZSTTP,ZSTZP)
+
+CALL PPSTA('PPREF',KPROMA,KSTART,KPROF,1,1,&
+ & PRXP(1,KFLEV,1),PRXP(1,KFLEV,3),ZSTTH,ZSTZH)  
+
+DO JLEVP=KLOLEV,KLEVP
+  DO JL=KSTART,KPROF
+    IF(.NOT.LDBELS(JL,JLEVP)) THEN
+      PZPP(JL,JLEVP)=POROG(JL)-ZSTZH(JL)+ZSTZP(JL,JLEVP)+PZPP(JL,JLEVP)
+    ENDIF
+  ENDDO
+ENDDO
+
+!*       1.6   EXTRAPOLATE GEOPOTENTIAL DOWNWARDS.
+
+IF(LDEXTR) THEN
+  ZTX=290.5_JPRB
+  ZTY=255.0_JPRB
+  ZDTDZSG=-RDTDZ1/RG
+  DO JL=KSTART,KPROF
+    IF(PTSTAR(JL) < ZTY) THEN
+      ZTSTAR(JL)=0.5_JPRB*(ZTY+PTSTAR(JL))
+    ELSEIF(PTSTAR(JL) < ZTX) THEN
+      ZTSTAR(JL)=PTSTAR(JL)
+    ELSE
+      ZTSTAR(JL)=0.5_JPRB*(ZTX+PTSTAR(JL))
+    ENDIF
+
+    ZT0=ZTSTAR(JL)+ZDTDZSG*POROG(JL)
+    IF(ZTX > ZTSTAR(JL) .AND. ZT0 > ZTX) THEN
+      ZT0=ZTX
+    ELSEIF(ZTX <= ZTSTAR(JL) .AND. ZT0 > ZTSTAR(JL)) THEN
+      ZT0=ZTSTAR(JL)
+    ENDIF
+
+    ZOROG=SIGN(MAX(1.0_JPRB,ABS(POROG(JL))),POROG(JL))
+    ZALPHA(JL)=RD*(ZT0-ZTSTAR(JL))/ZOROG
+  ENDDO
+
+  DO JLEVP=KLOLEV,KLEVP
+    IF (LDBLES(JLEVP)) THEN
+      DO JL=KSTART,KPROF
+        IF(LDBELS(JL,JLEVP)) THEN
+          ZLNPRT=PLNPRES(JL,JLEVP)-PRXP(JL,KFLEV,3)
+          ZALFLPR=ZALPHA(JL)*ZLNPRT
+          PZPP(JL,JLEVP)=POROG(JL)-RD*ZTSTAR(JL)*ZLNPRT* &
+           & (1.0_JPRB+ZALFLPR*(0.5_JPRB+ZALFLPR/6._JPRB))
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDDO
+ELSE
+  IF (.NOT.LOLDPP) THEN
+    DO JLEVP=KLOLEV,KLEVP
+      IF (LDBLES(JLEVP)) THEN
+        DO JL=KSTART,KPROF
+          IF (LDBELS(JL,JLEVP)) THEN
+            PZPP(JL,JLEVP)=-999999999999._JPRB
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDDO
+  ENDIF
+ENDIF
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('PPGEOP',1,ZHOOK_HANDLE)
+END SUBROUTINE PPGEOP

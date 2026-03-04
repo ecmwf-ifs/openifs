@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+set -x 
+
+module load forge
+
+if [[ ${ECPLATFORM:-unset} == "hpc2020" ]]; then
+  ./ifs-run --launcher='ddt srun --qos=np '
+else
+  ./ifs-run --launcher=ddt
+fi    

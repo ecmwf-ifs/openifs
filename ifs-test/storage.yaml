@@ -1,0 +1,57 @@
+# (C) Copyright 2011- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+
+external_data:
+  # All data that is pulled from other sources is specified here.
+
+  data_source:
+    # Specify different data sources. When a file should be fetched, the fetch
+    # script will sequentially try the data sources until it was able to fetch 
+    # the file. Data sources can be
+    # * file (some directory on the local file system is used)
+    # * download (data is downloaded from a given URL)
+    
+    # Default path on Atos.
+    - type:     file
+      root: /ec/fwsm/lb/project/ifs-test-inidata/   
+
+    # Default path on Lumi.
+    - type:     file
+      root: /projappl/project_465000527/models/ifs/ecpds/ifs-test-inidata/
+
+    # Download from ECPDS if no cache directory is present.
+    - type:     download
+      root: https://aux.ecmwf.int/ecpds/home/ifs_test
+
+  files:
+    # Files that have to be downloaded are specified here.
+    # Usually, the source_path (relative path in the data source) and the
+    # target path (relative to some target directory) have to be specified.
+    # If extract_path is specified, the archive file will first be stored in
+    # target_path and then extracted to extract_path.
+
+    - source_path: 48r1/scm/2025_09_15-scm_in.nc
+      target_path: scm/scm_in.nc
+
+    - source_path: 48r1/shared/2025_09_15_ifsdata.tar.gz
+      target_path: ifsdata.tar.gz
+      extract_path: ifsdata 
+
+    - source_path: 48r1/t21/2025_09_15_inidata.tar.gz
+      target_path: t21/inidata.tar.gz
+      extract_path: t21/inidata 
+
+    - source_path: 48r1/t42/2025_09_15_inidata.tar.gz
+      target_path: t42/inidata.tar.gz
+      extract_path: t42/inidata
+
+    - source_path: 48r1/compo/2025_09_15_compo_data.tar.gz
+      target_path: compo_data.tar.gz
+      extract_path: compo_data
+
+

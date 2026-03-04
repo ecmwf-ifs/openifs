@@ -1,0 +1,45 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+INTERFACE
+SUBROUTINE AROINI_MFSHAL(PALP_PERT,PABUO,PBENTR,PBDETR,PCMF,PENTR_MF,PCRAD_MF,PENTR_DRY,&
+ &          PDETR_DRY,PDETR_LUP,PKCF_MF,PKRC_MF,PTAUSIGMF,PPRES_UV,PFRAC_UP_MAX,&
+ &          PALPHA_MF,PSIGMA_MF,PA1,PB,PC,PBETA1,PR,PLAMBDA)
+
+      USE PARKIND1, ONLY : JPRB
+      USE YOMHOOK , ONLY : LHOOK, DR_HOOK
+
+REAL(KIND=JPRB),   INTENT(IN)   :: PALP_PERT
+REAL(KIND=JPRB),   INTENT(IN)   :: PABUO
+REAL(KIND=JPRB),   INTENT(IN)   :: PBENTR
+REAL(KIND=JPRB),   INTENT(IN)   :: PBDETR
+REAL(KIND=JPRB),   INTENT(IN)   :: PCMF
+REAL(KIND=JPRB),   INTENT(IN)   :: PENTR_MF
+REAL(KIND=JPRB),   INTENT(IN)   :: PCRAD_MF
+REAL(KIND=JPRB),   INTENT(IN)   :: PENTR_DRY
+REAL(KIND=JPRB),   INTENT(IN)   :: PDETR_DRY
+REAL(KIND=JPRB),   INTENT(IN)   :: PDETR_LUP
+REAL(KIND=JPRB),   INTENT(IN)   :: PKCF_MF
+REAL(KIND=JPRB),   INTENT(IN)   :: PKRC_MF
+REAL(KIND=JPRB),   INTENT(IN)   :: PTAUSIGMF
+REAL(KIND=JPRB),   INTENT(IN)   :: PPRES_UV
+REAL(KIND=JPRB),   INTENT(IN)   :: PFRAC_UP_MAX
+REAL(KIND=JPRB),   INTENT(IN)   :: PALPHA_MF
+REAL(KIND=JPRB),   INTENT(IN)   :: PSIGMA_MF
+REAL(KIND=JPRB),   INTENT(IN)   :: PA1
+REAL(KIND=JPRB),   INTENT(IN)   :: PB
+REAL(KIND=JPRB),   INTENT(IN)   :: PC
+REAL(KIND=JPRB),   INTENT(IN)   :: PBETA1   
+REAL(KIND=JPRB),   INTENT(IN)   :: PR
+REAL(KIND=JPRB),   INTENT(IN)   :: PLAMBDA   
+
+END SUBROUTINE AROINI_MFSHAL
+END INTERFACE

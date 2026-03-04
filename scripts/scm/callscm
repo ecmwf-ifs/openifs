@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+#===============================================================================
+# Script to call IFS SCM (run.scm)                  (Richard Forbes, March 2020)
+# to efficiently loop over executables, cases and timesteps
+#
+# To run the SCM:
+#
+# Default with no arguments:
+#  run.scm
+#  will assume expt_name="ref", namelist="namelist", scm_in="scm_in.nc"
+#  (the latter two must be in the current scm-run directory)
+#
+# With options:
+#  run.scm [-c case_name] [-d duration] [-L nlevs] [-n namelist] [-o outdir] [-s scm_in] [-t timestep] [-v] [-x expt_name] [-X exec]
+#   -c case_name name of the case study used for namelist and output directory
+#   -d duration  duration of run in hours (default 72h)
+#   -L nlevs     number of levels (default 137)
+#   -n namelist  namelist file (default namelist.case_study if case_study defined, otherwise ./namelist in current directory
+#   -o outdir    working/output subdirectory (default current directory)
+#   -s scm_in    SCM input/forcing netcdf file (defaults ./scm_in.nc in current directory)
+#   -t timestep  timestep in seconds (default 450s)
+#   -v           verbose turns on set -x (default off)
+#   -x expt_name shortname to identify experiment
+#   -X exec      executable path and filename
+#
+#===============================================================================
+set -e
+
+log_echo ()
+{
+  builtin echo "$@" | tee -a "$SCM_LOGFILE"
+
+}
+
+usage_info()
+{
+  echo "----------------------------------------------------------------"
+  echo "usage_info in callscm called because" "$1"
+  echo "----------------------------------------------------------------"
+  echo "callscm is a wrapper for a wrapper script to call IFS SCM (run.scm) to"
+  echo "efficiently loop over cases and timesteps"
+  echo ""
+  echo "callscm usage :"
+  echo "callscm -h -c <case_name or list of case_names> -t <timestep or list of timesteps>"
+  echo "        -x <expt_name>"
+  echo "where :"
+  echo "-h is help which returns basic usage options and exits"
+  echo "-c case_name or list of case_names (space delimited) of the case study"
+  echo "   used for namelist and output directory. Default list is"
+  echo "   \"DYCOMS BOMEX TWPICE\" "
+  echo "-t timestep or list of timesteps in seconds. The default is 450s. An"
+  echo "   example of a list is \"1800 900 300\" "
+  echo "-x expt_name shortname to identify experiment. Default is ref-oifs-scm"
+  echo "----------------------------------------------------------------"
+}
+
+#-------------------------------------------------------------------------------
+# Check for the SCM_LOGFILE and remove if it exists
+#-------------------------------------------------------------------------------
+if [ -e "${SCM_LOGFILE-}" ]; then
+  rm "${SCM_LOGFILE}" # remove logfile so not adding to old logs
+fi
+
+#-------------------------------------------------------------------------------
+# Set SCM code executable path (EXEC). This is defined in the oifs-config file
+#-------------------------------------------------------------------------------
+EXEC=$SCM_EXEC
+
+# Set variables with defaults
+PRINT_HELP=0
+#-------------------------------------------------------------------------------
+# Set SCM code executable path (EXEC) and an associated name (EXEC_NAME)
+#-------------------------------------------------------------------------------
+EXPT_NAME='ref-oifs-scm'
+
+#-------------------------------------------------------------------------------
+# Set default CASE_LIST and TIMESTEP_LIST, which can be overwritten if user
+# provides optional arguments, when executing callscm
+# Both lists can be a single value or space-separated list to loop over
+#-------------------------------------------------------------------------------
+#CASE_LIST="TWPICE"
+#CASE_LIST="BOMEX"
+#CASE_LIST="DYCOMS"
+CASE_LIST="DYCOMS BOMEX TWPICE"
+#-------------------------------------------------------------------------------
+# Set timestep (secs)
+#-------------------------------------------------------------------------------
+#TIMESTEP_LIST="1800 900 300"
+TIMESTEP_LIST="450"
+
+if [ "$#" -eq 0 ]; then
+  log_echo "[INFO]: No arguments supplied so using defaults"
+fi
+
+#-------------------------------------------------------------------------------
+# Check for user input to define case and/or timestep
+#-------------------------------------------------------------------------------
+while getopts hc:t:x: OPTION ; do
+  case "${OPTION}" in
+    h) PRINT_HELP=1 ;;
+    c) CASE_LIST="${OPTARG}" ;;
+    t) TIMESTEP_LIST="${OPTARG}" ;;
+    x) EXPT_NAME="${OPTARG}" ;;
+    *) usage_info "invalid argument"
+       exit 1 ;;
+  esac
+done
+
+if [[ ${PRINT_HELP} == 1 ]] ; then
+  usage_info "help requested"
+  exit 1
+fi
+
+log_echo "[INFO]: Executable name = $EXEC"
+log_echo "[INFO]: Experiment name = $EXPT_NAME"
+log_echo "[INFO]: CASE_LIST= $CASE_LIST "
+log_echo "[INFO]: TIMESTEP= $TIMESTEP_LIST "
+
+#-------------------------------------------------------------------------
+# Loop over SCM cases
+#  For each case, need to specify:
+#  SCM_IN: netcdf input file with initial profile and forcing
+#  DURATION: Number of hours to run the simulation
+#  There are also various plot attributes that can be set here
+#  Other options for run.scm are available - see the run.scm script header
+#-------------------------------------------------------------------------
+for CASE in ${CASE_LIST}
+do
+
+  #-------------------------------------
+  # DYCOMS - stratocumulus
+  #-------------------------------------
+  if [ $CASE = 'DYCOMS' ] ; then
+    SCM_IN=scm_in.DYCOMS_137.nc
+    DURATION=h48 # hours
+
+    for TIMESTEP in ${TIMESTEP_LIST}
+    do
+      "$SCM_TEST"/run.scm -X ${EXEC} -x ${EXPT_NAME} -t ${TIMESTEP}  -d ${DURATION} -c ${CASE} -s ${SCM_IN} | tee -a "$SCM_LOGFILE"
+    done
+  fi
+
+  #-------------------------------------
+  # Shallow convection: BOMEX
+  #-------------------------------------
+  if [ $CASE = 'BOMEX' ] ; then
+    SCM_IN=scm_in.BOMEX_137.nc
+    DURATION=h24 # hours (can be up to 96 hours)
+
+    for TIMESTEP in ${TIMESTEP_LIST}
+    do
+      "$SCM_TEST"/run.scm -X ${EXEC} -x ${EXPT_NAME} -t ${TIMESTEP} -d ${DURATION} -c ${CASE} -s ${SCM_IN} | tee -a "$SCM_LOGFILE"
+    done
+  fi
+
+
+  #-------------------------------------
+  # Tropical deep convection: TWPICE
+  #-------------------------------------
+  if [ $CASE = 'TWPICE' ] ; then
+    SCM_IN=scm_in.TWPICE_137.nc
+    DURATION=h640 # hours
+    for TIMESTEP in ${TIMESTEP_LIST}
+    do
+      "$SCM_TEST"/run.scm -X ${EXEC} -x ${EXPT_NAME} -t ${TIMESTEP} -d ${DURATION} -c ${CASE} -s ${SCM_IN} | tee -a "$SCM_LOGFILE"
+    done
+  fi
+
+done # loop over SCM cases
+
+
+exit

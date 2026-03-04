@@ -1,0 +1,392 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUDCMIP16_SPEC(YDGEOMETRY,KTESTCASE,PTEMP,PDIV,PVOR,PLNSP,POROG)
+
+!     Purpose.
+!     --------
+!           Initialize spectral fields for DCMIP16 test cases
+
+!        Explicit arguments :
+!        --------------------
+
+
+!     Author.
+!     -------
+!        S.Malardel *ECMWF*
+
+!     Modifications.
+!     --------------
+
+USE GEOMETRY_MOD, ONLY : GEOMETRY
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN    , ONLY : NULOUT, NULERR
+USE YOMCST    , ONLY : RPI, RA, RD, RG, ROMEGA, RCPD, RATM, RMD, RMV
+USE INTDYN_MOD, ONLY : YYTXYB
+!USE YOMDYNCORE, ONLY : RAMP_PERT
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY), INTENT(IN)    :: YDGEOMETRY
+INTEGER(KIND=JPIM), INTENT(IN):: KTESTCASE
+REAL(KIND=JPRB) ,INTENT(INOUT):: &
+ &  PTEMP(YDGEOMETRY%YRDIMV%NFLEVL,YDGEOMETRY%YRDIM%NSPEC2), &
+ &  PDIV(YDGEOMETRY%YRDIMV%NFLEVL,YDGEOMETRY%YRDIM%NSPEC2), &
+ &  PVOR(YDGEOMETRY%YRDIMV%NFLEVL,YDGEOMETRY%YRDIM%NSPEC2), &
+ &  PLNSP(YDGEOMETRY%YRDIM%NSPEC2),POROG(YDGEOMETRY%YRDIM%NSPEC2)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+INTEGER(KIND=JPIM) :: JLEV, JWORD
+REAL(KIND=JPRB) :: ZLONC, ZLATC, ZR
+REAL(KIND=JPRB) :: ZU0, ZT0, ZQ0, ZVP00
+REAL(KIND=JPRB) :: ZGAMMA
+REAL(KIND=JPRB) :: ZU(YDGEOMETRY%YRGEM%NGPTOT,1:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZV(YDGEOMETRY%YRGEM%NGPTOT,1:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZT(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZPSP(YDGEOMETRY%YRGEM%NGPTOT)
+REAL(KIND=JPRB) :: ZIT(YDGEOMETRY%YRGEM%NGPTOT)
+REAL(KIND=JPRB) :: ZQ(YDGEOMETRY%YRGEM%NGPTOT,1:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZTP, ZTE, ZB, ZK, ZUP,ZPHIW,ZVPW
+REAL(KIND=JPRB) :: ZZZ, ZTAU1, ZTAU2, ZUU
+REAL(KIND=JPRB) :: Zp, ZZp, ZRp
+INTEGER(KIND=JPIM) :: ILOOP, INK, ILEVTOP
+REAL(KIND=JPRB) :: ZXYB(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG,YYTXYB%NDIM)
+REAL(KIND=JPRB) :: ZPRESH(YDGEOMETRY%YRGEM%NGPTOT,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZPRESF (YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZPHI(YDGEOMETRY%YRGEM%NGPTOT,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZPHIF(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZRDGAZ(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+
+REAL(KIND=JPRB) :: ZUs,ZUc,ZZs,ZDZU,ZTR,ZTHR,ZZR,ZZTOP
+REAL(KIND=JPRB) :: ZRTH,ZRH,ZRC,ZDTH
+REAL(KIND=JPRB) :: ZVETAF(YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG)
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+
+#include "reespe.intfb.h"
+#include "uvspe.intfb.h"
+#include "gphpre.intfb.h"
+#include "gpgeo.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUDCMIP16_SPEC',0,ZHOOK_HANDLE)
+
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, YDDIMV=>YDGEOMETRY%YRDIMV, YDGEM=>YDGEOMETRY%YRGEM, &
+ & YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB, YDVAB=>YDGEOMETRY%YRVAB, YDVETA=>YDGEOMETRY%YRVETA, &
+ & YDCVER=>YDGEOMETRY%YRCVER,YDVERT_GEOM=>YDGEOMETRY%YRVERT_GEOM)
+
+ASSOCIATE( NRESOL=>YDDIM%NRESOL, NSMAX=>YDDIM%NSMAX, NSPEC2=>YDDIM%NSPEC2, &
+ & NFLEVG=>YDDIMV%NFLEVG, NFLEVL=>YDDIMV%NFLEVL, &
+ & NGPTOT=>YDGEM%NGPTOT)
+
+!==================================================================
+! Case 1.1:  Baroclinic waves 
+IF( (KTESTCASE == 161) .OR. (KTESTCASE == 162)) THEN
+!==================================================================
+ZTP=240.0_JPRB
+ZTE=310.0_JPRB
+ZT0=0.5_JPRB*(ZTE +ZTP)
+ZGAMMA = 0.005_JPRB
+ZB=2._JPRB
+ZK=3._JPRB
+INK=3
+ZU0 = 35.0_JPRB
+!!! for zonal jet only (no initial perturbation)
+!ZUP=0._JPRB
+!!! Amplitude of initial zonal wind perturbation
+ZUP=1._JPRB
+!ZUP=RAMP_PERT
+
+ZLATC=2.0_JPRB*RPI/9._JPRB
+ZLONC=RPI/9._JPRB
+Zp=15000._JPRB
+ZRp=RA/10._JPRB
+
+! Prescribe surface pressure
+! constant surface pressure
+ZVP00 = 1.E5_JPRB
+DO JWORD=1,NGPTOT
+  ZPSP(JWORD) = LOG (ZVP00)
+ENDDO
+
+! Temperature : the profiles are given as a function of z
+! need an iteration to get T as phi and phi as T
+! 1st Guess for T, to compute first guess for Z
+  
+ZT = ZT0
+
+ZRDGAZ = RD
+
+DO JWORD = 1,NGPTOT
+  ZPHI(JWORD,NFLEVG) = 0.0_JPRB
+ENDDO
+!!! SURFACE PRESSURE
+DO JWORD = 1,NGPTOT
+  ZPRESH(JWORD,NFLEVG)=ZVP00
+  ZIT(JWORD)=cos(YDGSGEOM_NB%GELAT(JWORD))**INK - &
+ &           ZK/(ZK+2._JPRB)*cos(YDGSGEOM_NB%GELAT(JWORD))**(INK+2)
+ENDDO
+CALL GPHPRE (NGPTOT,NFLEVG,1,NGPTOT,YDVAB,YDCVER,ZPRESH,PXYB=ZXYB,PRESF=ZPRESF)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! LOOP for adjustment Z/T
+DO ILOOP=1,10
+!!! LOOP for adjustment Z/T
+
+! compute geopotentiel of reference atmosphere
+  CALL GPGEO (NGPTOT,1,NGPTOT,NFLEVG,&
+              & ZPHI, ZPHIF, &
+              & ZT,ZRDGAZ,ZXYB(1,1,YYTXYB%M_LNPR),&
+              & ZXYB(1,1,YYTXYB%M_ALPH),YDVERT_GEOM)
+! Temperature field
+DO JLEV = 1, NFLEVG
+DO JWORD = 1,NGPTOT
+ZZZ = ZPHIF(JWORD,JLEV )/RG
+ZTAU1 = exp(ZGAMMA*ZZZ/ZT0)/ZT0+ &
+ &      (ZT0-ZTP)/(ZT0*ZTP)* &
+ &      (1._JPRB-2._JPRB*(ZPHIF(JWORD,JLEV )/(ZB*RD*ZT0))**2)* &
+ &       exp(-(ZPHIF(JWORD,JLEV )/(ZB*RD*ZT0))**2)
+ZTAU2 = (ZK+2._JPRB)/2._JPRB* &
+ &      (ZTE-ZTP)/(ZTE*ZTP)* &
+ &      (1._JPRB-2._JPRB*(ZPHIF(JWORD,JLEV )/(ZB*RD*ZT0))**2)* &
+ &      exp(-(ZPHIF(JWORD,JLEV )/(ZB*RD*ZT0))**2)
+
+ZT(JWORD,JLEV)=1._JPRB/(ZTAU1-ZTAU2*ZIT(JWORD))
+ENDDO
+ENDDO
+!!! LOOP for adjustment Z/T
+ENDDO
+
+
+!       Prescribe wind
+
+DO JLEV=1,NFLEVG
+DO JWORD = 1,NGPTOT
+  ZZZ = ZPHIF(JWORD,JLEV )/RG
+  ZTAU2 = (ZK+2._JPRB)/2._JPRB* &
+ &        (ZTE-ZTP)/(ZTE*ZTP)* &
+ &        ZZZ * &
+ &        exp(-(ZPHIF(JWORD,JLEV )/(ZB*RD*ZT0))**2)
+  ZUU = RG*ZK/RA*ZTAU2* &
+ &      (cos(YDGSGEOM_NB%GELAT(JWORD))**(INK-1) &
+ &      -cos(YDGSGEOM_NB%GELAT(JWORD))**(INK+1)) &
+ &      * ZT(JWORD,JLEV)
+  ZU(JWORD,JLEV) = -ROMEGA*RA*cos(YDGSGEOM_NB%GELAT(JWORD)) + &
+&                  sqrt( (ROMEGA*RA*cos(YDGSGEOM_NB%GELAT(JWORD)))**2 + &
+&                  (RA*cos(YDGSGEOM_NB%GELAT(JWORD))*ZUU) )
+
+
+  ZV(JWORD,JLEV) = 0.0_JPRB
+
+! add perturbation
+  ZR= RA*ACOS(SIN(ZLATC)*SIN(YDGSGEOM_NB%GELAT(JWORD))+ &
+   & COS(ZLATC)*COS(YDGSGEOM_NB%GELAT(JWORD))* &
+   & COS(YDGSGEOM_NB%GELAM(JWORD)-ZLONC))
+
+  IF (ZR<ZRp) THEN
+    IF (ZZZ<Zp) THEN
+    ZZp=1.0_JPRB-3.0_JPRB*(ZZZ/Zp)**2+2._JPRB*(ZZZ/Zp)**3
+    ZU(JWORD,JLEV) =ZU(JWORD,JLEV) + &
+&                   ZUP*ZZp*exp(-(ZR/ZRp)**2)
+    ENDIF
+  ENDIF
+
+  ZLATC = -ZLATC
+  ZR= RA*ACOS(SIN(ZLATC)*SIN(YDGSGEOM_NB%GELAT(JWORD))+ &
+   & COS(ZLATC)*COS(YDGSGEOM_NB%GELAT(JWORD))* &
+   & COS(YDGSGEOM_NB%GELAM(JWORD)-ZLONC))
+
+  IF (ZR<ZRp) THEN
+    IF (ZZZ<Zp) THEN
+    ZZp=1.0_JPRB-3.0_JPRB*(ZZZ/Zp)**2+2._JPRB*(ZZZ/Zp)**3
+    ZU(JWORD,JLEV) =ZU(JWORD,JLEV) + &
+&                   ZUP*ZZp*exp(-(ZR/ZRp)**2)
+    ENDIF
+  ENDIF
+ENDDO
+ENDDO
+!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! compute temperature from virtual temperature
+
+ZPHIW=2._JPRB*RPI/9._JPRB
+! if dry case
+IF (KTESTCASE == 161) THEN
+ZQ0=0.0_JPRB
+ELSE
+! moist case
+ZQ0=0.018_JPRB
+ENDIF
+ZVP00 = 1.E5_JPRB
+ZVPW = 34000._JPRB
+
+DO JWORD = 1,NGPTOT
+  DO JLEV = 1, NFLEVG
+      ZVETAF(JWORD,JLEV)=ZPRESF(JWORD,JLEV)/ZVP00
+      ZQ(JWORD,JLEV) = ZQ0 * exp(-(YDGSGEOM_NB%GELAT(JWORD)/ZPHIW)**4) &
+ &                     *exp(-((ZVETAF(JWORD,JLEV)-1._JPRB)*ZVP00/ZVPW)**2)
+      ZQ(JWORD,JLEV) = MAX(ZQ(JWORD,JLEV),1.E-12_JPRB)
+
+      ZT(JWORD,JLEV)=ZT(JWORD,JLEV)/(1._JPRB+(RMV/RMD)*ZQ(JWORD,JLEV))
+  ENDDO
+ENDDO
+!!!! From GP space to SP space
+! set spectral orography
+POROG=0._JPRB
+!!! VOR/DIV in spectral space
+PVOR=0._JPRB
+PDIV=0._JPRB
+CALL UVSPE(YDGEOMETRY,PVOR,PDIV,ZU,ZV,NFLEVL,NFLEVG,1)
+! spectral temperature
+CALL REESPE(YDGEOMETRY,NFLEVL,NFLEVG,PTEMP,ZT)
+! spectral surface pressure
+CALL REESPE(YDGEOMETRY,1,1,PLNSP,ZPSP)
+
+WRITE(NULOUT,'(''END OF GMV computation in suspecg2 for NTESTCASE=161/162'')')
+
+!==================================================================
+! Case 181:  Supercell
+ELSEIF( (KTESTCASE == 181)) THEN
+!==================================================================
+! Prescribe surface pressure
+! constant surface pressure
+ZVP00 = 1.E5_JPRB
+!DO JWORD=1,NGPTOT
+!  ZPSP(JWORD) = LOG(ZVP00)
+!ENDDO
+! Temperature : the profiles are given as a function of z
+! need an iteration to get T as phi and phi as T
+! 1st Guess for T, to compute first guess for Z
+ZT0=300._JPRB
+ZTR=213._JPRB
+ZTHR=343._JPRB
+ZT = ZT0
+ZRDGAZ = RD
+ZZR=12000._JPRB
+ZZTOP=20000._JPRB
+
+DO JWORD = 1,NGPTOT
+  ZPHI(JWORD,NFLEVG) = 0.0_JPRB
+ENDDO
+
+!!! SURFACE PRESSURE
+!ZUs=30._JPRB
+!ZUc=15._JPRB
+!ZUc=0._JPRB
+DO JWORD = 1,NGPTOT
+!  ZPRESH(JWORD,NFLEVG)=ZVP00
+!   ZZ = 0.5_JPRB*(ZUs-ZUc)**2
+!   ZZ=ZZ/(RD*ZT0)
+!   ZPSP(JWORD) = LOG(ZVP00)-ZZ*YDGSGEOM_NB%GEMU(JWORD)**2
+   ZPSP(JWORD) = LOG(ZVP00)
+   ZPRESH(JWORD,NFLEVG)=EXP(ZPSP(JWORD))
+ENDDO
+
+CALL GPHPRE (NGPTOT,NFLEVG,1,NGPTOT,YDVAB,YDCVER,ZPRESH,PXYB=ZXYB,PRESF=ZPRESF)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! LOOP for adjustment Z/T
+DO ILOOP=1,10
+!!! LOOP for adjustment Z/T
+
+! compute geopotentiel of reference atmosphere
+  CALL GPGEO (NGPTOT,1,NGPTOT,NFLEVG,&
+              & ZPHI, ZPHIF, &
+              & ZT,ZRDGAZ,ZXYB(1,1,YYTXYB%M_LNPR),&
+              & ZXYB(1,1,YYTXYB%M_ALPH),YDVERT_GEOM)
+! Potential temperature field
+DO JWORD = 1,NGPTOT
+ILEVTOP= NFLEVG
+DO JLEV = NFLEVG,1,-1
+  ZZZ = ZPHIF(JWORD,JLEV )/RG
+  IF (ZZZ<ZZR) THEN
+    ZT(JWORD,JLEV)= (ZT0+(ZTHR-ZT0)*(ZZZ/ZZR)**(5._JPRB/4._JPRB)) &
+ &                  *(ZPRESF(JWORD,JLEV)/RATM)**(RD/RCPD)
+  ELSEIF (ZZZ<ZZTOP) THEN
+    ZT(JWORD,JLEV)= (ZTHR*exp(RG*(ZZZ-ZZR)/RCPD/ZTR)) &
+ &                  *(ZPRESF(JWORD,JLEV)/RATM)**(RD/RCPD)
+    ILEVTOP=MIN(ILEVTOP,JLEV)
+  ELSE
+    ZT(JWORD,JLEV)= ZT(JWORD,ILEVTOP)
+  ENDIF
+ENDDO
+ENDDO
+!!! LOOP for adjustment Z/T
+ENDDO
+
+! Add temperature perturbation
+ZDTH=3._JPRB
+ZLATC=0._JPRB
+ZLONC=0._JPRB
+ZRH=10000._JPRB
+ZRC=1500._JPRB
+DO JLEV = 1, NFLEVG
+DO JWORD = 1,NGPTOT
+  ZZZ = ZPHIF(JWORD,JLEV )/RG
+  ZR= RA*ACOS(SIN(ZLATC)*SIN(YDGSGEOM_NB%GELAT(JWORD))+ &
+ & COS(ZLATC)*COS(YDGSGEOM_NB%GELAT(JWORD))* &
+ & COS(YDGSGEOM_NB%GELAM(JWORD)-ZLONC))
+  ZRTH= SQRT((ZR/ZRH)**2+((ZZZ-ZRC)/ZRC)**2)
+  IF (ZRTH<1._JPRB) THEN
+  ZT(JWORD,JLEV)=ZT(JWORD,JLEV) + &
+ &               ZDTH*cos(RPI/2._JPRB*ZRTH)**2 &
+ &                *(ZPRESF(JWORD,JLEV)/RATM)**(RD/RCPD)
+  ENDIF
+ENDDO
+ENDDO
+
+!wind
+ZUs=30._JPRB
+ZUc=15._JPRB
+!ZUc=0._JPRB
+ZZs=5000._JPRB
+ZDZU=1000._JPRB
+DO JLEV=1,NFLEVG
+DO JWORD = 1,NGPTOT
+  ZZZ = ZPHIF(JWORD,JLEV )/RG
+  IF (ZZZ<(ZZs-ZDZU)) THEN
+    ZU(JWORD,JLEV) = (ZUs*ZZZ/ZZs-ZUc) &
+ &                *cos(YDGSGEOM_NB%GELAT(JWORD))
+  ELSEIF (ZZZ<(ZZs+ZDZU)) THEN
+    ZU(JWORD,JLEV)=( (-4._JPRB/5._JPRB + 3._JPRB*ZZZ/ZZs &
+ &                - 5._JPRB/4._JPRB*ZZZ**2/ZZs**2)*ZUs - ZUc) &
+ &                *cos(YDGSGEOM_NB%GELAT(JWORD))
+  ELSE
+    ZU(JWORD,JLEV) = (ZUs-ZUc)*cos(YDGSGEOM_NB%GELAT(JWORD))
+  ENDIF
+  ZV(JWORD,JLEV) = 0._JPRB
+ENDDO
+ENDDO
+
+!!!! From GP space to SP space
+! spectral surface pressure
+CALL REESPE(YDGEOMETRY,1,1,PLNSP,ZPSP)
+! set spectral orography
+POROG=0._JPRB
+!!! VOR/DIV in spectral space
+PVOR=0._JPRB
+PDIV=0._JPRB
+CALL UVSPE(YDGEOMETRY,PVOR,PDIV,ZU,ZV,NFLEVL,NFLEVG,1)
+! spectral temperature
+CALL REESPE(YDGEOMETRY,NFLEVL,NFLEVG,PTEMP,ZT)
+
+WRITE(NULOUT,'(''END OF GMV computation in suspecg2 for NTESTCASE=181'')')
+ELSE
+  WRITE(NULERR,'('' INVALID SETUP NTESTCASE FOR DCMIP16 FAMILY'')')
+  CALL ABOR1(' INVALID SETUP NTESTCASE FOR DCMIP16 FAMILY')
+ENDIF
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUDCMIP16_SPEC',1,ZHOOK_HANDLE)
+END SUBROUTINE SUDCMIP16_SPEC

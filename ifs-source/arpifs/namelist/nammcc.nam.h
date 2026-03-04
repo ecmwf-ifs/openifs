@@ -1,0 +1,21 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+!     ------------------------------------------------------------
+NAMELIST/NAMMCC/&
+  &LCURR,LGELATO,LMCC01_MSE,LMCC01,LMCC02,LMCC03,LMCC04,LMCC05,LMCCEC,LMCCIEC, &
+  &LMCCICEIC,N923,NOACOMM,NFRCPL,LNEMOCOUP,LNEMOFLUXNC,LNEMO1WAY, &
+  &LMCCDYNSEAICE,LNEMOLIMGET,LNEMOLIMPUT,LNEMOLIMALB,LNEMOLIMTEMP, &
+  &LNEMOLIMTHK,LMULTIYR,LMCC_COMPO,LNEMOATMFLDS,LNEMOIFSLOG,NSSTICEOP,&
+  &LNEMOSSTFREEZ,LNEMOLIMTLVL,LNEMOOCEICEMIX,LNEMOQNSICEFILT,LNEMOSICOUP,&
+  &LNEMOGRIBFLDS,LNEMOPARTCOUP,LNEMOPARTMASK,RNPARTRAMPSTART,RNPARTRAMPLEN,&
+  &RNPARTLAT,RNPARTLATSPREAD,LNEMOPARTMASKFILE,CDNPARTMASKFILE,LNEMOGRIB3D,&
+  &NNEMO3DLEVS,LNEMOGRIBMASK,LNEMOOUTGRB,L2DECV2NEMO,LCOUPINFOUT

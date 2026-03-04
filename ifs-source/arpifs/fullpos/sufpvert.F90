@@ -1,0 +1,123 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE SUFPVERT(YDFPVAB,YDVAB,YDNAMFPV)
+
+!**** *SUFPVERT*  - INITIALIZE OUTPUT VERTICAL ETA COORDINATE (Full-POS)
+
+!     PURPOSE.
+!     --------
+!        ALLOCATE AND FILL THE STRUCTURE DEFINING THE VERTICAL ETA COORDINATE OF POST-PROCESSED FIELDS
+!        FROM THE NAMELIST VARIABLES THEN CONTROL ITS CONSISTENCY
+
+
+!**   INTERFACE. *CALL* *SUFPVERT*
+!     ----------
+
+!        EXPLICIT ARGUMENTS :
+!        ------------------
+!          POST-PROCESSED FIELDS LIST (STRUCTURE)
+
+!        IMPLICIT ARGUMENTS
+!        ------------------
+
+!     EXTERNALS.
+!     ----------
+
+!     AUTHOR.    RYAD EL KHATIB *METEO-FRANCE*
+!     -------
+!        ORIGINAL : 23-Mar-2017
+
+!     MODIFICATIONS.
+!     --------------
+!-----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMLUN   , ONLY : NULOUT
+USE YOMCT0   , ONLY : LIOLEVG
+USE YOMFPC   , ONLY : LTRACEFP
+USE YOMFPG   , ONLY : TNAMFPV
+USE YOMVERT  , ONLY : TVAB, ALLOC_INIT_TVAB
+
+!-----------------------------------------------------------------------
+
+IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+
+TYPE(TVAB), INTENT(OUT) :: YDFPVAB
+TYPE(TVAB), INTENT(IN), OPTIONAL :: YDVAB
+TYPE(TNAMFPV), INTENT(IN), OPTIONAL :: YDNAMFPV
+
+INTEGER(KIND=JPIM) :: IERR, JLEV, ILEV
+REAL(KIND=JPRB) :: ZEPS, ZVAL
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!-----------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+
+!-----------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPVERT',0,ZHOOK_HANDLE)
+
+
+!*       1. ALLOCATE AND INITIALIZE
+!           -----------------------
+
+IF (PRESENT(YDVAB)) THEN
+  ILEV=UBOUND(YDVAB%VBH,DIM=1)
+  CALL ALLOC_INIT_TVAB(ILEV,YDVAB%VAH(0:ILEV),YDVAB%VBH(0:ILEV),YDFPVAB)
+ELSEIF(PRESENT(YDNAMFPV)) THEN
+  ILEV=YDNAMFPV%NFPLEV
+  CALL ALLOC_INIT_TVAB(ILEV,YDNAMFPV%FPVALH(0:ILEV),YDNAMFPV%FPVBH(0:ILEV),YDFPVAB)
+ELSE
+  CALL ABOR1('SUFPVERT : EITHER YDVAB OR YDNAMFPV SHOULD BE PRESENT !')
+ENDIF
+
+!*       2. PRINT OUT FINAL VALUES
+!           ----------------------
+
+IF (LTRACEFP) THEN
+  WRITE(UNIT=NULOUT,FMT='('' NFPLEV  = '',I6)') UBOUND(YDFPVAB%VBH,DIM=1)
+  DO JLEV = LBOUND(YDFPVAB%VBH,DIM=1), UBOUND(YDFPVAB%VBH,DIM=1)
+    WRITE(UNIT=NULOUT,FMT = '('' FPVALH('',I2,'') = '',F12.6,''     FPVBH('',I2,'') = '',F12.10)') &
+     & JLEV,YDFPVAB%VAH(JLEV),JLEV,YDFPVAB%VBH(JLEV)  
+  ENDDO
+ENDIF
+
+
+!*       3. CONTROL VALIDITY OF COORDINATES
+!           -------------------------------
+
+ZEPS = EPSILON(1.0_JPRB)*10000._JPRB
+IERR = 0
+
+IF (LIOLEVG) THEN
+  ! Only the bottom value needs to be checked
+  ZVAL=YDFPVAB%VBH(LBOUND(YDFPVAB%VBH,DIM=1))
+  IF (ABS(ZVAL) > ZEPS) THEN  
+    IERR=IERR+1
+    WRITE(NULOUT,*)  ' WRONG UPPER LIMIT FPVBH ',ZVAL
+  ENDIF
+ENDIF
+
+ZVAL=YDFPVAB%VAH(UBOUND(YDFPVAB%VAH,DIM=1))
+IF (ABS(ZVAL) > ZEPS) THEN  
+  IERR=IERR+1
+  WRITE(NULOUT,*)  ' WRONG BOTTOM LIMIT FPVALH ',ZVAL
+ENDIF
+ZVAL=YDFPVAB%VBH(UBOUND(YDFPVAB%VBH,DIM=1))
+IF (ABS(ZVAL-1.0_JPRB) > ZEPS) THEN  
+  IERR=IERR+1
+  WRITE(NULOUT,*)  ' WRONG BOTTOM LIMIT FPVBH ',ZVAL
+ENDIF
+
+IF (IERR > 0) CALL ABOR1('SUFPVERT: ABOR1 CALLED')
+
+!-----------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUFPVERT',1,ZHOOK_HANDLE)
+END SUBROUTINE SUFPVERT

@@ -1,0 +1,1416 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE CNT4(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,YDGOM5,YDODB,YDFPOS)
+
+!**** *CNT4*  - Controls integration job at level 4
+
+!     Purpose.
+!     --------
+!     CONTROLS THE INTEGRATION
+
+!**   Interface.
+!     ----------
+!        *CALL* *CNT4
+
+!        Explicit arguments :
+!        --------------------
+!        None
+
+!        Implicit arguments :
+!        --------------------
+!        None
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by CNT3.
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Mats Hamrud and Philippe Courtier  *ECMWF*
+!      Original : 87-10-15
+
+! Modifications
+! -------------
+!   F. Vana   13-Jan-2009 removed special set up of specHD when SLHD
+!   S. Riette     18-May-2009 mean cls wind added
+!   A. Alias     : Aug-2009 Arguments added/modified to MONIO for surfex output files
+!                  CDCONF(1:1)='S' for surfex only/ CDCONF(1:1)='Q' for surfex and hist files
+!                  CDCONF(1:1)='L' for surfex and LLWRRE files
+!                  LCALLSFX added to allow at NSTEP=0 to call SURFEX only one time
+!   K. Yessad (Aug 2009): remove LSITRIC option
+!   K. Yessad (Dec 2009): CLCONF(4:4)='A' for corrector step too.
+!   S. Riette     24-fev-2010 computation of gusts over NXGSTPERIOD seconds
+!   K. Yessad (Jan 2011): new architecture for LBC modules and set-up.
+!   N. Wedi (Nov 2011): removed suhdfvareps
+!   A. Geer (Mar 2012): LPREMPOBS option lost with GOM cleaning
+!   K. Yessad (Feb 2012): various contributions.
+!   R. El Khatib : 01-Mar-2012 LFPOS => NFPOS
+!   R. El Khatib : 16-Jul-2012 Fullpos move away from STEPO
+!   R. El Khatib : 31-Aug-2012 Remove argument to DYNFPOS
+!   R. El Khatib : 25-Apr-2013 Remove Fullpos in last call to STEPO
+!   J Hague      : 01-Aug-2013 Add L_OOPS for OOPS testing
+!   P.Marguinaud : 10-Oct-2013 IO server sync, remove calls to WRCFUPP & WRXFUPP
+!   T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!   F. Bouttier  : 28-Nov-2013 add LGUSTBYPOS gust trigger mechanism
+!   F. Vana         5-Dec-2013 arguments update for GET_TRAJ_SPEC
+!   R. El Khatib 04-Aug-2014 Pruning of the conf. 927/928
+!   R. El khatib 16-May-2014 Optimization of in-line/off-line post-processing reproducibility
+!   P.Marguinaud : 10-Oct-2014 Read coupling files with the IO server
+!   P.Marguinaud 10-Oct-2014 Fix bug when (LFPPACKING=F)
+!   R. El Khatib 12-Dec-2014 replace odb routine util_cgetenv by f2003 intrinsic get_environment_variable
+!   K. Yessad (July 2014): Move some variables.
+!   F. Vana  05-Mar-2015  Support for single precision
+!   R. El Khatib : 01-Dec-2014 EC_DATE_AND_TIME
+!   R. El Khatib : 03-Jul-2015 Modularization
+!   A. Geer       27 Jul 2015 More OOPS cleaning: VARBC by argument
+!   R. El Khatib : 10-Dec-2015 KSTEP to SIGPOST, GRIDFPOS, DYNFPOS
+!   R. El Khatib 07-Mar-2016 Pruning of ISP
+!   O. Marsden    August 2016 Removed use of SPA3
+!   K. Yessad (Dec 2016): Prune obsolete options.
+!   P. Lean       22 Mar 2017 OOPS cleaning: Jo-table by argument
+!   K. Yessad (June 2017): Introduce NHQE model.
+!   Y. Seity  (Sept 2017): add LRESET_GST* and remove LGUST_BYPOS
+!   R. El Khatib  04-Jun-2018 refactor suct1 against monio
+!   K. Yessad (June 2018): Alternate NHEE SI scheme elimination.
+!   R. El Khatib 05-Jun-2018 computation of xfu periods moved to cpxfu (OOPS refactoring)
+!   R. El Khatib 09-Jul-2018 Initialize physical diag. by call to stepo(inv trans, lsprt conv.) and stepx.F90
+!   R. Hogan  (Jan  2019): Removed Cycle 15 radiation scheme
+!   S. Massart    19-Feb-2019 Solar constant optimisation
+!   H Petithomme Oct-2019 replace conservation routines/algo, from cormass to conserv
+!   M. Chrust (Jan 2020): OOPS cleaning: Model error config type replaces globals
+! End Modifications
+!      ----------------------------------------------------------------
+
+USE TYPE_MODEL    , ONLY : MODEL
+USE GEOMETRY_MOD  , ONLY : GEOMETRY
+USE FIELDS_MOD    , ONLY : FIELDS
+USE MTRAJ_MOD     , ONLY : MTRAJ
+USE PARKIND1      , ONLY : JPRD, JPIM, JPRB
+USE YOMHOOK       , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN        , ONLY : NULOUT   ,NULNAM
+USE JO_TABLE_MOD  , ONLY : JO_TABLE
+USE YOMCT0        , ONLY : NCONF, &
+ &                         NFRPOS   ,NFRHIS   ,NFRSFXHIS  ,NFRGDI   ,NFRSDI   ,NHISTS,  NHISTSMIN, &
+ &                         NFRDHFG  ,NFRDHFZ  ,NFRDHFD  ,NFRDHP     ,NFRCO    ,LARPEGEF ,NMASSCONS, &
+ &                         NGDITS   ,NSDITS   ,NDHFGTS  ,NDHFZTS  ,NDHFDTS  ,NDHPTS, NFRMASSCON,LFDBOP   ,&
+ &                         NSFXHISTS,NPOSTS   ,NPOSTSMIN,LSMSSIG  , LIFSMIN  ,&
+ &                         NSFXHISTSMIN, LOBSC1   ,LOBSREF  ,LELAM    ,LNF      ,LR2D     ,&
+ &                         LOBS,NFRCORM,L_OOPS,LCONSERV,LCORWAT
+USE YOMCT1        , ONLY : N1POS    ,N1HIS    ,N1GDI    ,N1SDI    ,N1MASSCON, N1RES    ,N1SFXHIS
+USE YOMCT2        , ONLY : NSTAR2   ,NSTOP2
+USE YOMCT3        , ONLY : NSTEP
+USE YOMVAR        , ONLY : NSIMU    ,NFRREF   ,NFRANA   ,&
+ &                         NFRGRA   ,NSIM4DL  ,LTWANA  ,LMODERR  ,LJCDFI, LECV
+USE YOMPPC        , ONLY : NRSACCFRQ, NRSACCOFF, NFPPHY,MFPPHY
+USE YOMRES        , ONLY : NFRRES   ,NRESTS
+USE YOMCHK        , ONLY : LECHKEVO ,NFRQCHK
+USE YOMINI        , ONLY : LDFI     ,LSCRINI
+USE YOMMP0        , ONLY : MYPROC   ,NOUTTYPE ,NPROC    ,NPRINTLEV
+USE YOMTIM        , ONLY : RSTART   ,RVSTART  ,RTIMEF
+USE YOMVRTL       , ONLY : L131TL   ,LOBSTL
+USE MPL_MODULE    , ONLY : MPL_BARRIER
+USE YOMECTAB      , ONLY : YECVAR, MTSLOTNO
+USE TRAJECTORY_MOD, ONLY : LTRAJGP, LTRAJHR,LTRAJHR_ALTI,&
+ &                         LREADGPTRAJ, LTRAJSAVE,&
+ &                         GET_TRAJ_SPEC, READ_TRAJECTORY
+USE YOMTRAJ       , ONLY : TRAJEC
+USE YOMSIG        , ONLY : RESTART
+USE YOMMODERR     , ONLY : YGMODERRCONF, SPMODERR, GPMODERR
+USE YOMJQ         , ONLY : LSTATMERR
+USE YOMDFI        , ONLY : NSTDFI, NOFFSETDFI
+USE YOMJCDFI      , ONLY : NSUBDFI
+USE YOMVAREPS     , ONLY : LVAREPS
+USE YOMCHET       , ONLY : GCHETN
+USE YEMJK         , ONLY : LEJK
+USE YOMGWDIAG     , ONLY : PRINT_GWDIAG,LGWDIAGS_ON
+USE YOMIO_SERV    , ONLY : IO_SERV_C001
+USE YOMIO_SERV_HDR, ONLY : NIO_SERV_HDR_TYPE_CLO
+USE VARBC_CLASS   , ONLY : CLASS_VARBC
+USE TOVSCV_MOD    , ONLY : TOVSCV
+USE YOMFP_SERV    , ONLY : FP_SERV_C001, &
+ &                         NFP_SERV_SYN_TYPE_STO, &
+ &                         NFP_SERV_SYN_TYPE_CLO
+USE SUPERGOM_CLASS, ONLY : CLASS_SUPERGOM
+USE DBASE_MOD     , ONLY : DBASE
+USE YOMFPC        , ONLY : LOCEDELAY
+USE FULLPOS       , ONLY : TFPOS, TFPDATA
+USE CPLNG         , ONLY : CPLNG_EXCHANGE
+USE COUPLING      , ONLY : CPL_NEMO_LIM, CPL_STAGE_OCE_SND
+USE SPECTRAL_FIELDS_MOD, ONLY : ASSIGNMENT(=), SPECTRAL_NORM
+USE ALGORITHM_STATE_MOD, ONLY : GET_NSIM4D
+USE GMV_SUBS_MOD
+USE CONSERVE
+USE YOMJBECV      , ONLY : YRECV5
+USE YOMJBPAR1DECV , ONLY : GET_VALUE_FROM_ECV
+!      ----------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)      ,INTENT(INOUT) :: YDGEOMETRY
+TYPE(FIELDS)        ,INTENT(INOUT) :: YDFIELDS
+TYPE(MTRAJ)         ,INTENT(INOUT) :: YDMTRAJ
+TYPE(MODEL)         ,INTENT(INOUT) :: YDMODEL
+TYPE(JO_TABLE)      ,INTENT(INOUT) :: YDJOT
+CLASS(DBASE)        ,INTENT(INOUT) :: YDODB
+TYPE(CLASS_VARBC)   ,OPTIONAL,INTENT(INOUT) :: YDVARBC
+TYPE(TOVSCV)        ,OPTIONAL,INTENT(IN)    :: YDTCV
+TYPE(CLASS_SUPERGOM),OPTIONAL,INTENT(INOUT) :: YDGOM5
+TYPE(TFPOS)         ,OPTIONAL,INTENT(IN)    :: YDFPOS
+
+CHARACTER (LEN = 9)  ::  CLCONF
+CHARACTER (LEN = 20) ::  CLCOMMAND
+CHARACTER (LEN = 1)  ::  CLENV
+
+CHARACTER (LEN = 7) ::  CL_CPENV
+CHARACTER (LEN = 8) ::  CL_CPENV_ECF
+PARAMETER ( CL_CPENV = "SMSNAME" )
+PARAMETER ( CL_CPENV_ECF = "ECF_NAME" )
+INTEGER(KIND=JPIM) :: IACTIM, ILAG, IFPLAG, &
+ & IOUTTYPE, ISTEP, &
+ & ISTOP, ITIME, J, JSTEP, JSITER, JJ, IDIGLST, IPERSUB, ISUB
+
+! Fullpos fields-dependent or time-dependent auxilary data
+TYPE(TFPDATA) :: YLFPDATA
+
+REAL(KIND=JPRB),ALLOCATABLE :: ZMCUFGP (:,:,:)
+
+LOGICAL :: LLCOLA,&
+ & LLECH, LLFDBOP,&
+ & LLMLPP, LLSMLPP, &
+ & LLPLPP, LLSLOT, LLFPOS, LLOCEDELAY, LLOCE, &
+ & LLSPNRM, LLGPNRM, LLSTOP, LLSTRC, LLWRRC, LLWRRE,&
+ & LLWRRW, LLWRTRA, LLWVTIME, LLOBSC1,&
+ & LLTLEVOL,LLASTRAJ,LLEVS,LLAGHIS, LLMASCOR,&
+ & LLIFI, LLSWAP, LLELSRW,&
+ & LLTIMER, LLDATER,&
+ & LLSPECTRAL, LLNEMOUPD,LLCORM
+
+REAL(KIND=JPRD) :: ZCT, ZT1, ZT2, ZVT, ZWT
+REAL(KIND=JPRB) :: ZMDLTIME
+
+! - IPOSTS : ARRAY CONTAINING POST-PROCESSING TIME STEPS
+INTEGER(KIND=JPIM) :: IPOSTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRPOS)
+! - IHISTS : ARRAY CONTAINING TRAJECTORY TIME STEPS
+INTEGER(KIND=JPIM) :: IHISTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRHIS)
+! - ISFXHISTS : ARRAY CONTAINING TRAJECTORY TIME STEPS FOR SURFACE
+INTEGER(KIND=JPIM) :: ISFXHISTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRSFXHIS)
+! - IMASSCONS: ARRAY CONTAINING mass conservation fixup time steps
+INTEGER(KIND=JPIM) :: IMASSCONS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRMASSCON)
+! - IRESTS : ARRAY CONTAINING RESTART TIME STEPS
+INTEGER(KIND=JPIM) :: IRESTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRRES)
+! - IGDITS : GRID POINT DIAGNOSTICS TIME STEPS
+INTEGER(KIND=JPIM) :: IGDITS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/MAX(1,NFRGDI))
+! - ISDITS : SPECTRAL DIAGNOSTICS TIME STEPS
+INTEGER(KIND=JPIM) :: ISDITS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/MAX(1,NFRSDI))
+! - IDHFGTS : WRITE OUT TIME STEPS FOR GLOBAL MEANS DDH
+INTEGER(KIND=JPIM) :: IDHFGTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRDHFG)
+! - IDHFZTS : WRITE OUT TIME STEPS FOR ZONAL MEANS DDH
+INTEGER(KIND=JPIM) :: IDHFZTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRDHFZ)
+! - IDHFDTS : WRITE OUT TIME STEPS FOR LIMITED AREAS DDH
+INTEGER(KIND=JPIM) :: IDHFDTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRDHFD)
+! - IDHPTS : PAS DE TEMPS DE SORTIES IMPRIMEES DES DDH
+INTEGER(KIND=JPIM) :: IDHPTS(YDMODEL%YRML_GCONF%YRRIP%NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRDHP)
+! - IANATS : ARRAY CONTAINING ITERATIONS FOR WHICH THE ANALYSIS
+INTEGER(KIND=JPIM) :: IANATS(0:NSIM4DL/NFRANA)
+INTEGER(KIND=JPIM) :: IGRATS(0:NSIM4DL/NFRGRA)
+INTEGER(KIND=JPIM) :: IREFTS(0:YDMODEL%YRML_GCONF%YRRIP%NSTOP/NFRREF)
+! - ILSGTS : ARRAY CONTAINING LSG TIMESTEPS
+
+
+
+! OIFS - dummy declaration to prevent break in moevar call when
+!        moevar dummy used in openifs
+INTEGER(KIND=JPIM) :: ILSGTS(0:0)
+
+! - IFPOSTS : ARRAY CONTAINING FULLPOS SUB-OBJECT TIME STEPS
+INTEGER(KIND=JPIM), ALLOCATABLE :: IFPOSTS(:)
+
+LOGICAL         :: LLFOUND
+REAL(KIND=JPRB) :: ZI05
+
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!      ----------------------------------------------------------------
+
+#include "user_clock.intfb.h"
+#include "abor1.intfb.h"
+#include "save_merr_tend.intfb.h"
+
+
+
+
+
+
+#include "cormass2.intfb.h"
+#include "cormass3b.intfb.h"
+#include "cormassdry.intfb.h"
+#include "dealmod.intfb.h"
+#include "chkevo.intfb.h"
+!#include "ecradfr.intfb.h"
+#include "elsrw.intfb.h"
+#include "evarjkini.intfb.h"
+#include "gpnorm_gfl.intfb.h"
+#include "moevar.intfb.h"
+#include "monio_t.intfb.h"
+#include "monvar.intfb.h"
+#include "reset_accfie_vareps.intfb.h"
+#include "sigcheck.intfb.h"
+#include "spnorm.intfb.h"
+#include "stepo.intfb.h"
+#include "stepx.intfb.h"
+#include "sucpl0.intfb.h"
+#include "sueheg.intfb.h"
+#include "suhdu.intfb.h"
+#include "suheg.intfb.h"
+#include "sunhsi.intfb.h"
+#include "sunheesi.intfb.h"
+#include "sunhqesi.intfb.h"
+#include "surand2.intfb.h"
+#include "updtim.intfb.h"
+#include "wrcoe.intfb.h"
+#include "wrcom.intfb.h"
+#include "wrcpl.intfb.h"
+#include "writechet.intfb.h"
+#include "wvcouple.intfb.h"
+#include "spmcuf.intfb.h"
+#include "gridpoint_norm.intfb.h"
+!#include "couplo4_definitions.intfb.h"
+#include "fullpos_drv.intfb.h"
+#include "chem_init.intfb.h"
+
+
+
+
+#include "chem_massdia.intfb.h"
+#include "couplnemo.intfb.h"
+#include "updnemoocean.intfb.h"
+#include "sugco0.intfb.h"
+#include "io_serv_sync.intfb.h"
+#include "erlbc_post_req.intfb.h"
+#include "posnam.intfb.h"
+#include "sigpost.intfb.h"
+#include "logdis.intfb.h"
+#include "gribioflush.intfb.h"
+#include "getnemodiag.intfb.h"
+#include "getnemodiag3d.intfb.h"
+
+#include "namoops.nam.h"
+#include "fp_serv_sync.intfb.h"
+#include "suinif_fp.intfb.h"
+
+!      ----------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('CNT4',0,ZHOOK_HANDLE)
+ASSOCIATE(YDGFL5=>YDMTRAJ%YRGFL5,YDGMV5=>YDMTRAJ%YRGMV5, YDGFL=>YDFIELDS%YRGFL,YDGMV=>YDFIELDS%YRGMV, &
+ & YDSURF=>YDFIELDS%YRSURF, YDSPEC=>YDFIELDS%YRSPEC, YDXFU=>YDFIELDS%YRXFU, YDCFU=>YDFIELDS%YRCFU, &
+ & YDDIM=>YDGEOMETRY%YRDIM, YDDIMV=>YDGEOMETRY%YRDIMV, YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP, &
+ & YDDYN=>YDMODEL%YRML_DYN%YRDYN,YDDYNA=>YDMODEL%YRML_DYN%YRDYNA,YDPHY=>YDMODEL%YRML_PHY_MF%YRPHY,YDPARAR=>YDMODEL%YRML_PHY_MF%YRPARAR, &
+ & YDLDDH=>YDMODEL%YRML_DIAG%YRLDDH,YDEPHLI=>YDMODEL%YRML_PHY_SLIN%YREPHLI, &
+ & YDCOMPO=>YDMODEL%YRML_CHEM%YRCOMPO,YDMCC=>YDMODEL%YRML_AOC%YRMCC,YDSTOPH=>YDMODEL%YRML_PHY_STOCH%YRSTOPH, &
+ & YDRIP=>YDMODEL%YRML_GCONF%YRRIP, YDEDYN=>YDMODEL%YRML_DYN%YREDYN, YDEWCOU=>YDMODEL%YREWCOU, &
+ & YGFL=>YDMODEL%YRML_GCONF%YGFL,YDEPHY=>YDMODEL%YRML_PHY_EC%YREPHY,YDCHEM=>YDMODEL%YRML_CHEM%YRCHEM)
+
+ASSOCIATE(NCHEM=>YGFL%NCHEM, NDIM=>YGFL%NDIM, NUMFLDS=>YGFL%NUMFLDS, &
+ & YCOMP=>YGFL%YCOMP, &
+ & GFUBUF=>YDCFU%GFUBUF, XFUBUF=>YDXFU%XFUBUF, &
+ & LCHEM_DIA=>YDCOMPO%LCHEM_DIA, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & NGPTOT=>YDGEM%NGPTOT, &
+ & GMASSINC=>YDDYN%GMASSINC, LFINDVSEP=>YDDYN%LFINDVSEP, &
+ & LGPMASCOR=>YDDYN%LGPMASCOR, LMASCOR=>YDDYN%LMASCOR, LMASDRY=>YDDYN%LMASDRY, &
+ & LRHDI_LASTITERPC=>YDDYN%LRHDI_LASTITERPC, LSIDG=>YDDYN%LSIDG, &
+ & LSTRHD=>YDDYN%LSTRHD, NCURRENT_ITER=>YDDYN%NCURRENT_ITER, &
+ & NSITER=>YDDYN%NSITER, NVSEPC=>YDDYN%NVSEPC, NVSEPL=>YDDYN%NVSEPL, &
+ & LESIDG=>YDEDYN%LESIDG, &
+ & LTLEVOL=>YDEPHLI%LTLEVOL, &
+ & LAGPHY=>YDEPHY%LAGPHY, LEPHYS=>YDEPHY%LEPHYS, &
+ & LFPOS_EC_PHYS=>YDEPHY%LFPOS_EC_PHYS, &
+ & LFPOS_ACC_RESET=>YDEPHY%LFPOS_ACC_RESET, &
+ & LWCOU=>YDEWCOU%LWCOU, NSTPW=>YDEWCOU%NSTPW, &
+ & GFL=>YDGFL%GFL, &
+ & YT0=>YDGMV%YT0, YT9=>YDGMV%YT9, YPH9=>YDGMV%YPH9, &
+ & LHDOUFD=>YDLDDH%LHDOUFD, LHDOUFG=>YDLDDH%LHDOUFG, LHDOUFZ=>YDLDDH%LHDOUFZ, &
+ & LHDOUP=>YDLDDH%LHDOUP, LSDDH=>YDLDDH%LSDDH, &
+ & LHDEFD=>YDLDDH%LHDEFD, LHDEFG=>YDLDDH%LHDEFG, LHDEFZ=>YDLDDH%LHDEFZ, LHDPR=>YDLDDH%LHDPR, &
+ & LMCC03=>YDMCC%LMCC03, LMCC04=>YDMCC%LMCC04, LMCC05=>YDMCC%LMCC05, &
+ & LMULTIYR=>YDMCC%LMULTIYR, LNEMOCOUP=>YDMCC%LNEMOCOUP, NFRCPL=>YDMCC%NFRCPL, &
+ & NOACOMM=>YDMCC%NOACOMM,LNEMOGRIBFLDS=>YDMCC%LNEMOGRIBFLDS,LNEMOGRIB3D=>YDMCC%LNEMOGRIB3D, &
+ & NSTART=>YDRIP%NSTART,NSTOP=>YDRIP%NSTOP, TDT=>YDRIP%TDT, TSTEP=>YDRIP%TSTEP, &
+ & LSTOPH_CASBS=>YDSTOPH%LSTOPH_CASBS, &
+ & LSTOPH_SPBS=>YDSTOPH%LSTOPH_SPBS, &
+ & LXFU=>YDXFU%LXFU, &
+ & NFRXFU=>YDXFU%NFRXFU, &
+ & LECOBI=>YDMODEL%YRML_LBC%LECOBI, LMPHYS=>YDPHY%LMPHYS, LRAYFM=>YDPHY%LRAYFM, &
+ & LRAYFM15=>YDPHY%LRAYFM15,LCHEM_TL=>YDCHEM%LCHEM_TL,LMSE=>YDMODEL%YRML_PHY_MF%YRARPHY%LMSE)
+!      ----------------------------------------------------------------
+
+!*    1.    Initialize
+!           ----------
+
+WRITE(NULOUT,*)'START CNT4, NSIM4D=',GET_NSIM4D()
+
+CALL GSTATS(1845,0)
+IF(MYPROC==1.AND.LSMSSIG.AND.IO_SERV_C001%NPROC_IO == 0)CALL SIGMASTER()
+CALL GSTATS(1845,1)
+
+CALL GET_ENVIRONMENT_VARIABLE('EC_DATE_AND_TIME', CLENV)
+! EC_DATE_AND_TIME =  0 : no date nor time
+! EC_DATE_AND_TIME =  1 : time only
+! EC_DATE_AND_TIME = -1 : date only
+! EC_DATE_AND_TIME =  any other value : date and time
+LLTIMER = (CLENV /= '0').AND.(CLENV /= '-1')
+LLDATER = (CLENV /= '0').AND.(CLENV /= '1')
+
+LLSTOP = .FALSE.
+LLWRRE = .FALSE.
+LLWRRC = .FALSE.
+LLWRRW = .FALSE.
+LLSTRC = .NOT. LWCOU
+LLTLEVOL = (NCONF/100 == 5.AND.LTLEVOL)
+LLOBSC1= LOBSC1 .AND. .NOT.LSCRINI
+LFPOS_ACC_RESET=.FALSE.
+
+CALL POSNAM(NULNAM,'NAMOOPS')
+READ(NULNAM,NAMOOPS)
+
+
+!*       1.2   Initial instantaneous fluxes.
+
+IF (.NOT. LNF) THEN
+  TDT=TSTEP
+  NSTEP=0
+  CALL UPDTIM(YDGEOMETRY,YDFIELDS%YRSURF,YDMODEL,0,TDT,TSTEP,.FALSE.)
+ENDIF
+
+IF ((NCONF == 1.OR.NCONF == 302).AND.NSTOP > 0 .AND. LNF .AND. .NOT.FP_SERV_C001%LFP_SERVER) THEN
+  IF (LXFU) THEN
+    CLCONF(1:9)='0AA000000'
+    NSTEP=0
+    CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF)
+  ENDIF
+  CALL STEPX(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL)
+ENDIF
+
+!*       1.3   Reset to 0 coupled fields
+
+IF(NFRCPL > 0.AND.NFRCPL <= NSTOP) THEN
+   CALL SUCPL0(YDGEOMETRY,YDMODEL%YRML_PHY_G%YRDPHY)
+ENDIF
+
+
+!*       1.6   Reset LLOCEDELAY if NSTOP<=0
+
+LLOCEDELAY=LOCEDELAY .AND. (NSTOP > 0)
+
+!      ----------------------------------------------------------------
+
+!*    2.       Prepare occurences of I/O events.
+!           ---------------------------------
+
+!*    2.1   POST-PROCESSING EVENTS
+CALL MONIO_T(NSTART,YDRIP,IPOSTS(NSTART:),N1POS,NFRPOS,NPOSTS,KN___TSMIN=NPOSTSMIN)
+!*    2.2.1   HISTORY EVENTS FOR ATMOSPHERE
+CALL MONIO_T(NSTART,YDRIP,IHISTS(NSTART:),N1HIS,NFRHIS,NHISTS,KN___TSMIN=NHISTSMIN)
+!*    2.2.2   HISTORY EVENTS FOR SURFEX (LMSE=.T.)
+CALL MONIO_T(NSTART,YDRIP,ISFXHISTS(NSTART:),N1SFXHIS,NFRSFXHIS,NSFXHISTS, &
+ & KN___TSMIN=NSFXHISTSMIN,LDACTIVE=LMSE)
+!*    2.3   GRID POINT DIAGNOSTICS
+CALL MONIO_T(NSTART,YDRIP,IGDITS(NSTART:),N1GDI,NFRGDI,NGDITS)
+CALL MONIO_T(NSTART,YDRIP,ISDITS(NSTART:),N1SDI,NFRSDI,NSDITS)
+!*    2.5   PRODUCTION DE FICHIER(S) DIAGNOSTICS DDH
+CALL MONIO_T(NSTART,YDRIP,IDHFGTS(NSTART:),1,NFRDHFG,NDHFGTS,LDACTIVE=LSDDH.AND.LHDEFG)
+CALL MONIO_T(NSTART,YDRIP,IDHFZTS(NSTART:),1,NFRDHFZ,NDHFZTS,LDACTIVE=LSDDH.AND.LHDEFZ)
+CALL MONIO_T(NSTART,YDRIP,IDHFDTS(NSTART:),1,NFRDHFD,NDHFDTS,LDACTIVE=LSDDH.AND.LHDEFD)
+!*    2.6   IMPRESSIONS DIAGNOSTICS DDH
+CALL MONIO_T(NSTART,YDRIP,IDHPTS(NSTART:),1,NFRDHP,NDHPTS,LDACTIVE=LSDDH.AND.LHDPR)
+!*    2.8   RESTART EVENTS
+IRESTS(:)=0
+CALL MONIO_T(NSTAR2+1/NFRRES,YDRIP,IRESTS((NSTAR2+1)/NFRRES:),N1RES,NFRRES,NRESTS)
+!*    3.2   Mass conservation fix-up
+CALL MONIO_T(NSTART,YDRIP,IMASSCONS(NSTART:),N1MASSCON,NFRMASSCON,NMASSCONS,LDCOND=(NFRMASSCON<=NSTOP))
+CALL MONVAR(YDRIP,IREFTS,IANATS,IGRATS)
+IF (PRESENT(YDFPOS)) THEN
+  IF (YDFPOS%YFPCNT%NFRFPOS /= 0) THEN
+    ALLOCATE(IFPOSTS(NSTART:YDMODEL%YRML_GCONF%YRRIP%NSTOP/YDFPOS%YFPCNT%NFRFPOS))
+    IF (ABS(YDFPOS%YFPCNT%NFPOSTSMIN(0)) > 0) THEN
+      CALL MONIO_T(NSTART,YDRIP,IFPOSTS(NSTART:),N1POS,YDFPOS%YFPCNT%NFRFPOS,YDFPOS%YFPCNT%NFPOSTS, &
+       & KN___TSMIN=YDFPOS%YFPCNT%NFPOSTSMIN)
+    ELSE
+      CALL MONIO_T(NSTART,YDRIP,IFPOSTS(NSTART:),N1POS,YDFPOS%YFPCNT%NFRFPOS,YDFPOS%YFPCNT%NFPOSTS)
+    ENDIF
+  ENDIF
+ENDIF
+IF (LELAM) THEN
+  CALL MOEVAR(YDRIP,YDMODEL%YRML_LBC,ILSGTS)
+ENDIF
+
+IF (NPRINTLEV >= 1) THEN
+  WRITE(NULOUT,'('' POST-PROCESSING EVENTS, IPOSTS '')')
+  WRITE(NULOUT,'(40I2)')IPOSTS
+  IF (PRESENT(YDFPOS)) THEN
+    WRITE(NULOUT,'('' FULLPOS SUB-OBJECT EVENTS, IFPOSTS '')')
+    WRITE(NULOUT,'(40I2)')IFPOSTS
+  ENDIF
+  WRITE(NULOUT,'('' HISTORY WRITE-UP, IHISTS '')')
+  WRITE(NULOUT,'(40I2)')IHISTS
+  WRITE(NULOUT,'('' HISTORY SURFACE WRITE-UP, ISFXHISTS '')')
+  WRITE(NULOUT,'(40I2)')ISFXHISTS
+  WRITE(NULOUT,'('' MASS CONSERVATION FIXUP, IMASSCONS '')')
+  WRITE(NULOUT,'(40I2)')IMASSCONS
+  WRITE(NULOUT,'('' RESTART WRITE-UP, IRESTS '')')
+  WRITE(NULOUT,'(40I2)') IRESTS
+  WRITE(NULOUT,'('' SPECTRUM, ISDITS '')')
+  WRITE(NULOUT,'(40I2)')ISDITS
+  IF(NCONF == 1.OR.NCONF == 302) THEN
+    WRITE(NULOUT,'('' IDHFGTS '')')
+    WRITE(NULOUT,'(40I2)')IDHFGTS
+    WRITE(NULOUT,'('' IDHFZTS '')')
+    WRITE(NULOUT,'(40I2)')IDHFZTS
+    WRITE(NULOUT,'('' IDHFDTS '')')
+    WRITE(NULOUT,'(40I2)')IDHFDTS
+    WRITE(NULOUT,'('' IDHPTS '')')
+    WRITE(NULOUT,'(40I2)')IDHPTS
+  ENDIF
+  WRITE(NULOUT,'('' AN WRITE-OUT EVENTS, IANATS '')')
+  WRITE(NULOUT,'(40I2)') (IANATS(J),J=0,NSIMU/NFRANA)
+ENDIF
+LLWRTRA=.NOT.(NCONF/100 == 0.OR.NCONF/100 == 2.OR.NCONF == 302)
+IACTIM=1
+
+IF (NCHEM > 0 ) THEN
+  IF ( NCONF /= 131 ) THEN
+    CALL CHEM_INIT(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDMODEL%YRML_CHEM)
+  ELSE IF ( LCHEM_TL ) THEN
+    CALL CHEM_INIT_TLAD(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_CHEM)
+  END IF
+ENDIF
+
+!IF (LCOUPLO4_ENV) THEN
+!  CALL COUPLO4_DEFINITIONS
+!ENDIF
+
+!      ----------------------------------------------------------------
+
+!*    3.       Direct integration.
+!              -------------------
+
+CALL GSTATS(737,0)
+IF(NPROC > 1) THEN
+  CALL MPL_BARRIER(CDSTRING='CNT4:')
+ENDIF
+CALL GSTATS(737,1)
+CALL GSTATS(1,0)
+
+IF(NSTOP2 == NSTOP)THEN
+  ! For final time step (diagnostics, post-processing)
+  ISTOP=NSTOP
+ELSE
+  ISTOP=NSTOP2-1
+ENDIF
+
+
+IF (YDDYNA%LSLAG.AND.(NCONF == 131.OR.NCONF == 401.OR.NCONF == 601.OR.NCONF == 801)) THEN
+  LFINDVSEP=.TRUE.
+ELSE
+  LFINDVSEP=.FALSE.
+ENDIF
+
+!$! fine but this consistency test could have been put earlier, in some setup part
+IF (LCORWAT.AND.(.NOT.LMSE.OR.LELAM))&
+  CALL ABOR1("Error: global surfex scheme required for correction of water mass")
+
+IF (.NOT.LELAM.AND.(LCORWAT.OR.NFRCORM > 0)) THEN
+  WRITE(NULOUT,*) "Initializing values for mass/water conservation"
+  CALL CONSERVINI(YDGEOMETRY,YGFL,YDPHY,YDSPEC,GFL,NFRCORM > 0)
+END IF
+
+JSTEP = NSTAR2
+
+DO
+
+  IF (FP_SERV_C001%LFP_SERVER) THEN
+    CALL SUINIF_FP(FP_SERV_C001,YDGEOMETRY,YDSPEC,YDFIELDS%YRGFL,YDFIELDS%YRSURF,YDFIELDS%YRCFU,YDFIELDS%YRXFU,YDMODEL,JSTEP)
+  ENDIF
+
+  IF (JSTEP > ISTOP) EXIT
+
+  CALL USER_CLOCK(PTOTAL_CP=ZT1)
+
+  !*     3.1    Time filtering constraint based on digital filter is being computed.
+
+  IF (LJCDFI.AND.NCONF==1) THEN
+    ISUB=1
+    ! Step should be local to subwindow
+    IF (NSUBDFI>1) THEN
+      IPERSUB=NSTOP/NSUBDFI
+      ISTEP=MOD(JSTEP,IPERSUB)
+      ISUB=JSTEP/IPERSUB+1
+      ! Add final contribution to previous subwindow if needed
+      IF (ISTEP==0.AND.ISUB>1) THEN
+        WRITE(NULOUT,*)'CNT4: Calling DIGFIL, jstep,istep=',JSTEP,IPERSUB,ISUB-1
+        CALL DIGFIL(YDGEOMETRY, YDGFL, YDMODEL%YRML_GCONF, IPERSUB, IDIGLST, ISUB-1, &
+             &      YDFIELDS%YRSPEC%SP3D, YDFIELDS%YRSPEC%SP2D, YDFIELDS%YRSPEC%SP1D, .TRUE.)  !! were SPA3
+      ENDIF
+    ELSE
+      ISTEP=JSTEP-NOFFSETDFI
+    ENDIF
+    IDIGLST=2*NSTDFI
+    IF (ISTEP>=0 .AND. ISTEP<=IDIGLST .AND. ISUB<=NSUBDFI) THEN
+      IF (NSUBDFI>1) WRITE(NULOUT,*)'CNT4: Calling DIGFIL, jstep,istep=',JSTEP,ISTEP,ISUB
+      CALL DIGFIL(YDGEOMETRY,YDGFL,YDMODEL%YRML_GCONF,ISTEP,IDIGLST,ISUB, &
+ &                YDFIELDS%YRSPEC%SP3D,YDFIELDS%YRSPEC%SP2D,YDFIELDS%YRSPEC%SP1D, .TRUE.)
+    ENDIF
+  ENDIF
+
+  !*     3.2   Current value of the time step length
+
+  IF(JSTEP == 0.OR.YDDYNA%LTWOTL)THEN
+    TDT=TSTEP
+  ELSE
+    TDT=2.0_JPRB*TSTEP
+  ENDIF
+
+  !*     3.3   Reset of time dependant constants
+  !            (clock,astronomy,climatology...)
+  !            and send atmospheric fluxes to the ocean (if coupling)
+
+  IF(NFRCPL > 0.AND.NFRCPL <= NSTOP) THEN
+    IF(MOD(JSTEP,NFRCPL) == 0) THEN
+      IF(LMCC03) THEN
+        CALL WRCPL(YDGEOMETRY,YDMCC,YDMODEL%YRML_PHY_G%YRDPHY,YDRIP)
+      ENDIF
+    ENDIF
+    ! Lagged/not lagged physics outputs
+    LLAGHIS=(.NOT.LAGPHY).AND.(LMPHYS.OR.LEPHYS).AND.(NSTOP > 0)
+    IF ((IHISTS(ISTOP/NFRHIS) == 1.AND.MOD(ISTOP,NFRHIS) == 0).AND.LLAGHIS) THEN
+      ILAG=1
+    ELSE
+      ILAG=0
+    ENDIF
+    IF(JSTEP == ISTOP+ILAG) THEN
+      IF(LMCC05) THEN
+        CALL WRCOM(YDGEOMETRY,YDFIELDS%YRSURF,YDMODEL%YRML_AOC%YRCOM,YDRIP)
+      ENDIF
+    ENDIF
+  ENDIF
+
+  IF (NFRCORM /= 0) THEN
+    IF (JSTEP /= 0.AND.(NFRCORM > 0.AND.MOD(JSTEP,NFRCORM) == 0.OR.&
+      NFRCORM < 0.AND.MOD(JSTEP*TSTEP,ABS(NFRCORM)*3600._JPRB) == 0)) THEN
+      IF (LELAM) THEN
+        CALL CORMASS3B(YDGEOMETRY,YDEDYN,YDFIELDS%YRSPEC)
+      ELSE IF (.NOT.LCONSERV) THEN
+        CALL CORMASS2(YDGEOMETRY,YDFIELDS%YRSPEC)  !! was SPA3
+      ENDIF
+    ENDIF
+  ENDIF
+
+  IF (LECV) THEN
+    CALL GET_VALUE_FROM_ECV(YDGEOMETRY, YRECV5, 'SOLAR_CONSTANT', ZI05, LLFOUND)
+  ELSE
+    LLFOUND = .FALSE.
+  ENDIF
+  IF (LLFOUND) THEN
+    CALL UPDTIM(YDGEOMETRY,YDFIELDS%YRSURF,YDMODEL,JSTEP,TDT,TSTEP,.TRUE.,PI05=ZI05)
+  ELSE
+    CALL UPDTIM(YDGEOMETRY,YDFIELDS%YRSURF,YDMODEL,JSTEP,TDT,TSTEP,.TRUE.)
+  ENDIF
+  ! Update ocean fields from if previus time step was a coupled time step
+  ! or we are at the beginning of the run.
+#ifdef WITH_NEMO
+  IF(LMCC04.AND.LNEMOCOUP) THEN
+    IF(NSTAR2/=0) THEN
+      LLNEMOUPD=((MOD(JSTEP-1,NFRCO)==0).AND.(JSTEP>NSTAR2).AND..NOT.LLOCEDELAY).OR.(LLOCEDELAY.AND.(JSTEP==NSTAR2+1))
+    ELSE
+      LLNEMOUPD=((MOD(JSTEP-1,NFRCO)==0).AND.(JSTEP-1>0).AND..NOT.LLOCEDELAY).OR.(JSTEP==0)
+    ENDIF
+    IF(LLNEMOUPD) THEN
+      CALL GSTATS(33,0)
+      IF (LOCEDELAY.AND.(JSTEP==NSTAR2+1)) THEN
+        CALL UPDNEMOOCEAN(YDMCC,YDEPHY,YDRIP,NPROMA,NGPTOT,NSTAR2,TSTEP,YDFIELDS%YRSURF,YDGEOMETRY)
+      ELSE
+        CALL UPDNEMOOCEAN(YDMCC,YDEPHY,YDRIP,NPROMA,NGPTOT,JSTEP,TSTEP,YDFIELDS%YRSURF,YDGEOMETRY)
+      ENDIF
+      CALL GSTATS(33,1)
+      IF(LNEMOGRIBFLDS) THEN
+        CALL GSTATS(32,0)
+        CALL GETNEMODIAG(NGPTOT,NPROMA,JSTEP,YDFIELDS%YRSURF,YDMCC)
+        CALL GSTATS(32,1)
+      ENDIF
+      IF(LNEMOGRIB3D) THEN
+        CALL GSTATS(32,0)
+        CALL GETNEMODIAG3D(NGPTOT,NPROMA,JSTEP,YDFIELDS%YRSURF,YDMCC,YDGEOMETRY)
+        CALL GSTATS(32,1)
+      ENDIF
+    ENDIF
+  ENDIF
+#endif
+
+  !*     3.4   Reset semi-implicit solver in the multilevel model, and the
+  !            additional horizontal diffusion operator.
+
+  IF (NSTOP > 0.OR.LDFI) THEN
+    IF (.NOT.LELAM) THEN
+
+      ! * SI scheme:
+      IF (YDDYNA%LNHEE.AND.(.NOT.YDDYNA%LSI_NHEE)) THEN
+        CALL SUNHSI(YDGEOMETRY,YDRIP,YDDYN,YDEDYN,YDDYNA%LNESC,NULOUT,.FALSE.)
+      ELSEIF (YDDYNA%LNHEE.AND.YDDYNA%LSI_NHEE) THEN
+        CALL SUNHEESI(YDGEOMETRY,YDRIP,YDDYN,YDDYNA,NULOUT,.FALSE.)
+      ELSEIF (YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD)) THEN
+        CALL SUNHQESI(YDGEOMETRY,YDRIP,YDDYN,YDDYNA,NULOUT,.FALSE.)
+      ELSE
+        IF (LSIDG) THEN
+          CALL SUHEG(YDGEOMETRY,YDRIP,YDDYN,YDDYNA)
+        ENDIF
+      ENDIF
+
+      ! * HD scheme:
+      IF (LSTRHD) THEN
+        ! * This call to SUHDU actually does something in a leap-frog scheme if
+        !   TDT=2*TSTEP for the current jstep, and TDT=TSTEP for the previous
+        !   one
+        CALL SUHDU(YDGEOMETRY,YDMODEL%YRML_GCONF,YDDYN,YDDYNA)
+      ENDIF
+
+    ELSE
+
+      ! * SI scheme:
+      IF (NSTOP > 0) THEN
+        IF (YDDYNA%LNHEE.AND.(.NOT.YDDYNA%LSI_NHEE)) THEN
+          CALL SUNHSI(YDGEOMETRY,YDRIP,YDDYN,YDEDYN,YDDYNA%LNESC,NULOUT,.FALSE.)
+        ELSEIF (YDDYNA%LNHEE.AND.YDDYNA%LSI_NHEE) THEN
+          CALL SUNHEESI(YDGEOMETRY,YDRIP,YDDYN,YDDYNA,NULOUT,.FALSE.)
+        ELSEIF (YDDYNA%LNHQE.AND.(.NOT.YDDYNA%LNHQE_SIHYD)) THEN
+          CALL SUNHQESI(YDGEOMETRY,YDRIP,YDDYN,YDDYNA,NULOUT,.FALSE.)
+        ELSE
+          IF (LESIDG) CALL SUEHEG(YDGEOMETRY,YDDYN,YDEDYN,YDRIP)
+        ENDIF
+      ENDIF
+
+    ENDIF
+  ENDIF
+
+  !      3.5 Generate new random numbers for Stochastic Physics
+  !          if LSTOPH_* is true, and if it is a model integration
+  !          after time step 0 (or after initial step when restarted)
+
+  IF ((LSTOPH_SPBS.OR.LSTOPH_CASBS) .AND. JSTEP > NSTAR2) THEN
+    CALL SURAND2(YDGEOMETRY,YDMODEL%YRML_PHY_EC%YRECUCONVCA,YDMODEL%YRML_PHY_STOCH,JSTEP)
+  ENDIF
+
+  !*     3.6   Reset YOMCT3
+
+  NSTEP=JSTEP
+  ZMDLTIME=REAL(JSTEP,KIND=JPRB)*TSTEP+0.5_JPRB
+
+  ! Forcing spectral fields with interpolated trajectory
+  IF (LIFSMIN.AND.LTRAJHR.AND.LTRAJSAVE) THEN
+    LLASTRAJ=.FALSE.
+    CALL READ_TRAJECTORY(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,NSTEP,LLASTRAJ,LREADGPTRAJ)
+    !!!    LTRAJRESET=.false.
+    !   Recomputing SLAG and PHYS trajectories.
+    !   Using the fact that just after READ_TRAJECTORY, spectral traj is still
+    !   there even if LTRAJGP.
+    CALL GSTATS(15,0)
+    IF (LTRAJHR_ALTI) THEN
+      CALL GET_TRAJ_SPEC(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMF,TRAJEC(NSTEP),YDGMV,YDGMV5,YDFIELDS%YRSPEC,NSTEP)
+    ENDIF
+
+    CALL GSTATS(15,1)
+  ENDIF
+
+  !*     3.7   Control of time events for lateral boundary fields
+  IF (LELAM) THEN
+   LLELSRW = (LECOBI.AND.(NSTOP /= 0.OR.LDFI)) .AND. (&
+         & NCONF/100 == 0.OR.NCONF/100 == 2.OR.NCONF == 801.OR.&
+         & NCONF == 302.OR.NCONF == 501.OR.NCONF == 401.OR.     ((&
+         & NCONF/100 == 1).AND.(NSTOP>0)).OR.NCONF == 601)
+  ELSE
+   LLELSRW = .FALSE.
+  ENDIF
+  LLELSRW = LLELSRW .AND. (.NOT. FP_SERV_C001%LFP_SERVER)
+
+  IF (LLELSRW) THEN
+    LLIFI = .FALSE.
+    CALL ELSRW(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,LLIFI, LLSWAP)
+  ENDIF
+
+  !*     3.8   Reset time dependent variables
+
+  LLSPNRM=ISDITS(JSTEP/MAX(1,NFRSDI)) == 1.AND.MOD(JSTEP,MAX(1,NFRSDI)) == 0
+  LLGPNRM=IGDITS(JSTEP/MAX(1,NFRGDI)) == 1.AND.MOD(JSTEP,MAX(1,NFRGDI)) == 0
+  LHDOUFG=IDHFGTS(JSTEP/NFRDHFG) == 1.AND.MOD(JSTEP,NFRDHFG) == 0
+  LHDOUFZ=IDHFZTS(JSTEP/NFRDHFZ) == 1.AND.MOD(JSTEP,NFRDHFZ) == 0
+  LHDOUFD=IDHFDTS(JSTEP/NFRDHFD) == 1.AND.MOD(JSTEP,NFRDHFD) == 0
+  LHDOUP =IDHPTS(JSTEP/NFRDHP) == 1.AND.MOD(JSTEP,NFRDHP) == 0
+  LLPLPP =IPOSTS(JSTEP/NFRPOS) == 1.AND.MOD(JSTEP,NFRPOS) == 0.AND.(PRESENT(YDFPOS))
+  LLMLPP =IHISTS(JSTEP/NFRHIS) == 1.AND.MOD(JSTEP,NFRHIS) == 0
+  IF (PRESENT(YDFPOS)) THEN
+    IF (YDFPOS%YFPCNT%NFRFPOS /= 0) THEN
+      LLFPOS =LLPLPP.AND.(IFPOSTS(JSTEP/YDFPOS%YFPCNT%NFRFPOS) == 1.AND.MOD(JSTEP,YDFPOS%YFPCNT%NFRFPOS) == 0)
+    ELSE
+      LLFPOS=.FALSE.
+    ENDIF
+  ELSE
+    LLFPOS=.FALSE.
+  ENDIF
+
+  ! Do post-processing caclulations so that min/max fields are correct
+  ! even though it the the output might be switched of on the next line
+  LFPOS_EC_PHYS=LLFPOS
+  ! switch off post processing at first step unless a multiyear run and not restarting
+  IF (NSTAR2/=0.AND..NOT.LMULTIYR.AND.LNF) THEN
+    LLFPOS = LLFPOS.AND.JSTEP/=NSTAR2
+    LLMLPP = LLMLPP.AND.JSTEP/=NSTAR2
+  ENDIF
+  LLSMLPP =ISFXHISTS(JSTEP/NFRSFXHIS) == 1.AND.MOD(JSTEP,NFRSFXHIS) == 0
+  LLMASCOR=IMASSCONS(JSTEP/NFRMASSCON) == 1.AND.MOD(JSTEP,NFRMASSCON) == 0
+  LLWVTIME=LWCOU.AND.(MOD(JSTEP,NSTPW) == 0).AND.(NCONF == 1.OR.NCONF == 302)
+  IF (LWCOU.AND.LLSTOP) THEN
+    LLSTRC=(MOD(JSTEP-1,NSTPW) == 0).AND.(NCONF == 1.OR.NCONF == 302).AND.LLSTOP&
+     & .AND.JSTEP > NSTPW
+  ENDIF
+
+  ! 3.8.0.2 Prepare for Jk
+
+  IF (LEJK) CALL EVARJKINI(YDGEOMETRY,YDGFL,YDGFL5,YDDYN,YDMODEL%YRML_GCONF,YDMODEL%YRML_LBC,YDFIELDS%YRSPEC)
+
+  !*     3.8.1  Prepare Full post-processing
+
+  ITIME=INT(ZMDLTIME)
+
+  !*     3.8.2.0  Massfixer
+
+  IF( LMASCOR.AND.LLMASCOR ) THEN
+    CALL CORMASSDRY(YDGEOMETRY,YGFL,YDDYN,YDFIELDS%YRSPEC,GFL,JSTEP,LGPMASCOR)
+  ELSE
+    GMASSINC=0.0_JPRB
+  ENDIF
+
+  IF (LCONSERV.AND..NOT.LELAM.AND.0 < JSTEP.AND.JSTEP <= ISTOP) THEN
+    LLCORM = NFRCORM > 0
+    IF (LLCORM) LLCORM = MOD(JSTEP,NFRCORM) == 0
+    IF (LCORWAT.OR.LLCORM) &
+      CALL CONSERV(YDGEOMETRY,YDRIP,YGFL,YDPHY,YDPARAR,YDSPEC,YDSURF,YDCFU,GFL,LLCORM)
+  END IF
+
+  !*     3.8.2.1  Diagnostics
+
+  !* chemistry mass diagnostics
+  IF ( LCHEM_DIA .AND. NCONF /= 131 ) THEN
+    CALL CHEM_MASSDIA(YDGEOMETRY,YDGFL,YDSURF,YDMODEL%YRML_GCONF,YDMODEL%YRML_CHEM%YRCOMPO, &
+      & YDMODEL%YRML_CHEM%YRCHEM,YDMODEL%YRML_PHY_G%YRDPHY, YDFIELDS%YRSPEC)
+  ENDIF
+
+  IF (LLSPNRM) THEN
+    IF (LMODERR.AND.JSTEP==0) THEN
+      LLEVS=(YDMODEL%YRML_GCONF%YRMODERR%NPRTMODERR>=2)
+      DO JJ=1,YGMODERRCONF%NDIM_MODERR
+        CALL SPECTRAL_NORM (SPMODERR(JJ),'CNT4 MODERR')
+        CALL GRIDPOINT_NORM(YDGEOMETRY,GPMODERR(JJ),'CNT4 MODERR',LDLEVS=LLEVS)
+      ENDDO
+    ENDIF
+    IF (NSITER > 0) THEN
+      WRITE(UNIT=NULOUT,FMT='('' NORMS AT NSTEP CNT4 (PREDICTOR) '',I4)')JSTEP
+    ELSE
+      WRITE(UNIT=NULOUT,FMT='('' NORMS AT NSTEP CNT4 '',I4)')JSTEP
+    ENDIF
+    IF(L_OOPS) THEN
+      CALL SPNORM(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDSPEC)
+    ELSE
+      CALL SPNORM(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDFIELDS%YRSPEC)
+    ENDIF
+  ENDIF
+  IF (LLGPNRM.OR.LLTLEVOL) THEN
+    CALL GPNORM_GFL(YDGEOMETRY,YDGFL)
+  ENDIF
+  IF (YDFIELDS%YMCUF%LMCUF) CALL SPMCUF(YDGEOMETRY,YDFIELDS%YRSPEC,YDFIELDS%YMCUF)
+
+  IF(LGWDIAGS_ON) CALL PRINT_GWDIAG(YDGEOMETRY,YDRIP)
+
+  !*     3.8.4  Gridpoint evolution diagnostics
+
+  LLECH= MOD( NINT(JSTEP*TSTEP) , NFRQCHK )  == 0
+  IF (LECHKEVO.AND.LLECH) CALL CHKEVO(YDGEOMETRY,YDMODEL%YRML_GCONF,JSTEP,TSTEP,YDFIELDS%YRSPEC)
+
+  LLCOLA=(LSDDH.OR.LWCOU).AND.(NSTOP > 0)
+
+  !*     3.8.5  Resetting of accumulated fields check
+
+  IF (NRSACCFRQ>0) THEN
+     LFPOS_ACC_RESET=MOD(NINT(JSTEP*TSTEP)+3600*NRSACCOFF,3600*NRSACCFRQ)==0
+     WRITE(NULOUT,'(A,L4)')'RESET OF ACCUMULATION FIELDS NEXT TIME STEP : ',&
+       & LFPOS_ACC_RESET
+  ENDIF
+
+  !*     3.9   Post-processing time step
+
+  IF (LLFPOS.AND.((&
+     & IANATS(GET_NSIM4D()/NFRANA) == 1.AND.MOD(GET_NSIM4D(),NFRANA) == 0)&
+     & .OR. GET_NSIM4D() == NSIM4DL)        ) THEN
+
+    !*   3.9.1 Variational analysis on model levels will be written first
+
+    IF(NCONF/100 == 1.OR.LLTLEVOL) THEN
+      CLCONF(1:9)='A00000000'
+      RESTART=CLCONF(1:1)
+      LTWANA=.TRUE.
+      LLFDBOP=LFDBOP
+      LFDBOP=.FALSE.
+      IOUTTYPE=NOUTTYPE
+      NOUTTYPE=1
+!J---for OOPS Testiong---
+      IF(L_OOPS) THEN
+        CALL ABOR1('STEPO_OOPS shouldnt be called from CNT4!')
+        !!CALL STEPO_OOPS(YDGEOMETRY,YDFIELDS,YDMTRAJ,CLCONF)
+      ELSE
+        CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF,YDJOT=YDJOT)
+      ENDIF
+!J------------------
+      LFDBOP=LLFDBOP
+      NOUTTYPE=IOUTTYPE
+      LTWANA=.FALSE.
+    ENDIF
+
+    !*   3.9.2 Post-processing
+
+    IF(LLWRTRA) THEN
+      CLCONF(1:1)='T'
+      RESTART=CLCONF(1:1)
+    ELSEIF(LLMLPP) THEN
+      IF(LLWRRE) THEN
+        CLCONF(1:1)='F'
+        RESTART='R'
+      ELSE
+        IF(LLSMLPP) THEN
+          CLCONF(1:1)='Q'
+        ELSE
+          CLCONF(1:1)='A'
+        ENDIF
+        RESTART=CLCONF(1:1)
+      ENDIF
+    ELSEIF(LLSMLPP) THEN
+      IF(LLWRRE) THEN
+        CLCONF(1:1)='L'
+      ELSE
+        CLCONF(1:1)='S'
+      ENDIF
+      RESTART=CLCONF(1:1)
+    ELSEIF(LLWRRE) THEN
+      CLCONF(1:1)='R'
+      RESTART=CLCONF(1:1)
+    ELSE
+      CLCONF(1:1)='0'
+      RESTART=CLCONF(1:1)
+    ENDIF
+
+    ! Optionally get fields from NEMO.
+    IF(LMCC04.AND.LNEMOCOUP.AND.LNEMOGRIBFLDS.AND..NOT.LLOCEDELAY.AND.LLMLPP) THEN
+      CALL GSTATS(32,0)
+      CALL GETNEMODIAG(NGPTOT,NPROMA,JSTEP,YDFIELDS%YRSURF,YDMCC)
+      CALL GSTATS(32,1)
+    ENDIF
+    IF(LMCC04.AND.LNEMOCOUP.AND.LNEMOGRIB3D.AND..NOT.LLOCEDELAY.AND.LLMLPP) THEN
+      CALL GSTATS(32,0)
+      CALL GETNEMODIAG3D(NGPTOT,NPROMA,JSTEP,YDFIELDS%YRSURF,YDMCC,YDGEOMETRY)
+      CALL GSTATS(32,1)
+    ENDIF
+
+    IF(LVAREPS) THEN
+      ! Re-set accumulated gp fields if VAREPS (the time-step check is inside RESET_ACCFIE_VAREPS)
+      CALL RESET_ACCFIE_VAREPS(YDGEOMETRY,YDFIELDS%YRSURF,YDMCC,YDEPHY,YDRIP,YDDYN,JSTEP)
+    ENDIF
+
+    IF(JSTEP <= NSTOP .AND. NSTOP/=0 .AND. (.NOT. FP_SERV_C001%LFP_SERVER)) THEN
+      ! ky: caution: for NSTOP=0, this sequence of STEPO requires that:
+      !     - the setup of SI scheme is done in SUDYN.
+      !     - GPPCBUF is allocated in SUSC2B if a PC scheme is switched on.
+      CLCONF(2:3)='AA'
+      CLCONF(4:4)='A'
+    ELSEIF (NSTOP == 0) THEN
+      CLCONF(2:4)='AA0'
+    ELSE
+      CLCONF(2:4)='000'
+    ENDIF
+    CLCONF(5:6)='00'
+
+    !*   3.9.3 Comparison to observations when LLOBSC1 or LOBSREF.
+    IF((JSTEP < NSTOP) .AND. (.NOT. FP_SERV_C001%LFP_SERVER))THEN
+      CLCONF(7:8)='AA'
+      IF (NSITER == 0) THEN
+        CLCONF(9:9)='A'
+      ELSEIF (NSITER > 0) THEN
+        IF (LRHDI_LASTITERPC) THEN
+          CLCONF(9:9)='I' ! no horizontal diffusion
+        ELSE
+          CLCONF(9:9)='A'
+        ENDIF
+      ELSEIF(NSITER < 0) THEN
+        CALL ABOR1('NEGATIVE NSITER NOT ALLOWED')
+      ENDIF
+    ELSE
+      CLCONF(7:9)='000'
+    ENDIF
+
+    IF (LR2D) CLCONF(2:9)='AAA00AAA'
+    IF (CLCONF=='T00000000') CLCONF(2:4)='AAA'
+
+    NCURRENT_ITER=0
+!J---for OOPS Testiong---
+    IF (CLCONF/='000000000') THEN
+      IF(L_OOPS) THEN
+        CALL ABOR1('STEPO_OOPS shouldnt be called from CNT4!')
+        !!CALL STEPO_OOPS(YDGEOMETRY,YDFIELDS,YDMTRAJ,CLCONF)
+      ELSE
+        CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF,YDJOT,YDVARBC,YDTCV,YDGOM5,YDODB,YDFPOS=YDFPOS,YDFPDATA=YLFPDATA)
+      ENDIF
+    ENDIF
+    YLFPDATA%LFPUPDCLI=.FALSE. ! Disable climatology update for fullpos after its first call
+    YLFPDATA%LFPUPDSUW=.FALSE. ! Disable recomputation of surface-related weights for fullpos after its first call
+!J----------------------
+
+  ELSE
+
+    !*   3.10  Ordinary time step (predictor if PC scheme).
+
+    !*   3.10.1 fic HIST
+
+    IF (NCONF == 601.AND. LLMLPP .AND. LLWRTRA) THEN
+      CLCONF(1:9)='A00000000'
+      RESTART=CLCONF(1:1)
+      IF(L_OOPS) THEN
+        CALL ABOR1('STEPO_OOPS shouldnt be called from CNT4!')
+        !!CALL STEPO_OOPS(YDGEOMETRY,YDFIELDS,YDMTRAJ,CLCONF)
+      ELSE
+        CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF,YDJOT=YDJOT)
+      ENDIF
+    ENDIF
+
+    !*   3.10.2 Traj will be written first
+
+    IF(LLWRTRA) THEN
+      CLCONF(1:1)='T'
+      RESTART=CLCONF(1:1)
+    ELSEIF(LLMLPP) THEN
+      IF(LLWRRE) THEN
+        IF (LLSMLPP) THEN
+          CLCONF(1:1)='f'
+        ELSE
+          CLCONF(1:1)='F'
+        ENDIF
+        RESTART='R'
+      ELSE
+        IF(LLSMLPP) THEN
+          CLCONF(1:1)='Q'
+        ELSE
+          CLCONF(1:1)='A'
+        ENDIF
+        RESTART=CLCONF(1:1)
+      ENDIF
+    ELSEIF(LLSMLPP) THEN
+      IF(LLWRRE) THEN
+        CLCONF(1:1)='L'
+      ELSE
+        CLCONF(1:1)='S'
+      ENDIF
+      RESTART=CLCONF(1:1)
+    ELSEIF(LLWRRE) THEN
+      CLCONF(1:1)='R'
+      RESTART=CLCONF(1:1)
+    ELSE
+      CLCONF(1:1)='0'
+      RESTART=CLCONF(1:1)
+    ENDIF
+
+    IF (FP_SERV_C001%LFP_SERVER) THEN
+      CLCONF (2:9) = '00000000'
+    ELSE
+      IF(JSTEP < NSTOP.OR.(JSTEP == NSTOP.AND.LLCOLA)) THEN
+        ! ky: caution: for NSTOP=0, this sequence of STEPO requires that:
+        !     - the setup of SI scheme is done in SUDYN.
+        !     - GPPCBUF is allocated in SUSC2B if a PC scheme is switched on.
+        CLCONF(2:3)='AA'
+        CLCONF(4:4)='A'
+      ELSE
+        IF ((LLOBSC1.OR.LOBSREF).AND.(JSTEP /= NSTOP)) THEN
+          CLCONF(2:3)='AA'
+        ELSE
+          CLCONF(2:3)='00'
+        ENDIF
+        CLCONF(4:4)='0'
+      ENDIF
+
+      CLCONF(5:6)='00'
+
+      !*   3.10.3 Comparison to observations when LLOBSC1 or LOBSREF.
+      IF(JSTEP < NSTOP)THEN
+        CLCONF(7:8)='AA'
+        IF (NSITER == 0) THEN
+          CLCONF(9:9)='A'
+        ELSEIF (NSITER > 0) THEN
+          IF (LRHDI_LASTITERPC) THEN
+            CLCONF(9:9)='I' ! no horizontal diffusion
+          ELSE
+            CLCONF(9:9)='A'
+          ENDIF
+        ELSEIF(NSITER < 0) THEN
+          CALL ABOR1('NEGATIVE NSITER NOT ALLOWED')
+        ENDIF
+      ELSE
+        CLCONF(7:9)='000'
+      ENDIF
+
+      IF (CLCONF=='T00000000') CLCONF(2:4)='AAA'
+
+      IF(YDDYNA%LPC_FULL)CALL SETUP_PH9_PRED(YDDYNA,YT0,YT9,YPH9)
+
+    ENDIF
+
+
+    NCURRENT_ITER=0
+
+!J---for OOPS Testiong---
+    IF (CLCONF/='000000000')THEN
+      IF(L_OOPS) THEN
+        CALL ABOR1('STEPO_OOPS shouldnt be called from CNT4!')
+        !!CALL STEPO_OOPS(YDGEOMETRY,YDFIELDS,YDMTRAJ,CLCONF)
+      ELSE
+        CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF,YDJOT,YDVARBC,YDTCV,YDGOM5,YDODB)
+      ENDIF
+    ENDIF
+!J-------------------------
+
+  ENDIF ! pp or ordinary (predictor) timestep
+
+  !       3.11    Corrector step
+
+  IF( (JSTEP < NSTOP .AND. NSITER > 0).AND.&
+   & .NOT.(LSMSSIG .AND. LLSTOP .AND. LLSTRC) ) THEN
+
+    ! ITERATION STEP
+
+    CALL SETUP_PH9_CORR(YDDYNA,YT0,YT9,YPH9)
+
+    DO JSITER=1,NSITER-1
+
+      NCURRENT_ITER=JSITER
+
+      IF (LRHDI_LASTITERPC) THEN
+        CLCONF(1:9)='0AAA00AAI' ! no horizontal diffusion
+        RESTART=CLCONF(1:1)
+      ELSE
+        CLCONF(1:9)='0AAA00AAA'
+        RESTART=CLCONF(1:1)
+      ENDIF
+
+      IF(LLSPNRM) THEN
+        WRITE(UNIT=NULOUT,FMT='('' NORMS AT NSTEP CNT4 (CORRECTOR) '',I4)')JSTEP
+        WRITE(NULOUT,'(A,I4)') ' Corrector step number ',NCURRENT_ITER
+        IF(L_OOPS) THEN
+          CALL SPNORM(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDSPEC)
+        ELSE
+          CALL SPNORM(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDFIELDS%YRSPEC)
+        ENDIF
+      ENDIF
+      IF(L_OOPS) THEN
+        CALL ABOR1('STEPO_OOPS shouldnt be called from CNT4!')
+        !!CALL STEPO_OOPS(YDGEOMETRY,YDFIELDS,YDMTRAJ,CLCONF)
+      ELSE
+        CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF,YDJOT=YDJOT)
+      ENDIF
+
+    ENDDO
+
+    ! LAST STEP
+
+    NCURRENT_ITER=NSITER
+
+    CLCONF(1:9)='0AAA00AAA'
+    RESTART=CLCONF(1:1)
+
+    IF(LLSPNRM) THEN
+      WRITE(UNIT=NULOUT,FMT='('' NORMS AT NSTEP CNT4 (CORRECTOR) '',I4)')JSTEP
+      WRITE(NULOUT,'(A,I4)') ' Last corrector step number ',NCURRENT_ITER
+      CALL SPNORM(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDFIELDS%YRSPEC)
+    ENDIF
+    IF(L_OOPS) THEN
+      CALL ABOR1('STEPO_OOPS shouldnt be called from CNT4!')
+      !!CALL STEPO_OOPS(YDGEOMETRY,YDFIELDS,YDMTRAJ,CLCONF)
+    ELSE
+      CALL STEPO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,CLCONF,YDJOT=YDJOT)
+    ENDIF
+
+  ENDIF ! PC corrector timestep
+
+  !*     3.12  MODERR
+
+  IF (LSTATMERR.AND.CLCONF(4:4)/='0') &
+   & CALL SAVE_MERR_TEND(YDGEOMETRY,YDGFL,YDMODEL%YRML_GCONF,YDFIELDS%YRSPEC,YGMODERRCONF,JSTEP)
+
+  IF (LMODERR.AND.YDMODEL%YRML_GCONF%YRMODERR%NTYPE_MODERR==2) &
+   & CALL ADD_MODERR_TL(YDGEOMETRY,YDFIELDS,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YGMODERRCONF,SPMODERR,GPMODERR,NSTEP)
+
+  !*     3.14   Lagged Full-post-processing on physics and fluxes
+
+  IF (LLPLPP) THEN
+    IF (LAGPHY .AND. (NSTOP > 0) .AND. LEPHYS) THEN
+      CALL GSTATS(17,0)
+      IFPLAG=2
+      LLOCE=.FALSE.
+      LLSPECTRAL=.TRUE. ! input data are spectral
+      ALLOCATE(ZMCUFGP(YDGEOMETRY%YRDIM%NPROMA,YDFIELDS%YMCUF%NCUFNR,YDGEOMETRY%YRDIM%NGPBLKS))
+      CALL FULLPOS_DRV(YDFPOS,YDGEOMETRY,YDFIELDS%YRGMV,YDFIELDS%YRGFL,YDFIELDS%YRSURF,YDFIELDS%YRCFU,YDFIELDS%YRXFU, &
+         & GFUBUF,XFUBUF,YDFIELDS%YMCUF%NCUFNR,ZMCUFGP,YDMODEL,TSTEP,NSTEP,NSTOP,IFPLAG,LLOCEDELAY,LLOCE,YLFPDATA,NFPPHY,MFPPHY)
+      DEALLOCATE(ZMCUFGP)
+      CALL GSTATS(17,1)
+    END IF
+    IF (.NOT.LARPEGEF) THEN
+      CALL GRIBIOFLUSH
+    ENDIF
+  ENDIF
+
+  !*       3.15   Signal SMS event for completion of post_processing
+
+  IF((LLFPOS .OR. LLMLPP) .AND. IO_SERV_C001%NPROC_IO == 0) THEN
+    ! Flush Grib I/Os
+    IF (.NOT.LARPEGEF.AND..NOT.LLOCEDELAY) THEN
+      CALL GRIBIOFLUSH
+    ENDIF
+    ! Post signal of pp event
+    CALL SIGPOST(ITIME)
+  ENDIF
+
+  !*    3.16  Write accumulated fluxes for OASIS2
+  !*          In the case of inline NEMO coupling skip this step.
+
+#if !defined(WITH_OASIS)
+  IF(NFRCO /= 0 .AND. .NOT.LNEMOCOUP) THEN
+    IF((MOD(NSTEP+1,NFRCO) == 0).AND.(NSTEP < NSTOP)) THEN
+      IF(LMCC04) THEN
+        IF (NOACOMM == 5) THEN
+          CALL WRCOE(YDGEOMETRY,YDMODEL%YRML_AOC,YDRIP)
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+#endif
+
+  LLWRRE = .FALSE.
+  IF (LSMSSIG .AND. LLSTOP .AND. LLSTRC) THEN
+    IF(MYPROC == 1) THEN
+      ! CALL SYSTEM('smsrestart NSTEP')
+      WRITE(CLCOMMAND,'(A,I6)') 'smsrestart ',NSTEP
+      CALL SYSTEM(CLCOMMAND)
+    ENDIF
+    EXIT
+  ENDIF
+
+  !*     3.17  Set switch to write restart files and if coupled with WAM
+  !*           delay writing until WAM has been called.
+
+  IF (JSTEP  <  NSTOP) THEN
+    IF (LWCOU) THEN
+      IF ( .NOT. LLWRRC ) LLWRRC = IRESTS((JSTEP+1)/NFRRES)  ==  1&
+       & .AND. MOD(JSTEP+1,NFRRES)  ==  0
+    ELSE
+      LLWRRE  =  IRESTS((JSTEP+1)/NFRRES)  ==  1.AND.&
+       & MOD(JSTEP+1,NFRRES)  ==  0.OR. LLWRRC
+      LLWRRC = .FALSE.
+    ENDIF
+  ENDIF
+
+  !*     3.18  Check for incoming signals.
+  !      for ocean-atmosphere runs, this is handled by oasis
+
+  IF(LSMSSIG.AND.(NCONF == 1.OR.NCONF == 302).AND.(.NOT.LMCC04)) THEN
+    CALL SIGCHECK(LLSTOP,LLWRRC)
+    IF ((LLSTOP.OR.LLWRRC) .AND. MYPROC == 1 ) THEN
+      WRITE(NULOUT,*)" CNT4 - SIGNALS: JSTEP=",JSTEP," NFRRES=",&
+       & NFRRES, " LLSTOP=", LLSTOP, " LLWRRC=", LLWRRC
+    ENDIF
+    IF (.NOT.LWCOU .AND. LLWRRC) THEN
+      LLWRRE = .TRUE.
+      LLWRRC = .FALSE.
+    ENDIF
+  ENDIF
+
+  !*     3.19  Call the wave coupling
+
+  IF (LLWVTIME) THEN
+    IF(NSTEP > 0.AND.LWCOU) CALL GSTATS(38,0)
+    LLWRRW = LWCOU .AND.(LLSTOP .OR. LLWRRC)
+    CALL WVCOUPLE(YDGEOMETRY,YDFIELDS%YRSURF,YDEPHY,YDEWCOU,TSTEP,NSTOP,NSTPW,LLSTOP,LLWRRW)
+    IF (LWCOU .AND. LLWRRW) THEN
+      LLWRRE = .TRUE.
+      LLWRRC = .FALSE.
+    ENDIF
+    LLWRRW =  .FALSE.
+    IF(NSTEP > 0.AND.LWCOU) CALL GSTATS(38,1)
+  ENDIF
+
+  !*     3.20  Coupling to NEMO
+
+#ifdef WITH_NEMO
+  IF(NFRCO /= 0 .AND. LNEMOCOUP .AND. LMCC04) THEN
+    ! Coupling to NEMO except at timestep NSTAR2
+    ! where we reset the fluxes to zero to avoid
+    ! double counting
+    IF(NSTEP == NSTAR2) THEN
+      CALL GSTATS(33,0)
+      CALL SUGCO0(YDMCC)
+      IF (LWCOU) THEN
+        CALL UPDNEMOSTRESS
+      ENDIF
+      CALL GSTATS(33,1)
+    ELSEIF(MOD(NSTEP,NFRCO) == 0) THEN
+      CALL GSTATS(32,0)
+      IF (LWCOU) THEN
+        CALL UPDNEMOFIELDS
+        CALL UPDNEMOSTRESS
+      ENDIF
+      CALL COUPLNEMO(YDGEM,YDMCC,YDRIP,NSTEP)
+      CALL GSTATS(32,1)
+      CALL GSTATS(33,0)
+      IF (LLOCEDELAY) THEN
+        CALL UPDNEMOOCEAN(YDMCC,YDEPHY,YDRIP,NPROMA,NGPTOT,JSTEP,TSTEP,YDFIELDS%YRSURF,YDGEOMETRY)
+      ENDIF
+      CALL GSTATS(33,1)
+    ENDIF
+  ENDIF
+#endif
+#ifdef WITH_OASIS
+  IF (CPL_NEMO_LIM) CALL CPLNG_EXCHANGE(YDMCC,YDRIP,&
+     & YDMODEL%YRML_PHY_RAD%YRERAD,YDDYNA,CPL_STAGE_OCE_SND)
+#endif
+
+  ! Optionally get fields from NEMO.
+
+#ifdef WITH_NEMO
+  IF(LMCC04.AND.LNEMOCOUP.AND.LNEMOGRIBFLDS.AND.LOCEDELAY.AND.LLMLPP) THEN
+     CALL GSTATS(32,0)
+     CALL GETNEMODIAG(NGPTOT,NPROMA,JSTEP,YDFIELDS%YRSURF,YDMCC)
+     CALL GSTATS(32,1)
+  ENDIF
+  IF(LMCC04.AND.LNEMOCOUP.AND.LNEMOGRIB3D.AND.LOCEDELAY.AND.LLMLPP) THEN
+     CALL GSTATS(32,0)
+     CALL GETNEMODIAG3D(NGPTOT,NPROMA,JSTEP,YDFIELDS%YRSURF,YDMCC,YDGEOMETRY)
+     CALL GSTATS(32,1)
+  ENDIF
+#endif
+
+  !*     3.21.1  Ocean post processing if (locedelay)
+
+  IF (LLOCEDELAY) THEN
+
+    IF (LLPLPP) THEN
+      CALL GSTATS(17,0)
+      IFPLAG=0
+      LLSPECTRAL=.FALSE. ! input data are spectral
+      LLOCE=.TRUE.
+      ALLOCATE(ZMCUFGP(YDGEOMETRY%YRDIM%NPROMA,YDFIELDS%YMCUF%NCUFNR,YDGEOMETRY%YRDIM%NGPBLKS))
+      CALL FULLPOS_DRV(YDFPOS,YDGEOMETRY,YDFIELDS%YRGMV,YDFIELDS%YRGFL,YDFIELDS%YRSURF,YDFIELDS%YRCFU,YDFIELDS%YRXFU, &
+       & GFUBUF,XFUBUF,YDFIELDS%YMCUF%NCUFNR,ZMCUFGP,YDMODEL,TSTEP,NSTEP,NSTOP,IFPLAG,LLOCEDELAY,LLOCE,YLFPDATA,NFPPHY,MFPPHY)
+      DEALLOCATE(ZMCUFGP)
+      CALL GSTATS(17,1)
+    ENDIF
+
+    IF (.NOT.LARPEGEF) THEN
+      CALL GRIBIOFLUSH
+    ENDIF
+
+  ENDIF
+
+  CALL USER_CLOCK(PTOTAL_CP=ZT2)
+
+  CALL LOGDIS(NSTEP,ZMDLTIME,ZT1,ZT2,LLTIMER,LLDATER)
+
+  !*     3.22  Diagnostics on physical tendencies
+
+  IF (GCHETN%LFREQD) THEN
+    CALL WRITECHET(YDRIP,NSTEP)
+  ENDIF
+
+
+  !* Send close signal to IO server tasks
+
+  IF (IO_SERV_C001%LSENTFLD) THEN
+    CALL IO_SERV_SYNC(IO_SERV_C001, NIO_SERV_HDR_TYPE_CLO,'close',PTSTEP=YDRIP%TSTEP)
+    IO_SERV_C001%LSENTFLD = .FALSE.
+  ENDIF
+
+  IF (FP_SERV_C001%LSENTFLD) THEN
+    CALL FP_SERV_SYNC(YDRIP%TSTEP,FP_SERV_C001,NFP_SERV_SYN_TYPE_CLO,'close')
+    FP_SERV_C001%LSENTFLD = .FALSE.
+  ENDIF
+
+  !*
+
+  IF (LLELSRW .AND. IO_SERV_C001%LIO_SERV_RD) THEN
+    IF (LLSWAP .OR. (NSTEP == 0)) THEN
+      CALL ERLBC_POST_REQ(YDGEOMETRY,YDGFL,YDGFL5,YDMODEL%YRML_GCONF,YDMODEL%YRML_LBC,YDSPEC)
+    ENDIF
+  ENDIF
+
+  IF (.NOT. FP_SERV_C001%LFP_SERVER) THEN
+    JSTEP = JSTEP + 1
+  ENDIF
+
+ENDDO        ! End of main loop over time steps (JSTEP)
+
+IF (FP_SERV_C001%LFP_CLIENT) THEN
+  CALL FP_SERV_SYNC(YDRIP%TSTEP,FP_SERV_C001,NFP_SERV_SYN_TYPE_STO,'exit',LDSTOP=.FALSE.)
+ENDIF
+
+
+!      ----------------------------------------------------------------
+
+!*    4.       Miscellaneous.
+!              --------------
+
+IF (LIFSMIN.AND.LTRAJGP.AND.LTRAJHR.AND.LTRAJSAVE) THEN
+  LLASTRAJ=.TRUE.
+  CALL READ_TRAJECTORY(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,NSTAR2,LLASTRAJ,LREADGPTRAJ)
+ENDIF
+IF (LFINDVSEP) THEN
+  WRITE(NULOUT,'('' COMPUTED VALUE OF NVSEPC IS'',I4)') NVSEPC
+  WRITE(NULOUT,'('' COMPUTED VALUE OF NVSEPL IS'',I4)') NVSEPL
+ENDIF
+LFINDVSEP=.FALSE.
+
+CALL GSTATS(1,1)
+
+IF (.NOT.LLSTOP) THEN
+  RESTART=CLCONF(1:1)
+ENDIF
+
+! Finalize NEMO and close NEMO files.
+
+#ifdef WITH_NEMO
+IF (LMCC04.AND.LNEMOCOUP) CALL NEMOGCMCOUP_FINAL
+#endif
+
+!      ----------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CNT4',1,ZHOOK_HANDLE)
+END SUBROUTINE CNT4

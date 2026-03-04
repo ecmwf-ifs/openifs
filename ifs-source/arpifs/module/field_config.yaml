@@ -1,0 +1,108 @@
+# (C) Copyright 1989- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+# 
+# (C) Copyright 1989- Meteo-France.
+# 
+
+# IFS core field hierarchy definition
+
+# List of variables groups mapping into previous GMV/GFL categories
+- type: group
+  name: GMV
+  short: GMV
+  dimension: 3
+  comment: Variables formerly known as GMV
+  variables:
+  - {name: U, comment: U-wind}
+  - {name: V, comment: V-wind}
+  - {name: T, comment: Temperature}
+  - {name: DIV, comment: Divergence}
+  - {name: VOR, comment: Vorticity}
+  - {name: SPD, comment: Pressure departure variable}
+  - {name: SVD, comment: Vertical div or velocity variable}
+  - {name: NHX}
+  - {name: EDOT}
+  - {name: SGRTL}
+  - {name: SGRTM}
+
+- type: group
+  name: GMVS
+  short: GMVS
+  dimension: 2
+  comment: Variables formerly known as GMVS (surface GMV)
+  variables:
+  - {name: SP, comment: Surface pressure}
+
+- type: group
+  name: GFL
+  short: GFL
+  dimension: 3
+  comment: Variables formerly known as GFL
+  variables:
+  - {name: Q,     comment: Specific humidity}
+  - {name: I,     comment: Ice water}
+  - {name: L,     comment: Liquid water}
+  - {name: LCONV, comment: Liquid water (CONV. PART)}
+  - {name: ICONV, comment: Ice    water (CONV. PART)}
+  - {name: RCONV, comment: Rain         (CONV. PART)}
+  - {name: SCONV, comment: Snow         (CONV. PART)}
+  - {name: IRAD,  comment: Radiative cloud Ice water}
+  - {name: LRAD,  comment: Radiative cloud Liquid water}
+  - {name: S,     comment: Snow}
+  - {name: R,     comment: Rain}
+  - {name: G,     comment: Graupel}
+  - {name: H,     comment: Hail}
+  - {name: TKE,   comment: Turbulent Kinetic Energy}
+  - {name: TTE,   comment: Turbulent Total Energy}
+  - {name: EFB1,  comment: First variable EFB scheme}
+  - {name: EFB2,  comment: Second variable EFB scheme}
+  - {name: EFB3,  comment: Third variable EFB scheme}
+  - {name: A,     comment: Cloud fraction}
+  - {name: O3,    comment: Ozone}
+  - {name: SRC,   comment: Second-order flux for AROME s"rc"/2Sigma_s2 multiplied by Lambda_3}
+  - {name: MXL,   comment: Prognostic mixing length}
+  - {name: SHTUR, comment: Shear source term for turbulence.}
+  - {name: FQTUR, comment: Flux form source term for turbulence - moisture.}
+  - {name: FSTUR, comment: Flux form source term for turbulence - enthalpy.}
+  - {name: CPF,   comment: Convective precipitation flux}
+  - {name: SPF,   comment: Stratiform precipitation flux}
+  - {name: CVGQ,  comment: Moisture Convergence for french physics}
+  - {name: QVA,   comment: Total humidity variation}
+  - {name: GHG,   array: True, comment: Greenhouse Gases}
+  - {name: CHEM,  array: True, comment: Chemistry}
+  - {name: AERO,  array: True, comment: Aerosols}
+  - {name: LRCH4, comment: CH4 loss rate (instantaneous field)}
+  - {name: FORC,  array: True, comment: Large scale forcing}
+  - {name: EZDIAG, array: True, comment: Easy diagnostics}
+  - {name: ERA40,  array: True, comment: ERA40 diagnostic fields}
+  - {name: NOGW,   array: True, comment: NORO GWD SCHEME}
+  - {name: EMIS3D,array: True, comment: 3D emission fields for composition}
+  - {name: EDRP,   array: True, comment: Turbulence diagnostics EDR Parameter}
+  - {name: SLDIA,  array: True, comment: SL dynamics diagnostics}
+  - {name: AERAOT, array: True, comment: Aerosol optical thicknesses}
+  - {name: AERLISI,  array: True, comment: Aerosol lidar simulator}
+  - {name: AEROUT,   array: True, comment: Aerosol outputs}
+  - {name: AEROCLIM, array: True, comment: Aerosol climatology}
+  - {name: UVP,      array: True, comment: UV-processor output}
+  - {name: PHYS,     array: True, comment: PHYS output}
+  - {name: PHYCTY,   comment: PHYS input for MassCTY}
+  - {name: RSPEC,    comment: Specific gas constant}
+  - {name: SDSAT,    comment: Standard Deviation of the saturation Depression (Sigma_s)}
+  - {name: CVV,      comment: Convective Vertical Velocity}
+  - {name: RKTH,     comment: Rasch-Kristjansson H tendency}
+  - {name: RKTQV,    comment: Rasch-Kristjansson Qv tendency}
+  - {name: RKTQC,    comment: Rasch-Kristjansson Qc tendency}
+  - {name: UOM,      comment: Updraught vert velocity}
+  - {name: UAL,      comment: Updraught mesh fraction}
+  - {name: DOM,      comment: Downdraught vert velocity}
+  - {name: DAL,      comment: Downdraught mesh fraction}
+  - {name: UEN,      comment: Updraught entrainment}
+  - {name: UNEBH,    comment: pseudo-historic convective}
+  - {name: LIMA,     array: True, comment: LIMA prognostic fields}
+  - {name: FSD,      comment: PHYS output}
+  - {name: EXT,      array: True, comment: Extra fields}

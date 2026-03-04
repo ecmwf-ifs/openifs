@@ -1,0 +1,351 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE RDFPFILTER(YDGEOMETRY,KREADALL,KFPDOM,KFPCMAX,KFMAX,KGLFI,LDBED,PBED,PLTF,CDMAT,KCMAX,LDFPFIL,PFPMAT)
+
+!**** *RDFPFILTER*  - READ FILTERING MATRIXES FILES FOR POST-PROCESSING SPECTRAL FILTER
+
+!     PURPOSE.
+!     --------
+!        To initialize the filtering matrixes for the post-processing of
+!        derivatives by reading them from file
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *RDFPFILTER*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!          YDGEOMETRY : model geometry
+!          KREADALL : 1 = all MPI tasks read filtering matrixes
+!                     0 = matrixes reading is distributed among the V-set,
+!                         then V-sets communicate to each other
+!          KFPDOM : number of domains
+!          KFPCMAX: maximum truncation for the post-processing
+!          KFMAX  : maximum truncation of the output subdomains.
+!          KGLFI : granularity factor for LFI filtering matrixes
+!          LDBED : .TRUE. to use the low-pass filter on the homogenous resolution
+!            space (arpege only); otherwise the gaussian filter is used.
+!          PBED : coefficient of the exponential function in the low-pass filter.
+!          PLTF : coefficient of the exponential function in the gaussian filter
+!          CDMAT : filenames of filtering matrixes to be read
+!          KCMAX  : maximum truncation read in matrix files
+!          LDFPFIL : .TRUE. if filter active (for each domain)
+!          PFPMAT : matrix filters for each domain
+
+!       IMPLICIT ARGUMENTS
+!        --------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     AUTHOR.
+!     -------
+!      RYAD EL KHATIB *METEO-FRANCE*
+!      ORIGINAL : 12-Apr-2012 from FPFILTER
+
+!     MODIFICATIONS.
+!     --------------
+!      R. El Khatib 25-Feb-2016 getfplun
+!      P. Marguinaud : 04-Oct-2016 Port to single precision
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE YOMLUN   , ONLY : NULOUT
+USE YOMFPC   , ONLY : LALLOFP
+USE YOMMP0   , ONLY : NPRTRV, MYSETW, MYSETV
+USE MPL_MODULE, ONLY : MPL_SEND, MPL_RECV, MPL_WAIT, JP_NON_BLOCKING_STANDARD
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY),     INTENT(IN) :: YDGEOMETRY
+INTEGER(KIND=JPIM), INTENT(IN)  :: KREADALL
+INTEGER(KIND=JPIM), INTENT(IN)  :: KFPDOM
+INTEGER(KIND=JPIM), INTENT(IN)  :: KFPCMAX
+INTEGER(KIND=JPIM), INTENT(IN) :: KFMAX(KFPDOM)
+INTEGER(KIND=JPIM), INTENT(IN) :: KGLFI
+LOGICAL,            INTENT(IN) :: LDBED
+REAL(KIND=JPRB),    INTENT(IN) :: PBED
+REAL(KIND=JPRB),    INTENT(IN) :: PLTF
+CHARACTER(LEN=*),   INTENT(IN) :: CDMAT(KFPDOM)
+INTEGER(KIND=JPIM), INTENT(OUT) :: KCMAX(KFPDOM)
+LOGICAL,            INTENT(IN) :: LDFPFIL(KFPDOM)
+REAL(KIND=JPRB), ALLOCATABLE, INTENT(OUT) :: PFPMAT(:,:)
+
+CHARACTER (LEN = 16) :: CLHEAD
+CHARACTER (LEN = 16), ALLOCATABLE :: CLWAVE(:)
+
+INTEGER(KIND=JPIM) :: INAR, INARI, IREP, JDOM, IM, JMLOC, II, INIMES
+INTEGER(KIND=JPIM) :: IDIMH, ISMAX, IPMAX, ISHAPE
+INTEGER(KIND=JPIM) :: IDIMAT, ILEN, IOFF0, IR, ISND, ITAG, JSET
+INTEGER(KIND=JPIM) :: IULFP, IERR(KFPDOM), IVSET(KFPDOM)
+
+REAL(KIND=JPRB) :: ZHEADER(5,KFPDOM), ZSCAL, ZFPBED
+
+INTEGER(KIND=JPIM), ALLOCATABLE :: IOFF(:), ISRANGE(:), ISRANGE2(:), IREQ(:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!REK REAL(KIND=JPHOOK) :: ZHOOK_HANDLE1
+
+!     ------------------------------------------------------------------
+
+#include "getfplun.intfb.h"
+#include "abor1.intfb.h"
+#include "set2pe.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('RDFPFILTER',0,ZHOOK_HANDLE)
+ASSOCIATE(MYMS=>YDGEOMETRY%YRLAP%MYMS, NSMAX=>YDGEOMETRY%YRDIM%NSMAX, NUMP=>YDGEOMETRY%YRDIM%NUMP)
+!     ------------------------------------------------------------------
+
+!*       1.    SETUP
+!              -----
+
+WRITE(NULOUT,*) ' Entering RDFPFILTER'
+
+IVSET(:)=0
+II=0
+DO JDOM=1,KFPDOM
+  IF (LDFPFIL(JDOM)) THEN
+    II=II+1
+    IF (II > NPRTRV) II=1
+    IVSET(JDOM)=II
+  ENDIF
+ENDDO
+
+INARI=0
+INAR=NSMAX+1
+IREP=0
+IDIMH=5
+WRITE (CLHEAD,'(A)') 'HEADER'
+IERR(:)=0
+INIMES=1
+
+!*       2.    OPEN AND CHECK FILES
+!              --------------------
+
+DO JDOM=1,KFPDOM
+  IF ( KREADALL==1 .OR. IVSET(JDOM)==MYSETV ) THEN
+    CALL GETFPLUN(JDOM,IULFP)
+!REK    IF (LHOOK) CALL DR_HOOK('LFI_RDFPFILTER',0,ZHOOK_HANDLE1)
+    CALL LFIAFM(IREP,IULFP,KGLFI)
+    CALL LFIOUV(IREP,IULFP,.TRUE.,TRIM(CDMAT(JDOM)),'OLD',.TRUE.,.FALSE.,&
+     & INIMES,INAR,INARI)
+    CALL RLFILEC (IULFP,CLHEAD, ZHEADER (:,JDOM), IDIMH)
+!REK    IF (LHOOK) CALL DR_HOOK('LFI_RDFPFILTER',1,ZHOOK_HANDLE1)
+    IF (KREADALL /= 1) THEN
+      DO JSET=1,NPRTRV
+        IF (JSET /= MYSETV) THEN
+          CALL SET2PE(ISND,0,0,MYSETW,JSET)
+          ITAG=JDOM
+          CALL MPL_SEND(ZHEADER(:,JDOM),KDEST=ISND,KTAG=ITAG,CDSTRING='RDFPFILTER:')
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDIF
+ENDDO
+IF (KREADALL /= 1) THEN
+  DO JDOM=1,KFPDOM
+    IF (IVSET(JDOM) /= 0 .AND. IVSET(JDOM) /= MYSETV) THEN
+      CALL SET2PE(ISND,0,0,MYSETW,IVSET(JDOM))
+      ITAG=JDOM
+      CALL MPL_RECV(ZHEADER(:,JDOM),KSOURCE=ISND,KTAG=ITAG,KOUNT=ILEN,CDSTRING='RDFPFILTER:')
+      IF (ILEN /= IDIMH) CALL ABOR1('RDFPFILTER: RECV INVALID RECEIVE MESSAGE LENGHT')
+    ENDIF
+  ENDDO
+ENDIF
+DO JDOM=1,KFPDOM
+  IF (LDFPFIL(JDOM)) THEN
+    ISMAX=INT(ZHEADER(1,JDOM),KIND=JPIM)
+    IPMAX=INT(ZHEADER(2,JDOM),KIND=JPIM)
+    KCMAX(JDOM)=INT(ZHEADER(3,JDOM),KIND=JPIM)
+    ISHAPE=INT(ZHEADER(4,JDOM),KIND=JPIM)
+    ZFPBED=ZHEADER(5,JDOM)
+    IF (ISHAPE == 0) THEN
+      WRITE(NULOUT,'(''READING FILTERING MATRIX : ISMAX = '',I4,  &
+       & '' IPMAX = '',I4,'' KCMAX = '',I4,'' SHAPE = THX  ZFPBED = '', &
+       & E14.7, '' CDMAT = '',A)') ISMAX,IPMAX,KCMAX(JDOM),ZFPBED,TRIM(CDMAT(JDOM))
+    ELSE
+      WRITE(NULOUT,'(''READING FILTERING MATRIX : ISMAX = '',I4,  &
+       & '' IPMAX = '',I4,'' KCMAX = '',I4,'' SHAPE = GAUSSIAN  ZFPLTF = '', &
+       & E14.7, '' CDMAT = '',A)') ISMAX,IPMAX,KCMAX(JDOM),ZFPBED,TRIM(CDMAT(JDOM))
+    ENDIF
+    IF (KCMAX(JDOM) < KFPCMAX) THEN
+      IERR(JDOM)=1
+      WRITE(NULOUT,*) 'FILTERING MATRIX ERROR : KCMAX < KFPCMAX !'
+    ENDIF
+    IF (ISMAX /= NSMAX) THEN
+      IERR(JDOM)=1
+      WRITE(NULOUT,*) 'FILTERING MATRIX ERROR : ISMAX /= NSMAX !'
+    ENDIF
+    IF (IPMAX /= KFMAX(JDOM)) THEN
+      IERR(JDOM)=1
+      WRITE(NULOUT,*) 'FILTERING MATRIX ERROR : IPMAX /= KFMAX !'
+    ENDIF
+    IF (ISHAPE /= 0 .AND. LDBED) THEN
+      IERR(JDOM)=1
+      WRITE(NULOUT,*) 'FILTERING MATRIX ERROR : FILTER SHAPE DOES NOT CONFORM LDBED !'
+    ELSE
+      ZSCAL=1000._JPRB
+      IF (LDBED) THEN
+        IF (ABS(PBED-ZFPBED) > ZSCAL*SPACING(PBED)) THEN
+          IERR(JDOM)=1
+          WRITE(NULOUT,*) 'FILTERING MATRIX ERROR : ZFPBED /= PBED !'
+        ENDIF
+      ELSE
+        IF (ABS(PLTF-ZFPBED) > ZSCAL*SPACING(PLTF)) THEN
+          IERR(JDOM)=1
+          WRITE(NULOUT,*) 'FILTERING MATRIX ERROR : ZFPLTF /= PLTF !'
+          WRITE(NULOUT,*) 'MAYBE YOU SHOULD CHANGE LDBED'
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+ENDDO
+
+IF (ANY(IERR(:) == 1)) CALL ABOR1('RDFPFILTER:FILTERING MATRIX ERROR')
+
+!*       3.    READ FILES AND DISTRIBUTE
+!              -------------------------
+
+!        3.1   Prepare matrixes array
+!              ----------------------
+
+ALLOCATE(ISRANGE(NUMP),ISRANGE2(NUMP),IOFF(NUMP+1))
+IOFF(1)=0
+DO JMLOC=1,NUMP
+  IM=MYMS(JMLOC)
+  ISRANGE(JMLOC)=NSMAX+1-IM
+  ISRANGE2(JMLOC)=ISRANGE(JMLOC)**2
+  IOFF(JMLOC+1)=IOFF(JMLOC)+ISRANGE2(JMLOC)
+ENDDO
+ALLOCATE(CLWAVE(NUMP))
+DO JMLOC=1,NUMP
+  IM=MYMS(JMLOC)
+  IF (IM == 0) WRITE (CLWAVE(JMLOC),'(A,I5.4)') 'WNUM 0000'
+  IF (IM  > 0) WRITE (CLWAVE(JMLOC),'(A,I5.4)') 'WNUM',IM
+ENDDO
+
+IDIMAT=2*(IOFF(NUMP+1)/2)+1
+ALLOCATE(PFPMAT(IDIMAT,KFPDOM))
+IF (LALLOFP) THEN
+  WRITE(NULOUT,'(1X,''ARRAY '',A10,'' ALLOCATED '',8I12)') 'PFPMAT   ',SIZE(PFPMAT),SHAPE(PFPMAT)
+ENDIF
+IF (IDIMAT > IOFF(NUMP+1)) THEN
+  PFPMAT(IDIMAT,:)=0._JPRB
+ENDIF
+
+IF (KREADALL /= 1) ALLOCATE(IREQ(2*KFPDOM*NPRTRV*NUMP))
+IR=0
+
+!        3.2   Fill matrixes array per wave
+!              ----------------------------
+
+DO JMLOC=1,NUMP
+  IOFF0=IOFF(JMLOC)
+  ILEN=ISRANGE2(JMLOC)
+  IF (KREADALL /= 1) THEN
+
+!        3.2.1 recv loop
+
+    DO JDOM=1,KFPDOM
+      IF (IVSET(JDOM) /= 0 .AND. IVSET(JDOM) /= MYSETV) THEN
+        CALL SET2PE(ISND,0,0,MYSETW,IVSET(JDOM))
+        ITAG=JMLOC+NUMP*(JDOM-1)
+        IR=IR+1
+        CALL MPL_RECV(PFPMAT(IOFF0+1:IOFF0+ILEN,JDOM),KSOURCE=ISND,KTAG=ITAG,&
+         & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQ(IR), &
+         & KOUNT=ILEN,CDSTRING='RDFPFILTER:')
+        IF (ILEN /= ISRANGE2(JMLOC)) CALL ABOR1('RDFPFILTER: RECV INVALID RECEIVE MESSAGE LENGHT')
+      ENDIF
+    ENDDO
+
+  ENDIF
+
+!        3.2.2 read & send loop
+
+  DO JDOM=1,KFPDOM
+    IF ( KREADALL==1 .OR. IVSET(JDOM)==MYSETV ) THEN
+      CALL GETFPLUN(JDOM,IULFP)
+      CALL RLFILEC (IULFP,CLWAVE(JMLOC), PFPMAT (IOFF0+1:IOFF0+ILEN,JDOM), ILEN)
+      IF (KREADALL /= 1) THEN
+        DO JSET=1,NPRTRV
+          IF (JSET /= MYSETV) THEN
+            CALL SET2PE(ISND,0,0,MYSETW,JSET)
+            ITAG=JMLOC+NUMP*(JDOM-1)
+            IR=IR+1
+            CALL MPL_SEND(PFPMAT(IOFF0+1:IOFF0+ILEN,JDOM),KDEST=ISND,KTAG=ITAG, &
+             & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQ(IR), &
+             & CDSTRING='RDFPFILTER:')
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDIF
+  ENDDO
+
+ENDDO
+
+!*       4.    CLOSE FILES AND COMPLETE COMMUNICATIONS
+!              ---------------------------------------
+
+DO JDOM=1,KFPDOM
+  IF ( KREADALL==1 .OR. IVSET(JDOM)==MYSETV ) THEN
+    CALL GETFPLUN(JDOM,IULFP)
+!REK    IF (LHOOK) CALL DR_HOOK('LFI_RDFPFILTER',0,ZHOOK_HANDLE1)
+    CALL LFIFER(IREP,IULFP,'KEEP')
+!REK    IF (LHOOK) CALL DR_HOOK('LFI_RDFPFILTER',1,ZHOOK_HANDLE1)
+  ENDIF
+ENDDO
+
+IF(IR > 0) THEN
+  CALL MPL_WAIT(KREQUEST=IREQ(1:IR),CDSTRING='RDFPFILTER: WAIT FOR SENDS AND RECEIVES')
+ENDIF
+
+!*       5.    FINISH
+!              ------
+
+IF (KREADALL /= 1) DEALLOCATE(IREQ)
+DEALLOCATE(CLWAVE)
+DEALLOCATE(ISRANGE,ISRANGE2,IOFF)
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('RDFPFILTER',1,ZHOOK_HANDLE)
+
+
+CONTAINS
+
+SUBROUTINE RLFILEC (KULFP, CDNOMA, PDONNE, KLONGD)
+
+USE PARKIND1, ONLY : JPRD
+
+INTEGER(KIND=JPIM), INTENT(IN) :: KULFP
+CHARACTER (LEN=*), INTENT(IN)  :: CDNOMA
+REAL (KIND=JPRB)    :: PDONNE (:)
+INTEGER (KIND=JPIM) :: KLONGD
+REAL (KIND=JPRD)    :: ZDONNE (SIZE (PDONNE))
+
+REAL (KIND=JPHOOK) :: ZHOOK_HANDLE
+
+IF (LHOOK) CALL DR_HOOK('RDFPFILTER:RLFILEC',0,ZHOOK_HANDLE)
+
+CALL LFILEC (IREP, KULFP, CDNOMA, ZDONNE, KLONGD)
+PDONNE = REAL (ZDONNE, JPRB)
+
+IF (LHOOK) CALL DR_HOOK('RDFPFILTER:RLFILEC',1,ZHOOK_HANDLE)
+
+END SUBROUTINE RLFILEC
+
+END SUBROUTINE RDFPFILTER

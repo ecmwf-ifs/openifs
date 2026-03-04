@@ -1,0 +1,333 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE GPINISLB(&
+ ! --- INPUT ---------------------------------------------------------
+ & YDGEOMETRY,YGFL,YDDYN,YDDYNA,YDPTRSLB2,KST,KEN,PTE,LDTL,&
+ & PGFL,&
+ & PUT9    ,PVT9     ,PTT9,&
+ & PSPDT9  ,PSVDT9   ,PNHX9 ,PSPT9,&
+ & PVVEL0   ,PZPRE0F,&
+ ! --- OUTPUT --------------------------------------------------------
+ & PB2U1   ,PB2V1    ,PB2T1    ,PGFLT1,&
+ & PB2PD1  ,PB2VD1   ,PGMVNHX1,&
+ & PB2SP1  ,&
+ & PB2,PQICE,PQLI,PQRAIN,PQSNOW,&
+ ! --- OPTIONAL INPUT ------------------------------------------------
+ & PGWFT0,PGDW0,PGWS0,PGWFT9,PGDW9,PGWS9)
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1     , ONLY : JPIM, JPRB
+USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOM_YGFL     , ONLY : TYPE_GFLD
+USE YOMDYN       , ONLY : TDYN
+USE YOMDYNA      , ONLY : TDYNA
+USE PTRSLB2      , ONLY : TPTRSLB2
+
+!**** *GPINISLB* - 
+
+!     Purpose.
+!     --------
+
+!      Setups "SLB2" buffer and also PQLI and PQICE.
+
+!**   Interface.
+!     ----------
+!        *CALL* *GPINISLB(...)*
+
+!        Explicit arguments :
+!        --------------------
+
+!        * INPUT:
+!         KST       : first element of work.
+!         KEN       : last element of work.
+!         PTE       : 1. or 0. according to different configurations.
+!         LDTL      : F=direct code; T=TL code
+!         PGFL      : unified_treatment grid-point fields at t
+!         PUT9 to PSPT9: t-dt prognostic variables.
+!         PVVEL0    : "omega/prehyd" on layers at t.
+!         PZPRE0F   : hydrostatic pressure at full levels at t.
+
+!        * OUTPUT:
+!         PB2U1 to PB2SP1: GFL and GMV at t+dt.
+!         PB2       : "SLB2" buffer.
+!         PQICE     : specific humidity of solid water for radiation.
+!         PQLI      : specific humidity of liquid water for radiation.
+!         PQRAIN    : specific humidity of rain for radiation.
+!         PQSNOW    : specific humidity of snow for radiation.
+!        * OPTIONAL INPUT:
+!         PGWFT0    : "gw" at full levels at t.
+!         PGDW0     : "g dw" at full levels at t.
+!         PGWS0     : "g w_surf" at t.
+!         PGWFT9    : "gw" at full levels at t-dt.
+!         PGDW9     : "g dw" at full levels at t-dt.
+!         PGWS9     : "g w_surf" at t-dt.
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+       
+!     Author.
+!     -------
+!     Anonymous   *ECMWF/METEO-FRANCE ?*
+
+!     Modifications.
+!     --------------
+!   C. Fischer : 02-06-28 add doc header, a comment for TL and rename NHS var
+!   K. Yessad  : 02-11-13 cleanings + improve vectorization.
+!   M.Hamrud      01-Oct-2003 CY28 Cleaning
+!   K. Yessad  : Jul 2004 cleanings.
+!   J. Vivoda  : 20-Feb-2005 3TL Eul PC scheme
+!   F. Bouyssel: 22-Mar-2005 Correction for non advected var. in SL 
+!   R. Brozkova: 18-Jul-2005 VDAUX arrays => "X" term regular GMV arrays
+!   N. Wedi and K. Yessad (Jan 2008): different dev for NH model and PC scheme
+!   M. Ahlgrimm  31-Oct-2011 add rain, snow and PEXTRA to DDH output
+!   K. Yessad (June 2017): Introduce NHQE model.
+!     -------------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TDYN)        ,INTENT(IN)    :: YDDYN
+TYPE(TDYNA)       ,INTENT(IN)    :: YDDYNA
+TYPE(TPTRSLB2)    ,INTENT(IN)    :: YDPTRSLB2
+TYPE(TYPE_GFLD)   ,INTENT(IN)    :: YGFL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KST 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KEN 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTE 
+LOGICAL           ,INTENT(IN)    :: LDTL 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGFL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NDIM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSPDT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSVDT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHX9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSPT9(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVVEL0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZPRE0F(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2U1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2V1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2T1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGFLT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NDIM1) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2PD1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2VD1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGMVNHX1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2SP1(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PB2(YDGEOMETRY%YRDIM%NPROMA,YDPTRSLB2%NFLDSLB2) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQICE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQLI(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQRAIN(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQSNOW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PGWFT0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PGDW0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PGWS0(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PGWFT9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PGDW9(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PGWS9(YDGEOMETRY%YRDIM%NPROMA) 
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: JGFL,JLEV
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('GPINISLB',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, &
+ & YDMP=>YDGEOMETRY%YRMP,YDCVER=>YDGEOMETRY%YRCVER)
+ASSOCIATE(NDIM=>YGFL%NDIM, NDIM1=>YGFL%NDIM1, NUMFLDS=>YGFL%NUMFLDS, &
+ & YCOMP=>YGFL%YCOMP, YI=>YGFL%YI, YL=>YGFL%YL, YR=>YGFL%YR, YS=>YGFL%YS, &
+ & NPROMA=>YDDIM%NPROMA, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & NCURRENT_ITER=>YDDYN%NCURRENT_ITER, &
+ & MSLB2GDW=>YDPTRSLB2%MSLB2GDW, MSLB2GWF=>YDPTRSLB2%MSLB2GWF, &
+ & MSLB2GWS=>YDPTRSLB2%MSLB2GWS, MSLB2VVEL=>YDPTRSLB2%MSLB2VVEL, &
+ & NFLDSLB2=>YDPTRSLB2%NFLDSLB2)
+!     ------------------------------------------------------------------
+
+!*          1.     PB2[X]1 for prognostic variables.
+!                  --------------------------------- 
+
+!*          1.1    PB2[X]1 for GMV variables (U,V,T,NH variables).
+
+IF (YDDYNA%LSLAG) THEN
+  PB2U1(KST:KEN,1:NFLEVG) = 0.0_JPRB
+  PB2V1(KST:KEN,1:NFLEVG) = 0.0_JPRB
+  PB2T1(KST:KEN,1:NFLEVG) = 0.0_JPRB
+  IF(YDDYNA%LNHDYN) THEN
+    PB2PD1(KST:KEN,1:NFLEVG) = 0.0_JPRB
+    PB2VD1(KST:KEN,1:NFLEVG) = 0.0_JPRB
+    IF (YDDYNA%LNHX) PGMVNHX1(KST:KEN,1:NFLEVG) = 0.0_JPRB
+  ENDIF
+ELSE !Eulerian
+  IF( NCURRENT_ITER==0 )THEN 
+    PB2U1(KST:KEN,1:NFLEVG)=PUT9(KST:KEN,1:NFLEVG)*PTE
+    PB2V1(KST:KEN,1:NFLEVG)=PVT9(KST:KEN,1:NFLEVG)*PTE
+    PB2T1(KST:KEN,1:NFLEVG)=PTT9(KST:KEN,1:NFLEVG)*PTE
+    IF(YDDYNA%LNHDYN) THEN
+      PB2PD1(KST:KEN,1:NFLEVG)=PSPDT9(KST:KEN,1:NFLEVG)*PTE
+      PB2VD1(KST:KEN,1:NFLEVG)=PSVDT9(KST:KEN,1:NFLEVG)*PTE
+      IF (YDDYNA%LNHX) PGMVNHX1(KST:KEN,1:NFLEVG)=PNHX9(KST:KEN,1:NFLEVG)*PTE
+    ENDIF
+  ELSE
+    PB2U1(KST:KEN,1:NFLEVG)=0.0_JPRB
+    PB2V1(KST:KEN,1:NFLEVG)=0.0_JPRB
+    PB2T1(KST:KEN,1:NFLEVG)=0.0_JPRB
+    IF(YDDYNA%LNHDYN) THEN
+      PB2PD1(KST:KEN,1:NFLEVG)=0.0_JPRB
+      PB2VD1(KST:KEN,1:NFLEVG)=0.0_JPRB
+      IF (YDDYNA%LNHX) PGMVNHX1(KST:KEN,1:NFLEVG)=0.0_JPRB
+    ENDIF
+  ENDIF
+ENDIF
+
+!*          1.2    PB2[X]1 for GFL variables, and also PQLI, PQICE.
+
+! input for MF_PHYS and CPG_DIA (useless if NCURRENT_ITER>0).
+IF(YL%LACTIVE) THEN
+  IF (YDDYNA%LSLAG.AND.YDDYNA%LTWOTL) THEN
+    PQLI(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YL%MP)
+  ELSE
+    PQLI(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YL%MP9)
+  ENDIF
+ELSE
+  PQLI(KST:KEN,1:NFLEVG)=0.0_JPRB
+ENDIF
+IF(YI%LACTIVE) THEN
+  IF (YDDYNA%LSLAG.AND.YDDYNA%LTWOTL) THEN
+    PQICE(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YI%MP)
+  ELSE
+    PQICE(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YI%MP9)
+  ENDIF
+ELSE
+  PQICE(KST:KEN,1:NFLEVG)=0.0_JPRB
+ENDIF
+IF(YR%LACTIVE) THEN
+   IF (YDDYNA%LSLAG.AND.YDDYNA%LTWOTL) THEN
+      PQRAIN(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YR%MP)
+   ELSE
+      PQRAIN(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YR%MP9)
+   ENDIF
+ELSE
+   PQRAIN(KST:KEN,1:NFLEVG)=0.0_JPRB
+ENDIF
+IF(YS%LACTIVE) THEN
+   IF (YDDYNA%LSLAG.AND.YDDYNA%LTWOTL) THEN
+      PQSNOW(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YS%MP)
+   ELSE
+      PQSNOW(KST:KEN,1:NFLEVG)=PGFL(KST:KEN,1:NFLEVG,YS%MP9)
+   ENDIF
+ELSE
+   PQSNOW(KST:KEN,1:NFLEVG)=0.0_JPRB
+ENDIF
+IF (YDDYNA%LSLAG.AND.YDDYNA%LTWOTL) THEN
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LADV) THEN
+      PGFLT1(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP1) = 0.0_JPRB
+    ELSEIF(YCOMP(JGFL)%LT1) THEN
+      PGFLT1(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP1) =&
+       & PGFL(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP)*PTE  
+    ENDIF
+  ENDDO
+ELSEIF(YDDYNA%LSLAG.AND.(.NOT.YDDYNA%LTWOTL)) THEN
+  DO JGFL=1,NUMFLDS
+    IF(YCOMP(JGFL)%LADV) THEN
+      PGFLT1(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP1) = 0.0_JPRB
+    ELSEIF(YCOMP(JGFL)%LT1) THEN
+      PGFLT1(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP1) =&
+       & PGFL(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP9)*PTE  
+    ENDIF
+  ENDDO
+ELSE !Eularian
+  IF( NCURRENT_ITER == 0 )THEN
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LT1) THEN
+        PGFLT1(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP1)=&
+         & PGFL(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP9)*PTE  
+      ENDIF
+    ENDDO
+  ELSE
+    DO JGFL=1,NUMFLDS
+      IF(YCOMP(JGFL)%LT1) THEN
+        PGFLT1(KST:KEN,1:NFLEVG,YCOMP(JGFL)%MP1)=0.0_JPRB
+      ENDIF
+    ENDDO
+  ENDIF
+ENDIF
+
+!*          1.3    PB2[X]1 for continuity equation (GMVS).
+
+IF (YDDYNA%LSLAG) THEN
+  PB2SP1(KST:KEN)=0.0_JPRB
+ELSE
+  IF( NCURRENT_ITER == 0 )THEN
+    PB2SP1(KST:KEN)=PSPT9(KST:KEN)*PTE
+  ELSE
+    PB2SP1(KST:KEN)=0.0_JPRB
+  ENDIF      
+ENDIF
+
+!*          2.     PB2[X] for other purposes.
+!                  -------------------------- 
+
+!*          2.1    PB2VVEL.
+
+!cf this do loop is furiously non linear, but useless in tl model
+IF (.NOT.LDTL) THEN
+  ! Non linear: TL code is in CPG_GP_TL.
+  DO JLEV=1,NFLEVG
+    PB2(KST:KEN,MSLB2VVEL+JLEV-1)=PVVEL0(KST:KEN,JLEV)*PZPRE0F(KST:KEN,JLEV)
+  ENDDO
+ENDIF
+
+!*          2.2    (gw), (g w_surf) and (g dw).
+
+IF (.NOT.LDTL.AND.YDDYNA%LNHDYN.AND.YDDYNA%LGWADV.AND.YDCVER%LVERTFE.AND.YDCVER%LVFE_GW) THEN
+  ! Not yet coded in the TL code.
+  IF (YDDYNA%LSLAG.AND.YDDYNA%LTWOTL) THEN
+    IF (.NOT.(PRESENT(PGWFT0).AND.PRESENT(PGDW0).AND.PRESENT(PGWS0)))&
+     & CALL ABOR1(' GPINISLB 2a: missing optional input arguments!')
+    DO JLEV=1,NFLEVG
+      PB2(KST:KEN,MSLB2GWF+JLEV-1)=PGWFT0(KST:KEN,JLEV)
+      PB2(KST:KEN,MSLB2GDW+JLEV-1)=PGDW0(KST:KEN,JLEV)
+    ENDDO
+    PB2(KST:KEN,MSLB2GWS)=PGWS0(KST:KEN)
+  ELSEIF (YDDYNA%LSLAG.AND.(.NOT.YDDYNA%LTWOTL)) THEN
+    IF (.NOT.(PRESENT(PGWFT9).AND.PRESENT(PGDW9).AND.PRESENT(PGWS9)))&
+     & CALL ABOR1(' GPINISLB 2b: missing optional input arguments!')
+    DO JLEV=1,NFLEVG
+      PB2(KST:KEN,MSLB2GWF+JLEV-1)=PGWFT9(KST:KEN,JLEV)
+      PB2(KST:KEN,MSLB2GDW+JLEV-1)=PGDW9(KST:KEN,JLEV)
+    ENDDO
+    PB2(KST:KEN,MSLB2GWS)=PGWS9(KST:KEN)
+  ENDIF
+ENDIF
+
+!     -------------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('GPINISLB',1,ZHOOK_HANDLE)
+END SUBROUTINE GPINISLB

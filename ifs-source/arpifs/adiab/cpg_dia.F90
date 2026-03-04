@@ -1,0 +1,901 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#ifdef RS6K
+@PROCESS NOCHECK
+#endif
+SUBROUTINE CPG_DIA(YDGEOMETRY,YDGMV,YDSURF,YDCFU,YDXFU,YDMODEL,&
+ !---------------------------------------------------------------------
+ ! - INPUT .
+ & KST,KEND,KSTC,KENDC,KSTGLO,KDDHI,&
+ & LDCONFX,LDLDIAB,LDLFSTEP,LD_DFISTEP, &
+ & KIBL,POROGL,POROGM,&
+ & PGMV,PGFL,&
+ & PRE0,PRE0F,PXYB0,&
+ & PHI0,PHIF0,PHI0FL,PHI0FM,PRCP0,&
+ & PCTY0,POMEGA,PKENE0,&
+ & PRT0L,PRT0M,PRE0L,PRE0M,&
+ & PNHPRE0F,PNHPRE0H,PQCHA0L,PQCHA0M,&
+ & PSD_VF,PSP_SG,PSP_SB,PSP_RR,&
+ & PSD_XP,PSD_XP2,PDHSF,&
+ & PALB,PCAPE,PCTOP,PCLCC,PCLCH,PCLCL,PCLCM,PCLCT,PCLPH,PVEIN,PCT,&
+ & PDIFCQ,PDIFCQN,PDIFCQL,PDIFCS,PDIFTQ,PDIFTQN,PDIFTQL,PDIFTS,&
+ & PFCCQL,PFCCQN,PFCHSP,PFCLL,PFCLN,PFCQNNG,PFCQLNG,PFCQNG,PFCS,&
+ & PFCSQL,PFCSQN,PFEVL,PFEVN,PFEVV,PFGEL,PFGELS,PFLWSP,PFONTE,&
+ & PFPLCL,PFPLCN,PFPLCG,PFPLCH,PFPLSL,PFPLSN,PFPLSG,PFPLSH,&
+ & PMRT,PFRMH,PFRSO,PFRSOC,PFRSODS,PFRSOLU,PFRSGNI,&
+ & PFRSDNI,PFRSOPS,PFRSOPT,PFRTH,PFRTHC,PFRTHDS,PFTR,PGZ0,PGZ0H,PNEB,&
+ & PQICE,PQLI,PQRAIN,PQSNOW,PQS,PEXT,&
+ & PRH,PRHCLS,PRUISL,PRUISP,PRUISS,&
+ & PSTRCU,PSTRCV,PSTRDU,PSTRDV,PSTRTU,PSTRTV,&
+ & PUCLS,PVCLS,PNUCLS,PNVCLS,PTCLS,PQCLS,PUGST,PVGST,&
+ & PMOCON,PFDIS,&
+ & PFHPCL,PFHPCN,PFHPSL,PFHPSN,PFHSCL,PFHSCN,PFHSSL,PFHSSN,&
+ & PFEPFP, PFCMPCQ, PFCMPSN, PFCMPSL,&
+ & PFPFPSL,PFPFPSN,PFPFPCL,PFPFPCN,PFPEVPSL,PFPEVPSN,&
+ & PFPEVPCL,PFPEVPCN,PGPAR,&
+ & PFCQRNG, PFCQSNG,PDIAGH,PFLASH,PCOVPTOT,&
+ & PGMVTNDSI,PGMVTNDHD,PGFLTNDHD,PATND,&
+ & PVISICLD,PVISIHYDRO,PMXCLWC,PTPWCLS,&
+ !---------------------------------------------------------------------
+ ! - INPUT/OUTPUT .
+ & PDHCV,PDRNSHF,YDDDH,PSP_CL,PFTCNS)
+
+!**** *CPG_DIA* - Grid point calculations: diagnostics.
+
+!     Purpose.
+!     --------
+!           Grid point calculations: diagnostics using non lagged dynamics
+!           and non lagged physics (DDH, CFU, XFU).
+
+!**   Interface.
+!     ----------
+!        *CALL* *CPG_DIA(...)*
+
+!        Explicit arguments :
+!        --------------------
+
+!     INPUT:
+!     ------
+!        KST       : first element of work.
+!        KEND      : last element of work.
+!        KSTC,KENDC: the same as KST,KEND but including zone C for ALADIN.
+!        KSTGLO    : global offset.
+!        KDDHI     : internal domain to which each point belongs (DDH).
+!        LDCONFX   : (see in CPG)
+!        LDLDIAB   : .T. if complete physics is activated.
+!        LDLFSTEP  : .T. if first step.
+!        LD_DFISTEP: 'D' -> DFI computations
+!        KIBL      : index into YRGSGEOM/YRCSGEOM types in YDGEOMETRY
+!        POROGL    : zonal component of "grad(surf orography)"
+!        POROGM    : meridian component of "grad(surf orography)"
+!        PGMV      : upper air GMV variables at time t and t-dt.
+!        PGFL      : unified_treatment grid-point fields at t.
+!        PRE0      : hydrostatic pressure "prehyd" at half levels at time t.
+!        PRE0F     : hydrostatic pressure "prehyd" at full levels at time t.
+!        PXYB0     : contains pressure depth, "delta", "alpha" at t.
+!        PHI0      : geopotential height "gz" at t at half levels.
+!        PHIF0     : geopotential height "gz" at t at full levels.
+!        PHI0FL    : zonal component of "grad(gz)" at full levels.
+!        PHI0FM    : meridian component of "grad(gz)" at full levels.
+!        PRCP0     : contains "cp", "R" and "Kap=R/Cp" at t.
+!        PCTY0     : contains vertical velocities, vertical integral of divergence at t.
+!        POMEGA    : "omega" at full levels at t, including the "lrubc" and "delta m=1" effects.
+!        PKENE0    : kinetic energy at t.
+!        PRT0L     : zonal component of "grad(RT)" at full levels.
+!        PRT0M     : meridian component of "grad(RT)" at full levels.
+!        PRE0L     : zonal component of "grad(prehyds)" at full levels.
+!        PRE0M     : meridian component of "grad(prehyds)" at full levels.
+!        PNHPRE0F  : "pre" at full levels (time t).
+!        PNHPRE0H  : "pre" at half levels (time t).
+!        PQCHA0L   : zonal comp grad(log(pre/prehyd)).
+!        PQCHA0M   : merid comp grad(log(pre/prehyd)).
+!        PSD_VF    : diagnostic surface fields VF=VARSF.
+!        PSP_SG    : prognostic surface fields SG=SNOWG.
+!        PSP_SB    : prognostic surface fields SB=SOILB.
+!        PSP_RR    : prognostic surface fields RR=RESVR.
+!        PDHSF     : distribution of horizontal mean weights used for simplified radiation scheme.
+!        ---------------------- output of aplpar ------------------------------
+!        PALB      : model surface shortwave albedo.
+!        PCAPE     : CAPE.
+!        PCTOP     : pressure of top of convective cloud (diagnostic).
+!        PCLCC     : convective cloud cover (diagnostic).
+!        PCLCH     : high cloud cover (diagnostic).
+!        PCLCL     : low cloud cover (diagnostic).
+!        PCLCM     : medium cloud cover (diagnostic).
+!        PCLCT     : total cloud cover (diagnostic).
+!        PCLPH     : height (in meters) of the PBL.
+!        PVEIN     : ventilation index in the PBL.
+!        PCT       : thermical coefficient of soil-vegetation middle.
+!        PDIFCQ    : convective flux of specific humidity (not rain/snow).
+!        PDIFCQN   : convective flux of solid water (not rain/snow).
+!        PDIFCQL   : convective flux of liquid water (not rain/snow).
+!        PDIFCS    : convective flux of enthalpy (not rain/snow).
+!        PDIFTQ    : turbulent flux (inc. "q" negative) of specific humidity.
+!        PDIFTQN   : turbulent flux (inc. "q" negative) of solid water.
+!        PDIFTQL   : turbulent flux (inc. "q" negative) of liquid water.
+!        PDIFTS    : turbulent flux of enthalpy (or dry static energy).
+!        PFCCQL    : convective condensation flux for liquid water.
+!        PFCCQN    : convective condensation flux for ice.
+!        PFCHSP    : heat flux from surface to deep soil.
+!        PFCLL     : latent heat flux over liquid water (or wet soil).
+!        PFCLN     : latent heat flux over snow (or ice).
+!        PFCQNNG   : pseudo-flux of ice to correct for "qi"<0.
+!        PFCQLNG   : pseudo-flux of liquid water to correct for "ql"<0.
+!        PFCQNG    : pseudo-flux of water to correct for Q<0.
+!        PFCS      : sensible heat flux at surface level.
+!        PFCSQL    : stratiform condensation flux for liquid water.
+!        PFCSQN    : stratiform condensation flux for ice.
+!        PFEVL     : water vapour flux over liquid water (or wet soil).
+!        PFEVN     : water vapour flux over snow (or ice) and frozen soil.
+!        PFEVV     : evapotranspiration flux.
+!        PFGEL     : freezing flux of soil water.
+!        PFGELS    : freezing flux of soil water at surface level.
+!        PFLWSP    : water flux from surface to deep soil.
+!        PFONTE    : water flux corresponding to surface snow melt.
+!        PFPLCL    : convective precipitation as rain.
+!        PFPLCN    : convective precipitation as snow.
+!        PFPLCG    : convective precipitation as graupel.
+!        PFPLCH    : convective precipitation as hail.
+!        PFPLSL    : stratiform precipitation as rain.
+!        PFPLSN    : stratiform precipitation as snow.
+!        PFPLSG    : stratiform precipitation as graupel.
+!        PFPLSH    : stratiform precipitation as hail.
+!        PMRT      : mean radiant temperature.
+!        PFRMH     : mesospheric enthalpy flux.
+!        PFRSO     : shortwave radiative flux.
+!        PFRSOC    : shortwave clear sky radiative flux.
+!        PFRSODS   : surface downwards solar flux.
+!        PFRSOLU   : downward lunar flux at surface.
+!        PFRSGNI   : surface global normal irradiance.
+!        PFRSDNI   : surface direct normal irradiance.
+!        PFRSOPS   : surface parallel solar flux.
+!        PFRSOPT   : top parallel solar flux.
+!        PFRTH     : longwave radiative flux.
+!        PFRTHC    : longwave clear sky radiative flux.
+!        PFRTHDS   : surface downwards IR flux.
+!        PFTR      : transpiration flux.
+!        PGZ0      : g*roughness lenght (current).
+!        PGZ0H     : current g*thermal roughness lenght (if KVCLIV >= 8).
+!        PNEB      : fractional cloudiness for radiation.
+!        PQICE     : specific humidity of solid water for radiation.
+!        PQLI      : specific humidity of liquid water for radiation.
+!        PQRAIN    : specific humidity of rain for radiation.
+!        PQSNOW    : specific humidity of snow for radiation.
+!        PQS       : specific humidity at surface level.
+!        PEXT      : extra diagnostics from physics.
+!        PRH       : relative humidity.
+!        PRHCLS    : relative humidity at 2 meters (diagnostic).
+!        PRUISL    : run-off flux out the interception water-tank.
+!        PRUISP    : run-off flux in soil.
+!        PRUISS    : run-off flux at surface level.
+!        PSTRCU    : convective flux of momentum "U".
+!        PSTRCV    : convective flux of momentum "V".
+!        PSTRDU    : gravity wave drag flux "U".
+!        PSTRDV    : gravity wave drag flux "V".
+!        PSTRTU    : turbulent flux of momentum "U".
+!        PSTRTV    : turbulent flux of momentum "V".
+!        PUCLS     : U-component of wind at 10 meters (diagnostic).
+!        PVCLS     : V-component of wind at 10 meters (diagnostic).
+!        PNUCLS    : U-component of neutral wind at 10 meters (diagnostic).
+!        PNVCLS    : V-component of neutral wind at 10 meters (diagnostic).
+!        PTCLS     : temperature at 2 meters (diagnostic).
+!        PQCLS     : specific humidity at 2 meters (diagnostic).
+!        PTPWCLS   : wet bulb temperature at 2 meters (diagnostic).
+!        PUGST     : U-component of gusts (diagnostic).
+!        PVGST     : V-component of gusts (diagnostic).
+!        PVISICLD  : visibility due to cloud (ice and liquid) water
+!        PVISIHYRO : visibility due to precipitation
+!        PSD_XP    : Precipitation type diagnostic
+!        PSD_XP2   : Precipitation type diagnostic
+!        ---------------------- end of output of aplpar -----------------------
+!        PMOCON    : moisture convergence.
+!        PFDIS     : enthalpy flux due to dissipation of kinetic energy. 
+!        PFHPCL    : liquid water convective condensation enthalpy flux.
+!        PFHPCN    : snow convective condensation enthalpy flux.
+!        PFHPSL    : liquid water stratiform condensation enthalpy flux.
+!        PFHPSN    : snow stratiform condensation enthalpy flux.
+!        PFHSCL    : sensible heat flux due to liquid convective precipitations
+!        PFHSCN    : sensible heat flux due to snow convective precipitations.
+!        PFHSSL    : sensible heat flux due to liquid stratiform precipitations
+!        PFHSSN    : sensible heat flux due to snow stratiform precipitations.
+!        PFPFPSL   : flux of liquid resolved precipitation: the generation term.
+!        PFPFPSN   : flux of solid resolved precipitation: the generation term.
+!        PFPFPCL   : flux of liquid conv. precipitation: the generation term.
+!        PFPFPCN   : flux of solid conv. precipitation: the generation term.
+!        PFPEVPSL  : resolved precipitation flux due to evaporation.
+!        PFPEVPSN  : resolved precipitation flux due to sublimation.
+!        PFPEVPCL  : convective precipitation flux due to evaporation.
+!        PFPEVPCN  : convective precipitation flux due to sublimation.
+!        PGMVTNDSI : tendencies of semi-implicit scheme.
+!        PGMVTNDHD : tendencies of horizontal diffusion scheme for GMV.
+!        PGFLTNDHD : tendencies of horizontal diffusion for spectrally treated GFL.
+!        PATND     : adiabatic Lagrangian tendencies.
+
+!        PCOVPTOT  : precip fraction 
+
+!     INPUT/OUTPUT:
+!     -------------
+!        PDHCV     : result array containing flux divergences and fluxes.
+!                    Entering this routine this array is assumed to be
+!                    pre-initialised with zeros.
+!        PDRNSHF   : Derivative of non solar surface fluxes
+!        YDDDH     : diagnostic superstructure
+!        PSP_CL    : diagnostic cls fields CL=CLS.
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ARPEGE documentation about Eulerian and semi-Lagrangian schemes.
+
+! Author
+! ------
+!   13-Aug-2001 K. YESSAD after part 8 of CPG. 
+
+! Modifications
+! -------------
+!   04-Mar-2008 Y. Seity  Cleaning MTS pictures (IR and WV) replaced by Fullpos
+!   01-Oct-2008 O.riviere Introduction of new data flow for DDH
+!   K. Yessad (Dec 2008): remove dummy CDLOCK + cleanings
+!   18-May-2009 S. Riette : mean cls wind added
+!   14-Oct-2009 A. Alias   ZUCLS, ZVCLS added in CUMCPLDM (E.Maisonnave)
+!   04-Jan-2011 Y. Seity Add PDIAGH (AROME hail daignostic)
+!   K. Yessad (Nov 2009): cleanings, DT/Dt now pre-computed in CPG_GP.
+!   K. Yessad (Jan 2011): introduce INTDYN_MOD structures.
+!   2011-10-04 J.M. Piriou: do not call CPPHDDH if flexible DDH.
+!   K. Yessad (Nov 2011): various modifications.
+!   M. Ahlgrimm  31-Oct-2011 add rain, snow and PEXTRA to DDH output
+!   M. Ahlgrimm Apr 2014: Add lake variables and precip fraction to DDH output
+!   T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!   K. Yessad (July 2014): Move some variables, rename some variables.
+!   R. El Khatib 07-Mar-2016 Pruning of ISP
+!   Y. Seity (4-Sept-2017) add LDLRESET_GST* to replace KXXGSTTS
+!   K. Yessad (Feb 2018): remove deep-layer formulations.
+!   R. El Khatib 05-Jun-2018 computation of periods moved from cnt4 (OOPS refactoring)
+!   R. Brozkova (Jul 2018): Dataflow for global normal irradiance and mean
+!                           radiant temperature.
+!   R. El Khatib 27-02-2019 Use pointer function SC2PRG to avoid bounds violation
+!   I. Etchevers (Sept 2018) : Add visisbilites
+!   I. Etchevers (Janv 2019) : Add precipitation type
+!   M. Hrastinski (Sep-2019): Dataflow for TKE and TTE terms in ALARO DDH (PFTCNS)
+! End Modifications
+!     ------------------------------------------------------------------
+
+USE TYPE_MODEL         , ONLY : MODEL
+USE GEOMETRY_MOD       , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE YOMCFU             , ONLY : TCFU
+USE YOMXFU             , ONLY : TXFU
+USE YOMGMV             , ONLY : TGMV
+USE PARKIND1           , ONLY : JPIM, JPRB
+USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE SC2PRG_MOD         , ONLY : SC2PRG
+USE YOMCT0             , ONLY : LAROME
+USE YOMCT3             , ONLY : NSTEP
+USE YOMINI             , ONLY : LINITER
+USE YOMLUN             , ONLY : NULOUT
+USE INTDYN_MOD         , ONLY : YYTCTY0, YYTRCP0, YYTXYB0
+USE DDH_MIX            , ONLY : NTOTFIELD, RDDH_FIELD, RESET_DDHFLEX, RDDHSURF_FIELD, TYP_DDH
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGMV)        ,INTENT(INOUT) :: YDGMV
+TYPE(TSURF)       ,INTENT(INOUT) :: YDSURF
+TYPE(TCFU)        ,INTENT(INOUT) :: YDCFU
+TYPE(TXFU)        ,INTENT(INOUT) :: YDXFU
+TYPE(MODEL)       ,INTENT(INOUT) :: YDMODEL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KST 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KEND 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTC 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KENDC 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTGLO 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KDDHI(YDGEOMETRY%YRDIM%NPROMA) 
+LOGICAL           ,INTENT(IN)    :: LDCONFX
+LOGICAL           ,INTENT(IN)    :: LDLDIAB
+LOGICAL           ,INTENT(IN)    :: LDLFSTEP
+LOGICAL           ,INTENT(IN)    :: LD_DFISTEP
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIBL
+REAL(KIND=JPRB)   ,INTENT(IN)    :: POROGL(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: POROGM(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGMV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDGMV%NDIMGMV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGFL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_GCONF%YGFL%NDIM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRE0(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRE0F(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PXYB0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YYTXYB0%NDIM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHI0(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHIF0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHI0FL(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PHI0FM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRCP0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YYTRCP0%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCTY0(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG,YYTCTY0%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: POMEGA(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PKENE0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRT0L(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRT0M(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRE0L(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRE0M(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHPRE0F(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNHPRE0H(YDGEOMETRY%YRDIM%NPROMNH,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQCHA0L(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQCHA0M(YDGEOMETRY%YRDIM%NPROMNH,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSD_VF(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSD_VFD%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSP_SG(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSP_SGD%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSP_SB(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSP_SBD%NLEVS,YDSURF%YSP_SBD%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSP_RR(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSP_RRD%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSD_XP(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSD_XPD%NLEVS,YDSURF%YSD_XPD%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSD_XP2(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSD_XP2D%NLEVS,YDSURF%YSD_XP2D%NDIM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDHSF(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PALB(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCAPE(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCTOP(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLCC(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLCH(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLCL(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLCM(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLCT(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCLPH(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVEIN(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCT(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFCQ(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFCQN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFCQL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFCS(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFTQ(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFTQN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFTQL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIFTS(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCCQL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCCQN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCHSP(YDGEOMETRY%YRDIM%NPROMM,YDSURF%YSP_SBD%NLEVS) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCLL(YDGEOMETRY%YRDIM%NPROMM,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCLN(YDGEOMETRY%YRDIM%NPROMM,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCQNNG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCQLNG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCQNG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCS(YDGEOMETRY%YRDIM%NPROMM,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCSQL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCSQN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFEVL(YDGEOMETRY%YRDIM%NPROMM,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFEVN(YDGEOMETRY%YRDIM%NPROMM,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFEVV(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFGEL(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFGELS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFLWSP(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFONTE(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLCL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLCN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLCG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLCH(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLSL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLSN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLSG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPLSH(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMRT(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRMH(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSO(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSOC(YDGEOMETRY%YRDIM%NPROMM,0:1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSODS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSOLU(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSGNI(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSDNI(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSOPS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRSOPT(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRTH(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_PHY_G%YRDPHY%NTSSG+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRTHC(YDGEOMETRY%YRDIM%NPROMM,0:1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRTHDS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFTR(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGZ0(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGZ0H(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNEB(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQICE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQLI(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQRAIN(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQSNOW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQS(YDGEOMETRY%YRDIM%NPROMA) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PEXT(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_PHY_G%YRDPHY%NVEXTR)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRH(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRHCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRUISL(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRUISP(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRUISS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSTRCU(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSTRCV(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSTRDU(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSTRDV(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSTRTU(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSTRTV(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNUCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PNVCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQCLS(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTPWCLS(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUGST(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVGST(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMOCON(YDGEOMETRY%YRDIM%NPROMM) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFDIS(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHPCL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHPCN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHPSL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHPSN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHSCL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHSCN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHSSL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFHSSN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFEPFP(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFCMPCQ(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFCMPSN(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFCMPSL(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPFPSL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPFPSN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPFPCL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPFPCN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPEVPSL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPEVPSN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPEVPCL(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFPEVPCN(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGPAR(YDGEOMETRY%YRDIM%NPROMA,YDMODEL%YRML_PHY_MF%YRPARAR%NGPAR+1)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCQRNG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFCQSNG(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDIAGH(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFLASH(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGMVTNDSI(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,2+YDMODEL%YRML_GCONF%YRDIMF%NFTHER)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGMVTNDHD(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,2+YDMODEL%YRML_GCONF%YRDIMF%NFTHER)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGFLTNDHD(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,1)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PATND(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_DYN%YRDYNA%YYTTND%NDIM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PDHCV(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_DIAG%YRMDDH%NDHCVSUN) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PDRNSHF(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOVPTOT(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,1)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVISICLD(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVISIHYDRO(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMXCLWC(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSP_CL(YDGEOMETRY%YRDIM%NPROMA,YDSURF%YSP_CLD%NDIM)
+REAL(KIND=JPRB) ,INTENT(INOUT) :: PFTCNS(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG,6)
+TYPE(TYP_DDH)     ,INTENT(INOUT) :: YDDDH 
+!     ------------------------------------------------------------------
+INTEGER(KIND=JPIM) :: ILEVCO, JLEV,  JROF, JCV
+INTEGER (KIND=JPIM) :: IPOS,JEXT
+
+LOGICAL :: LLDYN, LLPHY
+LOGICAL :: LLCALL_CUMCPLDM,LLCALL_CPCFU,LLCALL_CPXFU
+
+REAL(KIND=JPRB) :: ZDHCS(YDGEOMETRY%YRDIM%NPROMM,YDMODEL%YRML_DIAG%YRMDDH%NDHCSSU)
+REAL(KIND=JPRB) :: ZDUM1(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) :: ZENTRA(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZENTRV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZNEB(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZQSAT(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZRH(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSTRCU(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSTRCV(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSTRDU(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSTRDV(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSTRTU(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSTRTV(YDGEOMETRY%YRDIM%NPROMM,0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZUCLS(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB) :: ZNUCLS(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB) :: ZUGST(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB) :: ZUZGEO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZVCLS(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB) :: ZNVCLS(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB) :: ZVGST(YDGEOMETRY%YRDIM%NPROMM)
+REAL(KIND=JPRB) :: ZDPRECIPS(YDGEOMETRY%YRDIM%NPROMA,YDMODEL%YRML_PHY_MF%YRPHY%YRDPRECIPS%NDTPREC)
+REAL(KIND=JPRB) :: ZDPRECIPS2(YDGEOMETRY%YRDIM%NPROMA,YDMODEL%YRML_PHY_MF%YRPHY%YRDPRECIPS%NDTPREC2)
+REAL(KIND=JPRB) :: ZVMGEO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZFPLCL(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZFPLCN(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZFPLSL(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZFPLSN(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZQICE(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZQLI(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG) 
+REAL(KIND=JPRB) :: ZQRAIN(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZQSNOW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZEXT(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDMODEL%YRML_PHY_G%YRDPHY%NVEXTR)
+REAL(KIND=JPRB) :: ZQS(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB) :: ZTSOL(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB), POINTER :: ZT0T(:,:)
+REAL(KIND=JPRB), POINTER :: ZVFLSM(:), ZRRT0(:), ZRRW0(:), ZSBQ0(:,:)
+REAL(KIND=JPRB), POINTER :: ZSBT0(:,:), ZSGF0(:)
+REAL(KIND=JPRB), POINTER :: ZPA(:,:), ZPI(:,:), ZPL(:,:), ZPO3(:,:)
+REAL(KIND=JPRB), POINTER :: ZPQ(:,:), ZPR(:,:), ZPS(:,:)
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+!#include "posinsub.intfb.h"
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "cpcfu.intfb.h"
+#include "cpcuddh.intfb.h"
+#include "cpcuddh_omp.intfb.h"
+#include "cpdyddh.intfb.h"
+#include "cpphddh.intfb.h"
+#include "cpxfu.intfb.h"
+#include "cumcpl.intfb.h"
+#include "gprh.intfb.h"
+#include "cpcls_assim.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('CPG_DIA',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDVAB=>YDGEOMETRY%YRVAB,YDCVER=>YDGEOMETRY%YRCVER, &
+ &  YDGSGEOM=>YDGEOMETRY%YRGSGEOM(KIBL), YDCSGEOM=>YDGEOMETRY%YRCSGEOM(KIBL), YDPHY=>YDMODEL%YRML_PHY_MF%YRPHY, &
+ & YDARPHY=>YDMODEL%YRML_PHY_MF%YRARPHY,YDSDDH=>YDMODEL%YRML_DIAG%YRSDDH, &
+ & YDMCC=>YDMODEL%YRML_AOC%YRMCC,YDMDDH=>YDMODEL%YRML_DIAG%YRMDDH,YDRIP=>YDMODEL%YRML_GCONF%YRRIP, &
+ & YDDPHY=>YDMODEL%YRML_PHY_G%YRDPHY,YDSIMPHL=>YDMODEL%YRML_PHY_MF%YRSIMPHL,YDLDDH=>YDMODEL%YRML_DIAG%YRLDDH, &
+ & YGFL=>YDMODEL%YRML_GCONF%YGFL,YDEPHY=>YDMODEL%YRML_PHY_EC%YREPHY, &
+ & YDDIMF=>YDMODEL%YRML_GCONF%YRDIMF,YDPARAR=>YDMODEL%YRML_PHY_MF%YRPARAR)
+
+ASSOCIATE(NDIM=>YGFL%NDIM, YA=>YGFL%YA, YI=>YGFL%YI, YL=>YGFL%YL, YO3=>YGFL%YO3, &
+ & YQ=>YGFL%YQ, YR=>YGFL%YR, YS=>YGFL%YS, &
+ & LCUMFU=>YDCFU%LCUMFU, &
+ & NPROMA=>YDDIM%NPROMA, NPROMM=>YDDIM%NPROMM, &
+ & NPROMNH=>YDDIM%NPROMNH, &
+ & NFTHER=>YDDIMF%NFTHER, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & NTSSG=>YDDPHY%NTSSG, NVEXTR=>YDDPHY%NVEXTR, NCEXTR=>YDDPHY%NCEXTR, &
+ & LAGPHY=>YDEPHY%LAGPHY, LEPHYS=>YDEPHY%LEPHYS, &
+ & NDIMGMV=>YDGMV%NDIMGMV, YT0=>YDGMV%YT0, &
+ & LFLEXDIA=>YDLDDH%LFLEXDIA, LSDDH=>YDLDDH%LSDDH, LDDH_OMP=>YDLDDH%LDDH_OMP,&
+ & NFRCPL=>YDMCC%NFRCPL, &
+ & NDHCSSU=>YDMDDH%NDHCSSU, NDHCVSUN=>YDMDDH%NDHCVSUN, &
+ & NSTOP=>YDRIP%NSTOP, LHDPAS=>YDSDDH%LHDPAS, &
+ & NDTPRECCUR=>YDPHY%YRDPRECIPS%NDTPRECCUR,NDTPRECCUR2=>YDPHY%YRDPRECIPS%NDTPRECCUR2,&
+ & NDTPREC=>YDPHY%YRDPRECIPS%NDTPREC,NDTPREC2=>YDPHY%YRDPRECIPS%NDTPREC2,&
+ & YSD_VF=>YDSURF%YSD_VF, YSD_VFD=>YDSURF%YSD_VFD, YSP_RR=>YDSURF%YSP_RR, &
+ & YSP_RRD=>YDSURF%YSP_RRD, YSP_SB=>YDSURF%YSP_SB, YSP_SBD=>YDSURF%YSP_SBD, &
+ & YSP_SG=>YDSURF%YSP_SG, YSP_SGD=>YDSURF%YSP_SGD, YSD_XP=>YDSURF%YSD_XP, YSD_XP2=>YDSURF%YSD_XP2,&
+ & LDPRECIPS=>YDPHY%LDPRECIPS,LDPRECIPS2=>YDPHY%LDPRECIPS2, &
+ & LXFU=>YDXFU%LXFU, LDIRCLSMOD=>YDDPHY%LDIRCLSMOD, &
+ & LTRAJPS=>YDSIMPHL%LTRAJPS, LSIMPH=>YDSIMPHL%LSIMPH, &
+ & LMPHYS=>YDPHY%LMPHYS, LMPA=>YDARPHY%LMPA, &
+ & MVQS=>YDPARAR%MVQS, MVTS=>YDPARAR%MVTS)
+
+CALL SC2PRG(YA%MP     ,PGFL     ,ZPA)
+CALL SC2PRG(YI%MP     ,PGFL     ,ZPI)
+CALL SC2PRG(YL%MP     ,PGFL     ,ZPL)
+CALL SC2PRG(YO3%MP    ,PGFL     ,ZPO3)
+CALL SC2PRG(YQ%MP     ,PGFL     ,ZPQ)
+CALL SC2PRG(YR%MP     ,PGFL     ,ZPR)
+CALL SC2PRG(YS%MP     ,PGFL     ,ZPS)
+CALL SC2PRG(YSD_VF%YLSM%MP,PSD_VF  ,ZVFLSM)
+CALL SC2PRG(YSP_RR%YT%MP0,PSP_RR   ,ZRRT0)
+CALL SC2PRG(YSP_RR%YW%MP0,PSP_RR   ,ZRRW0)
+CALL SC2PRG(YSP_SB%YQ%MP0,PSP_SB   ,ZSBQ0)
+CALL SC2PRG(YSP_SB%YT%MP0,PSP_SB   ,ZSBT0)
+CALL SC2PRG(YSP_SG%YF%MP0,PSP_SG   ,ZSGF0)
+CALL SC2PRG(YT0%MT    ,PGMV    ,ZT0T)
+!     ------------------------------------------------------------------
+IPOS=1
+!CALL POSINSUB('CPG_DIA',IPOS)
+!*       1.    DDH:
+!              ----
+
+
+IF ((NSTEP >= 0).AND.LSDDH.AND.(.NOT.LINITER).AND.(.NOT.LDCONFX)) THEN 
+
+  IF (LMPA) THEN
+    ZQICE(1:NPROMA,1:NFLEVG) = ZPI(1:NPROMA,1:NFLEVG)
+    ZQLI(1:NPROMA,1:NFLEVG) = ZPL(1:NPROMA,1:NFLEVG)
+    ZQRAIN(1:NPROMA,1:NFLEVG) = ZPR(1:NPROMA,1:NFLEVG)
+    ZQSNOW(1:NPROMA,1:NFLEVG) = ZPS(1:NPROMA,1:NFLEVG)
+  ELSE
+    IF(LMPHYS.OR.(LEPHYS.AND..NOT.LAGPHY).OR.LSIMPH) THEN
+      ZFPLCL(1:NPROMA,0:NFLEVG) = PFPLCL(1:NPROMA,0:NFLEVG)
+      ZFPLCN(1:NPROMA,0:NFLEVG) = PFPLCN(1:NPROMA,0:NFLEVG)
+      ZFPLSL(1:NPROMA,0:NFLEVG) = PFPLSL(1:NPROMA,0:NFLEVG)
+      ZFPLSN(1:NPROMA,0:NFLEVG) = PFPLSN(1:NPROMA,0:NFLEVG)
+    ENDIF
+    ZQICE(1:NPROMA,1:NFLEVG) = PQICE(1:NPROMA,1:NFLEVG)
+    ZQLI(1:NPROMA,1:NFLEVG) = PQLI(1:NPROMA,1:NFLEVG)
+    ZQRAIN(1:NPROMA,1:NFLEVG) = PQRAIN(1:NPROMA,1:NFLEVG)
+    ZQSNOW(1:NPROMA,1:NFLEVG) = PQSNOW(1:NPROMA,1:NFLEVG)
+  ENDIF
+
+  IF (LHDPAS) THEN
+     IF (NVEXTR > 0) THEN
+        IF( NCEXTR /= NFLEVG ) THEN
+           CALL ABOR1(' CPG_DIA: NCEXTR /= NFLEVG')
+        ENDIF
+        DO JEXT=1,NVEXTR
+           ZEXT(1:NPROMA,1:NFLEVG,JEXT)=PEXT(1:NPROMA,1:NFLEVG,JEXT)
+        ENDDO
+     ELSE
+        ZEXT(1:NPROMA,1:NFLEVG,:)=0.0_JPRB
+     ENDIF
+  ENDIF 
+
+
+  IF(LAGPHY.OR.(.NOT.LDLDIAB)) THEN
+
+    LLPHY=.FALSE.
+    CALL GPRH(.FALSE.,NPROMA,KST,KEND,NFLEVG,1.0_JPRB,0.0_JPRB,&
+     & ZPQ,ZT0T,PRE0F,ZQSAT,ZRH)  
+  
+    ZDUM1(KST:KEND)=0.0_JPRB
+  
+    IF(YA%LACTIVE) THEN
+      ZNEB(KST:KEND,1:NFLEVG)=ZPA(KST:KEND,1:NFLEVG)
+    ELSE
+      IF (LMPA) THEN
+        ZNEB(KST:KEND,1:NFLEVG)=0.0_JPRB    ! ???
+      ELSE
+        ZNEB(KST:KEND,1:NFLEVG)=PNEB(KST:KEND,1:NFLEVG)
+      ENDIF
+    ENDIF
+
+  
+    ! * COMP. OF DYNAMICAL VARIABLES AND FLUX/TENDENCIES
+  
+    CALL CPDYDDH(YDVAB,YDCVER,YDGMV,YDMODEL%YRML_GCONF,YDDPHY,YDMODEL%YRML_DIAG,YDPHY,YDMODEL%YRML_DYN%YRDYNA,&
+     & NPROMA,NPROMNH,KST,KEND,NFLEVG,&
+     & YDGSGEOM,YDCSGEOM,PXYB0,&
+     & PRCP0,PHI0,PHIF0,PHI0FL,PHI0FM,&
+     & PKENE0, PRT0L, PRT0M, POROGL, POROGM,&
+     & PRE0L, PRE0M, PRE0F, PRE0,&
+     & PNHPRE0F,PNHPRE0H,PQCHA0L,PQCHA0M,&
+     & PCTY0, POMEGA,&
+     & ZFPLCL, ZFPLCN, ZFPLSL, ZFPLSN,&
+     & ZDUM1, ZDUM1, ZRH,&
+     & ZNEB,ZQLI,ZQICE,ZQRAIN,ZQSNOW,ZEXT,PCOVPTOT,PGFL,PGMV,&
+     & PGMVTNDSI,PGMVTNDHD,PGFLTNDHD,PATND,&
+     & ZUZGEO, ZVMGEO, PDHCV, ZENTRA, ZENTRV, YDDDH)
+
+  ELSE
+
+    IF(.NOT.(LMPHYS.OR.LEPHYS)) THEN
+      LLPHY=.FALSE.
+      CALL GPRH(.FALSE.,NPROMA,KST,KEND,NFLEVG,&
+       & 1.0_JPRB,0.0_JPRB,ZPQ,ZT0T,PRE0F,ZQSAT,ZRH)  
+    ELSE
+      IF (LMPA) THEN
+        CALL GPRH(.FALSE.,NPROMA,KST,KEND,NFLEVG,&
+         & 1.0_JPRB,0.0_JPRB,ZPQ,ZT0T,PRE0F,ZQSAT,ZRH)  
+      ELSE
+        ZRH(KST:KEND,1:NFLEVG)=PRH(KST:KEND,1:NFLEVG)
+      ENDIF
+      LLPHY=.TRUE.
+    ENDIF
+
+    IF (LMPA) THEN
+      ZQS(1:NPROMA) =  PGPAR(1:NPROMA,MVQS)
+      ZTSOL(1:NPROMA) = PGPAR(1:NPROMA,MVTS)
+    ELSE 
+      ZQS(1:NPROMA) =  PQS(1:NPROMA)
+      ZTSOL(1:NPROMA) = ZRRT0(1:NPROMA)
+    ENDIF
+
+    ! * COMP. OF DYNAMICAL VARIABLES AND FLUX/TENDENCIES
+
+!CALL POSINSUB('CPG_DIA',IPOS)
+    CALL CPDYDDH(YDVAB,YDCVER,YDGMV,YDMODEL%YRML_GCONF,YDDPHY,YDMODEL%YRML_DIAG,YDPHY,YDMODEL%YRML_DYN%YRDYNA,&
+     & NPROMA,NPROMNH,KST,KEND,NFLEVG,&
+     & YDGSGEOM,YDCSGEOM,PXYB0,&
+     & PRCP0,PHI0,PHIF0,PHI0FL,PHI0FM,&
+     & PKENE0, PRT0L, PRT0M, POROGL, POROGM,&
+     & PRE0L, PRE0M, PRE0F, PRE0,&
+     & PNHPRE0F,PNHPRE0H,PQCHA0L,PQCHA0M,&
+     & PCTY0, POMEGA,&
+     & ZFPLCL, ZFPLCN, ZFPLSL, ZFPLSN,&
+     & ZQS, ZTSOL, ZRH,&
+     & PNEB,ZQLI,ZQICE,ZQRAIN,ZQSNOW,ZEXT,PCOVPTOT,PGFL,PGMV,&
+     & PGMVTNDSI,PGMVTNDHD,PGFLTNDHD,PATND,&
+     & ZUZGEO, ZVMGEO, PDHCV, ZENTRA, ZENTRV, YDDDH)
+  
+!CALL POSINSUB('CPG_DIA',IPOS)
+    ! * COMP. OF PHYS. FIELDS AND SURFACE FLUXES
+  
+    IF((LMPHYS.OR.LEPHYS).AND..NOT.LMPA.AND..NOT.LFLEXDIA) THEN
+      CALL CPPHDDH (YDMODEL%YRML_DIAG,YDEPHY,YDRIP,YDMODEL%YRML_PHY_MF,NPROMA,KST,KEND,NFLEVG,.TRUE.,&
+       & YDGSGEOM,ZUZGEO,ZVMGEO,&
+       & ZSGF0,ZSBT0,ZRRT0,&
+       & ZSBQ0,ZRRW0,ZT0T,ZVFLSM,&
+       & PDIFCQ, PDIFCS, PDIFTQ, PDIFTS, PFCQNG,&
+       & PFPLCL, PFPLCN, PFPLSL, PFPLSN, PFRSO, PFRTH,&
+       & PFRTHDS,PFHPCL, PFHPCN, PFHPSL, PFHPSN,&
+       & PSTRCU, PSTRCV, PSTRDU, PSTRDV, PSTRTU, PSTRTV,&
+       & PCT,&
+       & PFCHSP, PFCLL, PFCLN, PFCS, PFEVL, PFEVN, PFLWSP,&
+       & PFONTE, PRUISP, PRUISS,&
+       & ZENTRA, ZENTRV,&
+       & PDIFTQL,PDIFTQN,PDIFCQL,PDIFCQN,PFCQLNG,PFCQNNG,&
+       & PFHSCL,PFHSCN,PFHSSL,PFHSSN,PFEPFP, PFCMPCQ, PFCMPSN, PFCMPSL,&
+       & PFCCQL,PFCCQN,PFCSQL,PFCSQN,&
+       & PFPFPSL,PFPFPSN,PFPFPCL, PFPFPCN,&
+       & PFPEVPSL,PFPEVPSN,PFPEVPCL,PFPEVPCN,&
+       & PFCQRNG, PFCQSNG,&
+       & PHI0,PUCLS,PVCLS,PTCLS,PQCLS,PCLPH,PALB,PGZ0,PGZ0H,&
+       & PDHCV,ZDHCS,PFTCNS)
+    ENDIF
+
+    IF(LMPHYS.AND.LMPA) THEN
+
+      ! Surface variables and fluxes set to zero.
+      ! There are no surface variables for AROME in DDH, yet.
+      IF(LLPHY) THEN
+        DO JROF = 1, NPROMM
+          DO JCV = 1, NDHCSSU
+            ZDHCS(JROF,JCV)=0_JPRB
+          ENDDO
+        ENDDO
+      ENDIF
+
+    ENDIF
+
+!CALL POSINSUB('CPG_DIA',IPOS)
+  ENDIF
+  
+  ! * STORE/ACCUM. IN HORIZONTAL MEAN ARRAYS
+  
+  LLDYN=.TRUE.
+
+  IF (LFLEXDIA) THEN
+    IF (LDDH_OMP) THEN
+      CALL CPCUDDH_OMP(YDMDDH,YDMODEL%YRML_DIAG%YRTDDH,NPROMA,KST,KEND,NFLEVG,KDDHI,YDDDH,LLDYN)
+    ELSE
+      CALL CPCUDDH(YDMODEL%YRML_DIAG,YDRIP,NPROMA,KST,KEND,NFLEVG,KDDHI,PDHSF,RDDH_FIELD,RDDHSURF_FIELD,LLDYN,LLPHY,NTOTFIELD)
+    ENDIF 
+  ELSE 
+    CALL CPCUDDH(YDMODEL%YRML_DIAG,YDRIP,NPROMA,KST,KEND,NFLEVG,KDDHI,PDHSF,PDHCV,ZDHCS,LLDYN,LLPHY,NDHCVSUN)
+  ENDIF 
+  
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       2.    CFU AND XFU:
+!              ------------
+
+!*    2.1   DEFINE THE CONDITIONS OF CALLING SOME ROUTINES.
+
+LLCALL_CPCFU=&
+ & LCUMFU.AND.(.NOT.LINITER).AND.(.NOT.LDCONFX).AND.(.NOT.LAGPHY)
+LLCALL_CPXFU=LXFU.AND.LDLDIAB.AND.(.NOT.LINITER).AND..NOT.LD_DFISTEP
+LLCALL_CUMCPLDM= (&
+ & NFRCPL /= 0).AND.(NFRCPL <= NSTOP).AND.(.NOT.LDCONFX).AND.(.NOT.LAGPHY).AND.(.NOT.LAROME)
+! Check that if NPROMM /= NPROMA, all these LLCALL... keys are .F.:
+IF ((LLCALL_CPCFU.OR.LLCALL_CPXFU.OR.LLCALL_CUMCPLDM)&
+ & .AND.(NPROMM /= NPROMA)) THEN
+  WRITE(NULOUT,*) ' CPG_DIA part 2: if NPROMM /= NPROMA,'
+  WRITE(NULOUT,*) '  all the LLCALL_... keys must be equal to .F.'
+  WRITE(NULOUT,*) '  Check the calculation of these keys.'
+  WRITE(NULOUT,*) '  In particular, in adiabatic runs, CFU, XFU'
+  WRITE(NULOUT,*) '  and cumul of coupled fields MUST NOT be called.'
+  CALL ABOR1(' CPG_DIA: ABOR1 CALLED')
+ENDIF
+
+!*    2.2   DIVIDE SOME QUANTITIES LINKED TO (U,V) BY THE MAPPING FACTOR.
+
+! * ZSTR.. arrays are used for CFU, XFU and in CUMCPL.
+IF (LLCALL_CPCFU.OR.LLCALL_CPXFU.OR.LLCALL_CUMCPLDM) THEN
+  DO JLEV=0,NFLEVG
+    ZSTRCU(KST:KEND,JLEV)=PSTRCU(KST:KEND,JLEV)
+    ZSTRCV(KST:KEND,JLEV)=PSTRCV(KST:KEND,JLEV)
+    ZSTRDU(KST:KEND,JLEV)=PSTRDU(KST:KEND,JLEV)
+    ZSTRDV(KST:KEND,JLEV)=PSTRDV(KST:KEND,JLEV)
+    ZSTRTU(KST:KEND,JLEV)=PSTRTU(KST:KEND,JLEV)
+    ZSTRTV(KST:KEND,JLEV)=PSTRTV(KST:KEND,JLEV)
+  ENDDO
+ENDIF
+
+! * Z(U,V)CLS and Z(U,V)GST are used for XFU.
+IF (LLCALL_CPXFU .OR. LDIRCLSMOD) THEN
+  ZUCLS(KST:KEND)=PUCLS(KST:KEND)
+  ZVCLS(KST:KEND)=PVCLS(KST:KEND)
+  ZNUCLS(KST:KEND)=PNUCLS(KST:KEND)
+  ZNVCLS(KST:KEND)=PNVCLS(KST:KEND)
+  ZUGST(KST:KEND)=PUGST(KST:KEND)
+  ZVGST(KST:KEND)=PVGST(KST:KEND)
+ENDIF
+
+! * Divide the arrays by the mapping factor for the cases
+!   where the quantities to diagnose are the reduced ones.
+!!! -- Test to be checked, seems suspicious -- !!!
+IF (LDLDIAB.OR.(LSIMPH.AND.(.NOT.LTRAJPS))) THEN  
+  IF (LLCALL_CPCFU.OR.LLCALL_CPXFU.OR.LLCALL_CUMCPLDM) THEN
+    DO JLEV=0,NFLEVG
+      ZSTRCU(KST:KEND,JLEV)=ZSTRCU(KST:KEND,JLEV)/YDGSGEOM%GM(KST:KEND)
+      ZSTRCV(KST:KEND,JLEV)=ZSTRCV(KST:KEND,JLEV)/YDGSGEOM%GM(KST:KEND)
+      ZSTRDU(KST:KEND,JLEV)=ZSTRDU(KST:KEND,JLEV)/YDGSGEOM%GM(KST:KEND)
+      ZSTRDV(KST:KEND,JLEV)=ZSTRDV(KST:KEND,JLEV)/YDGSGEOM%GM(KST:KEND)
+      ZSTRTU(KST:KEND,JLEV)=ZSTRTU(KST:KEND,JLEV)/YDGSGEOM%GM(KST:KEND)
+      ZSTRTV(KST:KEND,JLEV)=ZSTRTV(KST:KEND,JLEV)/YDGSGEOM%GM(KST:KEND)
+    ENDDO
+  ENDIF
+  IF (LLCALL_CPXFU .OR. LDIRCLSMOD) THEN
+    ZUCLS(KST:KEND)=ZUCLS(KST:KEND)/YDGSGEOM%GM(KST:KEND)
+    ZVCLS(KST:KEND)=ZVCLS(KST:KEND)/YDGSGEOM%GM(KST:KEND)
+    ZNUCLS(KST:KEND)=ZNUCLS(KST:KEND)/YDGSGEOM%GM(KST:KEND)
+    ZNVCLS(KST:KEND)=ZNVCLS(KST:KEND)/YDGSGEOM%GM(KST:KEND)
+    ZUGST(KST:KEND)=ZUGST(KST:KEND)/YDGSGEOM%GM(KST:KEND)
+    ZVGST(KST:KEND)=ZVGST(KST:KEND)/YDGSGEOM%GM(KST:KEND)
+  ENDIF
+ENDIF
+
+!*    2.3   CUMUL OF FLUX DIAGNOSTICS
+
+IF(LLCALL_CPCFU)THEN  
+  CALL CPCFU(YDGEOMETRY,YDCFU,YDRIP,KST,KEND,KSTC,KENDC,KSTGLO,LDLFSTEP,&
+   & PDIFCQ, PDIFCS, PDIFTQ, PDIFTS,&
+   & PFCCQL, PFCCQN, PFCSQL, PFCSQN,&
+   & PFPLCL, PFPLCN, PFPLCG, PFPLCH, PFPLSL, PFPLSN, PFPLSG, PFPLSH,&
+   & PFRMH,PFRSO, PFRSOC, PFRTH, PFRTHC,PFDIS(1,NFLEVG),&
+   & ZSTRCU, ZSTRCV, ZSTRDU, ZSTRDV, ZSTRTU, ZSTRTV,&
+   & PXYB0(1,1,YYTXYB0%M_DELP),PNEB,PQICE,PQLI,PRE0(1,NFLEVG),ZSGF0,&
+   & ZPO3,ZPQ,ZRRW0,PFEVL,PFEVN,&
+   & PCLCT,PCLCH,PCLCM,PCLCL,PCLCC,&
+   & PFCLL,PFCLN,PFCS,PFONTE,PFCHSP,PFLWSP,PRUISS,&
+   & PRUISP,PFEVV,PFTR,PRUISL,PFGEL,PFGELS,&
+   & PFRSODS,PFRSOPS,PFRSOPT,PFRSOLU,PFRTHDS,PFRSDNI,PFRSGNI,PFLASH)
+ENDIF
+
+IF(LLCALL_CUMCPLDM) THEN  
+  ILEVCO=NFLEVG
+  CALL CUMCPL(YDGEOMETRY%YRDIM,YDRIP,YDPHY,ILEVCO,KST,KEND,KSTGLO,NTSSG,&
+   & ZSTRTU(1,NFLEVG),ZSTRTV(1,NFLEVG),&
+   & PFRTH,PFRSO,PFCLL,PFCLN,PFCS,PFEVL,PFEVN,&
+   & PFPLCL(1,NFLEVG),PFPLCN(1,NFLEVG),&
+   & PFPLSL(1,NFLEVG),PFPLSN(1,NFLEVG),&
+   & PRUISS,PRUISP,ZRRT0,PDRNSHF,PALB,&
+   & ZUCLS,ZVCLS)
+ENDIF
+
+!*    2.5   INTERFACE FOR INSTANTANEOUS FLUXES
+
+IF (LLCALL_CPXFU) THEN
+  IF (LDPRECIPS) ZDPRECIPS(KST:KEND,1:NDTPREC)=PSD_XP(KST:KEND,1:NDTPREC,YSD_XP%YPRECIP%MP)
+  IF (LDPRECIPS2) ZDPRECIPS2(KST:KEND,1:NDTPREC2)=PSD_XP2(KST:KEND,1:NDTPREC2,YSD_XP2%YPRECIP2%MP)        
+  CALL CPXFU(YDGEOMETRY,YDXFU,YDPHY%YRDPRECIPS,KST,KEND,KSTC,KENDC,KSTGLO,&
+   & PDIFCQ, PDIFCS, PDIFTQ, PDIFTS, PFPLCL, PFPLCN, PFPLCG, PFPLCH,&
+   & PFPLSL, PFPLSN, PFPLSG, PFPLSH, PFRSO,&
+   & PFRTH,  PCLCT,  ZSTRCU, ZSTRCV, ZSTRDU, ZSTRDV, ZSTRTU, ZSTRTV, PNEB,&
+   & PQICE,  PQLI,   ZUCLS,  ZVCLS,  ZNUCLS, ZNVCLS,&
+   & PTCLS,  PQCLS,  PRHCLS, PCLCH,  PCLCM,  PCLCL,  PCLCC,&
+   & PFCS ,  PFONTE, PFCHSP, PFLWSP, PFEVL,  PRUISP, PRUISS, PCAPE, PCTOP, PMOCON,&
+   & PCLPH,  PVEIN,  ZUGST,  ZVGST,  PFEVV,  PFTR,   PRUISL, PDIAGH, PMRT,&
+   & PVISICLD,PVISIHYDRO,PMXCLWC,PTPWCLS,ZDPRECIPS,ZDPRECIPS2)
+ENDIF
+
+!*    2.6   INTERFACE FOR CLS FIELDS FOR ASSIMILATION
+
+IF (LDIRCLSMOD) THEN
+  CALL CPCLS_ASSIM(YDGEOMETRY,YDSURF,KST,KEND,PSP_CL,ZUCLS,ZVCLS,ZNUCLS,ZNVCLS,PTCLS,PRHCLS)
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       3.    RESETS DDH FLEXIBLE STRUCTURES:
+!              -------------------------------
+
+! resets ddh flexible structures if call only to phys
+
+IF (LDCONFX.AND.LFLEXDIA.AND.(.NOT.LDDH_OMP)) CALL RESET_DDHFLEX
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CPG_DIA',1,ZHOOK_HANDLE)
+END SUBROUTINE CPG_DIA

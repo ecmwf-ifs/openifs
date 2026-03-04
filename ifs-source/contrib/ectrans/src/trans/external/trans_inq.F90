@@ -1,0 +1,535 @@
+! (C) Copyright 2000- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+SUBROUTINE TRANS_INQ(KRESOL,KSPEC,KSPEC2,KSPEC2G,KSPEC2MX,KNUMP,&
+                    &KGPTOT,KGPTOTG,KGPTOTMX,KGPTOTL,&
+                    &KMYMS,KASM0,KUMPP,KPOSSP,KPTRMS,KALLMS,KDIM0G,&
+                    &KFRSTLAT,KLSTLAT,KFRSTLOFF,KPTRLAT,&
+                    &KPTRFRSTLAT,KPTRLSTLAT,KPTRFLOFF,KSTA,KONL,&
+                    &KULTPP,KPTRLS,KNMENG,&
+                    &KPRTRW,KMYSETW,KMYSETV,KMY_REGION_NS,KMY_REGION_EW,&
+                    &LDSPLITLAT,&
+                    &KSMAX,PLAPIN,KNVALUE,KDEF_RESOL,LDLAM,&
+                    &PMU,PGW,PRPNM,KLEI3,KSPOLEGL,KPMS,KDGLU)
+
+!**** *TRANS_INQ* - Extract information from the transform package
+
+!     Purpose.
+!     --------
+!     Interface routine for extracting information from the T.P.
+
+!**   Interface.
+!     ----------
+!     CALL TRANS_INQ(...)
+!     Explicit arguments : All arguments are optional.
+!     --------------------
+!     KRESOL   - resolution tag for which info is required ,default is the
+!                first defined resulution (input)
+
+!                   MULTI-TRANSFORMS MANAGEMENT
+!     KDEF_RESOL - number or resolutions defined
+!     LDLAM      - .T. if the corresponding resolution is LAM, .F. if it is global
+
+!                   SPECTRAL SPACE
+!     KSPEC    - number of complex spectral coefficients on this PE
+!     KSPEC2   - 2*KSPEC
+!     KSPEC2G  - global KSPEC2
+!     KSPEC2MX - maximun KSPEC2 among all PEs
+!     KNUMP    - Number of spectral waves handled by this PE
+!     KGPTOT   - Total number of grid columns on this PE
+!     KGPTOTG  - Total number of grid columns on the Globe
+!     KGPTOTMX - Maximum number of grid columns on any of the PEs
+!     KGPTOTL  - Number of grid columns one each PE (dimension N_REGIONS_NS:N_REGIONS_EW)
+!     KMYMS    - This PEs spectral zonal wavenumbers
+!     KASM0    - Address in a spectral array of (m, n=m)
+!     KUMPP    - No. of wave numbers each wave set is responsible for
+!     KPOSSP   - Defines partitioning of global spectral fields among PEs
+!     KPTRMS   - Pointer to the first wave number of a given a-set
+!     KALLMS   - Wave numbers for all wave-set concatenated together
+!                to give all wave numbers in wave-set order
+!     KDIM0G   - Defines partitioning of global spectral fields among PEs
+!     KSMAX    - spectral truncation
+!     KNVALUE  - n value for each KSPEC2 spectral coeffient
+
+!                 GRIDPOINT SPACE
+!     KFRSTLAT    - First latitude of each a-set in grid-point space
+!     KLSTTLAT    - Last latitude of each a-set in grid-point space
+!     KFRSTLOFF   - Offset for first lat of own a-set in grid-point space
+!     KPTRLAT     - Pointer to the start of each latitude
+!     KPTRFRSTLAT - Pointer to the first latitude of each a-set in
+!                   NSTA and NONL arrays
+!     KPTRLSTLAT  - Pointer to the last latitude of each a-set in
+!                   NSTA and NONL arrays
+!     KPTRFLOFF   - Offset for pointer to the first latitude of own a-set
+!                   NSTA and NONL arrays, i.e. nptrfrstlat(myseta)-1
+!     KSTA        - Position of first grid column for the latitudes on a
+!                   processor. The information is available for all processors.
+!                   The b-sets are distinguished by the last dimension of
+!                   nsta().The latitude band for each a-set is addressed by
+!                   nptrfrstlat(jaset),nptrlstlat(jaset), and
+!                   nptrfloff=nptrfrstlat(myseta) on this processors a-set.
+!                   Each split latitude has two entries in nsta(,:) which
+!                   necessitates the rather complex addressing of nsta(,:)
+!                   and the overdimensioning of nsta by N_REGIONS_NS.
+!     KONL        - Number of grid columns for the latitudes on a processor.
+!                   Similar to nsta() in data structure.
+!     LDSPLITLAT  - TRUE if latitude is split in grid point space over
+!                   two a-sets
+
+!                FOURIER SPACE
+!     KULTPP   - number of latitudes for which each a-set is calculating
+!                the FFT's.
+!     KPTRLS   - pointer to first global latitude of each a-set for which
+!                it performs the Fourier calculations
+!     KNMENG   - associated (with NLOENG) cut-off zonal wavenumber
+
+!                 LEGENDRE
+!     PMU      - sin(Gaussian latitudes)
+!     PGW      - Gaussian weights
+!     PRPNM    - Legendre polynomials
+!     KLEI3    - First dimension of Legendre polynomials
+!     KSPOLEGL - Second dimension of Legendre polynomials
+!     KPMS     - Adress for legendre polynomial for given M (NSMAX)
+!     PLAPIN   - Eigen-values of the inverse Laplace operator
+!     KDGLU    - Number of active points in an hemisphere for a given wavenumber "m"
+
+!     Method.
+!     -------
+
+!     Externals.  SET_RESOL - set resolution
+!     ----------
+
+!     Author.
+!     -------
+!        Mats Hamrud *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 00-03-03
+!        M. Hortal : 2001-03-05 Dimensions of the Legendre polynomials
+!        R. El Khatib 08-Aug-2012 KSMAX,PLAPIN,KNVALUE,LDLAM,KDEF_RESOL
+
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
+
+!ifndef INTERFACE
+
+USE TPM_GEN         ,ONLY : NDEF_RESOL
+USE TPM_DIM         ,ONLY : R
+USE TPM_DISTR       ,ONLY : D, NPRTRNS, NPRTRW, MYSETV, MYSETW, NPRTRV
+USE TPM_GEOMETRY    ,ONLY : G
+USE TPM_FIELDS      ,ONLY : F
+USE TPM_FLT
+
+USE SET_RESOL_MOD   ,ONLY : SET_RESOL
+USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
+USE EQ_REGIONS_MOD  ,ONLY : MY_REGION_EW, MY_REGION_NS, &
+     &                      N_REGIONS_EW, N_REGIONS_NS
+
+!endif INTERFACE
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KRESOL
+
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSPEC
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSPEC2
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSPEC2G
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSPEC2MX
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KNUMP
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KGPTOT
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KGPTOTG
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KGPTOTMX
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KGPTOTL(:,:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KFRSTLOFF
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPTRFLOFF
+
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KMYMS(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KASM0(0:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KUMPP(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPOSSP(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPTRMS(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KALLMS(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KDIM0G(0:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KFRSTLAT(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KLSTLAT(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPTRLAT(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPTRFRSTLAT(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPTRLSTLAT(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSTA(:,:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KONL(:,:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPRTRW
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KMYSETW
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KMYSETV
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KMY_REGION_NS
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KMY_REGION_EW
+LOGICAL   ,OPTIONAL, INTENT(OUT) :: LDSPLITLAT(:)
+
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KULTPP(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPTRLS(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KNMENG(:)
+
+REAL(KIND=JPRD)    ,OPTIONAL, INTENT(OUT) :: PMU(:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PGW(:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PRPNM(:,:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KLEI3
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSPOLEGL
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KPMS(0:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KDGLU(0:)
+
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PLAPIN(-1:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KSMAX
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KNVALUE(:)
+
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(OUT) :: KDEF_RESOL
+LOGICAL           ,OPTIONAL,INTENT(OUT)   :: LDLAM
+
+!ifndef INTERFACE
+
+INTEGER(KIND=JPIM) :: IU1,IU2
+INTEGER(KIND=JPIM) :: IC, JN, JMLOC
+INTEGER(KIND=JPIM) :: IPRTRV,JSETV,IMLOC,IM,ISL,IA,ILA,IS,ILS,IDGLU,J,I
+!     ------------------------------------------------------------------
+
+
+! Set current resolution
+CALL SET_RESOL(KRESOL)
+
+IF(PRESENT(KSPEC))     KSPEC     = D%NSPEC
+IF(PRESENT(KSPEC2))    KSPEC2    = D%NSPEC2
+IF(PRESENT(KSPEC2G))   KSPEC2G   = R%NSPEC2_G
+IF(PRESENT(KSPEC2MX))  KSPEC2MX  = D%NSPEC2MX
+IF(PRESENT(KNUMP))     KNUMP     = D%NUMP
+IF(PRESENT(KGPTOT))    KGPTOT    = D%NGPTOT
+IF(PRESENT(KGPTOTG))   KGPTOTG   = D%NGPTOTG
+IF(PRESENT(KGPTOTMX))  KGPTOTMX  = D%NGPTOTMX
+IF(PRESENT(KFRSTLOFF)) KFRSTLOFF = D%NFRSTLOFF
+IF(PRESENT(KPTRFLOFF)) KPTRFLOFF = D%NPTRFLOFF
+IF(PRESENT(KPTRFLOFF)) KPTRFLOFF = D%NPTRFLOFF
+IF(PRESENT(KPRTRW))    KPRTRW    = NPRTRW
+IF(PRESENT(KMYSETW))   KMYSETW   = MYSETW
+IF(PRESENT(KMYSETV))   KMYSETV   = MYSETV
+IF(PRESENT(KMY_REGION_NS))   KMY_REGION_NS = MY_REGION_NS
+IF(PRESENT(KMY_REGION_EW))   KMY_REGION_EW = MY_REGION_EW
+IF(PRESENT(LDLAM))       LDLAM      = G%LAM
+IF(PRESENT(KDEF_RESOL))  KDEF_RESOL = NDEF_RESOL 
+
+IF(PRESENT(KGPTOTL)) THEN
+  IF(UBOUND(KGPTOTL,1) < N_REGIONS_NS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KGPTOTL DIM 1 TOO SMALL')
+  ELSEIF(UBOUND(KGPTOTL,2) <  N_REGIONS_EW) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KGPTOTL DIM 2 TOO SMALL')
+  ELSE
+    KGPTOTL(1:N_REGIONS_NS,1:N_REGIONS_EW) = D%NGPTOTL(:,:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KMYMS)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KMYMS REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KMYMS,1) < D%NUMP) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KMYMS TOO SMALL')
+  ELSE
+    KMYMS(1:D%NUMP) = D%MYMS(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KASM0)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KASM0 REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KASM0,1) < R%NSMAX) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KASM0 TOO SMALL')
+  ELSE
+    KASM0(0:R%NSMAX) = D%NASM0(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KUMPP)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KUMPP REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KUMPP,1) < NPRTRW) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KUMPP TOO SMALL')
+  ELSE
+    KUMPP(1:NPRTRW) = D%NUMPP(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPOSSP)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPOSSP REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KPOSSP,1) < NPRTRW+1) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPOSSP TOO SMALL')
+  ELSE
+    KPOSSP(1:NPRTRW+1) = D%NPOSSP(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPTRMS)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRMS REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KPTRMS,1) < NPRTRW) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRMS TOO SMALL')
+  ELSE
+    KPTRMS(1:NPRTRW) = D%NPTRMS(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KALLMS)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KALLMS REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KALLMS,1) < R%NSMAX+1) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KALLMS TOO SMALL')
+  ELSE
+    KALLMS(1:R%NSMAX+1) = D%NALLMS(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KDIM0G)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KDIM0G REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KDIM0G,1) < R%NSMAX) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KDIM0G TOO SMALL')
+  ELSE
+    KDIM0G(0:R%NSMAX) = D%NDIM0G(0:R%NSMAX)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KFRSTLAT)) THEN
+  IF(UBOUND(KFRSTLAT,1) < N_REGIONS_NS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KFRSTLAT TOO SMALL')
+  ELSE
+    KFRSTLAT(1:N_REGIONS_NS) = D%NFRSTLAT(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KLSTLAT)) THEN
+  IF(UBOUND(KLSTLAT,1) < N_REGIONS_NS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KLSTLAT TOO SMALL')
+  ELSE
+    KLSTLAT(1:N_REGIONS_NS) = D%NLSTLAT(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPTRLAT)) THEN
+  IF(UBOUND(KPTRLAT,1) < R%NDGL) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRLAT TOO SMALL')
+  ELSE
+    KPTRLAT(1:R%NDGL) = D%NPTRLAT(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPTRFRSTLAT)) THEN
+  IF(UBOUND(KPTRFRSTLAT,1) < N_REGIONS_NS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRFRSTLAT TOO SMALL')
+  ELSE
+    KPTRFRSTLAT(1:N_REGIONS_NS) = D%NPTRFRSTLAT(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPTRLSTLAT)) THEN
+  IF(UBOUND(KPTRLSTLAT,1) < N_REGIONS_NS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRLSTLAT TOO SMALL')
+  ELSE
+    KPTRLSTLAT(1:N_REGIONS_NS) = D%NPTRLSTLAT(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KSTA)) THEN
+  IF(UBOUND(KSTA,1) < R%NDGL+N_REGIONS_NS-1) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KSTA DIM 1 TOO SMALL')
+  ELSEIF(UBOUND(KSTA,2) < N_REGIONS_EW) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KSTA DIM 2 TOO SMALL')
+  ELSE
+    KSTA(1:R%NDGL+N_REGIONS_NS-1,1:N_REGIONS_EW) = D%NSTA(:,:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KONL)) THEN
+  IF(UBOUND(KONL,1) < R%NDGL+N_REGIONS_NS-1) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KONL DIM 1 TOO SMALL')
+  ELSEIF(UBOUND(KONL,2) < N_REGIONS_EW) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KONL DIM 2 TOO SMALL')
+  ELSE
+    KONL(1:R%NDGL+N_REGIONS_NS-1,1:N_REGIONS_EW) = D%NONL(:,:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(LDSPLITLAT)) THEN
+  IF(UBOUND(LDSPLITLAT,1) < R%NDGL) THEN
+    CALL ABORT_TRANS('TRANS_INQ: LDSPLITLAT TOO SMALL')
+  ELSE
+    LDSPLITLAT(1:R%NDGL) = D%LSPLITLAT(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KULTPP)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KULTPP REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KULTPP,1) < NPRTRNS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KULTPP TOO SMALL')
+  ELSE
+    KULTPP(1:NPRTRNS) = D%NULTPP(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPTRLS)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRLS REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KPTRLS,1) < NPRTRNS) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPTRLS TOO SMALL')
+  ELSE
+    KPTRLS(1:NPRTRNS) = D%NPTRLS(:)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KNMENG)) THEN
+  IF(UBOUND(KNMENG,1) < R%NDGL) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KNMENG TOO SMALL')
+  ELSE
+    KNMENG(1:R%NDGL) = G%NMEN(1:R%NDGL)
+  ENDIF
+ENDIF
+
+IF(PRESENT(PMU)) THEN
+  IF(UBOUND(PMU,1) < R%NDGL) THEN
+    CALL ABORT_TRANS('TRANS_INQ: PMU TOO SMALL')
+  ELSE
+    PMU(1:R%NDGL) = F%RMU
+  ENDIF
+ENDIF
+
+IF(PRESENT(PGW)) THEN
+  IF(UBOUND(PGW,1) < R%NDGL) THEN
+    CALL ABORT_TRANS('TRANS_INQ: PGW TOO SMALL')
+  ELSE
+    PGW(1:R%NDGL) = F%RW
+  ENDIF
+ENDIF
+
+IF(PRESENT(PRPNM)) THEN
+
+  IF( .NOT. S%LKEEPRPNM ) THEN
+    CALL ABORT_TRANS('TRANS_INQ: PRPNM REQUIRED BUT S%LKEEPRPNM=F')
+  ENDIF
+  
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: PRPNM REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IU1 = UBOUND(PRPNM,1)
+  IU2 = UBOUND(PRPNM,2)
+  IF(IU1 < R%NDGNH) THEN
+    CALL ABORT_TRANS('TRANS_INQ:FIRST DIM. OF PRNM TOO SMALL')
+  ELSE
+!    IU1 = MIN(IU1,R%NLEI3)
+!    IU2 = MIN(IU2,D%NSPOLEGL)
+!    PRPNM(1:IU1,1:IU2) = F%RPNM(1:IU1,1:IU2)
+
+    DO JMLOC=1,D%NUMP,NPRTRV
+      IPRTRV=MIN(NPRTRV,D%NUMP-JMLOC+1)
+      DO JSETV=1,IPRTRV
+        IMLOC=JMLOC+JSETV-1
+        IM = D%MYMS(IMLOC)
+        ISL = MAX(R%NDGNH-G%NDGLU(IM)+1,1)
+        IA  = 1+MOD(R%NSMAX-IM+2,2)
+        ILA = (R%NSMAX-IM+2)/2
+        IS  = 1+MOD(R%NSMAX-IM+1,2)
+        ILS = (R%NSMAX-IM+3)/2
+        IDGLU = MIN(R%NDGNH,G%NDGLU(IM))
+        DO J=1,ILA
+          DO I=1,IDGLU
+            PRPNM(ISL+I-1,D%NPMS(IM)+IA+(J-1)*2) = S%FA(IMLOC)%RPNMA(I,J)
+          ENDDO
+        ENDDO
+        DO J=1,ILS
+          DO I=1,IDGLU
+            PRPNM(ISL+I-1,D%NPMS(IM)+IS+(J-1)*2) = S%FA(IMLOC)%RPNMS(I,J)
+          ENDDO
+        ENDDO
+      ENDDO
+    ENDDO
+  ENDIF
+ENDIF
+IF(PRESENT(KLEI3)) THEN
+  KLEI3=R%NLEI3
+ENDIF
+IF(PRESENT(KSPOLEGL)) THEN
+  KSPOLEGL=D%NSPOLEGL
+ENDIF
+IF(PRESENT(KPMS)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPMS REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(KPMS,1) < R%NSMAX) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KPMS TOO SMALL')
+  ELSE
+    KPMS(0:R%NSMAX) = D%NPMS(0:R%NSMAX)
+  ENDIF
+ENDIF
+
+IF(PRESENT(KSMAX)) KSMAX = R%NSMAX
+IF(PRESENT(PLAPIN)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: PLAPIN REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(UBOUND(PLAPIN,1) < R%NSMAX+2) THEN
+    CALL ABORT_TRANS('TRANS_INQ: PLAPIN TOO SMALL')
+  ELSEIF (LBOUND(PLAPIN,1) /= -1) THEN
+    CALL ABORT_TRANS('TRANS_INQ: LOWER BOUND OF PLAPIN SHOULD BE -1')
+  ELSE
+    PLAPIN(-1:R%NSMAX+2) = F%RLAPIN(:)
+  ENDIF
+ENDIF
+IF(PRESENT(KNVALUE)) THEN
+  IF(D%LGRIDONLY) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KNVALUE REQUIRED BUT LGRIDONLY=T')
+  ENDIF
+  IF(SIZE(KNVALUE) < D%NSPEC2) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KNVALUE TOO SMALL')
+  ELSE
+    IC=1
+    DO JMLOC=1,D%NUMP
+      DO JN=D%MYMS(JMLOC),R%NSMAX
+        KNVALUE(IC  )=JN
+        KNVALUE(IC+1)=JN
+        IC=IC+2
+      ENDDO
+    ENDDO
+  ENDIF
+ENDIF
+
+
+IF(PRESENT(KDGLU)) THEN
+  IF(UBOUND(KDGLU,1) < R%NSMAX) THEN
+    CALL ABORT_TRANS('TRANS_INQ: KDGLU TOO SMALL')
+  ELSE
+    KDGLU(0:R%NSMAX) = G%NDGLU(0:R%NSMAX)
+  ENDIF
+ENDIF
+!     ------------------------------------------------------------------
+
+!endif INTERFACE
+
+END SUBROUTINE TRANS_INQ
+
+
+
+
+
+

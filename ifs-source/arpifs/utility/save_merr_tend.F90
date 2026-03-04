@@ -1,0 +1,149 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SAVE_MERR_TEND(YDGEOMETRY,YDGFL,YDML_GCONF,YDSP,YDMODERRCONF,KSTEP)
+
+!     Purpose.
+!     --------
+!       Save tendencies for model error statistics
+
+!     Author.
+!     -------
+!       Y.Tremolet
+!       Original : 01-Apr-2004
+
+!     Modifications.
+!     --------------
+!      K. Yessad (July 2014): Move some variables.
+!      M. Chrust (Jan 2020): OOPS cleaning
+!     ------------------------------------------------------------------
+
+USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE GEOMETRY_MOD  , ONLY : GEOMETRY
+USE YOMGFL        , ONLY : TGFL
+USE PARKIND1      , ONLY : JPIM, JPRB
+USE YOMHOOK       , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN        , ONLY : NULOUT
+USE YOMMODERRCONF , ONLY : TMODERR_CONF
+USE SPECTRAL_FIELDS_MOD, ONLY : ASSIGNMENT(=), SPECTRAL_FIELD,&
+ & DEALLOCATE_SPEC, ALLOCATE_SPEC, SPECTRAL_NORM_LEVS, SELF_MUL
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)      , INTENT(IN)    :: YDGEOMETRY
+TYPE(TGFL)          , INTENT(INOUT) :: YDGFL
+TYPE(MODEL_GENERAL_CONF_TYPE),INTENT(INOUT):: YDML_GCONF
+TYPE(SPECTRAL_FIELD), INTENT(INOUT) :: YDSP
+TYPE(TMODERR_CONF)  , INTENT(IN)    :: YDMODERRCONF
+INTEGER(KIND=JPIM)  , INTENT(IN)    :: KSTEP
+!     ------------------------------------------------------------------
+TYPE(SPECTRAL_FIELD) , SAVE :: YLSP0
+TYPE(SPECTRAL_FIELD) :: YLSP1
+INTEGER(KIND=JPIM) :: ISTEP,IFREQ,IFRST,IDELTA,JF,JS,JL
+CHARACTER(LEN=12) :: CLFILE
+REAL(KIND=JPRB) :: ZZ,ZT
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "state2spec.intfb.h"
+#include "write_spec_grib.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SAVE_MERR_TEND',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, &
+  & YDDIMV=>YDGEOMETRY%YRDIMV, &
+  & YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP, YDLAP=>YDGEOMETRY%YRLAP, YDRIP=>YDML_GCONF%YRRIP)
+
+ASSOCIATE(NSMAX=>YDDIM%NSMAX, NUMP=>YDDIM%NUMP, &
+ & NFLEVG=>YDDIMV%NFLEVG, NFLEVL=>YDDIMV%NFLEVL, &
+ & MYMS=>YDLAP%MYMS, &
+ & NALLMS=>YDMP%NALLMS, NPSURF=>YDMP%NPSURF, NPTRLL=>YDMP%NPTRLL, &
+ & NPTRMS=>YDMP%NPTRMS, NUMLL=>YDMP%NUMLL, &
+ & TSTEP=>YDRIP%TSTEP)
+
+ASSOCIATE(NVE3D=>YDMODERRCONF%NVE3D, NVE2D=>YDMODERRCONF%NVE2D, &
+ & TSTEP_ERR=>YDMODERRCONF%TSTEP_ERR, LSCALERR=>YDMODERRCONF%LSCALERR)
+!     ------------------------------------------------------------------
+
+! Output every 6 hours
+ZT=6.0_JPRB*3600.0_JPRB/TSTEP   ! number of steps in 6 hours
+IFREQ=NINT(ZT)
+IF (IFREQ<2) CALL ABOR1('SAVE_MERR_TEND: at least 2 steps between outputs')
+
+! First output after 12 hours
+ZT=12.0_JPRB*3600.0_JPRB/TSTEP  ! number of steps in 12 hours
+IFRST=NINT(ZT)
+
+! Interval for finite difference
+IF (TSTEP_ERR/=0.0_JPRB) THEN
+  IDELTA = NINT(TSTEP_ERR/TSTEP) ! number of steps in TSTEP_ERR
+  ZZ = 3600.0_JPRB/TSTEP_ERR
+ELSE
+  IDELTA = 1
+  ZZ = 3600.0_JPRB/TSTEP
+ENDIF
+
+ISTEP=MOD(KSTEP,IFREQ)
+IF (KSTEP<IFRST) ISTEP=-1
+
+IF (KSTEP<=1) WRITE(NULOUT,*)'SAVE_MERR_TEND: ifreq=',IFREQ,' ifrst=',IFRST
+
+IF (ISTEP==0) THEN
+  WRITE(NULOUT,*)'SAVE_MERR_TEND 0: kstep,istep=',KSTEP,ISTEP
+  CALL ALLOCATE_SPEC(YLSP0,NFLEVL,NFLEVG,NUMP,MYMS,NSMAX,0,&
+   & NALLMS,NPTRMS,NUMLL,NPTRLL,NPSURF,NVE3D,NVE2D,YDMODERRCONF%NGRBMERRCTL)
+  CALL STATE2SPEC(YDGEOMETRY,YDGFL,YDML_GCONF,YDSP,YLSP0)
+
+ELSEIF (ISTEP==IDELTA) THEN
+  WRITE(NULOUT,*)'SAVE_MERR_TEND 1: kstep,istep=',KSTEP,ISTEP
+  CALL ALLOCATE_SPEC(YLSP1,NFLEVL,NFLEVG,NUMP,MYMS,NSMAX,0,&
+    & NALLMS,NPTRMS,NUMLL,NPTRLL,NPSURF,NVE3D,NVE2D,YDMODERRCONF%NGRBMERRCTL)
+  CALL STATE2SPEC(YDGEOMETRY,YDGFL,YDML_GCONF,YDSP,YLSP1)
+
+  DO JF=1,YLSP1%NS2D
+  DO JS=1,YLSP1%NSPEC2
+    YLSP1%SP2D(JS,JF)=YLSP1%SP2D(JS,JF)-YLSP0%SP2D(JS,JF)
+  ENDDO
+  ENDDO
+  DO JF=1,YLSP1%NS3D
+  DO JS=1,YLSP1%NSPEC2
+  DO JL=1,YLSP1%NFLEVL
+    YLSP1%SP3D(JL,JS,JF)=YLSP1%SP3D(JL,JS,JF)-YLSP0%SP3D(JL,JS,JF)
+  ENDDO
+  ENDDO
+  ENDDO
+
+  IF (LSCALERR) THEN
+    WRITE(NULOUT,*)'SAVE_MERR_TEND: Scaling=',ZZ
+    CALL SELF_MUL(YLSP1,ZZ)
+  ENDIF
+
+  CLFILE(1:12)='merrtendYYYh'
+  WRITE(CLFILE(9:11),'(I3.3)')NINT((KSTEP-1)*TSTEP/3600.)
+  WRITE(NULOUT,*)'SAVE_MERR_TEND: writing to ',CLFILE
+  CALL WRITE_SPEC_GRIB(YDGEOMETRY,YDRIP,CLFILE,YLSP1)
+
+  CALL SPECTRAL_NORM_LEVS(YLSP1,'MERR_TEND')
+
+  CALL DEALLOCATE_SPEC(YLSP0)
+  CALL DEALLOCATE_SPEC(YLSP1)
+ENDIF
+
+!     ------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SAVE_MERR_TEND',1,ZHOOK_HANDLE)
+END SUBROUTINE SAVE_MERR_TEND

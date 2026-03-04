@@ -1,0 +1,205 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE STEPO_FPOS_HV(LDNHDYN,YDCLIMO,YDNAMFPINT,YDNAMFPSCI,KFPXFLD,YDFPOS,KFPDOM,YDGEOMETRY,YDGMV,YDGFL,YDSURF,YDXFU, &
+ & KCUFNR,PMCUFGP,YDMODEL,LDHPOS,KGPX,LDEZO,PABUF,KLMOD)
+
+!**** *STEPO_FPOS_HV*  - Controls Fullpos job at lowest level - horizontal interpolations of model fields
+!                        for surface-dependent post-processing levels
+
+
+!     Purpose.
+!     --------
+!        CONTROLS THE POST-PROCESSING.
+
+!**   Interface.
+!     ----------
+!        *CALL* *STEPO_FPOS_HV
+
+!        Explicit arguments :
+!        --------------------
+!         LDNHDYN : .TRUE. if NH fields should be computed
+!         KFPXFLD : maximum number of fields to extract at a time
+!         KFPDOM : number of subdomains
+!         LDHPOS : .true. if any horizontal post-processing
+!         LDEZO : .true. if biperiodicization active
+!         KLMOD : model/post-processing dynamic primitive variable indicator for each fullpos field :
+!                  2 : upper air primitive dynamic variable
+!                  1 : surface primitive dynamic variable
+!                  0 : not a primitive variable
+!         KGPX : fields pointers in PABUF
+
+!        Implicit arguments :
+!        --------------------
+!        None
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.    see includes below.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Ryad El Khatib  *Meteo-France*
+!      Original : 16-Jul-2012 from STEPO
+
+! Modifications
+! -------------
+!      R. El Khatib 13-Dec-2012 Fullpos buffers reshaping, memory savings
+!      R. El Khatib 17-Jul-2013 FABEC post-processing
+!      R. El Khatib 27-Sep-2013 Boyd periodization in Fullpos-2
+!      R. El Khatib & D. Salmond 03-Jun-2014 Fix deallocate issues
+!      R. El Khatib 08-Dec-2015 Move out I/Os.
+!      R. El Khatib 09-Aug-2016 Cleaning of biperiodicization management
+!      R. El Khatib 29-May-2019 split from stepo_fpos
+! End Modifications
+!------------------------------------------------------------------------------
+
+USE GEOMETRY_MOD       , ONLY : GEOMETRY
+USE TYPE_MODEL         , ONLY : MODEL
+USE YOMGMV             , ONLY : TGMV
+USE YOMGFL             , ONLY : TGFL
+USE SURFACE_FIELDS_MIX , ONLY : TSURF
+USE YOMXFU             , ONLY : TXFU
+USE PARKIND1           , ONLY : JPIM, JPRB
+USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN             , ONLY : NULOUT
+USE YOMFPC             , ONLY : TNAMFPSCI, TNAMFPINT, LTRACEFP, LALLOFP
+USE TYPE_FPRQDYNS      , ONLY : TYPE_FPRQDYN, ALLOCATE_FPRQDYN, INQUIRE_FPRQDYN, DEALLOCATE_FPRQDYN
+USE PARFPOS            , ONLY : JPOSDYN
+USE FULLPOS            , ONLY : TFPOS
+USE TYPE_FPOSBUF       , ONLY : FPOSBUF
+
+!      -----------------------------------------------------------
+
+IMPLICIT NONE
+
+LOGICAL           ,INTENT(IN) :: LDNHDYN
+TYPE(FPOSBUF)     ,INTENT(IN) :: YDCLIMO
+TYPE(TNAMFPINT)   ,INTENT(IN) :: YDNAMFPINT
+TYPE(TNAMFPSCI)   ,INTENT(IN) :: YDNAMFPSCI
+INTEGER(KIND=JPIM),INTENT(IN) :: KFPXFLD
+TYPE (TFPOS)      ,INTENT(IN) :: YDFPOS
+INTEGER(KIND=JPIM),INTENT(IN) :: KFPDOM
+TYPE(GEOMETRY)    ,INTENT(IN) :: YDGEOMETRY
+TYPE(TGMV)        ,INTENT(IN) :: YDGMV
+TYPE(TGFL)        ,INTENT(IN) :: YDGFL
+TYPE(TSURF)       ,INTENT(IN) :: YDSURF
+TYPE(TXFU)        ,INTENT(IN) :: YDXFU
+INTEGER(KIND=JPIM),INTENT(IN) :: KCUFNR
+REAL(KIND=JPRB)   ,INTENT(IN) :: PMCUFGP(YDGEOMETRY%YRDIM%NPROMA,KCUFNR,YDGEOMETRY%YRDIM%NGPBLKS)
+TYPE(MODEL)       ,INTENT(IN) :: YDMODEL
+LOGICAL           ,INTENT(IN) :: LDHPOS
+INTEGER(KIND=JPIM),INTENT(OUT) :: KGPX(JPOSDYN)
+LOGICAL           ,INTENT(IN) :: LDEZO
+REAL(KIND=JPRB)   ,POINTER, INTENT(INOUT) :: PABUF(:,:,:)
+INTEGER(KIND=JPIM),INTENT(OUT) :: KLMOD(JPOSDYN)
+
+CHARACTER(LEN=1)  :: CLM='M'
+TYPE(TYPE_FPRQDYN) :: YLQTYPE
+INTEGER(KIND=JPIM) :: JLEV
+REAL(KIND=JPRB) :: ZLEV(YDGEOMETRY%YRDIMV%NFLEVG)
+
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+#ifdef __INTEL_COMPILER
+INTRINSIC :: SHAPE ! Fails with Intel compiler as it thinks we use ATLAS shape function
+#endif
+
+
+!      -----------------------------------------------------------
+
+#include "sufpilmod.intfb.h"
+#include "cpvpospr.intfb.h"
+#include "dynfpos.intfb.h"
+#include "fpspecfitg.intfb.h"
+#include "fpsaturcap.intfb.h"
+
+!      -----------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('STEPO_FPOS_HV',0,ZHOOK_HANDLE)
+ASSOCIATE(YDFPGEOMETRY=>YDFPOS%YFPGEOMETRY, YDFPFILTERS=>YDFPOS%YFPFILTERS, YDFPVAB=>YDFPOS%YFPVAB, &
+ & YDFPSTRUCT=>YDFPOS%YFPSTRUCT, YDFPWSTD=>YDFPOS%YFPWSTD, YDFPCNT=>YDFPOS%YFPCNT, YDAFN=>YDFPOS%YAFN)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, NFLEVG=>YDGEOMETRY%YRDIMV%NFLEVG, &
+ & YDFPGEO_DEP=>YDFPGEOMETRY%YFPGEO_DEP, YDFPGEO=>YDFPGEOMETRY%YFPGEO, TFP_DYNDS=>YDAFN%TFP_DYNDS, TFP=>YDAFN%TFP, &
+ & YDFPGIND=>YDFPGEOMETRY%YFPGIND, YDFPUSERGEO=>YDFPGEOMETRY%YFPUSERGEO, NFPCONF=>YDFPCNT%NFPCONF)
+ASSOCIATE(LFITBETWEEN=>YDNAMFPSCI%LFITBETWEEN, LSATURCAP=>YDNAMFPSCI%LSATURCAP, &
+ & NFPSPEC2=>YDFPUSERGEO(:)%NSPEC2, NFPRESOL=>YDFPUSERGEO(:)%NFPRESOL)
+
+!      -----------------------------------------------------------
+
+!*       5.    HORIZONTAL INTERPOLATIONS BEFORE VERTICAL INTERPOLATIONS
+!              --------------------------------------------------------
+
+CALL GSTATS(8,0)
+
+! Scan starts on model fields
+CALL ALLOCATE_FPRQDYN(YLQTYPE,1,NFLEVG)
+IF (LALLOFP) THEN
+  CALL INQUIRE_FPRQDYN(YLQTYPE,'YLQTYPE',NULOUT)
+ENDIF
+CALL SUFPILMOD(YDAFN%TFP,LDNHDYN,KLMOD,YDMODEL%YRML_GCONF%YGFL,YDMODEL%YRML_PHY_MF%YRPHY,KCUFNR,NFLEVG,YLQTYPE)
+CALL CPVPOSPR(NFPCONF,YDAFN,YLQTYPE)
+IF (LTRACEFP) CALL PRINT_DIMS(CLM,'I',YLQTYPE)
+DO JLEV=1,NFLEVG
+  ZLEV(JLEV)=REAL(JLEV,KIND=JPRB)
+ENDDO
+
+CALL DYNFPOS(YLQTYPE,YDCLIMO,YDNAMFPINT,YDNAMFPSCI,YDAFN,KFPXFLD,YDFPGEOMETRY,YDFPWSTD,YDFPSTRUCT,KFPDOM, &
+ & LDHPOS,LDEZO,YDGEOMETRY,YDGMV,YDGFL,YDSURF,YDXFU,KCUFNR,PMCUFGP,YDMODEL,CLM,NFLEVG,ZLEV,PABUF,KP3FIELDS=0)
+
+IF (LSATURCAP) THEN
+  CALL FPSATURCAP(YDAFN,YDFPGEO,YDGEOMETRY,YLQTYPE%IGPX,PABUF)
+ENDIF
+IF (LFITBETWEEN) THEN
+  CALL FPSPECFITG(YDAFN,YDFPGEO,KFPDOM,NFPRESOL,NFPSPEC2,YDGEOMETRY,YLQTYPE%IGPX,PABUF)
+ENDIF
+
+KGPX(1:JPOSDYN)=YLQTYPE%IGPX(1:JPOSDYN)
+
+CALL DEALLOCATE_FPRQDYN(YLQTYPE)
+
+CALL GSTATS(8,1)
+
+END ASSOCIATE
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('STEPO_FPOS_HV',1,ZHOOK_HANDLE)
+
+CONTAINS
+
+SUBROUTINE PRINT_DIMS(CD1,CD2,YDQTYPE)
+
+TYPE (TYPE_FPRQDYN),  INTENT(IN) :: YDQTYPE
+CHARACTER(LEN=1),INTENT(IN) :: CD1
+CHARACTER(LEN=1),INTENT(IN) :: CD2
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+IF (LHOOK) CALL DR_HOOK('STEPO_FPOS_HV:PRINT_DIMS',0,ZHOOK_HANDLE)
+ASSOCIATE(&
+ & NFPAUXB=>YDQTYPE%NFPAUXB, NFPDYNB=>YDQTYPE%NFPDYNB, NFPGT0B=>YDQTYPE%NFPGT0B, NFPGT1=>YDQTYPE%NFPGT1, &
+ & NFPUVMN=>YDQTYPE%NFPUVMN, NFPSCA=>YDQTYPE%NFPSCA, NFPSPB=>YDQTYPE%NFPSPB, NFPVEC=>YDQTYPE%NFPVEC, &
+ & NFPISCA=>YDQTYPE%NFPISCA, NFPIVEC=>YDQTYPE%NFPIVEC, NFPSPD=>YDQTYPE%NFPSPD, NFPVECG=>YDQTYPE%NFPVECG, &
+ & NFPSCAG=>YDQTYPE%NFPSCAG, NFPIVECG=>YDQTYPE%NFPIVECG, NFPISCAG=>YDQTYPE%NFPISCAG)
+
+  WRITE(UNIT=NULOUT,FMT='(/,'' FULLPOS DIMENSIONNING FOR CONFIGURATION '',2A1)') CD1,CD2
+  WRITE(UNIT=NULOUT,FMT='('' NFPGT1 = '',I4,'' NFPAUXB = '',I4,'' NFPSPD = '',I4,&
+   & '' NFPSPB = '',I4,'' NFPVEC = '',I4,'' NFPSCA = '',I4,'' NFPGT0B = '',I4,&
+   & '' NFPDYNB = '',I4)') NFPGT1,NFPAUXB,NFPSPD,NFPSPB,NFPVEC,NFPSCA,NFPGT0B,NFPDYNB
+  WRITE(UNIT=NULOUT,FMT='('' NFPVEC = '',I4,'' NFPSCA = '',I4,'' NFPVECG = '',I4,&
+   & '' NFPSCAG = '',I4)') NFPVEC,NFPSCA,NFPVECG,NFPSCAG
+  WRITE(UNIT=NULOUT,FMT='('' NFPIVEC = '',I4,'' NFPISCA = '',I4,'' NFPIVECG = '',&
+   & I4,'' NFPISCAG = '',I4)') NFPIVEC,NFPISCA,NFPIVECG,NFPISCAG
+  WRITE(UNIT=NULOUT,FMT='('' NFPUVMN = '',I4)') NFPUVMN
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('STEPO_FPOS_HV:PRINT_DIMS',1,ZHOOK_HANDLE)
+
+END SUBROUTINE PRINT_DIMS
+
+END SUBROUTINE STEPO_FPOS_HV

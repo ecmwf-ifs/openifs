@@ -1,0 +1,537 @@
+! (C) Copyright 1999- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE SRFSN_LWEXP_MOD
+CONTAINS
+SUBROUTINE SRFSN_LWEXP(KIDIA  , KFDIA  , KLON   ,PTMST  ,&
+ & PSSNM1M, PTSNM1M,PRSNM1M,PTSAM1M,PHLICEM1M,PWSNM1M, & 
+ & PSLRFL ,PSSRFLTI,PFRTI  ,PAHFSTI,PEVAPTI,&
+ & PSSFC  , PSSFL  ,PEVAPSNW ,PTSRF,&
+ & YDCST  ,YDVEG   ,YDSOIL   ,YDFLAKE,&
+ & PTSFC  , PTSFL, & 
+ & PSSN   , PTSN   ,PGSN   ,PMSN   ,PEMSSN ,& 
+ & PDHTSS , PDHSSS, &
+ & PWSN, PPMSNINT)  
+
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF   , ONLY : RHOH2O
+USE YOS_CST   , ONLY : TCST
+USE YOS_VEG   , ONLY : TVEG
+USE YOS_SOIL  , ONLY : TSOIL
+USE YOS_FLAKE , ONLY : TFLAKE
+
+!**** *SRFSN* - CONTAINS SNOW PARAMETRIZATION 
+!     PURPOSE.
+!     --------
+!          COMPUTES CHANGES IN SNOW TEMPERATURE AND DEPTH
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_LWEXP* IS CALLED FROM *SURFTSTP*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF TILES
+!    *KLEVSN*     Number of snow layers (diagnostics) 
+!    *KDHVTSS*    Number of variables for snow energy budget
+!    *KDHFTSS*    Number of fluxes for snow energy budget
+!    *KDHVSSS*    Number of variables for snow water budget
+!    *KDHFSSS*    Number of fluxes for snow water budget
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg/m**2
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PWSNM1M*    SNOW LIQUID WATER CONTENT                    kg/m**2
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION                             KG/M**2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+
+!    *PTSFC*      CONVECTIVE THROUGHFALL AT THE SURFACE        KG/M**2/S
+!    *PTSFL*      LARGE SCALE THROUGHFALL AT THE SURFACE       KG/M**2/S
+!    *PTSRF*      TEMPERATURE (LAST LEVEL)                     K
+
+!     PARAMETERS AT T+1 :
+!    *PSSN*       SNOW MASS (per unit area)                    kg/m**2
+!    *PTSN*       SNOW TEMPERATURE                               K
+!    *PWSN*       SNOW LIQUID WATER CONTENT                    kg/m**2
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+!    *PMSN*       FLUX OF MELT WATER FROM SNOW TO SOIL       KG/M**2/S (#)
+!    *PEMSSN*     EVAPORATIVE MISMATCH RESULTING FROM
+!                  CLIPPING THE SNOW TO ZERO (AFTER P-E)     KG/M**2/S
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+!    *PPMSNINT*   INTERNAL PHASE CHANGE     (needed by srfsn_rsn)w.m-2 
+
+! (#) THOSE TWO QUANTITIES REPRESENT THE WHOLE GRID-BOX. IN RELATION
+!       TO THE DOCUMENTATION, THEY ARE PGSN=Fr_s*G_s, PMSN=Fr_s*M_s
+
+!     METHOD.
+!     -------
+!          THE HEAT AND WATER BUDGET OF A SNOW SLAB ON TOP OF THE
+!          SOIL IS CONSIDERED AS THE RESULT OF NET SURFACE HEATING, 
+!          DIFFUSION OF HEAT, SNOWFALL AND SNOW MELT. ALBEDO 
+!          AND DENSITY EVOLVE ACCORDING TO SIMPLE RELAXATION EQUATIONS
+!          (SEE DOUVILLE ET AL., CLIM. DYN., 12, 21-35, 1995).
+!          FOR DETAILS SEE DOCUMENTATION. 
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     ORIGINAL :
+!     P.VITERBO/A.BELJAARS      E.C.M.W.F.     20/02/1999
+!     MODIFIED BY
+!     P. Viterbo    Surface DDH for TILES      17/05/2000
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo     24-05-2004     Change surface units
+!     E. Dutra       11/11/2008     Inclusion of prognostic liquid water content+rainfall
+!                                   REMOVE OF SNOW DENSITY AND ALBEDO CALCULATION - SRFSN_RSN
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+! Declaration of arguments
+
+INTEGER(KIND=JPIM), INTENT(IN)    :: KIDIA
+INTEGER(KIND=JPIM), INTENT(IN)    :: KFDIA
+INTEGER(KIND=JPIM), INTENT(IN)    :: KLON
+
+REAL(KIND=JPRB),    INTENT(IN)    :: PTMST
+REAL(KIND=JPRB),    INTENT(IN)    :: PSSNM1M(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PTSNM1M(:) 
+REAL(KIND=JPRB),    INTENT(IN)    :: PRSNM1M(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PTSAM1M(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PSLRFL(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PSSRFLTI(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PFRTI(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PAHFSTI(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PEVAPTI(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PSSFC(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PSSFL(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PEVAPSNW(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PHLICEM1M(:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PWSNM1M(:) !  LIQUID WATER T
+REAL(KIND=JPRB),    INTENT(IN)    :: PTSRF(:) 
+TYPE(TCST),         INTENT(IN)   :: YDCST
+TYPE(TVEG),         INTENT(IN)   :: YDVEG
+TYPE(TSOIL),        INTENT(IN)   :: YDSOIL
+TYPE(TFLAKE),       INTENT(IN)   :: YDFLAKE
+REAL(KIND=JPRB),    INTENT(INOUT) :: PTSFC(:) 
+REAL(KIND=JPRB),    INTENT(INOUT) :: PTSFL(:) 
+REAL(KIND=JPRB),    INTENT(OUT)   :: PSSN(:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PTSN(:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PGSN(:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PMSN(:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PEMSSN(:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PDHTSS(:,:,:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PDHSSS(:,:,:)
+REAL(KIND=JPRB),    INTENT(OUT)   :: PWSN(:)    ! SNOW LIQUID WATER T+1 
+REAL(KIND=JPRB),    INTENT(OUT)   :: PPMSNINT(:)
+
+!      LOCAL VARIABLES
+
+LOGICAL            :: LLNOSNOW(KLON)  ! SNOW DO NOT EXISTS ZFRSN < YDSOIL%RFRSMALL 
+
+REAL(KIND=JPRB)    :: ZFRSN(KLON),&    ! SNOW FRACTION (TILES 5+7)
+                      ZSSFC(KLON),&    ! TOTAL CONVECTIVE SNOW FLUX  
+                      ZSSFL(KLON),&    ! TOTAL LARGE SCALE SNOW FLUX
+		      ZTSFC(KLON),&    ! TOTAL CONVECTIVE THROUGHFALL
+                      ZTSFL(KLON),&    ! TOTAL LARGE SCALE THROUGHFALL
+                      ZLWC(KLON),&     ! SNOW LIQUID WATER CAPACITY T
+                      ZDSNR(KLON),&    ! REAL SNOW DEPTH T 
+		      ZLICE(KLON),&    ! LAKE ICE THICKNESS
+		      ZPMSN(KLON),&    ! SNOW MELT (DIFFERENT FROM PMSN)
+		      ZPFSN(KLON)
+
+REAL(KIND=JPRB)    :: ZDSN,&          ! REAL SNOW DEPTH (USED TO SOLVE TEMPERATURE EQUATION)
+                      ZGSN,&          ! GROUND HEAT FLUX 
+                      ZHFLUX,&        ! NET HEAT FLUX IN THE SNOW PACK
+                      ZRS,&           ! RESISTENCE BETWEEN SNOWPACK AND SOIL ...      
+                      ZSNRES,&        ! RESISTENCE BETWEEN SNOWPACK AND SOIL ....      
+                      ZSOILRES,&      ! 1/(SKIL LAYER CONDUCTIVITY) (TILE 8)
+                      ZSSTAR,&        ! SNOW MASS T+1
+                      ZT0,&           ! = YDCST%RTT 273.16 
+                      ZTSTAR,&        ! SNOW TEMPERATURE T+1
+                      ZHOICE,&        ! 1/YDSOIL%RHOICE
+                      ZTMST,&         ! 1/PTMST
+                      ZCONSA,&        ! CONSTANT FOR TEMPERATURE SOLUTION (MAIN)
+                      ZCONSAMAX,&     ! CONSTANT FOR TEMPERATURE SOLUTION (MAXIMUM VALUE OF ZCONSA)
+		      ZHFLUXRF,&      ! Heat advected by throughfall
+		      ZWFLUXRF,&      ! Mass advected by throughfall
+		      GRIDFRAC,&      ! grid fraction for snowfall
+		      ZHFLUXFREZ,&
+		      ZWSTAR,&
+		      ZRUNOFF
+
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+INTEGER(KIND=JPIM) :: JL              ! CYCLE IN POINT
+
+
+!     ------------------------------------------------------------------
+!*         1.    SET UP SOME CONSTANTS.
+!                --- -- ---- ----------
+!*               PHYSICAL CONSTANTS.
+!                -------- ----------
+! RESISTANCE FOR HEAT CONDUCTION IN HALF TOP SOIL LAYER
+!  (ESTIMATE FROM SKIN LAYER CONDUCTIVITY FOR BARE SOIL; W/M2K)
+IF (LHOOK) CALL DR_HOOK('SRFSN_LWEXP_MOD:SRFSN_LWEXP',0,ZHOOK_HANDLE)
+ASSOCIATE(RSNPER=>YDSOIL%RSNPER, RLAMICE=>YDSOIL%RLAMICE, &
+ & RHOMINSN=>YDSOIL%RHOMINSN, RDSNMAX=>YDSOIL%RDSNMAX, &
+ & RFRSMALL=>YDSOIL%RFRSMALL, RALAMSN=>YDSOIL%RALAMSN, &
+ & RHOMAXSN=>YDSOIL%RHOMAXSN, RSFRESH=>YDSOIL%RSFRESH, RHOICE=>YDSOIL%RHOICE, &
+ & RALFMAXSN=>YDSOIL%RALFMAXSN, RFRTINY=>YDSOIL%RFRTINY, &
+ & RALFMINPSN=>YDSOIL%RALFMINPSN, LESNRF=>YDSOIL%LESNRF, &
+ & RALFMINSN=>YDSOIL%RALFMINSN, RTAUF=>YDSOIL%RTAUF, RTAUA=>YDSOIL%RTAUA, &
+ & RHOCI=>YDSOIL%RHOCI, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & RG=>YDCST%RG, RDAY=>YDCST%RDAY, RLVTT=>YDCST%RLVTT, RTT=>YDCST%RTT, &
+ & RPI=>YDCST%RPI, RLSTT=>YDCST%RLSTT, RLMLT=>YDCST%RLMLT, &
+ & RVLAMSK=>YDVEG%RVLAMSK)
+
+ZHOICE=1.0_JPRB/RHOICE
+ZSOILRES=1.0_JPRB/RVLAMSK(8)
+ZT0=RTT
+ZTMST=1.0_JPRB/PTMST
+ZPFSN=0.0_JPRB
+
+!*    FIND LAKE POINTS WITH ICE COVER
+DO JL=KIDIA,KFDIA
+  IF ( PHLICEM1M(JL) > RH_ICE_MIN_FLK  .AND. LEFLAKE ) THEN
+    ZLICE(JL)=1._JPRB
+  ELSE
+    ZLICE(JL)=0._JPRB
+  ENDIF
+ENDDO
+!     ------------------------------------------------------------------
+!*         2. NEW SNOW T AND MASS INCLUDING GROUND HEAT FLUX AND MELTING.
+!             -----------------------------------------------------------
+
+DO JL=KIDIA,KFDIA
+  ZFRSN(JL)=MAX(PFRTI(JL,5)+PFRTI(JL,7),RFRTINY)
+  IF (ZFRSN(JL) < RFRSMALL) THEN
+    LLNOSNOW(JL)=.TRUE.
+  ELSE
+    LLNOSNOW(JL)=.FALSE.
+  ENDIF
+  GRIDFRAC=(PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)&
+  & +PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8))
+  IF ( LEFLAKE ) GRIDFRAC=GRIDFRAC+PFRTI(JL,9)
+
+  ZSSFC(JL)=GRIDFRAC*PSSFC(JL)
+  ZSSFL(JL)=GRIDFRAC*PSSFL(JL)
+  ZTSFC(JL)=GRIDFRAC*PTSFC(JL)
+  ZTSFL(JL)=GRIDFRAC*PTSFL(JL)
+   
+  IF ( (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)+PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8)) &
+      &  .EQ. 0.0_JPRB  .AND. ZLICE(JL) .EQ. 0.0_JPRB ) THEN
+    ZSSFC(JL)=0.0_JPRB
+    ZSSFL(JL)=0.0_JPRB
+    ZTSFC(JL)=0.0_JPRB
+    ZTSFL(JL)=0.0_JPRB
+  ENDIF 
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  PEMSSN(JL)=0.0_JPRB
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  IF (LLNOSNOW(JL)) THEN
+    ZSSTAR=PSSNM1M(JL)+(PTMST)*(ZSSFC(JL)+ZSSFL(JL))
+    PSSN(JL)=ZSSTAR
+    PTSN(JL)=PTSAM1M(JL,1)
+    PTSN(JL)=ZT0
+    PGSN(JL)=0.0_JPRB
+    PMSN(JL)=0.0_JPRB
+    IF (SIZE(PDHTSS) > 0) THEN
+      PDHTSS(JL,1,1)=0.0_JPRB
+      PDHTSS(JL,1,2)=PTSNM1M(JL)
+      PDHTSS(JL,1,3)=0.0_JPRB
+      PDHTSS(JL,1,4)=0.0_JPRB
+      PDHTSS(JL,1,11)=0.0_JPRB
+      PDHTSS(JL,1,12)=0.0_JPRB
+
+!      PDHTSS(JL,1,16)=0.0_JPRB
+!      PDHSSS(JL,1,6)=0.0_JPRB
+    ENDIF
+    PPMSNINT(JL)=0.0_JPRB
+    PWSN(JL)=0.0_JPRB
+    ZLWC(JL) =0.0_JPRB
+    ZPMSN(JL)=0.0_JPRB
+  ELSE
+
+
+!           NET HEAT FLUX AT SNOW SURFACE; THIS IS MULTIPLIED 
+!           BY FRACTION BECAUSE EQUATIONS APPLY TO TOTAL SNOW MASS 
+!           IN THE GRID SQUARE
+
+    ZHFLUX=( PFRTI(JL,5)*(PAHFSTI(JL,5)+RLSTT*PEVAPTI(JL,5))&
+     & +PFRTI(JL,7)*(PAHFSTI(JL,7)+RLVTT*(PEVAPTI(JL,7)-PEVAPSNW(JL))&
+     & +RLSTT*PEVAPSNW(JL))&
+     & +PFRTI(JL,5)*PSSRFLTI(JL,5)&
+     & +PFRTI(JL,7)*PSSRFLTI(JL,7)&
+     & +(PFRTI(JL,5)+PFRTI(JL,7))*PSLRFL(JL))/ZFRSN(JL)
+
+! THROUGHFALL TREATMENT 
+    IF(LESNRF) THEN
+      ! HEAT ADVECTED BY THROUGHFALL
+      ZHFLUXRF=((PFRTI(JL,5)+PFRTI(JL,7))*4218.*(ZTSFC(JL)+ZTSFL(JL))*&
+        &(MAX(PTSRF(JL),ZT0)-ZT0))
+      ! ADDED MASS TO SNOWPACK BY THROUGHFALL
+      ZWFLUXRF=(PFRTI(JL,5)+PFRTI(JL,7))*(ZTSFC(JL)+ZTSFL(JL))
+      ! CHANGE THE THROUGHFALL AT THE SURFACE 
+      PTSFC(JL)=PTSFC(JL)-(PFRTI(JL,5)+PFRTI(JL,7))*(ZTSFC(JL))
+      PTSFL(JL)=PTSFL(JL)-(PFRTI(JL,5)+PFRTI(JL,7))*(ZTSFL(JL))
+    ELSE
+      ZHFLUXRF=0.0_JPRB
+      ZWFLUXRF=0.0_JPRB
+    ENDIF
+
+
+    ! REAL SNOW DEPTH 
+    ZDSN=MIN(PSSNM1M(JL)/(PRSNM1M(JL)*ZFRSN(JL)),RDSNMAX)
+    ! RESISTANCE FOR HEAT FLUX BETWEEN SNOW AND SOIL LAYER 
+    ZSNRES=0.5_JPRB*ZDSN/(RLAMICE*(PRSNM1M(JL)*ZHOICE)**RALAMSN)
+    ZRS=1.0_JPRB/(ZSNRES+ZSOILRES)
+    ! SNOW HEAT CAPACITY 
+    ZCONSAMAX=(PRSNM1M(JL)*RHOCI*RDSNMAX)*ZHOICE
+    ZCONSA=MIN(((PSSNM1M(JL)-PWSNM1M(JL))*RHOCI*ZHOICE)/ZFRSN(JL),ZCONSAMAX)
+
+
+    ! FIND NEEDED ENERGY TO GET SNOW TEMPERATURE TO ZT0 (FREEZING AVAILABLE LIQUID WATER)
+    ZHFLUXFREZ=MIN(ZCONSA*(ZT0-PTSNM1M(JL))*ZTMST+ZT0*ZRS,&
+                   RLMLT*PWSNM1M(JL)*ZTMST)
+    ZHFLUXFREZ=MAX(0.0_JPRB,ZHFLUXFREZ)
+
+    ! SOLVE THE IMPLICIT TEMPERATURE EQUATION 
+    ZTSTAR=(PTSNM1M(JL)+PTMST/ZCONSA*(ZHFLUX+ZHFLUXRF+ZHFLUXFREZ+PTSAM1M(JL,1)*ZRS))*&
+           & 1.0_JPRB/(1.0_JPRB+PTMST/ZCONSA*ZRS)
+    ZGSN=(ZTSTAR-PTSAM1M(JL,1))*ZRS
+    
+
+    IF ( ZTSTAR > ZT0 ) THEN 
+    ! REDEFINE GROUND HEAT FLUX EXPLICITLY 
+      ZGSN=(ZT0-PTSAM1M(JL,1))*ZRS
+      ZHFLUXFREZ=MIN(ZCONSA*(ZT0-PTSNM1M(JL))*ZTMST,&
+                     RLMLT*PWSNM1M(JL)*ZTMST)
+      ZHFLUXFREZ=MAX(0.0_JPRB,ZHFLUXFREZ)
+      ZTSTAR=PTSNM1M(JL)+PTMST/ZCONSA*(ZHFLUX-ZGSN+ZHFLUXRF+ZHFLUXFREZ)
+    ENDIF
+    PGSN(JL)=ZGSN
+      
+    ! UPDATE SNOW LIQUID WATER MASS 
+    ZWSTAR=PWSNM1M(JL)-ZHFLUXFREZ/RLMLT*PTMST
+    ! UPDATE SNOW HEAT CAPACITY 
+    ZCONSA=MIN(((PSSNM1M(JL)-ZWSTAR)*RHOCI*ZHOICE)/ZFRSN(JL),ZCONSAMAX)
+
+
+! PRELIMINARY SNOW MASS (INCLUDING SNOWFALL) 
+    ZSSTAR=PSSNM1M(JL)+(PTMST)*&
+     & (ZSSFC(JL)+ZSSFL(JL)+PFRTI(JL,5)*PEVAPTI(JL,5)&
+     & +PFRTI(JL,7)*PEVAPSNW(JL))  
+    ! CORRECT FOR NEGATIVE VALUES OF SNOW MASS AFTER P-E
+    IF (ZSSTAR < 0.0_JPRB) THEN
+      PEMSSN(JL)=ZTMST*ZSSTAR
+      ZSSTAR=MAX(ZSSTAR,0.0_JPRB)
+      ZWSTAR=0.0_JPRB
+      PSSN(JL)=ZSSTAR
+      PWSN(JL)=ZWSTAR
+      PMSN(JL)=0.0_JPRB
+      PTSN(JL)=PTSNM1M(JL)
+      ! CHANGE THE GROUND HEAT FLUX 
+      PGSN(JL)=ZHFLUX 
+      ! No heat or mass advection by rainfall 
+      ZHFLUXRF=0.0_JPRB
+      ZWFLUXRF=0.0_JPRB 
+      ! CORRECT THROUGHFALL
+      PTSFC(JL)=PTSFC(JL)+(PFRTI(JL,5)+PFRTI(JL,7))*(ZTSFC(JL))
+      PTSFL(JL)=PTSFL(JL)+(PFRTI(JL,5)+PFRTI(JL,7))*(ZTSFL(JL))
+    ELSE
+
+      ! EVALUATE AVAILABLE ENERGY FOR PHASE CHANGES 
+      IF ( ZTSTAR >= ZT0 ) THEN
+        ! MELTING
+!         ZPMSN(JL)=MIN(ZCONSA*(ZTSTAR-ZT0),RLMLT*(PSSNM1M(JL)-ZWSTAR))*ZTMST
+        ZPMSN(JL)=MIN(ZCONSA*(ZTSTAR-ZT0),RLMLT*(ZSSTAR-ZWSTAR))*ZTMST
+        ZPFSN(JL)=0.0_JPRB
+      ELSE
+        ! RE-FREEZING
+        ZPMSN(JL)=0.0_JPRB
+        ZPFSN(JL)=MIN(ZCONSA*(ZT0-ZTSTAR),RLMLT*ZWSTAR)*ZTMST
+      ENDIF  
+
+      ! UPDATE SNOW TEMPERATURE CONSIDERING THE PHASE CHANGES
+      ZTSTAR=ZTSTAR+PTMST/ZCONSA*(-ZPMSN(JL)+ZPFSN(JL))
+      IF ( ZTSTAR > ZT0 ) THEN 
+  ! ALL THE SNOW MELTED 
+        PSSN(JL)=0.0_JPRB
+        PWSN(JL)=0.0_JPRB 
+        ! CHANGE THE GROUND HEAT FLUX 
+        PGSN(JL)=ZHFLUX+ZHFLUXRF-(ZPMSN(JL)-ZPFSN(JL))
+        ! PUT ALL THE MASS AS RUNOFF 
+        PMSN(JL)=(ZPMSN(JL)-ZPFSN(JL))/RLMLT+ZWSTAR*ZTMST+ZWFLUXRF
+        PTSN(JL)=ZT0
+        ZLWC(JL)=0.0_JPRB
+      ELSE
+! NOT ALL THE SNOW MELTED
+        ! UPDATE SNOW LIQUID WATER MASS (PHASE CHANGES AND RAINF)
+        ZWSTAR=ZWSTAR+(-ZPFSN(JL)+ZPMSN(JL))/RLMLT*PTMST+ZWFLUXRF*PTMST
+        ! CALCULATE SNOW LIQUID WATER CAPACITY
+        ZDSNR(JL)=ZSSTAR/(PRSNM1M(JL)*ZFRSN(JL))   ! SNOW DEPHT
+        ZLWC(JL)=F_LWC(ZSSTAR-ZWSTAR,PRSNM1M(JL))
+        ! LWC IS RESCALLED CONSIDERING EFFECTIVE DEPTH (RDSNMAX)
+        ZLWC(JL)=ZLWC(JL)*MIN(ZDSNR(JL),RDSNMAX)/ZDSNR(JL)
+        ! CALCULATE SNOW RUNOFF 
+        IF ( ZWSTAR > ZLWC(JL) ) THEN
+          ZRUNOFF=(ZWSTAR-ZLWC(JL))*ZTMST
+          ZWSTAR=ZLWC(JL)
+        ELSE
+          ZRUNOFF=0.0_JPRB
+        ENDIF
+        ! UPDATE SNOW MASS (RAINFALL AND RUNOFF)
+        ZSSTAR=ZSSTAR+(ZWFLUXRF-ZRUNOFF)*PTMST
+        PTSN(JL)=ZTSTAR
+        PMSN(JL)=ZRUNOFF
+        PSSN(JL)=ZSSTAR
+        PWSN(JL)=ZWSTAR
+        
+      ENDIF 
+    ENDIF 
+    ZPFSN(JL)=ZPFSN(JL)+ZHFLUXFREZ
+
+
+! DDH diagnostics.
+    IF (SIZE(PDHTSS) > 0) THEN
+! Snow heat capacity per unit surface
+      PDHTSS(JL,1,1)=ZCONSA*ZFRSN(JL)
+! Snow temperature
+      PDHTSS(JL,1,2)=PTSNM1M(JL)
+! Snow energy per unit surface
+      PDHTSS(JL,1,3)=ZCONSA*ZFRSN(JL)*PTSNM1M(JL)
+! Snow thermally active depth
+      PDHTSS(JL,1,4)=ZDSN*ZFRSN(JL)
+! Snow sensible heat flux
+      PDHTSS(JL,1,11)=PFRTI(JL,5)*PAHFSTI(JL,5)+PFRTI(JL,7)*PAHFSTI(JL,7)
+! Snow latent heat flux
+      PDHTSS(JL,1,12)=PFRTI(JL,5)*RLSTT*PEVAPTI(JL,5)+&
+        & PFRTI(JL,7)*(RLVTT*(PEVAPTI(JL,7)-PEVAPSNW(JL))+&
+        & RLSTT*PEVAPSNW(JL))  
+! Snow heat content change
+!      PDHTSS(JL,1,15)=PDHTSS(JL,1,1)*(PTSN(JL)-PTSNM1M(JL))/PTMST
+    
+! Mass advected by THROUGHFALL
+!      PDHSSS(JL,1,6)=ZWFLUXRF
+! Heat advected by THROUGHFALL
+!      PDHTSS(JL,1,16)=ZHFLUXRF
+
+    
+! Extra DDH for implicit snow liquid water content (PUT TO ZERO) 
+! Snow heat content change due to INTERNAL melting/refreezinG 
+!      PDHTSS(JL,1,16)=0.0_JPRB
+! Snow heat content change due to changes in snow liquid water capacity 
+!      PDHTSS(JL,1,17)=0.0_JPRB
+    ENDIF
+
+  PPMSNINT(JL)=-ZPMSN(JL)+ZPFSN(JL)
+  ENDIF
+ENDDO
+
+!*         5. NORMALIZE QUANTITIES TO THE GRID-SQUARE.
+!             ----------------------------------------
+
+DO JL=KIDIA,KFDIA
+  PGSN(JL)=ZFRSN(JL)*PGSN(JL)
+!   PMSN(JL)=ZFRSN(JL)*PMSN(JL) ! Snow runoff is already normalized !!! 
+  ZPMSN(JL)=ZFRSN(JL)*ZPMSN(JL)
+  ZPFSN(JL)=ZFRSN(JL)*ZPFSN(JL)
+
+!*         6. DDH diagnostics.
+!             --- ------------
+
+  IF (SIZE(PDHTSS) > 0 .AND. SIZE(PDHSSS) > 0) THEN
+! Snow density
+    PDHTSS(JL,1,5)=PRSNM1M(JL)
+! Snow basal flux
+    PDHTSS(JL,1,13)=PGSN(JL)
+! Snow phase change energy
+    PDHTSS(JL,1,14)=-ZPMSN(JL)+ZPFSN(JL)
+! Snow mass
+    PDHSSS(JL,1,1)=PSSNM1M(JL)
+! Large-scale snowfall
+    PDHSSS(JL,1,2)=ZSSFL(JL)
+! Convective snowfall
+    PDHSSS(JL,1,3)=ZSSFC(JL)
+! Snow evaporation
+    PDHSSS(JL,1,4)=PFRTI(JL,5)*PEVAPTI(JL,5)+&
+      & PFRTI(JL,7)*PEVAPSNW(JL)  
+! Snow melt
+    PDHSSS(JL,1,5)=-ZPMSN(JL)/RLMLT
+
+!* Extra DDH for snow liquid water 
+! Snow Liquid water contend 
+!    PDHSSS(JL,1,6)=PWSNM1M(JL)
+! Snow liquid water capacity
+!    PDHSSS(JL,1,7)=ZLWC(JL)
+! Snow RUNOFF 
+!    PDHSSS(JL,1,8)=PMSN(JL)
+  ENDIF
+
+ENDDO
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SRFSN_LWEXP_MOD:SRFSN_LWEXP',1,ZHOOK_HANDLE)
+
+CONTAINS
+
+FUNCTION F_LWC(ZPSSN,ZPRSN)
+IMPLICIT NONE
+
+REAL(KIND=JPRB),    INTENT(IN)   :: ZPSSN,ZPRSN
+REAL(KIND=JPRB)                  :: F_LWC
+
+REAL(KIND=JPRB) :: ZCONSLWC
+
+ASSOCIATE(RLWCSWEA=>YDSOIL%RLWCSWEA, RLWCSWEB=>YDSOIL%RLWCSWEB, RLWCSWEC=>YDSOIL%RLWCSWEC)
+
+ZCONSLWC=MAX(0._JPRB,(RLWCSWEA-ZPRSN)/RLWCSWEA)
+F_LWC=ZPSSN*(RLWCSWEB+(RLWCSWEC-RLWCSWEB)*ZCONSLWC)
+IF ( ZPSSN < 5._JPRB ) THEN
+  F_LWC=0.0_JPRB
+ENDIF
+
+END ASSOCIATE
+END FUNCTION F_LWC
+
+END SUBROUTINE SRFSN_LWEXP
+END MODULE SRFSN_LWEXP_MOD

@@ -1,0 +1,271 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+! Rank and shape definitions for simple templating
+#:set ranks  = [2,3,4]
+#:set shapes = ['',':',':,:',':,:,:',':,:,:,:',':,:,:,:,:']
+
+MODULE VARIABLE_MODULE
+  ! Base class definition of VARIABLE types that manages configuration
+  ! and metadata for individual variables and associates them with the
+  ! respective FIELDS objects that store the data.
+
+USE PARKIND1, ONLY: JPIM, JPRB
+USE FIELD_MODULE, ONLY: FIELD_2D, FIELD_3D, FIELD_4D
+
+IMPLICIT NONE
+
+TYPE, ABSTRACT :: VARIABLE_BASE
+  ! Description and definition of a scientific variable that stores
+  ! its associated data in one or more underlying fields, eg. for timestepping.
+
+  ! Generic metadata like names and IDs
+  CHARACTER(LEN=16)  :: NAME                  ! Primary name used for indexing
+  CHARACTER(LEN=16)  :: CNAME     = ''        ! ARPEGE field name
+  INTEGER(KIND=JPIM) :: IGRBCODE  = -999      ! GRIB code
+
+  ! Flags that define the behaviour of the field variable
+  LOGICAL            :: LACTIVE   = .FALSE.   ! Field in use
+  LOGICAL            :: LT1       = .FALSE.   ! Field in t+dt GFL
+  LOGICAL            :: LT9       = .FALSE.   ! Field in t-dt GFL
+  LOGICAL            :: LPH9      = .FALSE.   ! Field in t-dt physics
+  LOGICAL            :: LDL       = .FALSE.   ! Field has zontal derivative
+  LOGICAL            :: LDM       = .FALSE.   ! Field has meridional derivative
+  LOGICAL            :: LADV      = .FALSE.   ! Field advected or not
+
+  ! TODO: Storage backend for Atlas (guard by #ifdef)
+
+CONTAINS
+  PROCEDURE(VARIABLE_BASE_FINAL), DEFERRED :: FINAL
+END TYPE VARIABLE_BASE
+
+ABSTRACT INTERFACE
+  SUBROUTINE VARIABLE_BASE_FINAL(SELF)
+    IMPORT :: VARIABLE_BASE
+    CLASS(VARIABLE_BASE) :: SELF
+  END SUBROUTINE VARIABLE_BASE_FINAL
+END INTERFACE
+
+#:for rank in ranks
+#:set shape = shapes[rank-1]
+TYPE, EXTENDS(VARIABLE_BASE) :: VARIABLE_${rank}$D
+  ! TODO: Allocation-specific metadata, like shapes and dimensions
+  ! Note that storing things like NLEV would break templating
+
+  ! Array view pointers, to be set up from associated fields
+  REAL(KIND=JPRB), POINTER :: P(${shape}$)  => NULL()  ! Basic field at t
+  REAL(KIND=JPRB), POINTER :: T0(${shape}$) => NULL()  ! Basic field at t (alias of P)
+  REAL(KIND=JPRB), POINTER :: T1(${shape}$) => NULL()  ! Basic field at t+dt
+  REAL(KIND=JPRB), POINTER :: T9(${shape}$) => NULL()  ! Basic field at t-dt
+  REAL(KIND=JPRB), POINTER :: PH9(${shape}$)=> NULL()  ! Basic field for physics
+  REAL(KIND=JPRB), POINTER :: DL(${shape}$) => NULL()  ! Zonal derivative field
+  REAL(KIND=JPRB), POINTER :: DM(${shape}$) => NULL()  ! Meridional derivative field
+
+  ! Pointers to associated FIELD objects
+  TYPE(FIELD_${rank}$D), POINTER :: FT0 => NULL()  ! Basic field at t
+  TYPE(FIELD_${rank}$D), POINTER :: FT1 => NULL()  ! Basic field at t+dt
+  TYPE(FIELD_${rank}$D), POINTER :: FT9 => NULL()  ! Basic field at t-dt
+  TYPE(FIELD_${rank}$D), POINTER :: FPH9 => NULL() ! Basic field for physics
+  TYPE(FIELD_${rank}$D), POINTER :: FDL => NULL()  ! Zonal derivative field
+  TYPE(FIELD_${rank}$D), POINTER :: FDM => NULL()  ! Meridional derivative field
+
+CONTAINS
+  PROCEDURE :: UPDATE_VIEW => VARIABLE_${rank}$D_UPDATE_VIEW
+  PROCEDURE :: CLONE => VARIABLE_${rank}$D_CLONE
+  PROCEDURE :: FINAL => VARIABLE_${rank}$D_FINAL
+
+  ! Timestepping utilities
+  PROCEDURE :: PH9TOT0 => VARIABLE_${rank}$D_PH9TOT0
+  PROCEDURE :: PH9TOT9 => VARIABLE_${rank}$D_PH9TOT9
+END TYPE VARIABLE_${rank}$D
+#:endfor
+
+#:for rank in ranks
+INTERFACE VARIABLE_${rank}$D
+  MODULE PROCEDURE :: VARIABLE_${rank}$D_INIT
+  ! MODULE PROCEDURE :: VARIABLE_FROM_NAMELIST
+END INTERFACE VARIABLE_${rank}$D
+#:endfor
+
+INTERFACE ARGUMENT_VALUE
+  ! Helper interface to resolve values of optional arguments with defaults
+  MODULE PROCEDURE ARGUMENT_VALUE_REAL
+  MODULE PROCEDURE ARGUMENT_VALUE_INTEGER
+  MODULE PROCEDURE ARGUMENT_VALUE_STRING
+  MODULE PROCEDURE ARGUMENT_VALUE_LOGICAL
+END INTERFACE ARGUMENT_VALUE
+
+CONTAINS
+
+  FUNCTION ARGUMENT_VALUE_REAL(ARG, DEFAULT) RESULT(VAL)
+    ! Helper function to resolve value for optional argument
+    REAL(KIND=JPRB), OPTIONAL, INTENT(IN) :: ARG
+    REAL(KIND=JPRB), INTENT(IN) :: DEFAULT
+    REAL(KIND=JPRB) :: VAL
+
+    IF (PRESENT(ARG)) THEN
+      VAL = ARG
+    ELSE
+      VAL = DEFAULT
+    END IF
+  END FUNCTION ARGUMENT_VALUE_REAL
+
+  FUNCTION ARGUMENT_VALUE_INTEGER(ARG, DEFAULT) RESULT(VAL)
+    ! Helper function to resolve value for optional argument
+    INTEGER(KIND=JPIM), OPTIONAL, INTENT(IN) :: ARG
+    INTEGER(KIND=JPIM), INTENT(IN) :: DEFAULT
+    INTEGER(KIND=JPIM) :: VAL
+
+    IF (PRESENT(ARG)) THEN
+      VAL = ARG
+    ELSE
+      VAL = DEFAULT
+    END IF
+  END FUNCTION ARGUMENT_VALUE_INTEGER
+
+  FUNCTION ARGUMENT_VALUE_STRING(ARG, DEFAULT) RESULT(VAL)
+    ! Helper function to resolve value for optional argument
+    CHARACTER(LEN=*), OPTIONAL, INTENT(IN) :: ARG
+    CHARACTER(LEN=*), INTENT(IN) :: DEFAULT
+    CHARACTER(:), ALLOCATABLE :: VAL
+
+    IF (PRESENT(ARG)) THEN
+      ALLOCATE(VAL, SOURCE=ARG)
+    ELSE
+      ALLOCATE(VAL, SOURCE=DEFAULT)
+    END IF
+  END FUNCTION ARGUMENT_VALUE_STRING
+
+  FUNCTION ARGUMENT_VALUE_LOGICAL(ARG, DEFAULT) RESULT(VAL)
+    ! Helper function to resolve value for optional argument
+    LOGICAL, OPTIONAL, INTENT(IN) :: ARG
+    LOGICAL, INTENT(IN) :: DEFAULT
+    LOGICAL :: VAL
+
+    IF (PRESENT(ARG)) THEN
+      VAL = ARG
+    ELSE
+      VAL = DEFAULT
+    END IF
+  END FUNCTION ARGUMENT_VALUE_LOGICAL
+
+
+#:for rank in ranks
+  FUNCTION VARIABLE_${rank}$D_INIT(NAME, CNAME, IGRBCODE, LACTIVE, LADV, LT1, LT9, LPH9, LDL, LDM) RESULT(SELF)
+    ! Templated constructor that creates new instances
+    TYPE(VARIABLE_${rank}$D) :: SELF
+    CHARACTER(LEN=*), INTENT(IN) :: NAME
+    CHARACTER(LEN=*), OPTIONAL, INTENT(IN) :: CNAME
+    INTEGER(KIND=JPIM), OPTIONAL, INTENT(IN) :: IGRBCODE
+    LOGICAL, OPTIONAL, INTENT(IN) :: LACTIVE, LADV, LT1, LT9, LPH9, LDL, LDM
+
+    SELF%NAME = NAME
+    SELF%CNAME = ARGUMENT_VALUE(ARG=CNAME, DEFAULT=NAME)
+    SELF%IGRBCODE = ARGUMENT_VALUE(ARG=IGRBCODE, DEFAULT=-999)
+    SELF%LACTIVE = ARGUMENT_VALUE(ARG=LACTIVE, DEFAULT=.FALSE.)
+    SELF%LADV = ARGUMENT_VALUE(ARG=LADV, DEFAULT=.FALSE.)
+    SELF%LT1 = ARGUMENT_VALUE(ARG=LT1, DEFAULT=.FALSE.)
+    SELF%LT9 = ARGUMENT_VALUE(ARG=LT9, DEFAULT=.FALSE.)
+    SELF%LPH9 = ARGUMENT_VALUE(ARG=LPH9, DEFAULT=.FALSE.)
+    SELF%LDL = ARGUMENT_VALUE(ARG=LDL, DEFAULT=.FALSE.)
+    SELF%LDM = ARGUMENT_VALUE(ARG=LDM, DEFAULT=.FALSE.)
+  END FUNCTION VARIABLE_${rank}$D_INIT
+#:endfor
+
+#:for rank in ranks
+  FUNCTION VARIABLE_${rank}$D_CLONE(SELF) RESULT(NEWOBJ)
+    ! Clone (deep-copy) this VARIABLE object to replicate associated FIELD objects
+    !
+    ! This is required create per-thread replication of the data view pointers
+    ! under the fields associated with this VARIABLE.
+    CLASS(VARIABLE_${rank}$D) :: SELF
+    TYPE(VARIABLE_${rank}$D) :: NEWOBJ
+
+    NEWOBJ = SELF
+    NEWOBJ%NAME = SELF%NAME
+    NEWOBJ%CNAME = SELF%CNAME
+    IF (ASSOCIATED(SELF%FT0))  NEWOBJ%FT0 => SELF%FT0%CLONE()
+    IF (ASSOCIATED(SELF%FT1))  NEWOBJ%FT1 => SELF%FT1%CLONE()
+    IF (ASSOCIATED(SELF%FT9))  NEWOBJ%FT9 => SELF%FT9%CLONE()
+    IF (ASSOCIATED(SELF%FPH9)) NEWOBJ%FPH9 => SELF%FPH9%CLONE()
+    IF (ASSOCIATED(SELF%FDL))  NEWOBJ%FDL => SELF%FDL%CLONE()
+    IF (ASSOCIATED(SELF%FDM))  NEWOBJ%FDM => SELF%FDM%CLONE()
+  END FUNCTION VARIABLE_${rank}$D_CLONE
+#:endfor
+
+#:for rank in ranks
+  SUBROUTINE VARIABLE_${rank}$D_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    ! Update the internal data view pointers of all associated fields
+    CLASS(VARIABLE_${rank}$D) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+
+    ! Set on-object data view pointers from storage FIELDS
+    IF (ASSOCIATED(SELF%FT0))  SELF%T0 => SELF%FT0%GET_VIEW(BLOCK_INDEX)
+    IF (ASSOCIATED(SELF%FT1))  SELF%T1 => SELF%FT1%GET_VIEW(BLOCK_INDEX)
+    IF (ASSOCIATED(SELF%FT9))  SELF%T9 => SELF%FT9%GET_VIEW(BLOCK_INDEX)
+    IF (ASSOCIATED(SELF%FPH9)) SELF%PH9=> SELF%FPH9%GET_VIEW(BLOCK_INDEX)
+    IF (ASSOCIATED(SELF%FDL))  SELF%DL => SELF%FDL%GET_VIEW(BLOCK_INDEX)
+    IF (ASSOCIATED(SELF%FDM))  SELF%DM => SELF%FDM%GET_VIEW(BLOCK_INDEX)
+    SELF%P => SELF%T0  ! Alias T0 pointer
+  END SUBROUTINE VARIABLE_${rank}$D_UPDATE_VIEW
+#:endfor
+
+#:for rank in ranks
+  SUBROUTINE VARIABLE_${rank}$D_PH9TOT0(SELF)
+    ! Utility routine that aliases the PH9 field with T0
+    CLASS(VARIABLE_${rank}$D), TARGET :: SELF
+
+    IF (SELF%LT9) SELF%FPH9%PTR => SELF%FT0%DATA
+  END SUBROUTINE VARIABLE_${rank}$D_PH9TOT0
+#:endfor
+
+#:for rank in ranks
+  SUBROUTINE VARIABLE_${rank}$D_PH9TOT9(SELF)
+    ! Utility routine that aliases the PH9 field with T9
+    CLASS(VARIABLE_${rank}$D), TARGET :: SELF
+
+    IF (SELF%LT9) SELF%FPH9%PTR => SELF%FT9%DATA
+  END SUBROUTINE VARIABLE_${rank}$D_PH9TOT9
+#:endfor
+
+#:for rank in ranks
+  SUBROUTINE VARIABLE_${rank}$D_FINAL(SELF)
+    ! Templated destructor that cleans up an object instance
+    CLASS(VARIABLE_${rank}$D) :: SELF
+
+    IF (ASSOCIATED(SELF%FT0)) THEN
+      CALL SELF%FT0%FINAL()
+      DEALLOCATE(SELF%FT0)
+    END IF
+    IF (ASSOCIATED(SELF%FT1)) THEN
+      CALL SELF%FT1%FINAL()
+      DEALLOCATE(SELF%FT1)
+    END IF
+    IF (ASSOCIATED(SELF%FT9)) THEN
+      CALL SELF%FT9%FINAL()
+      DEALLOCATE(SELF%FT9)
+    END IF
+    IF (ASSOCIATED(SELF%FPH9)) THEN
+      CALL SELF%FPH9%FINAL()
+      DEALLOCATE(SELF%FPH9)
+    END IF
+    IF (ASSOCIATED(SELF%FDL)) THEN
+      CALL SELF%FDL%FINAL()
+      DEALLOCATE(SELF%FDL)
+    END IF
+    IF (ASSOCIATED(SELF%FDM)) THEN
+      CALL SELF%FDM%FINAL()
+      DEALLOCATE(SELF%FDM)
+    END IF
+  END SUBROUTINE VARIABLE_${rank}$D_FINAL
+#:endfor
+
+END MODULE VARIABLE_MODULE

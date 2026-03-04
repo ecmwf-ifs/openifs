@@ -1,0 +1,190 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE SRFWDIFS_MOD
+CONTAINS
+SUBROUTINE SRFWDIFS(KIDIA,KFDIA,KLON,KLEVS,&
+ & PWSAM1M,PCFW,PRHSW,PCDZ,&
+ & PWSADIF,LDLAND,LDALLAYS,YDSOIL)
+
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_SOIL  , ONLY : TSOIL
+
+#ifdef DOC
+!**** *SRFWDIFS* -  DOES THE IMPLICIT CALCULATION FOR SOIL MOISTURE
+
+!     PURPOSE.
+!     --------
+!          SOLVE TRIDIAGONAL SYSTEM OF EQUATIONS FOR SOIL MOISTURE.
+!     IT SHOULD BE PRECEDED BY A CALL TO *SRFWEXC* AND FOLLLOWED BY
+!     A CALL TO *SRFWINC*.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFWDIFS* IS CALLED FROM *SRFTS,SRFIS*
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SURFACE LAYERS
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LDALLAYS*   TRUE - COMPUTATION FOR ALL LAYERS , FALSE - FOR TOP ONLY
+
+!     INPUT PARAMETERS AT T-1 (REAL):
+!    *PWSAM1M*    PSI AT TIME LEVEL T
+!    *PCFW*       MODIFIED DIFFUSIVITIES (LAMBDA-STAR IN DOCUM.)
+!                 (INDEX JK REFERS TO LEVEL JK+1/2)
+!    *PRHSW*      RIGHT-HAND SIDE OF EQUATIONS
+!                 TREATMENT OF EVAPORATION FLUX
+!    *PCDZ*       C*DZ  (PROFILE OF LAYER DEPTH FOR SOIL WATER)
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PWSADIF*    PSI-STAR  DIVIDED BY ALFA     
+
+!     METHOD.
+!     -------
+!     *LU*-DECOMPOSITION AND BACK SUBSTITUTION IN ONE DOWNWARD SCAN
+!     AND ONE UPWARD SCAN.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original
+!     --------
+!          Simplified version based on SRFWDIF
+!     M. Janiskova   E.C.M.W.F.      25-07-2011
+
+!     Modifications
+!     -------------
+
+
+!     ------------------------------------------------------------------
+#endif
+
+IMPLICIT NONE
+
+! Declaration of arguments
+
+INTEGER(KIND=JPIM), INTENT(IN)    :: KIDIA
+INTEGER(KIND=JPIM), INTENT(IN)    :: KFDIA
+INTEGER(KIND=JPIM), INTENT(IN)    :: KLON
+INTEGER(KIND=JPIM), INTENT(IN)    :: KLEVS
+
+REAL(KIND=JPRB),    INTENT(IN)    :: PWSAM1M(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PCFW(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PRHSW(:,:)
+REAL(KIND=JPRB),    INTENT(IN)    :: PCDZ(:,:)
+
+LOGICAL,            INTENT(IN)    :: LDLAND(:)
+LOGICAL,            INTENT(IN)    :: LDALLAYS
+
+TYPE(TSOIL),        INTENT(IN)    :: YDSOIL
+
+REAL(KIND=JPRB),    INTENT(INOUT) :: PWSADIF(:,:)
+
+!*         0.2    DECLARATION OF LOCAL VARIABLES.
+!                 ----------- -- ----- ----------
+
+REAL(KIND=JPRB) :: ZTCOE(KLON), ZEBSW(KLON,KLEVS)
+
+INTEGER(KIND=JPIM) :: ILEVM1, JK, JL
+
+REAL(KIND=JPRB) :: ZDISC, ZFAC, ZQDP, ZTPFAC2
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+!*         1.    SET UP SOME CONSTANTS.
+!                --- -- ---- ----------
+IF (LHOOK) CALL DR_HOOK('SRFWDIFS_MOD:SRFWDIFS',0,ZHOOK_HANDLE)
+ASSOCIATE(RSIMP=>YDSOIL%RSIMP)
+
+ZTPFAC2=1.0_JPRB/RSIMP
+ILEVM1=KLEVS-1
+
+!*         1.1     SETTING OF RIGHT HAND SIDES.
+
+DO JK=1,KLEVS
+  DO JL=KIDIA,KFDIA
+    IF (LDLAND(JL)) THEN
+      PWSADIF(JL,JK)=ZTPFAC2*PWSAM1M(JL,JK)+PRHSW(JL,JK)
+    ENDIF
+  ENDDO
+ENDDO
+
+!*         1.2     TOP LAYER ELIMINATION.
+
+DO JL=KIDIA,KFDIA
+  IF (LDLAND(JL)) THEN
+    ZTCOE(JL)=PCFW(JL,1)
+    ZQDP=1.0_JPRB/PCDZ(JL,1)
+    ZDISC=1.0_JPRB/(1.0_JPRB+PCFW(JL,1)*ZQDP)
+    ZEBSW(JL,1)=ZDISC*(PCFW(JL,1)*ZQDP)
+    PWSADIF(JL,1)=ZDISC*PWSADIF(JL,1)
+  ENDIF
+ENDDO
+
+
+IF (LDALLAYS) THEN
+!*         1.3     ELIMINATION FOR MIDDLE LAYERS.
+
+  DO JK=2,ILEVM1
+    DO JL=KIDIA,KFDIA
+      IF (LDLAND(JL)) THEN
+        ZQDP=1.0_JPRB/PCDZ(JL,JK)
+        ZFAC=ZTCOE(JL)*ZQDP
+        ZTCOE(JL)=PCFW(JL,JK)
+        ZDISC=1.0_JPRB/(1.0_JPRB+ZFAC*(1.0_JPRB-ZEBSW(JL,JK-1)) &
+         & +PCFW(JL,JK)*ZQDP)
+        ZEBSW(JL,JK)=ZDISC*(PCFW(JL,JK)*ZQDP)
+        PWSADIF(JL,JK)=ZDISC*(PWSADIF(JL,JK)+ZFAC*PWSADIF(JL,JK-1))
+      ENDIF
+    ENDDO
+  ENDDO
+
+!*         1.4     BOTTOM LAYER ELIMINATION.
+
+  DO JL=KIDIA,KFDIA
+    IF (LDLAND(JL)) THEN
+      ZQDP=1.0_JPRB/PCDZ(JL,KLEVS)
+      ZFAC=ZTCOE(JL)*ZQDP
+      ZDISC=1.0_JPRB/(1.0_JPRB+ZFAC*(1.0_JPRB-ZEBSW(JL,KLEVS-1)) &
+       & +PCFW(JL,KLEVS)*ZQDP)
+      PWSADIF(JL,KLEVS)=ZDISC*(PWSADIF(JL,KLEVS)+ZFAC*PWSADIF(JL,KLEVS-1))
+    ENDIF
+  ENDDO
+
+!*         1.5     BACK-SUBSTITUTION.
+
+  DO JK=ILEVM1,1,-1
+    DO JL=KIDIA,KFDIA
+      IF (LDLAND(JL)) THEN
+        PWSADIF(JL,JK)=PWSADIF(JL,JK)+ZEBSW(JL,JK)*PWSADIF(JL,JK+1)
+      ENDIF
+    ENDDO
+  ENDDO
+ENDIF
+
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SRFWDIFS_MOD:SRFWDIFS',1,ZHOOK_HANDLE)
+
+END SUBROUTINE SRFWDIFS
+END MODULE SRFWDIFS_MOD

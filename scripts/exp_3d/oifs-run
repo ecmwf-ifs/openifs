@@ -1,0 +1,471 @@
+#!/usr/bin/env bash
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+#=====================================================================
+#
+#
+#   Run script for OpenIFS 48R1
+#
+#
+#   This script should be either called interactively or
+#   it can used in a batch job.
+#
+#   Use this in the experiment directory.
+#
+#   This script does not set the parallel environment
+#   as it is often platform specific. This should be done in
+#   the calling script/job.
+#
+#
+#=====================================================================
+
+#=====================================================================
+#
+#   Functions
+#
+#=====================================================================
+
+
+usage()
+{
+   echo -e "\nCommand to run OpenIFS model\n"
+   echo -e "Usage:  $(basename "$0") [--grid=<arg>] [--res=<arg>] [--namelist=<arg>] [--nproc=<arg>] [--threads=<arg>]"
+   echo -e "                 [--oifsexe=<arg>] [--runcmd=<arg>] [--expid=<arg>] [--pproc] [--force] \n \n"
+}
+
+
+die()
+{
+   # performing clean-up tasks (still to be done)
+   echo "$1" >&2
+   usage >&2
+   exit 1
+}
+
+
+parse_commandline()
+{
+while test $# -gt 0; do
+
+    # Split --option=value in $opt="--option" and $val="value"
+
+    opt=""
+    val=""
+
+    case "$1" in
+    --*=*)
+      opt=`echo "$1" | sed 's/=.*//'`
+      val=`echo "$1" | sed 's/--[_a-zA-Z0-9]*=//'`
+      ;;
+    --*)
+      opt=$1
+      ;;
+    *)
+      break
+      ;;
+    esac
+
+    # Parse options
+    case "$opt" in
+      --oifsexe)
+        OIFS_EXEC="$val"
+        ;;
+      --nproc)
+        OIFS_NPROC="$val"
+        ;;
+      --nthread)
+        OIFS_NTHREAD="$val"
+        ;;
+      --grid)
+        OIFS_GRIDTYPE="$val"
+        ;;
+      --res)
+        OIFS_RES="$val"
+        ;;
+      --namelist)
+        OIFS_NAMELIST="$val"
+        ;;
+      --outdir)
+        OUTPUT_ROOT=$val
+        ;;
+      --pproc)
+        OIFS_PPROC=true
+        ;;
+      --force)
+        LFORCE=true
+        ;;
+      --runcmd)
+        LAUNCH=$val
+        ;;
+      --expid)
+        OIFS_EXPID=$val
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        ;;
+    esac
+    shift
+done
+}
+
+
+GridType() {
+   # returns the grid type file suffix for given grid_type.
+   # grid type matches the climate filename suffix; _full, _2, l_2, _3 etc.
+   # Some resolutions may have more than one grid_type of climate file available.
+
+   case ${OIFS_GRIDTYPE} in
+      'f')   OIFS_GRID="_full" ;;
+      'q')   OIFS_GRID="_2"    ;;
+      'l')   OIFS_GRID="l_2"   ;;
+      'c')   OIFS_GRID="_3"    ;;
+      'o')   OIFS_GRID="_4"    ;;
+      *)     OIFS_GRID="unknown"  ;;
+   esac
+}
+
+#=====================================================================
+#
+#   Main script
+#
+#=====================================================================
+
+set -e -o pipefail
+
+
+# --- Default settings ------------------------------------------------
+
+# Input arguments -- these need to be set here if no command line arguments are used:
+OIFS_EXPID="aaaa"       # your experiment ID
+OIFS_GRIDTYPE="l"       # 'l'=linear reduced, 'o'=cubic octahedral
+OIFS_RES="159"          # spectral resolution
+OIFS_NPROC=1            # no of MPI tasks
+OIFS_NTHREAD=1          # no of OpenMP threads
+OIFS_NAMELIST='fort.4'  # name of atmospheric model namelist file
+OIFS_PPROC=false        # enable postprocessing of model output
+OUTPUT_ROOT=$(pwd)      # where output folder for pproc is created
+LFORCE=false            # overwrite option
+LAUNCH=""               # platform specific run command
+
+# Further OpenIFS variables
+EXP_CFG="exp-config.h"         # experiment configuration file name
+
+# Environment variables
+export PATH=$PATH:${OIFS_BLD_PARENT}/bin
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}${OIFS_BLD_PARENT}/ifs_dp
+
+# This allows later to load the environment used during the build
+export BUILD_ENV=${OIFS_BLD_PARENT}/env.sh
+
+export OMP_STACKSIZE="64M"
+export CRAYBLAS_AUTOTUNING_OFF=1
+export ATP_ENABLED=1
+export MPICH_RANK_REORDER_DISPLAY=1
+export MPICH_MAX_THREAD_SAFETY=multiple
+export GRIB_API_IO_BUFFER_SIZE=4194304
+export GRIB_API_WRITE_ON_FAIL=0
+export GRIB_API_LARGE_CONSTANT_FIELDS=1
+export DATA=$(pwd)          # IFS needs this as prefix for ifsdata etc
+export FDB_DEBUG=no
+export FDB_IO=aio
+export OMPI_MCA_btl="^vader"
+
+# DrHook and debugging options
+export EC_MEMINFO=0              # set to 1 for EC_MEMINFO output
+export DR_HOOK=1                 # Dr Hook tracing: 1=on, 0=off
+export DR_HOOK_IGNORE_SIGNALS=0  # ignore signal handling: -1=ignore all; -8=ignore FPE
+#export DR_HOOK_OPT="prof"       # uncomment for DrHook profiling output
+#export DR_HOOK_OPT="wallprof"   # uncomment for DrHook wall clock time profiles and call counts
+#export DR_HOOK_HEAPCHECK=yes
+#export DR_HOOK_STACKCHECK=no
+export TRACEBACK_LEVEL=2
+
+# GRIB INSTALLATION
+export GRIB_DEFINITION_PATH=${OIFS_BLD_PARENT}/share/eccodes/definitions
+export GRIB_SAMPLES_PATH=${OIFS_BLD_PARENT}/share/eccodes/ifs_samples/grib1_mlgrib2
+
+# IFS INSTALLATION
+export IFS_EXECUTABLE=${OIFS_EXEC}
+export IFS_CYCLE=48R1
+export IFS_NUNDEFLD=-99999
+export IFS_HAVE_OOPS=0
+export NUNDEFLD=-99999
+
+
+# --- Evaluate input arguments ----------------------------------------
+
+
+# check existence of input arguments, either via config file or arguments
+if [ "$#" -eq 0 ] && [ ! -f ${EXP_CFG} ]; then
+  echo -e "\n!!! WARNING: No ${EXP_CFG} file found and no arguments supplied !!!!"
+  echo -e "  -- will proceed with default settings found in oifs-run --\n"
+fi
+
+# read experiment config file - takes precedence over defaults
+test -f "${EXP_CFG}"    &&  source ${EXP_CFG}
+
+# load build environment to ensure consistency
+test -f "${BUILD_ENV}"  &&  source ${BUILD_ENV}
+
+# parse command line input arguments - takes precedence over exp config file
+parse_commandline "$@"
+
+
+# --- Checks ----------------------------------------------------------
+
+
+#  Check mandatory variables are set
+test -z "${OIFS_HOME}"          &&  die "[ERROR] \$OIFS_HOME variable is not set."
+test -z "${OIFS_BLD_PARENT}"    &&  die "[ERROR] \$OIFS_BLD_PARENT variable is not set. Please check oifs-config.edit_me.sh"
+test -z "${OIFS_CYCLE}"         &&  die "[ERROR] \$OIFS_CYCLE variable is not set."
+test -z "${OIFS_CLIMATE}"       &&  die "[ERROR] \$OIFS_CLIMATE variable is not set."
+test -z "${OIFS_EXPID}"         &&  die "[ERROR] Experiment ID not set."
+test    "${#OIFS_EXPID}" -ne 4  &&  die "[ERROR] Experiment ID should be exactly 4 characters."
+
+#  Check for a valid grid type
+GridType
+test "${OIFS_GRID}" = 'unknown'  &&  die  "[ERROR] Unknown grid type."
+case ${OIFS_RES} in
+   ''|*[!0-9]*) die "[ERROR] Resolution must be a numeric integer." ;;
+   *) ;;
+esac
+
+#  Check we are in the experiment directory, look for initial files
+#  (this is a simple check - does not check for valid GRIB file)
+if [ ! -s "ICMSH${OIFS_EXPID}INIT" ]; then
+   echo "[ERROR] Could not find spectral initial file: ICMSH${OIFS_EXPID}INIT."
+   echo "This command should be run in the experiment directory."
+   exit 1
+fi
+
+#  Check OpenIFS executable
+test -z "${OIFS_EXEC}"    &&  die "[ERROR] Pathname to executable not set."
+test -d "${OIFS_EXEC}"    &&  die "[ERROR] \"$OIFS_EXEC\" is a directory not an executable."
+test ! -x "${OIFS_EXEC}"  &&  die "[ERROR] Executable not found or does not have execute permission: \"$OIFS_EXEC\" "
+
+#  Make sure OIFS_DATA_DIR is set to something sensible
+if [[ -z "${OIFS_DATA_DIR:-}" ]]; then
+   echo "[ERROR] Environment variable \$OIFS_DATA_DIR not set."
+   echo "Set it to top level directory of OpenIFS climatology data installation."
+   exit 1
+fi
+if [[ ! -d "$OIFS_DATA_DIR" ]]; then
+   echo "[ERROR] Directory $OIFS_DATA_DIR could not be found."
+   echo "Please check that environment variable \$OIFS_DATA_DIR is set correctly."
+   exit 1
+fi
+
+#  Make sure OIFS_CLIMATE directory can be found
+if [[ ! -d "${OIFS_DATA_DIR:-}/${OIFS_CLIMATE}" ]]; then
+   echo "[ERROR] Directory ${OIFS_DATA_DIR:-}/${OIFS_CLIMATE} could not be found."
+   echo "Please check that environment variable \$OIFS_CLIMATE is set correctly."
+   exit 1
+fi
+
+#  All checks completed
+echo -e "\nThis is OpenIFS ${OIFS_CYCLE}\n"
+
+
+# --- OS dependent settings -------------------------------------------
+
+
+SYS=$(uname -s)
+
+# macOS (Darwin) based on FreeBSD, sed expects arg after -i option
+if [ "${SYS}" = "Darwin" ]; then
+   I_OPT='-i.old'
+else
+   I_OPT='-i'
+fi
+
+
+# --- Create symlinks -------------------------------------------------
+
+# ifsdata directory for resolution independent files:
+TARGET="ifsdata"
+if [ ! -L ${TARGET} ]; then
+   echo "creating symlink: ${TARGET}"
+   ln -s "${OIFS_DATA_DIR}/${TARGET}" ${TARGET}
+elif ${LFORCE} && [ -L ${TARGET} ]; then
+   echo "replacing symlink: ${TARGET}"
+   rm -f ${TARGET}
+   ln -s "${OIFS_DATA_DIR}/${TARGET}" ${TARGET}
+else
+   echo "using existing symlink: ${TARGET}"
+fi
+
+# data directory for resolution dependent files:
+TARGET="${OIFS_RES}${OIFS_GRID}"
+if [ ! -L ${TARGET} ]; then
+   echo "creating symlink: ${TARGET}"
+   ln -s "${OIFS_DATA_DIR}/${OIFS_CLIMATE}/${TARGET}" ${TARGET}
+elif ${LFORCE} && [ -L ${TARGET} ]; then
+   echo "replacing symlink: ${TARGET}"
+   rm -f ${TARGET}
+   ln -s "${OIFS_DATA_DIR}/${OIFS_CLIMATE}/${TARGET}" ${TARGET}
+else
+   echo "using existing symlink: ${TARGET}"
+fi
+
+# data directory for radiation tables
+TARGET="rtables"
+if [ ! -L ${TARGET} ]; then
+   echo "creating symlink: ${TARGET}"
+   ln -s "${OIFS_DATA_DIR}/${TARGET}" ${TARGET}
+elif ${LFORCE} && [ -L ${TARGET} ]; then
+   echo "replacing symlink: ${TARGET}"
+   rm -f ${TARGET}
+   ln -s "${OIFS_DATA_DIR}/${TARGET}" ${TARGET}
+else
+   echo "using existing symlink: ${TARGET}"
+fi
+
+
+# --- Modify namelist as required -------------------------------------
+
+
+#  For ECMWF supplied experiments, this is
+#  normally in the sub-directory 'ecmwf' but the user can supply their own.
+
+# If namelist argument has been supplied copy it to fort.4
+if [ "${OIFS_NAMELIST}" != 'fort.4' ]; then
+   test ! -f "${OIFS_NAMELIST}"   &&  die "[ERROR] Namelist file, ${OIFS_NAMELIST}, does not exist."
+
+   \cp "${OIFS_NAMELIST}" fort.4
+   echo "Copied namelist file ${OIFS_NAMELIST} to fort.4" >&2
+fi
+
+# Make sure fort.4 exists
+test ! -f 'fort.4'   &&   die "[ERROR] Model namelist file fort.4 does not exist!"
+echo "using existing namelist file: fort.4"
+
+# modify namelist (in place)
+
+# ensure NPROC and NPRNT_STATS are correctly set
+sed ${I_OPT} -e "s/NPROC=[^,]*,/NPROC=${OIFS_NPROC},/" \
+             -e "s/NPRNT_STATS=[^,]*,/NPRNT_STATS=${OIFS_NPROC},/" \
+             fort.4
+
+
+# --- Running the model -----------------------------------------------
+
+
+export OMP_NUM_THREADS=$OIFS_NTHREAD
+
+# LAUNCHER SETTINGS
+LAUNCHER="mpirun"
+LAUNCHER_NPROC_FLAG="-np"
+LAUNCHER_NTHREAD_FLAG=""
+LAUNCHER_OTHER_FLAGS=""
+
+if [[ "${ECPLATFORM:-"unset"}" == "hpc2020" ]] ; then
+    LAUNCHER="srun -c${OIFS_NPROC} --mem=64GB --time=60"
+    LAUNCHER_NPROC_FLAG="-n"
+    LAUNCHER_NTHREAD_FLAG="--cpus-per-task"
+    export OMP_PROC_BIND=true
+    export OMP_PLACES=threads
+fi
+
+# BUILD THE LAUNCH COMMAND
+if [ -z "$LAUNCH" ]; then
+  if [ -z $LAUNCHER_NTHREAD_FLAG ]; then
+    LAUNCH="$LAUNCHER $LAUNCHER_NPROC_FLAG $OIFS_NPROC $LAUNCHER_OTHER_FLAGS"
+  else
+    LAUNCH="$LAUNCHER $LAUNCHER_NPROC_FLAG $OIFS_NPROC $LAUNCHER_NTHREAD_FLAG $OIFS_NTHREAD $LAUNCHER_OTHER_FLAGS"
+  fi
+fi
+
+# RUN THE MODEL
+echo
+echo "### Launching $IFS_EXECUTABLE ###"
+set -x
+$LAUNCH "$IFS_EXECUTABLE"   || {
+   { set +x; } 2>/dev/null
+   echo '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+   echo '   OPENIFS JOB FAILED'
+   echo '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+   echo
+   exit 1
+}
+
+{ set +x; } 2>/dev/null
+echo "Model run completed."
+
+
+# --- Postprocessing model output -------------------------------------
+
+
+if ${OIFS_PPROC}; then
+
+   echo -e "\n### Begin postprocessing model output...\n"
+
+   #  Create output directory with name to include the current date & time
+
+   DT=$(date +%Y%m%d_%H%M%S)
+   TARGET="${OUTPUT_ROOT}/output_${DT}"  # unique destination folder for model output
+   REMOVE=true      # if true this removes the raw model output from the exp directory
+   ONLY_MOVE=false  # if true only move the files without reorganisation using grib_copy
+
+   test ! -d "${TARGET}"      &&  mkdir -v "${TARGET}"
+
+   #  Move model run information logs to output directory
+
+   test -f "${OIFS_NAMELIST}" &&  \cp "${OIFS_NAMELIST}" "${TARGET}"
+   test -f wam_namelist       &&  \cp wam_namelist "${TARGET}"
+   test -f "${EXP_CFG}"       &&  \cp "${EXP_CFG}" "${TARGET}"
+   test -f NODE.001_01        &&  \mv NODE.001_01 "${TARGET}"
+   test -f ifs.stat           &&  \mv ifs.stat "${TARGET}"
+   test -f meminfo.txt        &&  \mv meminfo.txt "${TARGET}"
+   test -f drhook.*           &&  \mv drhook.* "${TARGET}"
+
+   GRIB_COPY=${OIFS_BLD_PARENT}/bin/grib_copy
+
+   #  'find' is the fastest approach here, -print -quit ensures it stops after first match
+   if [ -n "$(find . -maxdepth 1 -name ICM\*${OIFS_EXPID}+\* -print -quit)" ]; then
+      if ! ${ONLY_MOVE}; then
+         #  Use grib_copy to reorganise the output so each parameter is in a single file for all steps
+         MYPWD="$(pwd)"
+         for FTYPE in SH GG UA; do
+            echo -n "processing ICM${FTYPE}* files... "
+            if [ -n "$(find . -maxdepth 1 -name ICM${FTYPE}\*${OIFS_EXPID}+\* -print -quit)" ]; then
+               cat ICM${FTYPE}"${OIFS_EXPID}"+*  >  "${TARGET}/ICM${FTYPE}${OIFS_EXPID}.all"
+               cd "${TARGET}"
+               # Split combined file into step ascending order, 1 file per parameter name
+               ${GRIB_COPY} -B "dataType desc, step:l asc, number asc" ICM${FTYPE}${OIFS_EXPID}.all \
+                        ICM${FTYPE}${OIFS_EXPID}_\[shortName\]
+               if [ $? -eq 0 ]; then
+                  \rm ICM${FTYPE}${OIFS_EXPID}.all || true
+               fi
+               # create symlink to the most recent output directory
+               cd ..
+               ln -sfn output_${DT} output
+               # return to experiment directory
+               cd "${MYPWD}"
+            fi
+            echo "done"
+         done
+         if ${REMOVE}; then \rm ICM*"${OIFS_EXPID}"+* || true; fi
+      else
+         #  Only move the files into the output directory
+         \mv ICMGG"${OIFS_EXPID}"+* ICMUA"${OIFS_EXPID}"+* ICMSH"${OIFS_EXPID}"+* "${TARGET}" || true
+         # create symlink to the most recent output directory
+         ln -sfn output_${DT} output
+      fi
+   fi
+   echo -e "\nCompleted postprocessing.\n"
+
+fi
+
+
+exit 0

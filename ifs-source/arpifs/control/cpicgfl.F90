@@ -1,0 +1,168 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE CPICGFL(YDGEOMETRY,YDGMV,YDML_CHEM,YGFL,PGMV,PGMVS,PGFLT1)
+
+!**** *CPICGFL*  - copy fields CHEM/TRAC GFL fields  e the upper air grid-point fields from GRIB
+
+!     Purpose.
+!     --------
+!            copy initial conditions of CHEM/TRAC GFL fields 
+
+!**   Interface.
+!     ----------
+!        *CALL *CPICGFL
+!
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!        Johannes Flemming *ECMWF*
+!:
+!     Modifications.
+!     --------------
+!     ------------------------------------------------------------------
+
+USE MODEL_CHEM_MOD , ONLY : MODEL_CHEM_TYPE
+USE GEOMETRY_MOD   , ONLY : GEOMETRY
+USE PARKIND1       , ONLY : JPIM, JPRB
+USE YOMHOOK        , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOM_YGFL       , ONLY : TYPE_GFLD
+USE YOMLUN         , ONLY : NULOUT
+USE YOMGMV         , ONLY : TGMV
+
+IMPLICIT NONE
+
+! * INPUT/OUTPUT
+TYPE(GEOMETRY)       ,INTENT(IN)    :: YDGEOMETRY
+TYPE(TGMV)           ,INTENT(INOUT) :: YDGMV
+TYPE(MODEL_CHEM_TYPE),INTENT(INOUT) :: YDML_CHEM
+TYPE(TYPE_GFLD)      ,INTENT(INOUT) :: YGFL
+REAL(KIND=JPRB)      ,INTENT(INOUT) :: PGFLT1(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YGFL%NDIM1,YDGEOMETRY%YRDIM%NGPBLKS) 
+REAL(KIND=JPRB)      ,INTENT(IN)    :: PGMV(:,:,:,:)
+REAL(KIND=JPRB)      ,INTENT(IN)    :: PGMVS(:,:,:)
+
+
+INTEGER(KIND=JPIM) :: J, JGFL, JLEV, JSTGLO, ICEND, ISTC, IBL, IQ, IOZONE, IO3_CHEM, IO3S_CHEM 
+
+INTEGER(KIND=JPIM) :: ITROPL(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB) :: ZALPHA1, ZALPHA2  
+REAL(KIND=JPRB) :: ZPTROP(YDGEOMETRY%YRDIM%NPROMA), ZT(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG),&
+ & ZQ(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG), ZPRESF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG),&
+ & ZPRESH(YDGEOMETRY%YRDIM%NPROMA,0:YDGEOMETRY%YRDIMV%NFLEVG)
+
+#include "troplev.intfb.h"
+#include "gphpre.intfb.h"
+
+
+IF (LHOOK) CALL DR_HOOK('CPICGFL',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV, &
+ & YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP,YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB, YDVAB=>YDGEOMETRY%YRVAB, &
+ & YDVETA=>YDGEOMETRY%YRVETA, YDVFE=>YDGEOMETRY%YRVFE,&
+ & YDSTA=>YDGEOMETRY%YRSTA, YDLAP=>YDGEOMETRY%YRLAP, YDCSGLEG=>YDGEOMETRY%YRCSGLEG,&
+ & YDCSGEOM=>YDGEOMETRY%YRCSGEOM,YDCVER=>YDGEOMETRY%YRCVER, &
+ & YDSPGEOM=>YDGEOMETRY%YSPGEOM, YDCOMPO=>YDML_CHEM%YRCOMPO,&
+ & YDCHEM=>YDML_CHEM%YRCHEM)
+
+ASSOCIATE(NCHEM=>YGFL%NCHEM, NDIM1=>YGFL%NDIM1, NUMFLDS=>YGFL%NUMFLDS, &
+ & YCOMP=>YGFL%YCOMP, &
+ & LCHEM_ANAO3=>YDCHEM%LCHEM_ANAO3, LCHEM_TROPO=>YDCOMPO%LCHEM_TROPO, &
+ & NGPBLKS=>YDDIM%NGPBLKS, NPROMA=>YDDIM%NPROMA, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & NGPTOT=>YDGEM%NGPTOT)
+! use ozone analysis in startopshere for chemistry  
+IF (LCHEM_ANAO3) THEN
+
+  WRITE(NULOUT,'(A)') ' OVERWRITE O3S TRACER WITH O3 IN STRATOSPHERE'
+  IOZONE    = -999
+  IO3_CHEM  = -999 
+  IO3S_CHEM = -999 
+  DO JGFL=1,NUMFLDS
+   IF( YCOMP(JGFL)%IGRBCODE  ==  203  ) IOZONE = JGFL 
+   IF( YCOMP(JGFL)%IGRBCODE  ==  133  ) IQ = JGFL 
+   IF( YCOMP(JGFL)%CNAME  == "O3"  ) IO3_CHEM = JGFL 
+   IF( YCOMP(JGFL)%CNAME  == "O3S"  ) IO3S_CHEM = JGFL 
+  ENDDO   
+
+
+!$OMP PARALLEL DO SCHEDULE(STATIC) &
+!$OMP& PRIVATE(JSTGLO,ICEND,IBL,J,JLEV,ISTC) &
+!$OMP& PRIVATE(ZPRESF,ZPRESH,ZQ,ZT,ZPTROP,ITROPL) &
+!$OMP& PRIVATE(ZALPHA1,ZALPHA2)
+
+DO JSTGLO=1,NGPTOT,NPROMA
+! calculate pressure 
+  ICEND=MIN(NPROMA,NGPTOT-JSTGLO+1)
+  IBL=(JSTGLO-1)/NPROMA+1
+  ISTC=1
+  DO J=ISTC,ICEND
+    ZPRESH(J,NFLEVG) = EXP(PGMVS(J,YDGMV%YT0%MSP,IBL))
+  ENDDO
+  CALL GPHPRE(NPROMA,NFLEVG,ISTC,ICEND,YDVAB,YDCVER,ZPRESH,PRESF=ZPRESF )
+  IF (LCHEM_TROPO ) THEN
+    DO JLEV=1,NFLEVG
+       DO J=ISTC,ICEND 
+         ZQ(J,JLEV) = PGFLT1(J,JLEV,YCOMP(IQ)%MP,IBL)  
+         ZT(J,JLEV) = PGMV(J,JLEV,YDGMV%YT0%MT,IBL) 
+       ENDDO
+    ENDDO   
+! humidity tropopause  true, temperature tropopause = false
+     CALL TROPLEV(NPROMA, ISTC, ICEND, NFLEVG ,.FALSE.,ZT,ZQ,ZPRESF,ITROPL)
+     DO J=ISTC,ICEND
+       ZPTROP(J)=ZPRESF(J,ITROPL(J))
+     ENDDO 
+  ELSE
+! ZPTROP pressure based
+    DO J=ISTC,ICEND
+      ZPTROP(J) = 24000_JPRB - 14800_JPRB * (COS(YDGSGEOM_NB%GELAT(JSTGLO+J-1)))**4_JPIM
+       DO JLEV = 1,NFLEVG
+         IF (ZPRESF(J,JLEV) < ZPTROP(J)) THEN
+           ITROPL(J) = JLEV 
+         ELSE
+             ! level found; exit this loop
+          CYCLE
+         ENDIF
+      ENDDO
+
+    ENDDO 
+  ENDIF  
+! copy chemistry O3 into O3S tracer above tropopause   
+  DO J=ISTC,ICEND
+    DO JLEV=1,NFLEVG
+      IF (  JLEV  <  ITROPL(J)  )  THEN
+        PGFLT1(J,JLEV,YCOMP(IO3S_CHEM)%MP,IBL) = PGFLT1(J,JLEV,YCOMP(IO3_CHEM)%MP,IBL) 
+      ELSE
+        ! Reached tropopause; exit this loop
+        CYCLE
+      ENDIF
+    ENDDO   
+  ENDDO   
+ENDDO   
+!$OMP END PARALLEL DO
+
+ENDIF
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CPICGFL',1,ZHOOK_HANDLE)
+
+END SUBROUTINE CPICGFL
+

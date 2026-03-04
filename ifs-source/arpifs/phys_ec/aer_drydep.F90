@@ -1,0 +1,603 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE AER_DRYDEP &
+!---inputs
+ & ( YDGEOMETRY,YDMODEL, & 
+ &   KIDIA, KFDIA, KLON, KTDIA, KLEV, KSTEP, KSTGLO, KTILES, &
+ &   PAERO  , PCI   , PFAERI, PAPH  , PAP, &
+ &   PDP    , PGEOH , PLSM  , PRHO  , PTAERI, PTSPHY, &
+ &   PSO2DD, PGELAM, PGELAT, PAERUST, PZ0M, PT, PQ, PDZ,  &
+ &   PCVL, PCVH, KTVL, KTVH, PLAIL, PLAIH, PFRTI, PSNS, &
+!-- outputs
+ &   PFAERO , PTAERO, PFDRYD, PVDEP, PVEG, PVEG1, PVEG2)
+
+
+!**** *AER_DRYDEP* -  ROUTINE FOR PARAMETRIZATION OF DRY DEPOSITION
+
+!      Jean-Jacques Morcrette 
+!      following O.Boucher's formulation for LMD-Z
+
+!      Dry deposition is (simply) represented by a modification of the 
+!      instantaneous surface flux by what comes down from layer just 
+!      above the surface
+
+!**   INTERFACE.
+!     ----------
+!          *AER_DRYDEP* IS CALLED FROM *CALLPAR*.
+
+! INPUTS:
+! -------
+! PFAERI(KLON,NACTAERO)      : INPUT SURFACE FLUX        (xx m-2)
+! PTAERI(KLON,KLEV,NACTAERO) : INPUT TENDENCIES          (xx kg s-1)
+
+! OUTPUTS:
+! --------
+! PFAERO(KLON,NACTAERO)      : SURFACE FLUX              (xx m-2)
+! PTAERO(KLON,KLEV,NACTAERO) : UPDATED TENDENCIES        (xx kg s-1)
+! PFDRYD(KLON)             : DIAGNOSTIC DRY DEPOSITION AT THE SURFACE (xx m-2)
+
+!     EXTERNALS.
+!     ----------
+!          NONE
+
+!     MODIFICATIONS.
+!     -------------
+!          JJMorcrette 20110725 maximum deposition speed
+!          SRémy       20160309 SO2 dry deposition velocity from SUMO (same as
+!          CHEM)
+!          SRémy       20160830 dry deposition velocities (except SO2) computed
+!          following Zhang et al 2001.
+!          SRémy       20170117 land classes from JFlemming's branch
+!          SRémy       20170512  externalize diurnal cycle
+
+!     SWITCHES.
+!     --------
+
+!     MODEL PARAMETERS
+!     ----------------
+
+!-----------------------------------------------------------------------
+USE GEOMETRY_MOD,  ONLY : GEOMETRY
+USE TYPE_MODEL,    ONLY : MODEL
+USE PARKIND1,      ONLY : JPIM, JPRB, JPRD
+USE YOMHOOK,       ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST,        ONLY : RG
+USE YOMRIP0,       ONLY : NINDAT
+USE YOMLUN,        ONLY : NULOUT
+USE YOEPHLI,       ONLY : YREPHLI
+
+IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+
+!*       0.1  ARGUMENTS
+!             ---------
+
+!---input fields
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(MODEL)       ,INTENT(INOUT) :: YDMODEL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTDIA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTEP 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTGLO
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTILES
+
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLSM(KLON), PCI(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAERO(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTAERI(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,0:KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDP(KLON,KLEV), PGEOH(KLON,0:KLEV), PRHO(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFAERI(KLON,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSO2DD(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGELAM(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGELAT(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAERUST(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0M(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PT(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQ(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDZ(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVL(KLON)  ! LOW VEGETATION COVER 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVH(KLON)  !  HIGH VEGETATION COVER 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLAIL(KLON) ! LOW VEGETATION LAI  
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLAIH(KLON) ! HIGH VEGETATION LAI  
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTVL(KLON)  ! LOW VEGETATION TYPE   
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTVH(KLON)  ! HIGH VEGETATION TYPE  
+! Tile fraction
+REAL(KIND=JPRB)   ,INTENT(IN)   :: PFRTI(KLON,KTILES) ! Tile fraction
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSNS(KLON) ! Snow depth
+
+
+!---output fields
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFAERO(KLON,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTAERO(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFDRYD(KLON,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVDEP(KLON,YDMODEL%YRML_GCONF%YGFL%NACTAERO)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVEG(KLON)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVEG1(KLON)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVEG2(KLON)
+
+!--- local variables
+INTEGER(KIND=JPIM) :: JL, JAER
+REAL(KIND=JPRB) :: ZAERO, ZFROC, ZOCEA, ZRHO
+REAL(KIND=JPRB) :: Z1RG , Z1TSPHY, ZHGT, ZALPHA, ZAERI
+REAL(KIND=JPRB) :: ZVEG0(KLON)
+REAL(KIND=JPRB), DIMENSION(YDMODEL%YRML_GCONF%YGFL%NACTAERO) :: ZVDEP, ZVDEPS1, ZVDEPS2, ZVDEPS3
+
+REAL(KIND=JPRB) :: ZRHOP
+REAL(KIND=JPRB) :: ZWETD
+REAL(KIND=JPRB) :: ZSIGMA
+
+!* Taken from J.J.Morcrette
+REAL(KIND=JPRB), PARAMETER    :: ZR_OM = 0.15E-6_JPRB !m
+REAL(KIND=JPRB), PARAMETER    :: ZR_BC = 0.04E-6_JPRB !m
+REAL(KIND=JPRB), PARAMETER    :: ZR_SO4 = 0.1E-6_JPRB   !m SO4 dry particle radius,Martin et al., 2003
+
+REAL(KIND=JPRB), PARAMETER, DIMENSION(3)    :: ZD_SS=(/0.2E-6_JPRB,2.E-6_JPRB,7.E-6_JPRB/) 
+
+REAL(KIND=JPRB), DIMENSION(3) :: ZD_DD 
+REAL(KIND=JPRB), PARAMETER    :: ZR_AM = 0.15E-6_JPRB   !In Wang et al ACP 2014
+REAL(KIND=JPRB), DIMENSION(2),PARAMETER    :: ZR_NI =(/0.15E-6_JPRB,0.75E-6_JPRB/)   !In Wang et al ACP 2014
+!REAL(KIND=JPRB), DIMENSION(3),PARAMETER    :: ZR_SOA =(/0.03E-6_JPRB,0.6E-6_JPRB,0.6E-6_JPRB/)
+!REAL(KIND=JPRB), DIMENSION(3),PARAMETER    :: ZR_SOA =(/0.03E-6_JPRB,0.2E-6_JPRB,0.2E-6_JPRB/)
+REAL(KIND=JPRB), DIMENSION(3),PARAMETER    :: ZR_SOA =(/0.03E-6_JPRB,0.15E-6_JPRB,0.15E-6_JPRB/)
+REAL(KIND=JPRB), PARAMETER    :: ZR_ASH = 2.5E-6
+
+
+
+
+!* Growth factors corresponding to RH table as given in RRHTAB, according to
+!J.J. Morcrette
+REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_SO4= &
+         & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.169_JPRB,1.220_JPRB,&
+         & 1.282_JPRB,1.363_JPRB,1.485_JPRB,1.581_JPRB,1.732_JPRB,2.085_JPRB/)
+! According to Chin et al._JPRB, AMS 2002
+REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_BC= &
+         & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.000_JPRB,&
+         & 1.000_JPRB,1.000_JPRB,1.200_JPRB,1.300_JPRB,1.400_JPRB,1.500_JPRB/)
+REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_OM= &
+         & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.169_JPRB,1.200_JPRB,&
+         & 1.300_JPRB,1.400_JPRB,1.500_JPRB,1.550_JPRB,1.600_JPRB,1.800_JPRB/)
+! Nitrate : Svenningsson et al ACP 2006
+REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_NI= &
+        & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.100_JPRB,1.200_JPRB,&
+        & 1.250_JPRB,1.300_JPRB,1.350_JPRB,1.500_JPRB,1.700_JPRB,2.100_JPRB/)
+REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_AM= &
+        & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.169_JPRB,1.220_JPRB,&
+        & 1.282_JPRB,1.363_JPRB,1.485_JPRB,1.581_JPRB,1.732_JPRB,2.085_JPRB/)
+! SOA Martin et al 2003, Table 1
+REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_SOA= &
+         & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.2_JPRB,&
+         & 1.3_JPRB,1.4_JPRB,1.5_JPRB,1.6_JPRB,1.7_JPRB,1.9_JPRB/)
+
+
+
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_AM=1760._JPRB  ! kg/m^3 (water)
+REAL(KIND=JPRB), DIMENSION(2), PARAMETER    :: ZRHO_NI=(/1730._JPRB,1400._JPRB/)  ! kg/m^3(water)
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_OM=1800._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_BC=1000._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_SO4=1760._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_SOA=1800._JPRB  ! kg/m^3
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_H2O=1000._JPRB  ! kg/m^3 (water)
+REAL(KIND=JPRB), PARAMETER    :: ZRHO_ASH=2700._JPRB  ! kg/m^3
+
+
+
+REAL(KIND=JPRB) :: ZMAXVDRY(KLON), ZDZ(KLON), ZSCALE(KLON), ZVFRAC
+REAL(KIND=JPRB) :: ZQSAT(KLON,KLEV)
+REAL(KIND=JPRB) :: ZRHCL(KLON)
+REAL(KIND=JPRB) :: ZLAI(KLON)
+INTEGER(KIND=JPIM) :: ITYP, IBIN, JTAB
+INTEGER(KIND=JPIM) :: IRH(KLON),IGLGLO
+INTEGER(KIND=JPIM) :: IDOMTILE(KLON),IDOMTILE1(KLON), ID(1), IMM, IDD,IVEG_I(KLON)
+INTEGER(KIND=JPIM) :: IDOMTILEBIS(KLON),IDOMTILE1BIS(KLON), ID1(1), IVEG_I1(KLON)
+INTEGER(KIND=JPIM) :: IDOMTILEBIS2(KLON),IDOMTILE1BIS2(KLON), ID2(1),IVEG_I2(KLON)
+INTEGER(KIND=JPIM) :: IVEG_ZH1(KLON), ISEASON_WE1(KLON)
+INTEGER(KIND=JPIM) :: IVEG_ZH2(KLON),ISEASON_WE2(KLON)
+INTEGER(KIND=JPIM) :: IVEG_ZH3(KLON),ISEASON_WE3(KLON)
+
+
+
+LOGICAL :: LLPRINT
+LOGICAL :: LLPHYLIN
+
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "aer_drydepvel.intfb.h"
+#include "aer_drydepvelzh14.intfb.h"
+#include "aer_drydepvelem20.intfb.h"
+#include "compo_diurnal.intfb.h"
+#include "satur.intfb.h"
+#include "ddr_zh_season.intfb.h"
+#include "fcttim.func.h"
+#include "abor1.intfb.h"
+
+
+!-----------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('AER_DRYDEP',0,ZHOOK_HANDLE)
+ASSOCIATE(YDEAERATM=>YDMODEL%YRML_PHY_RAD%YREAERATM,YGFL=>YDMODEL%YRML_GCONF%YGFL, &
+ & YDCOMPO=>YDMODEL%YRML_CHEM%YRCOMPO, &
+ & YDEAERSNK=>YDMODEL%YRML_PHY_AER%YREAERSNK, YDRIP=>YDMODEL%YRML_GCONF%YRRIP, &
+ & YDMP=>YDGEOMETRY%YRMP, YDCSGLEG=>YDGEOMETRY%YRCSGLEG)
+ASSOCIATE(NDRYDEP=>YDEAERSNK%NDRYDEP, &
+ & RRHO_DD=>YDEAERSNK%RRHO_DD, RRHO_SS=>YDEAERSNK%RRHO_SS, &
+ & RMMD_DD=>YDEAERSNK%RMMD_DD, RMMD_SS=>YDEAERSNK%RMMD_SS, &
+ & RSSDENS_RHTAB=>YDEAERSNK%RSSDENS_RHTAB,                 &
+ & RSSGROWTH_RHTAB=>YDEAERSNK%RSSGROWTH_RHTAB,             &
+ & RRHTAB=>YDEAERSNK%RRHTAB,                               &
+ & NACTAERO=>YGFL%NACTAERO, &
+ & NGLOBALAT=>YDMP%NGLOBALAT, &
+ & NDRYDEPVEL_DYN => YDEAERSNK%NDRYDEPVEL_DYN, &
+ & YAERO_DESC=>YDEAERATM%YAERO_DESC, &
+ & LAERDUST_NEWBIN=>YDEAERATM%LAERDUST_NEWBIN, &
+ & RAERDUST_REBOUND=>YDEAERATM%RAERDUST_REBOUND, &
+ & RSS_DRY_DIAFAC=>YDEAERATM%RSS_DRY_DIAFAC, &
+ & LCOMPO_DCDD=>YDCOMPO%LCOMPO_DCDD)
+
+!- PFAERI   in unit of xx m-2 s-1 (surface flux)
+!- PFAERO    in unit of xx m-2 s-1 (surface flux)
+!- N.B. Surface emission fluxes are negative upward, so contribution of 
+!  dry deposition is to make the surface flux less negative 
+IF (LAERDUST_NEWBIN) THEN
+  ZD_DD (1:3)=(/ 0.1E-6_JPRB,0.2E-6_JPRB, 5.E-6_JPRB /) 
+ELSE
+  ZD_DD (1:3)=(/ 0.1E-6_JPRB,0.2E-6_JPRB, 3.E-6_JPRB /) 
+ENDIF
+
+LLPHYLIN = YREPHLI%LPHYLIN
+
+LLPRINT=.FALSE.
+
+Z1RG   = 1.0_JPRB/RG
+Z1TSPHY= 1.0_JPRB/PTSPHY
+PTAERO(KIDIA:KFDIA,1:KLEV,1:NACTAERO)=PTAERI(KIDIA:KFDIA,1:KLEV,1:NACTAERO)
+PFAERO(KIDIA:KFDIA,1:NACTAERO)= PFAERI(KIDIA:KFDIA,1:NACTAERO)
+ZVDEP(:)=0._JPRB
+ZVDEPS1(:)=0._JPRB
+ZVDEPS2(:)=0._JPRB
+ZVDEPS3(:)=0._JPRB
+IVEG_ZH1(:)=0
+IVEG_ZH2(:)=0
+IVEG_ZH3(:)=0
+ISEASON_WE1(:)=1
+ISEASON_WE2(:)=1
+ISEASON_WE3(:)=1
+
+DO JL=KIDIA,KFDIA
+  ZDZ(JL)=(PAPH(JL,KLEV)-PAPH(JL,KLEV-1)) / (RG*PRHO(JL,KLEV))  
+  ZMAXVDRY(JL)= ZDZ(JL) / PTSPHY
+ENDDO
+
+CALL SATUR (KIDIA, KFDIA, KLON  , KTDIA, KLEV, LLPHYLIN, PAP, PT, ZQSAT, 2 )
+
+IRH(:)=1
+
+IMM=NMM(NINDAT)
+IDD=NDD(NINDAT)
+
+DO JL=KIDIA,KFDIA
+  
+  ZVEG0(JL)=PCVL(JL) + PCVH(JL)
+  ! use dominant type 
+  ID=MAXLOC(PFRTI(JL,:))
+  IDOMTILE(JL) = ID(1)
+  IDOMTILE1(JL) = ID(1)
+  ! reassign  tile properties in case of wet skin (3) which could be hi lo veg or bare ground  
+  IF ( IDOMTILE1(JL) == 3 ) THEN
+  ! undo dry test 
+    IF ( ZVEG0(JL) < 0.5_JPRB ) THEN
+      IDOMTILE(JL)=8   ! re-assign to bare ground 
+    ELSE
+      IDOMTILE(JL)= 4 ! re-assign to low veg   
+    IF ( PCVL(JL) <= PCVH(JL) )  IDOMTILE(JL)= 6 ! re-assign to high veg 
+    ENDIF 
+  ENDIF
+   SELECT CASE (IDOMTILE(JL))
+    CASE(1,9,0)
+     IVEG_I(JL)=15
+     ZLAI(JL)=0.0_JPRB
+    CASE(2)
+     IVEG_I(JL)=7
+     ZLAI(JL)=0.0_JPRB
+    CASE (6,7)
+     ZLAI(JL)= PLAIH(JL)
+     IVEG_I(JL)=KTVH(JL)
+    CASE (4)
+     IVEG_I(JL)=KTVL(JL)
+     ZLAI(JL)= PLAIL(JL)
+    CASE (8,5)
+     IVEG_I(JL)=8
+     ZLAI(JL)= 0.0_JPRB
+    CASE DEFAULT
+     CALL ABOR1('AER_DRYDEP: unsupported land class')
+   END SELECT 
+
+   ! use 2nd dominant type 
+  ID1=MAXLOC(PFRTI(JL,:),mask=(PFRTI(JL,:) < PFRTI(JL,ID(1))))
+  IDOMTILEBIS(JL) = ID1(1)
+  IDOMTILE1BIS(JL) = ID1(1)
+  ! reassign  tile properties in case of wet skin (3) which could be hi lo veg
+  ! or bare ground  
+  IF ( IDOMTILE1BIS(JL) == 3 ) THEN
+  ! undo dry test 
+    IF ( ZVEG0(JL) < 0.5_JPRB ) THEN
+      IDOMTILEBIS(JL)=8   ! re-assign to bare ground 
+    ELSE
+      IDOMTILEBIS(JL)= 4 ! re-assign to low veg   
+    IF ( PCVL(JL) <= PCVH(JL) )  IDOMTILEBIS(JL)= 6 ! re-assign to high veg 
+    ENDIF
+  ENDIF
+
+  SELECT CASE (IDOMTILEBIS(JL))
+    CASE(1,9,0)
+     IVEG_I1(JL)=15
+    CASE(2)
+     IVEG_I1(JL)=7
+    case (6,7)
+     IVEG_I1(JL)=KTVH(JL)
+    case (4)
+     IVEG_I1(JL)=KTVL(JL)
+    case (8,5)
+     IVEG_I1(JL)=8
+    CASE DEFAULT
+     CALL ABOR1('AER_DRYDEP: unsupported land class')
+   END SELECT
+
+  ! use 3rd dominant type 
+  ID2=MAXLOC(PFRTI(JL,:),mask=(PFRTI(JL,:) < PFRTI(JL,ID1(1))))
+  IDOMTILEBIS2(JL) = ID2(1)
+  IDOMTILE1BIS2(JL) = ID2(1)
+  ! reassign  tile properties in case of wet skin (3) which could be hi lo veg
+  ! or bare ground  
+  IF ( IDOMTILE1BIS2(JL) == 3 ) THEN
+  ! undo dry test 
+    IF ( ZVEG0(JL) < 0.5_JPRB ) THEN
+      IDOMTILEBIS2(JL)=8   ! re-assign to bare ground 
+    ELSE
+      IDOMTILEBIS2(JL)= 4 ! re-assign to low veg   
+    IF ( PCVL(JL) <= PCVH(JL) )  IDOMTILEBIS2(JL)= 6 ! re-assign to high veg 
+    ENDIF
+  ENDIF
+
+  SELECT CASE (IDOMTILEBIS2(JL))
+    CASE(1,9,0)
+     IVEG_I2(JL)=15
+    CASE(2)
+     IVEG_I2(JL)=7
+    CASE (6,7)
+     IVEG_I2(JL)=KTVH(JL)
+    CASE (4)
+     IVEG_I2(JL)=KTVL(JL)
+    CASE (8,5)
+     IVEG_I2(JL)=8
+    CASE DEFAULT
+     CALL ABOR1('AER_DRYDEP: unsupported land class')
+   END SELECT
+
+ENDDO
+! very simplistic mapping of 4 arpege classes into 11 regional Weseley classes 
+
+CALL DDR_ZH_SEASON(KIDIA, KFDIA, KLON, IMM, IDD,  PGELAT, IDOMTILE, IVEG_I, ISEASON_WE1, IVEG_ZH1 )
+CALL DDR_ZH_SEASON(KIDIA, KFDIA, KLON, IMM, IDD,  PGELAT, IDOMTILEBIS, IVEG_I1, ISEASON_WE2, IVEG_ZH2 )
+CALL DDR_ZH_SEASON(KIDIA, KFDIA, KLON, IMM, IDD,  PGELAT, IDOMTILEBIS2, IVEG_I2, ISEASON_WE3, IVEG_ZH3 )
+
+PVEG(KIDIA:KFDIA)=IVEG_ZH1(KIDIA:KFDIA)*1.0_JPRB
+PVEG1(KIDIA:KFDIA)=IVEG_ZH2(KIDIA:KFDIA)*1.0_JPRB
+PVEG2(KIDIA:KFDIA)=IVEG_ZH3(KIDIA:KFDIA)*1.0_JPRB
+
+IF (LCOMPO_DCDD) THEN
+  CALL COMPO_DIURNAL( YDRIP, KIDIA, KFDIA, KLON, 'Sine', PGELAM, PGELAT, ZSCALE, &
+                    & PAMPLITUDE=0.7_JPRB, PHOURPEAK=12.0_JPRB, PLSM=PLSM )
+ELSE
+  ZSCALE(KIDIA:KFDIA)=1.0_JPRB  
+ENDIF
+
+DO JAER=1,NACTAERO
+  ITYP=YAERO_DESC(JAER)%NTYP
+  IBIN=YAERO_DESC(JAER)%NBIN
+
+  ! Skip species if no deposition velocity configured
+  IF (YAERO_DESC(JAER)%RDDEPVSEA == 0._JPRB .AND. YAERO_DESC(JAER)%RDDEPVLIC == 0._JPRB) CYCLE
+
+  DO JL=KIDIA,KFDIA
+
+    ZRHCL(JL)=PQ(JL)/ZQSAT(JL,KLEV)
+    ZRHO = PRHO(JL,KLEV)
+    DO JTAB=1,12
+      IF (ZRHCL(JL)*100._JPRB > RRHTAB(JTAB)) THEN
+        IRH(JL)=JTAB
+      ENDIF
+    ENDDO
+    ZAERO = PAERO(JL,KLEV,JAER) + PTSPHY * PTAERI(JL,KLEV,JAER)
+    IF (YAERO_DESC(JAER)%RDDEPVSEA < 0._JPRB .OR. YAERO_DESC(JAER)%RDDEPVLIC < 0._JPRB) THEN
+      ! use SUMO dry dep velocity for SO2 if negative value(s) configured
+      ZVDEP(JAER) = MIN(ZMAXVDRY(JL), ZSCALE(JL)*PSO2DD(JL) )
+    ELSE
+! online  dry deposition
+      IF (NDRYDEPVEL_DYN >0) THEN
+        ! set RHOP and WETD for each aerosol type
+        ZSIGMA=2.0_JPRB
+        IF (ITYP == 1) THEN
+          ZRHOP=RSSDENS_RHTAB(IRH(JL))
+          ZWETD=ZD_SS(IBIN)*RSSGROWTH_RHTAB(IRH(JL))
+        ELSEIF (ITYP == 2) THEN
+          ZRHOP=RRHO_DD(IBIN)
+          ZWETD=ZD_DD(IBIN)
+        ELSEIF (ITYP == 3) THEN
+          ZWETD=2._JPRB*ZR_OM*ZRH_GROWTH_OM(IRH(JL))
+          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_OM(IRH(JL))**3
+          ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_OM
+        ELSEIF (ITYP == 4) THEN
+          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_BC(IRH(JL))**3
+          ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_BC
+          ZWETD=2._JPRB*ZR_BC*ZRH_GROWTH_BC(IRH(JL))
+        ELSEIF (ITYP == 5 .OR. ITYP == 10) THEN ! SO4 only
+          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_SO4(IRH(JL))**3
+          ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_SO4
+          ZWETD=2._JPRB*ZR_SO4*ZRH_GROWTH_SO4(IRH(JL))
+        ELSEIF (ITYP == 6) THEN ! nitrate
+           ZVFRAC = 1.0_JPRB / ZRH_GROWTH_NI(IRH(JL))**3
+           ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_NI(IBIN)
+           ZWETD=2._JPRB*ZR_NI(IBIN)*ZRH_GROWTH_NI(IRH(JL))
+        ELSEIF (ITYP == 7) THEN ! Ammonium
+           ZVFRAC = 1.0_JPRB / ZRH_GROWTH_AM(IRH(JL))**3
+           ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_AM
+           ZWETD=2._JPRB*ZR_AM*ZRH_GROWTH_AM(IRH(JL))
+        ELSEIF (ITYP == 8) THEN ! SOA
+          ZSIGMA=1.6_JPRB
+          ZVFRAC = 1.0 / ZRH_GROWTH_SOA(IRH(JL))**3
+          ZRHOP = ZRHO_H2O*(1.0-ZVFRAC) + ZVFRAC*ZRHO_SOA
+          ZWETD=2._JPRB*ZR_SOA(IBIN)*ZRH_GROWTH_SOA(IRH(JL))
+         ELSEIF (ITYP == 9) THEN ! Ash
+          ZRHOP=ZRHO_ASH
+          ZWETD=ZR_ASH*2._JPRB
+        ELSE
+           ! no deposition for this species; bail out of processing it on other grid points
+           ! and cycle to next species
+           EXIT
+        ENDIF
+        IF (NDRYDEPVEL_DYN == 1) THEN
+          ! compute deposition velocity following Zhang et al 2001
+          CALL AER_DRYDEPVEL(ISEASON_WE1(JL), IVEG_ZH1(JL), ZRHOP,ZWETD,ZSIGMA, &
+          &                  PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,RAERDUST_REBOUND,ZVDEPS1(JAER))
+          IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
+          &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
+            CALL AER_DRYDEPVEL(ISEASON_WE2(JL), IVEG_ZH2(JL), ZRHOP,ZWETD,ZSIGMA, &
+            &                  PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,RAERDUST_REBOUND,ZVDEPS2(JAER))
+
+            IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
+            &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) < 1._JPRB ) THEN
+              CALL AER_DRYDEPVEL(ISEASON_WE3(JL), IVEG_ZH3(JL), ZRHOP,ZWETD,ZSIGMA, &
+              &                  PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,RAERDUST_REBOUND,ZVDEPS3(JAER))
+            ENDIF
+          ENDIF
+        ENDIF
+        IF (NDRYDEPVEL_DYN == 2) THEN
+          ! compute deposition velocity following Zhang and He 2014
+          CALL AER_DRYDEPVELZH14(ISEASON_WE1(JL),IVEG_I(JL), IVEG_ZH1(JL), ZLAI(JL), ZWETD, ZSIGMA,ZRHOP,&
+          &                  PZ0M(JL),PCI(JL),PAERUST(JL),PT(JL,KLEV),PDZ(JL),RAERDUST_REBOUND,ZVDEPS1(JAER))
+          IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
+          &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
+            CALL AER_DRYDEPVELZH14(ISEASON_WE2(JL), IVEG_I1(JL),  IVEG_ZH2(JL),ZLAI(JL),ZWETD,ZSIGMA,ZRHOP,&
+            &                  PZ0M(JL),PCI(JL),PAERUST(JL),PT(JL,KLEV),PDZ(JL),RAERDUST_REBOUND,ZVDEPS2(JAER))
+            IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
+            &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) <1._JPRB ) THEN
+              CALL AER_DRYDEPVELZH14(ISEASON_WE3(JL),IVEG_I2(JL), IVEG_ZH3(JL), ZLAI(JL),ZWETD, ZSIGMA, ZRHOP,&
+              & PZ0M(JL),PCI(JL),PAERUST(JL),PT(JL,KLEV),PDZ(JL),RAERDUST_REBOUND,ZVDEPS3(JAER))
+            ENDIF
+          ENDIF
+        ENDIF
+         IF (NDRYDEPVEL_DYN == 3) THEN
+          ! compute deposition velocity following Emerson et al. (2020)
+          CALL AER_DRYDEPVELEM20(ISEASON_WE1(JL), IVEG_ZH1(JL),ZRHOP,ZWETD,ZSIGMA, &
+          & PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,ZVDEPS1(JAER))
+          IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
+          &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
+            CALL AER_DRYDEPVELEM20(ISEASON_WE2(JL), IVEG_ZH2(JL), ZRHOP,ZWETD,ZSIGMA, &
+            & PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,ZVDEPS2(JAER))
+
+            IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
+            &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) < 1._JPRB ) THEN
+              CALL AER_DRYDEPVELEM20(ISEASON_WE3(JL), IVEG_ZH3(JL), ZRHOP,ZWETD,ZSIGMA, &
+              & PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,ZVDEPS3(JAER))
+            ENDIF
+          ENDIF
+        ENDIF
+
+
+        ZVDEPS1(JAER)=MIN(0.1_JPRB,ZVDEPS1(JAER))
+        ZVDEPS2(JAER)=MIN(0.1_JPRB,ZVDEPS2(JAER))
+        ZVDEPS3(JAER)=MIN(0.1_JPRB,ZVDEPS3(JAER))
+        ZVDEP(JAER)=ZVDEPS1(JAER)*PFRTI(JL,IDOMTILE1(JL))
+
+        IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
+        &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
+          ZVDEP(JAER)=ZVDEP(JAER)+ZVDEPS2(JAER)*PFRTI(JL,IDOMTILE1BIS(JL))
+
+          IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
+          &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) < 1._JPRB ) THEN
+            ZVDEP(JAER)=ZVDEP(JAER)+ZVDEPS3(JAER)*PFRTI(JL,IDOMTILE1BIS2(JL))
+          ENDIF
+        ENDIF
+
+        ZVDEP(JAER)=MIN(0.1_JPRB,ZVDEP(JAER))
+      ELSE
+! no on line dry deposition  
+        ZOCEA= 1._JPRB-PLSM(JL)
+        ZFROC= ZOCEA*(1._JPRB-PCI(JL))
+        ZVDEP(JAER)= ZFROC * YAERO_DESC(JAER)%RDDEPVSEA + &
+        & (1 - ZFROC) * YAERO_DESC(JAER)%RDDEPVLIC
+        ! apply diurnal cycle and stability check 
+        ZVDEP(JAER)= MIN( ZMAXVDRY(JL),  ZSCALE(JL)*ZVDEP(JAER) )
+      ENDIF
+!   SR 03/2018 reduce dry deposition over smoother snow surfaces
+    IF (PSNS(JL) > 1.E-3_JPRB .OR. PCI(JL) > 0.5_JPRB) THEN
+      ZVDEP(JAER)=ZVDEP(JAER)/2.5_JPRB
+      ZVDEP(JAER)=MIN(ZVDEP(JAER),3.E-4_JPRB)
+    ENDIF
+! RVDPxxx (from su_aerp, derived from LMDZ in m s-1)
+!   formula is consistent: (xx m-2 s-1) - (m s-1) * (xx kg-1) * (kg m-3)
+!   PFAERO is then in xx m-2 s-1
+    ENDIF
+
+    PVDEP(JL,JAER)=ZVDEP(JAER)
+
+    IF (NDRYDEP == 1) THEN
+
+!-- only the surface flux is diminished of the equivalent effect of the dry deposition
+!   but the vertical distribution of tendencies is untouched 
+
+      PFAERO(JL,JAER)=PFAERI(JL,JAER)&
+        & + ZVDEP(JAER) * ZAERO * ZRHO
+      PFDRYD(JL,JAER)=0._JPRB
+
+    ELSE
+
+!-- Alternate formulation
+!    using the analytical solution (Flemming et al., 2011, D_GRG_4.6)
+!   The tendency in the lowest layer is modified, but the surface flux remains 
+!    untouched. 
+
+      ZHGT= PGEOH(JL,KLEV-1) * Z1RG
+      ZALPHA= PTSPHY* ZVDEP(JAER)/ZHGT
+!-- using Euler forward
+!      ZAERI = ZAERO * (1.0_JPRB - ZALPHA)
+!-- using Euler backward
+!      ZAERI = ZAERO * (1.0_JPRB + ZALPHA)
+!-- using Euler centered
+!      ZAERI = ZAERO * ((1.0_JPRB - ZALPHA)/(1.0_JPRB + ZALPHA))
+!-- using the analytical solution (Flemming et al., 2011, D_GRG_4.6)
+      ZAERI = ZAERO * EXP(-1.0_JPRB * ZALPHA)
+      PTAERO(JL,KLEV,JAER)= PTAERI(JL,KLEV,JAER)&
+       &                  + (ZAERI-PAERO(JL,KLEV,JAER)) * Z1TSPHY
+      PFDRYD(JL,JAER)= (ZAERO - ZAERI)*Z1TSPHY * PDP(JL,KLEV) * Z1RG
+      PFAERO(JL,JAER)= PFAERI(JL,JAER)
+    ENDIF
+
+  ENDDO
+ENDDO
+IF (LLPRINT) THEN
+  WRITE(UNIT=NULOUT,FMT='(1x,''DRYDEP'',I5,9E12.5)') KSTEP,PRHO(KIDIA,KLEV),&
+    & (PFAERI(KIDIA,JAER),PFAERO(KIDIA,JAER),ZVDEP(JAER),PAERO(KIDIA,KLEV,JAER),JAER=3,NACTAERO,3)
+ENDIF
+
+!-----------------------------------------------------------------------
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('AER_DRYDEP',1,ZHOOK_HANDLE)
+END SUBROUTINE AER_DRYDEP

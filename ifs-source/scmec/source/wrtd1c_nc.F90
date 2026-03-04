@@ -1,0 +1,658 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE WRTD1C_NC(YDGEOMETRY,YDMODEL,YDSURF, &
+  & PCPR    ,PCPS    ,PSPR    ,PSPS    ,PIRUNOF ,PFWMLT  ,PFWSB&
+  & ,PISLHF  ,PSWRF0  ,PSWRFN  ,PLWRF0  ,PLWRFN&
+  & ,PVDIS   ,PVDISG  ,PUSTRG  ,PVSTRG&
+  & ,PQTEND  ,PTTEND  ,PUTEND  ,PVTEND  ,PLTEND  ,PITEND  ,PATEND&
+  & ,PQTEND_D,PTTEND_D,PUTEND_D,PVTEND_D,PLTEND_D,PITEND_D,PATEND_D&
+  & ,PQTEND_P,PTTEND_P,PUTEND_P,PVTEND_P,PLTEND_P,PITEND_P,PATEND_P&
+  & ,PDIFCQ  ,PDIFCS  ,PDIFTQ  ,PDIFTS  ,PFCQNG&
+  & ,PFPLCL  ,PFPLCN  ,PFPLSL  ,PFPLSN&
+  & ,PFHPCL  ,PFHPCN  ,PFHPSL  ,PFHPSN&
+  & ,PFRSO   ,PFRSOC  ,PFRSOD  ,PFRTH   ,PFRTHC  ,PFRTHD  ,PINCSR&
+  & ,PSTRCU  ,PSTRCV  ,PSTRDU  ,PSTRDV  ,PSTRTU  ,PSTRTV&
+  & ,PDIFTI  ,PDIFTL  ,PFCCQN  ,PFCCQL  ,PFCSQN  ,PFCSQL  ,PFCQLNG ,PFCQNNG&
+  & ,ICBOT   ,ICTOP   ,PLUDE   ,PLU&
+  &,PPHIF9  ,PPHI9   ,PPRESH9 ,PPRESF9)
+
+!*****WRTD1C_NC* - Write diagnostic variables of the one-column model
+
+!     Purpose.
+!     --------
+!     Write out diagnostic variables in NetCDF format
+
+!***  Interface.
+!     ----------
+!        *CALL* *WRTD1C_NC
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the single column model
+
+!     Author.
+!     -------
+!        Martin Koehler  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original      94-01-26
+!        J.Teixeira     Jan.-95  new output files.
+!        M.Koehler      Sep.-00  converted to netCDF output.
+!        M. Ko"hler    6-6-2006  Single Column Model integration within IFS 
+!        G. Carver     Aug/2012  Fixes for gfortran compile
+!        F. Vana       Sep/2014  New fields for convection
+
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD, ONLY : GEOMETRY
+USE TYPE_MODEL  , ONLY : MODEL
+USE PARKIND1    , ONLY : JPIM     ,JPRB
+USE PARDIM1C    , ONLY : JPCEXTR
+USE YOMHOOK     , ONLY : LHOOK    ,DR_HOOK, JPHOOK
+USE YOMCST      , ONLY : RG       ,RCPD     ,RLVTT    ,RLSTT
+USE YOETHF      , ONLY : RVTMP2
+USE YOMCT0      , ONLY : REXTSHF  ,REXTLHF
+USE YOMCT3      , ONLY : NSTEP
+USE YOMGT1C1    , ONLY : TT1      ,QT1      ,WT1      ,ST1
+USE YOMGT1C9    , ONLY : TT9      ,QT9      ,WT9      ,ST9
+USE YOMGT1C0    , ONLY : TT0      ,QT0      ,WT0      ,ST0      ,SPT0,    RNT0,    SNT0
+USE YOMGPD1C        !all
+USE YOMLOG1C    , ONLY : NPOSDIA  ,NPOSDIA2 ,NPOSASC
+USE INTDYN_MOD  , ONLY : YYTXYB
+USE INTDYN_MOD  , ONLY : YYTXYB
+USE SURFACE_FIELDS_MIX, ONLY : TSURF
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY), INTENT(INOUT) :: YDGEOMETRY
+TYPE(MODEL),    INTENT(INOUT) :: YDMODEL
+TYPE(TSURF)    ,INTENT(INOUT) :: YDSURF
+INTEGER(KIND=JPIM) :: ICSS
+
+REAL(KIND=JPRB)    :: PCPR  ,PCPS  ,PSPR  ,PSPS  ,PIRUNOF,PFWMLT,PFWSB
+REAL(KIND=JPRB)    :: PFRSOC(0:1)  ,PFRSOD,PFRTHC(0:1)  ,PFRTHD ,PINCSR
+REAL(KIND=JPRB)    :: PISLHF,PSWRF0,PSWRFN,PLWRF0,PLWRFN
+REAL(KIND=JPRB)    :: PVDIS ,PVDISG,PUSTRG,PVSTRG
+REAL(KIND=JPRB)    :: ZEXTRA(JPCEXTR), ZEXTR2(1)
+
+REAL(KIND=JPRB)    :: PPRESH9 (0:YDGEOMETRY%YRDIMV%NFLEVG )  ! HALF LEVEL PRESSURE
+REAL(KIND=JPRB)    :: PPRESF9 (  YDGEOMETRY%YRDIMV%NFLEVG )  ! FULL LEVEL PRESSURE
+REAL(KIND=JPRB)    :: PPHI9   (0:YDGEOMETRY%YRDIMV%NFLEVG )  ! HALF LEVEL GEOPOTENTIAL
+REAL(KIND=JPRB)    :: PPHIF9  (  YDGEOMETRY%YRDIMV%NFLEVG )  ! FULL LEVEL GEOPOTENTIAL
+
+REAL(KIND=JPRB)    :: PUTEND  (YDGEOMETRY%YRDIMV%NFLEVG), PVTEND  (YDGEOMETRY%YRDIMV%NFLEVG),&
+            &PTTEND  (YDGEOMETRY%YRDIMV%NFLEVG), PQTEND  (YDGEOMETRY%YRDIMV%NFLEVG),&
+            &PLTEND  (YDGEOMETRY%YRDIMV%NFLEVG), PITEND  (YDGEOMETRY%YRDIMV%NFLEVG), PATEND  (YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PUTEND_D(YDGEOMETRY%YRDIMV%NFLEVG), PVTEND_D(YDGEOMETRY%YRDIMV%NFLEVG),&
+            &PTTEND_D(YDGEOMETRY%YRDIMV%NFLEVG), PQTEND_D(YDGEOMETRY%YRDIMV%NFLEVG),&
+            &PLTEND_D(YDGEOMETRY%YRDIMV%NFLEVG), PITEND_D(YDGEOMETRY%YRDIMV%NFLEVG), PATEND_D(YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PUTEND_P(YDGEOMETRY%YRDIMV%NFLEVG), PVTEND_P(YDGEOMETRY%YRDIMV%NFLEVG),&
+            &PTTEND_P(YDGEOMETRY%YRDIMV%NFLEVG), PQTEND_P(YDGEOMETRY%YRDIMV%NFLEVG),&
+            &PLTEND_P(YDGEOMETRY%YRDIMV%NFLEVG), PITEND_P(YDGEOMETRY%YRDIMV%NFLEVG), PATEND_P(YDGEOMETRY%YRDIMV%NFLEVG)
+
+!     --- FLUXES FROM PARAMETERISATIONS ---
+
+REAL(KIND=JPRB)    :: PDIFCQ (0:YDGEOMETRY%YRDIMV%NFLEVG) , PDIFCS (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PDIFTQ (0:YDGEOMETRY%YRDIMV%NFLEVG) , PDIFTS (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFCQNG (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFPLCL (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFPLCN (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFPLSL (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFPLSN (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFRSO  (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFRTH  (0:YDGEOMETRY%YRDIMV%NFLEVG) , PSTRCU (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PSTRCV (0:YDGEOMETRY%YRDIMV%NFLEVG) , PSTRDU (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PSTRDV (0:YDGEOMETRY%YRDIMV%NFLEVG) , PSTRTU (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PSTRTV (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PDIFTI(0:YDGEOMETRY%YRDIMV%NFLEVG)  , PDIFTL(0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFCCQN (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFCCQL (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFCSQN (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFCSQL (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFCQLNG(0:YDGEOMETRY%YRDIMV%NFLEVG) , PFCQNNG(0:YDGEOMETRY%YRDIMV%NFLEVG)
+
+!     --- FLUXES FROM PARAMETERISATIONS AND TENDENCIES COMP.
+
+REAL(KIND=JPRB)    :: PFHPSL (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFHPSN (0:YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)    :: PFHPCL (0:YDGEOMETRY%YRDIMV%NFLEVG) , PFHPCN (0:YDGEOMETRY%YRDIMV%NFLEVG)
+
+!   Diagnostic variables for convection
+INTEGER(KIND=JPIM) :: ICBOT(YDGEOMETRY%YRDIM%NPROMA), ICTOP(YDGEOMETRY%YRDIM%NPROMA)
+REAL(KIND=JPRB)    :: PLUDE (YDGEOMETRY%YRDIMV%NFLEVG) , PLU (YDGEOMETRY%YRDIMV%NFLEVG)
+
+!     --- local variables
+REAL(KIND=JPRB)    :: ZDE,ZDSSHF,ZDSLHF,ZDEWSS,ZDNSSS,TEMP
+REAL(KIND=JPRB)    :: ZDSSR,ZDSTR,ZDTSR,ZDTTR,ZDLSP,ZDCP,ZDCSF,ZDLSSF
+REAL(KIND=JPRB)    :: ZDRO,ZDBLD,ZDGWD,ZDLGWS,ZDMGWS
+
+!     --- variable for heigh and pressure levels
+
+INTEGER(KIND=JPIM) :: IST, IEND
+
+REAL(KIND=JPRB)    :: ZXYB   (YDGEOMETRY%YRGEM%NGPTOT,YDGEOMETRY%YRDIMV%NFLEVG,YYTXYB%NDIM)
+REAL(KIND=JPRB)    :: ZPRESH (0:YDGEOMETRY%YRDIMV%NFLEVG )   ! HALF LEVEL PRESSURE
+REAL(KIND=JPRB)    :: ZPRESF (  YDGEOMETRY%YRDIMV%NFLEVG )   ! FULL LEVEL PRESSURE
+REAL(KIND=JPRB)    :: ZXYB9(1,YDGEOMETRY%YRDIMV%NFLEVG,YYTXYB%NDIM)
+REAL(KIND=JPRB)    :: DPRES  (  YDGEOMETRY%YRDIMV%NFLEVG )  ! LAYER PRESSURE THICKNESS
+
+REAL(KIND=JPRB)    :: ZDUM   (  YDGEOMETRY%YRDIMV%NFLEVG ) 
+
+REAL(KIND=JPRB)    :: ZR0    (  YDGEOMETRY%YRDIMV%NFLEVG )   ! R
+REAL(KIND=JPRB)    :: ZCP0   (  YDGEOMETRY%YRDIMV%NFLEVG )   ! CP
+REAL(KIND=JPRB)    :: ZKAP   (  YDGEOMETRY%YRDIMV%NFLEVG )   ! K=R/CP
+
+REAL(KIND=JPRB)    :: ZPHI0  (0:YDGEOMETRY%YRDIMV%NFLEVG )   ! HALF LEVEL GEOPOTENTIAL
+REAL(KIND=JPRB)    :: ZPHIF0 (  YDGEOMETRY%YRDIMV%NFLEVG )   ! FULL LEVEL GEOPOTENTIAL
+
+REAL(KIND=JPRB)    :: ZPHI1  (0:YDGEOMETRY%YRDIMV%NFLEVG )   ! HALF LEVEL GEOPOTENTIAL
+REAL(KIND=JPRB)    :: ZPHIF1 (  YDGEOMETRY%YRDIMV%NFLEVG )   ! FULL LEVEL GEOPOTENTIAL
+
+REAL(KIND=JPRB)    :: ZVAROG (5 )  ! directional orographic variances
+
+REAL(KIND=JPRB)    :: WVP0, LWP0, IWP0, WVP1, LWP1, IWP1, QTBUDGET, EBUDGET
+REAL(KIND=JPRB)    :: ZDRY_ST(YDGEOMETRY%YRDIMV%NFLEVG), ZMOIST_ST(YDGEOMETRY%YRDIMV%NFLEVG), ZSLG_ST(YDGEOMETRY%YRDIMV%NFLEVG),&
+                     &CPD_MOIST(YDGEOMETRY%YRDIMV%NFLEVG)
+
+INTEGER(KIND=JPIM) :: ISTATUS, IDIMID, IDIMLEN, INCID(2), IVARID, N
+INTEGER(KIND=JPIM) :: ISTART1, ICOUNT1, ISTART2(2), ICOUNT2(2), ICOUNT3(2), ICOUNT4(2),&
+                     &ICOUNT5(2), ICOUNT6(2), ICOUNTE(2)
+
+CHARACTER (LEN=2) NTXT
+
+REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+
+#include "netcdf.inc"
+
+!     ------------------------------------------------------------------
+#include "gpgeo.intfb.h"
+#include "handle_err_nc.intfb.h"
+#include "gphpre.intfb.h"
+#include "varwrite1c_nc.intfb.h"
+#include "gprcp.intfb.h"
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('WRTD1C_NC',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM,YDMP=>YDGEOMETRY%YRMP, &
+ & YDVAB=>YDGEOMETRY%YRVAB,YDDPHY=>YDMODEL%YRML_PHY_G%YRDPHY, &
+ & YDVETA=>YDGEOMETRY%YRVETA,YDVFE=>YDGEOMETRY%YRVFE,YDSTA=>YDGEOMETRY%YRSTA, &
+ & YDLAP=>YDGEOMETRY%YRLAP, YGFL=>YDMODEL%YRML_GCONF%YGFL,&
+ & YDPHYDS=>YDMODEL%YRML_PHY_MF%YRPHYDS)
+ASSOCIATE(NPROMA=>YDDIM%NPROMA, &
+ & NFLEVG=>YDDIMV%NFLEVG, &
+ & NCEXTR=>YDDPHY%NCEXTR, NTILES=>YDDPHY%NTILES, NVEXTR=>YDDPHY%NVEXTR, &
+ & NVXTR2=>YDDPHY%NVXTR2, &
+ & NGPTOT=>YDGEM%NGPTOT, &
+ & TSTEP=>YDMODEL%YRML_GCONF%YRRIP%TSTEP, &
+ & YSD_VD=>YDSURF%YSD_VD, YSD_VF=>YDSURF%YSD_VF, YSD_X2D=>YDSURF%YSD_X2D, &
+ & YSD_XAD=>YDSURF%YSD_XAD, YSP_SBD=>YDSURF%YSP_SBD,SD_VF=>YDSURF%SD_VF,SD_VD=>YDSURF%SD_VD)
+ICSS = YSP_SBD%NLEVS
+
+!*         1.     PREPARING THE OUTPUT
+!                 ---------------------
+
+ZDE   = VDE   (1)/((NSTEP+1)*TSTEP)
+ZDSSHF= VDSSHF(1)/((NSTEP+1)*TSTEP)
+ZDSLHF= VDSLHF(1)/((NSTEP+1)*TSTEP)
+ZDEWSS= VDEWSS(1)/((NSTEP+1)*TSTEP)
+ZDNSSS= VDNSSS(1)/((NSTEP+1)*TSTEP)
+ZDSSR = VDSSR (1)/((NSTEP+1)*TSTEP)
+ZDSTR = VDSTR (1)/((NSTEP+1)*TSTEP)
+ZDTSR = VDTSR (1)/((NSTEP+1)*TSTEP)
+ZDTTR = VDTTR (1)/((NSTEP+1)*TSTEP)
+ZDLSP = VDLSP (1)/((NSTEP+1)*TSTEP)
+ZDCP  = VDCP  (1)/((NSTEP+1)*TSTEP)
+ZDCSF = VDCSF (1)/((NSTEP+1)*TSTEP)
+ZDLSSF= VDLSSF(1)/((NSTEP+1)*TSTEP)
+ZDRO  = VDRO  (1)/((NSTEP+1)*TSTEP)
+ZDBLD = VDBLD (1)/((NSTEP+1)*TSTEP)
+ZDGWD = VDGWD (1)/((NSTEP+1)*TSTEP)
+ZDLGWS= VDLGWS(1)/((NSTEP+1)*TSTEP)
+ZDMGWS= VDMGWS(1)/((NSTEP+1)*TSTEP)
+
+
+!*         1.1   HEIGHT AND PRESSURE ON HALF AND FULL LEVELS.
+
+IST  = 1
+IEND = 1
+
+ZPRESH(NFLEVG) = EXP(SPT0)
+
+!   computation of pressure at half levels.
+CALL GPHPRE(NPROMA,NFLEVG,IST,IEND,YDVAB,YDGEOMETRY%YRCVER,ZPRESH,PXYB=ZXYB9,PRESF=ZPRESF)
+
+!   computation of r, cp and kappa.
+CALL GPRCP(NPROMA,IST,IEND,NFLEVG,PQ=QT0,PQI=ST0,PQL=WT0,PQR=RNT0,PQS=SNT0,PCP=ZCP0,PR=ZR0,PKAP=ZKAP)
+
+!   computation of hydrostatic equation.
+ZPHI0(NFLEVG) = YDGEOMETRY%YROROG(1)%OROG(1)*RG
+CALL GPGEO(NPROMA,IST,IEND,NFLEVG,ZPHI0,ZPHIF0,TT0,ZR0,&
+         & ZXYB9(1,:,YYTXYB%M_LNPR),ZXYB9(1,:,YYTXYB%M_ALPH),YDGEOMETRY%YRVERT_GEOM)
+
+
+!   computation of r, cp and kappa.
+CALL GPRCP(NPROMA,IST,IEND,NFLEVG,PQ=QT1,PQI=ST1,PQL=WT1,PCP=ZCP0,PR=ZR0,PKAP=ZKAP)
+
+!   computation of hydrostatic equation.
+ZPHI1(NFLEVG) = YDGEOMETRY%YROROG(1)%OROG(1)*RG
+CALL GPGEO(NPROMA,IST,IEND,NFLEVG,ZPHI1,ZPHIF1,TT1,ZR0,&
+         & ZXYB9(1,:,YYTXYB%M_LNPR),ZXYB9(1,:,YYTXYB%M_ALPH),YDGEOMETRY%YRVERT_GEOM)
+
+!     ------------------------------------------------------------------
+
+!*         2.     New Variables
+!                 --------------
+
+
+!*         2.1  thermodynamic conserved variables.
+!               ...caution:  cpd_moist might be slightly misused
+
+CPD_MOIST = RCPD * ( 1.0 + RVTMP2 * QT1(1:NFLEVG) )
+
+! dry static energy
+ZDRY_ST   = ZPHIF0 + TT1(1:NFLEVG) * CPD_MOIST
+
+! moist static energy
+ZMOIST_ST = ZDRY_ST + RLVTT * QT1(1:NFLEVG)
+
+! generalilzed liquid water static energy
+ZSLG_ST   = ZDRY_ST - RLVTT * WT1(1:NFLEVG) - RLSTT * ST1(1:NFLEVG)
+
+!dpres    = ppresh9(1:nflevg) - ppresh9(0:nflevg-1)
+DPRES     = ZPRESH(1:NFLEVG) - ZPRESH(0:NFLEVG-1)
+
+!          time-level 0 (incoming)
+
+WVP0   = SUM ( QT0(1:NFLEVG) * DPRES / RG ) !ignores specific vs. mixing ratio diff's
+LWP0   = SUM ( WT0(1:NFLEVG) * DPRES / RG ) ! -"-
+IWP0   = SUM ( ST0(1:NFLEVG) * DPRES / RG ) ! -"-
+
+!          time-level 1 (outgoing)
+
+WVP1   = SUM ( QT1(1:NFLEVG) * DPRES / RG ) !ignores specific vs. mixing ratio diff's
+LWP1   = SUM ( WT1(1:NFLEVG) * DPRES / RG ) ! -"-
+IWP1   = SUM ( ST1(1:NFLEVG) * DPRES / RG ) ! -"-
+
+
+!*         2.2  water and energy conservation
+!               ... turn off vertical and horizontal advection 
+!                   (LWADV=F, LTADV=F, LQADV=F, NVXTR2=2 in fort.4)
+
+!          qt budget
+
+QTBUDGET = WVP1 + LWP1 + IWP1 &                           ! total water
+      &  + VDSLHF(1) / RLVTT &                            ! - sfc. evap
+      &  + ( VDCP(1) + VDCSF(1) + VDLSP(1) + VDLSSF(1) )  ! + precip
+
+!          slg budget
+
+EBUDGET  = SUM ( ( TT1(1:NFLEVG) * CPD_MOIST  &                  ! total slg - gz
+      &          - rlvtt * wt1(1:nflevg) - rlstt * st1(1:nflevg) &
+      &          ) * dpres / rg ) &
+      &  - ( VDTSR(1) - VDSSR(1) + VDTTR(1) - VDSTR(1) ) &       ! - rad. heating
+      &  + VDSSHF(1)  &                                          ! - sens. flux
+      &  - RLVTT * ( VDCP(1) + VDCSF(1) + VDLSP(1) + VDLSSF(1) )&! - precip
+      &  - VDBLD(1)                                              ! - dissipation
+
+!write(150,*) 'qt budget ', qtbudget, 'slg budget', ebudget
+
+
+
+!     ------------------------------------------------------------------
+
+!*         3.     WRITE to standard output
+!                 -------------------------
+
+
+!*         3.1  WRITE OUT PRECIPITATION.
+
+WRITE(NPOSASC,*) 'DIAGNOSTIC VARIABLES'
+WRITE(NPOSASC,'("ICR=",E12.5)')   PCPR
+WRITE(NPOSASC,'("ICSF=",E12.5)')  PCPS
+WRITE(NPOSASC,'("ILSR=",E12.5)')  PSPR
+WRITE(NPOSASC,'("ILSF=",E12.5)')  PSPS
+
+!*         3.2  WRITE OUT RADIATIVE FLUXES.
+
+WRITE(NPOSASC,'("ITSR=",E12.5)')  PSWRF0
+WRITE(NPOSASC,'("ISSR=",E12.5)')  PSWRFN
+WRITE(NPOSASC,'("ITTR=",E12.5)')  PLWRF0
+WRITE(NPOSASC,'("ISTR=",E12.5)')  PLWRFN
+
+!*         3.3  WRITE OUT TURBULENT FLUXES.
+
+WRITE(NPOSASC,'("IEWSS=",E12.5)')  VDIEWSS
+WRITE(NPOSASC,'("INSSS=",E12.5)')  VDINSSS
+
+!*         3.4  WRITE OUT ALBEDO, Z0 AND RUN-OFF.
+
+WRITE(NPOSASC,'("FAL=",E12.5)')  SD_VD(1,YSD_VD%YALB%MP,1)
+WRITE(NPOSASC,'("FSR=",E12.5)')  SD_VD(1,YSD_VD%YZ0F%MP,1)/RG
+WRITE(NPOSASC,'("IRO=",E12.5)')  PIRUNOF
+
+!*         3.5  WRITE OUT 10M WIND.
+
+WRITE(NPOSASC,'("10U=",E12.5)')  SD_VD(1,YSD_VD%Y10U%MP,1)
+WRITE(NPOSASC,'("10V=",E12.5)')  SD_VD(1,YSD_VD%Y10V%MP,1)
+
+!*         3.6  WRITE OUT 2M TEMPERATURE.
+
+WRITE(NPOSASC,'("2T=",E12.5)')  SD_VD(1,YSD_VD%Y2T%MP,1)
+WRITE(NPOSASC,'("2D=",E12.5)')  SD_VD(1,YSD_VD%Y2D%MP,1)
+
+!*         3.7  WRITE OUT CLOUD COVER.
+
+WRITE(NPOSASC,'("TCC=",E12.5)')  SD_VD(1,YSD_VD%YTCC%MP,1)
+WRITE(NPOSASC,'("LCC=",E12.5)')  SD_VD(1,YSD_VD%YLCC%MP,1)
+WRITE(NPOSASC,'("MCC=",E12.5)')  SD_VD(1,YSD_VD%YMCC%MP,1)
+WRITE(NPOSASC,'("HCC=",E12.5)')  SD_VD(1,YSD_VD%YHCC%MP,1)
+
+!*         3.8  WRITE OUT DISSIPATION AND STRESS.
+
+WRITE(NPOSASC,'("IBLD=",E12.5)')   PVDIS
+WRITE(NPOSASC,'("IGWD=",E12.5)')   PVDISG
+WRITE(NPOSASC,'("ILGWS=",E12.5)')  PUSTRG
+WRITE(NPOSASC,'("IMGWS=",E12.5)')  PVSTRG
+
+!*         3.9  WRITE OUT SURF.SENS.HEAT FLUX AND LAT.HEAT FLUX.
+
+WRITE(NPOSASC,'("ISSHF=",E12.5)')  VDISSHF
+WRITE(NPOSASC,'("ISLHF=",E12.5)')  PISLHF
+
+
+!     ------------------------------------------------------------------
+
+!*         4.     WRITE netCDF output
+!          --------------------------
+
+
+INCID(1) = NPOSDIA    ! netCDF file unit number 1 (not = fortran unit #)
+INCID(2) = NPOSDIA2   ! netCDF file unit number 2 (not = fortran unit #)
+
+
+!*         4.1  set-up
+
+DO N=1,2
+
+ISTATUS = NF_INQ_DIMID   (INCID(N), 'time', IDIMID)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTATUS = NF_INQ_DIMLEN  (INCID(N), IDIMID, IDIMLEN)
+CALL HANDLE_ERR_NC(ISTATUS)
+ISTART1    = IDIMLEN+1  ! 1-d variables: starting index
+ICOUNT1    = 1          !      -"-       written indices
+ISTART2(1) = 1          ! 2-d variables - dim 1: starting index
+ICOUNT2(1) = NFLEVG     !      -"-               written indices
+ISTART2(2) = IDIMLEN+1  ! 2-d variables - dim 2: starting index
+ICOUNT2(2) = 1          !      -"-               written indices
+ICOUNT3(1) = NFLEVG+1   ! half level variables
+ICOUNT3(2) = 1
+ICOUNT4(1) = ICSS       ! soil/sea ice variables
+ICOUNT4(2) = 1
+ICOUNT5(1) = NTILES     ! tiles
+ICOUNT5(2) = 1
+ICOUNT6(1) = 4          ! directional orographic variances
+ICOUNT6(2) = 1
+ICOUNTE(1) = NCEXTR     
+ICOUNTE(2) = 1
+
+
+!*         4.2  write time & time step
+
+CALL VARWRITE1C_NC (INCID(N), 1, (/ISTART1/),(/ICOUNT1/), 'time', (/NSTEP*TSTEP/) )
+
+!istatus = NF_INQ_VARID   (incid(n), 'timestp', ivarid)
+!call handle_err_nc(istatus)
+!istatus = NF_PUT_VAR1_INT(incid(n),ivarid,idimlen+1, nstep)     
+!call handle_err_nc(istatus)
+
+ENDDO
+
+
+!*         4.3  write scalar diagnostic variables.
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'wat_vap_path',    (/WVP0/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'liq_wat_path',    (/LWP0/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'ice_wat_path',    (/IWP0/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'pbl_height', &
+   &  SD_VD(:,YSD_VD%YBLH%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'conv_type',  &
+     & REAL(INTYPE,KIND=JPRB))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'pbl_type',   &
+     & REAL(IPBLTYPE,KIND=JPRB))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'conv_rain',       (/PCPR/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_conv_rain',   (/ZDCP/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'conv_snow',       (/PCPS/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_conv_snow',   (/ZDCSF/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'stra_rain',       (/PSPR/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_stra_rain',   (/ZDLSP/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'stra_snow',       (/PSPS/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_stra_snow',   (/ZDLSSF/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'runoff',          (/PIRUNOF/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_runoff',      (/ZDRO/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'snow_melt',       (/PFWMLT/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'snow_evap',       (/PFWSB/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'top_swrad',       (/PSWRF0/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'top_swrad_clr',   PFRSOC(0))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'top_swrad_inc',   (/PINCSR/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_top_swrad',   (/ZDTSR/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_swrad',       (/PSWRFN/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_swrad_clr',   PFRSOC(1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_swrad_down',  (/PFRSOD/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_sfc_swrad',   (/ZDSSR/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'top_lwrad',       (/PLWRF0/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'top_lwrad_clr',   PFRTHC(0))
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_top_lwrad',   (/ZDTTR/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_lwrad',       (/PLWRFN/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_lwrad_clr',   PFRTHC(1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_lwrad_down',  (/PFRTHD/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_sfc_lwrad',   (/ZDSTR/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'u_sfc_strss',     VDIEWSS)
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_u_sfc_strss', (/ZDEWSS/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'v_sfc_strss',     VDINSSS)
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_v_sfc_strss', (/ZDNSSS/) )
+
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_albedo',  &
+ &  SD_VD(:,YSD_VD%YALB%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'rough_len_mom', &
+ &  SD_VD(:,YSD_VD%YZ0F%MP,1)/RG)
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'u_wind_10m', &
+ &  SD_VD(:,YSD_VD%Y10U%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'v_wind_10m', &
+ &  SD_VD(:,YSD_VD%Y10V%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'temperature_2m', &
+ &  SD_VD(:,YSD_VD%Y2T%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'dew_point_2m', &
+ &  SD_VD(:,YSD_VD%Y2D%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'total_cloud', &
+ &   SD_VD(:,YSD_VD%YTCC%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'low_cloud', &
+ & SD_VD(:,YSD_VD%YLCC%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'middle_cloud', &
+ & SD_VD(:,YSD_VD%YMCC%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'high_cloud', &
+ & SD_VD(:,YSD_VD%YHCC%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'turb_diss',       (/PVDIS/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_turb_diss',   (/ZDBLD/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'gwd_diss',        (/PVDISG/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_gwd_diss',    (/ZDGWD/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'gwd_u_strs',      (/PUSTRG/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_gwd_u_strs',  (/ZDLGWS/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'gwd_v_strs',      (/PVSTRG/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_gwd_v_strs',  (/ZDMGWS/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_sen_flx',     VDISSHF)
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_sfc_sen_flx', (/ZDSSHF/) )
+CALL VARWRITE1C_NC (INCID(1), 1, (/ISTART1/),(/ICOUNT1/), 'sfc_lat_flx',     (/PISLHF/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_sfc_lat_flx', (/ZDSLHF/) )
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'eva_flx',         VDIE)
+CALL VARWRITE1C_NC (INCID(2), 1, (/ISTART1/),(/ICOUNT1/), 'acc_eva_flx',     (/ZDE/))
+
+
+!*         4.4  write tendencies.
+
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'ls_prec_fct',     VILSPF) !Maike
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_u_wind',     PUTEND)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_v_wind',     PVTEND)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_temp',       PTTEND)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_wat_vap',    PQTEND)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_fract',  PATEND)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_liq',    PLTEND)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_ice',    PITEND)
+
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_u_wind_d',   PUTEND_D)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_v_wind_d',   PVTEND_D)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_temp_d',     PTTEND_D)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_wat_vap_d',  PQTEND_D)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_fract_d',PATEND_D)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_liq_d',  PLTEND_D)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_ice_d',  PITEND_D)
+
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_u_wind_p',   PUTEND_P)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_v_wind_p',   PVTEND_P)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_temp_p',     PTTEND_P)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_wat_vap_p',  PQTEND_P)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_fract_p',PATEND_P)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_liq_p',  PLTEND_P)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'tend_cld_ice_p',  PITEND_P)
+
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'height_f',        PPHIF9/RG)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'pressure_f',      PPRESF9)
+
+CALL VARWRITE1C_NC (INCID(1), NTILES,ISTART2,ICOUNT5, 'u_sfc_strss_ti',  VUSTRTI(1,1:NTILES))
+CALL VARWRITE1C_NC (INCID(1), NTILES,ISTART2,ICOUNT5, 'v_sfc_strss_ti',  VVSTRTI(1,1:NTILES))
+CALL VARWRITE1C_NC (INCID(1), NTILES,ISTART2,ICOUNT5, 'sfc_sen_flx_ti',  VAHFSTI(1,1:NTILES))
+CALL VARWRITE1C_NC (INCID(1), NTILES,ISTART2,ICOUNT5, 'sfc_lat_flx_ti',  VEVAPTI(1,1:NTILES)*RLVTT)
+CALL VARWRITE1C_NC (INCID(1), NTILES,ISTART2,ICOUNT5, 't_skin_ti',       VTSKTI(1,1:NTILES))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'sfc_emiss',       VFEMIS)
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'land_sea_mask', &
+ & SD_VF(:,YSD_VF%YLSM%MP,1) )
+! Create super-array to remain consistent with previous code
+ZVAROG(1)=SD_VF(1,YSD_VF%YGETRL%MP,1)  ! STANDARD DEVIATION OF SUBGRID OROGRAPHY
+ZVAROG(2)=SD_VF(1,YSD_VF%YVRLAN%MP,1)  ! ANISOTROPY OF SUBGRID OROGRAPHY ("ASPECT RATIO")
+ZVAROG(3)=SD_VF(1,YSD_VF%YVRLDI%MP,1)  ! DIRECTION (ANGLE) WHERE MEAN SQUARE GRADIENT IS LARGEST
+ZVAROG(4)=SD_VF(1,YSD_VF%YSIG%MP,1)    ! MEAN SUBGRID SLOPE
+ZVAROG(5)=SD_VF(1,YSD_VF%YSDFOR%MP,1)  ! NEW STANDARD DEVIATION OF SUBGRID OROGRAPHY
+CALL VARWRITE1C_NC (INCID(1), 5,     ISTART2,ICOUNT6, 'dir_orog_var',    ZVAROG)
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'low_veg_cov', &
+ &  SD_VF(:,YSD_VF%YCVL%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'high_veg_cov', &
+ &  SD_VF(:,YSD_VF%YCVH%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'low_veg_type', &
+ &  SD_VF(:,YSD_VF%YTVL%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'high_veg_type', &
+ &  SD_VF(:,YSD_VF%YTVH%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'sea_ice_cov', &
+ &  SD_VF(:,YSD_VF%YCI%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'sst', &
+ &  SD_VF(:,YSD_VF%YSST%MP,1))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'n_conv_base', &
+ &  REAL(ICBOT(:),JPRB))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'n_conv_top', &
+ &  REAL(ICTOP(:),JPRB))
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'cond_detrained_updr',     PLUDE)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG, ISTART2,ICOUNT2, 'cond_updraft',            PLU)
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'sun_duration',    VISUND)
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'wind_gust',       VI10FG)
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'rough_len_heat', &
+ & EXP(SD_VD(:,YSD_VD%YLZ0H%MP,1)))
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'sfc_sen_flx_ext', (/REXTSHF/) )
+CALL VARWRITE1C_NC (INCID(1), 1,     (/ISTART1/),(/ICOUNT1/), 'sfc_lat_flx_ext', (/REXTLHF/) )
+
+
+!*         4.5  write diagnostic fluxes.
+
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'pressure_h',       PPRESH9)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'height_h',         PPHI9/RG)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'conv_flx_wv',      PDIFCQ)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'conv_flx_s',       PDIFCS)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_wv',      PDIFTQ)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_s',       PDIFTS)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_wv_qpos', PFCQNG)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'conv_rain_3d',     PFPLCL)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'conv_snow_3d',     PFPLCN)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'stra_rain_3d',     PFPLSL)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'stra_snow_3d',     PFPLSN)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 's_flux_cnv_rain',  PFHPCL)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 's_flux_cnv_snow',  PFHPCN)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 's_flux_str_rain',  PFHPSL)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 's_flux_str_snow',  PFHPSN)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'sw_rad_flux',      PFRSO)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'lw_rad_flux',      PFRTH)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'conv_flx_u',       PSTRCU)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'conv_flx_v',       PSTRCV)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'gwd_flx_u',        PSTRDU)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'gwd_flx_v',        PSTRDV)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_u',       PSTRTU)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_v',       PSTRTV)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_ice',     PDIFTI)
+CALL VARWRITE1C_NC (INCID(1), NFLEVG+1, ISTART2,ICOUNT3, 'turb_flx_liq',     PDIFTL)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'ice_flx_cnv_cond', PFCCQN)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'liq_flx_cnv_cond', PFCCQL)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'ice_flx_str_cond', PFCSQN)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'liq_flx_str_cond', PFCSQL)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'liq_flx_turb_pos', PFCQLNG)
+CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'ice_flx_turb_pos', PFCQNNG)
+
+!do n=1,nvxtr2
+DO N=1,YSD_X2D%NUMFLDS
+  ZEXTR2=VEXTR2(1,N)
+  WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
+  CALL VARWRITE1C_NC (INCID(2), 1,     (/ISTART1/),(/ICOUNT1/), 'extra_sfc_'//NTXT, ZEXTR2)
+ENDDO
+!do n=1,nvextr
+DO N=1,YSD_XAD%NUMFLDS
+  ZEXTRA(1:YSD_XAD%NLEVS)=VEXTRA(1,1:YSD_XAD%NLEVS,N)
+  WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
+  !call varwrite1c_nc (incid(2), nflevg, istart2,icount2, 'extra_col_'//ntxt, ZEXTRA(1:nflevg))
+  CALL VARWRITE1C_NC (INCID(2), NCEXTR, ISTART2,ICOUNTE, 'extra_col_'//NTXT, ZEXTRA(1:NCEXTR))
+ENDDO
+
+
+!*         4.6  overwrite variable names and units to be changed in callpar
+
+IF ( NSTEP == 0 ) THEN
+
+  DO N=1,NVXTR2
+    WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
+    ISTATUS = NF_INQ_VARID   (INCID(2), 'extra_sfc_'//NTXT, IVARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_PUT_ATT_TEXT (INCID(2), IVARID, 'units',     0,               '')
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_PUT_ATT_TEXT (INCID(2), IVARID, 'long_name', LEN(YDPHYDS%CVEXTR2(N)), YDPHYDS%CVEXTR2(N))
+    CALL HANDLE_ERR_NC(ISTATUS)
+  ENDDO
+
+  DO N=1,NVEXTR
+    ! Write out the names for the extra variables
+    !WRITE(6,*) 'NVEXTR',N,LEN(YDPHYDS%CVEXTRA(N)), YDPHYDS%CVEXTRA(N)
+    WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
+    ISTATUS = NF_INQ_VARID   (INCID(2), 'extra_col_'//NTXT, IVARID)
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_PUT_ATT_TEXT (INCID(2), IVARID, 'units',     0,               '')
+    CALL HANDLE_ERR_NC(ISTATUS)
+    ISTATUS = NF_PUT_ATT_TEXT (INCID(2), IVARID, 'long_name', LEN(YDPHYDS%CVEXTRA(N)), YDPHYDS%CVEXTRA(N))
+    CALL HANDLE_ERR_NC(ISTATUS)
+  ENDDO
+
+ENDIF
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('WRTD1C_NC',1,ZHOOK_HANDLE)
+
+END SUBROUTINE WRTD1C_NC

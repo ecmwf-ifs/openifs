@@ -1,0 +1,463 @@
+
+if [[ $# -eq 1 ]] ; then
+  export ARCH=$1
+else
+  export ARCH=${ARCH:=ibm_power4}
+fi
+
+if [[ "$ARCH" = ibm_power4 ]] ; then
+#-- IBM Power4
+  FC="xlf90_r -g -qsmp=omp -qextname -qsuffix=cpp=F90 -qfree=F90 -I."
+  CC="xlc_r -g -qsmp=noauto -I."
+  LIBS="-L. -ldrhook -lmpi_serial -L/usr/pmapi/lib -lpmapi"
+elif [[ "$ARCH" = rs6000 ]] ; then
+#-- IBM Power3 (at ECMWF)
+  FC="xlf90_r -g -qsmp=omp -qextname -qsuffix=cpp=F90 -qfree=F90 -I."
+  CC="xlc_r -g -qsmp=noauto -I."
+  LIBS="-L. -ldrhook -lmpi_serial"
+elif [[ "$ARCH" = linux ]] ; then
+#-- Linux with Portland Group F90 (for IA32)
+  FC="pgf90 -mp -I. -g -Ktrap=fp -O1 -fPIC"
+  CC="gcc -g -m32 -ansi -Werror"
+  LIBS="-L. -ldrhook -lmpi_serial -Wl,-export-dynamic"
+elif [[ "$ARCH" = linuxg95 ]] ; then
+#-- Linux with GNU g95
+  FC="g95 -mp -I. -g -fno-second-underscore"
+  CC="gcc -g -m32 -ansi -Werror"
+  LIBS="-L. -ldrhook -lmpi_serial"
+elif [[ "$ARCH" = ia64 ]] ; then
+#-- Linux with Intel F90
+  FC="ifort -openmp -cpp -I. -g -fpe0 -O1 -assume byterecl -assume cc_omp -traceback \
+            -assume cc_omp -assume underscore -lowercase -nomixed_str_len_arg -fPIC"
+  CC="gcc -g -m64 -ansi -Werror"
+  LIBS="-L. -ldrhook -lmpi_serial -Wl,-export-dynamic"
+elif [[ "$ARCH" = amd64 ]] ; then
+#-- Linux with Portland Group F90 -- for AMD64
+  FC="pgf90 -mp -I. -g -Ktrap=fp -O1 -fPIC -tp amd64"
+  CC="gcc -g -m64 -ansi -Werror"
+  LIBS="-L. -ldrhook -lmpi_serial -Wl,-export-dynamic"
+elif [[ "$ARCH" = @(*alpha) ]] ; then
+#-- ECMWF Dec Alpha (nowadays an outdated toy machine)
+  FC="f90 -convert big_endian -O0 -assume byterecl"
+  CC="cc -std -g -O0"
+  LIBS="-L. -ldrhook -lmpi_serial"
+elif [[ "$ARCH" = i86pc ]] ; then
+#-- ECMWF Intel/Solaris
+  FC="f90 -xfilebyteorder=big8:%all -I. -M."
+  CC="gcc -g -ansi -Werror"
+  LIBS="-L. -ldrhook -lmpi_serial -L/opt/sfw/lib/gcc-lib/i386-pc-solaris2.9/2.95.3 -lgcc"
+else
+  echo "***Error: Unrecognized ARCH=$ARCH"
+  echo "          Please edit this file $0"
+  exit 1
+fi
+
+if [[ -f ./ODB_FCLIBS ]] ; then
+  ODB_FCLIBS=$(cat ./ODB_FCLIBS)
+else
+  ODB_FCLIBS=""
+fi
+
+#-- In case of shareable linkage ...
+
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH:=.}
+if [[ "$LD_LIBRARY_PATH" != "." ]] ; then
+  LD_LIBRARY_PATH=".:${LD_LIBRARY_PATH}"
+fi
+export LD_LIBRARY_PATH
+
+#-- Initialize (outside this script) the following to 0/1 to prevent/allow running GNU-debugger
+export GNUDEBUGGER=${GNUDEBUGGER:=0}
+
+set -xv
+
+#-------------------------------------------------------------------------
+# Example#0 : Show wordsizes in F90 & C of this arch
+#-------------------------------------------------------------------------
+
+./sizeof.x
++ ./sizeof.x
+sizeof(void *) = 4
+sizeof(char) = 1
+sizeof(short int) = 2
+sizeof(int) = 4
+sizeof(long int) = 4
+sizeof(long long int) = 8
+sizeof(float) = 4
+sizeof(double) = 8
+
+./kind.x
++ ./kind.x
+bit_size(i     )=   32    4 (the default INTEGER)
+bit_size(i_JPIT)=    8    1    1
+bit_size(i_JPIS)=   16    2    2
+bit_size(i_JPIM)=   32    4    4
+bit_size(i_JPIB)=   64    8    8
+eps/huge(r     )=    0.11920929000000000000E-06    0.34028235000000000000E+39 (the default REAL)
+eps/huge(r_JPRT)=    0.11920929000000000000E-06    0.34028235000000000000E+39    4
+eps/huge(r_JPRS)=    0.11920929000000000000E-06    0.34028235000000000000E+39    4
+eps/huge(r_JPRM)=    0.11920929000000000000E-06    0.34028235000000000000E+39    4
+eps/huge(r_JPRB)=    0.22204460492503131000E-15    0.17976931348623167000+309    8
+eps/huge(d     )=    0.22204460492503131000E-15    0.17976931348623167000+309 (the default DOUBLE PRECISION)
+
+#-------------------------------------------------------------------------
+# Example#1 : Generate Dr.Hook, run and fail in divide by zero
+#-------------------------------------------------------------------------
+
+./insert_drhook drhook_ex1.F90
++ ./insert_drhook drhook_ex1.F90
+insert_hook: drhook_ex1.F90 => _drhook_ex1.F90
+$FC -I. _drhook_ex1.F90 -o drhook_ex1.x $LIBS
++ pgf90 -mp -I. -g -Ktrap=fp -O1 -fPIC -I. _drhook_ex1.F90 -o drhook_ex1.x -L. -ldrhook -lmpi_serial -Wl,-export-dynamic
+env DR_HOOK=1 ./drhook_ex1.x || :
++ env DR_HOOK=1 ./drhook_ex1.x
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+signal_drhook(SIGABRT=6): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGBUS=7): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGSEGV=11): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGILL=4): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGSTKFLT=16): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGFPE=8): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGTRAP=5): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGINT=2): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGQUIT=3): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGTERM=15): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGXCPU=24): New handler installed at 0x805749b; old preserved at 0x0
+signal_drhook(SIGSYS=31): New handler installed at 0x805749b; old preserved at 0x0
+[myproc#1,tid#1,pid#32361,signal#8(SIGFPE)]: Received signal :: 7MB (heap), 7MB (rss), 0MB (stack), 0 (paging), nsigs 1, time     0.01
+Activating SIGALRM=14 and calling alarm(10), time =    0.01
+JSETSIG: sl->active = 0
+signal_drhook(SIGALRM=14): New handler installed at 0x805749b; old preserved at 0x0
+tid#1 starting drhook traceback, time =    0.01
+[myproc#1,tid#1,pid#32361]:  DRHOOK_EX1 
+[myproc#1,tid#1,pid#32361]:   SUB1 
+[myproc#1,tid#1,pid#32361]:    SUB2 
+tid#1 starting sigdump traceback, time =    0.01
+[gdb__sigdump] : Received signal#8(SIGFPE), pid=32361
+[gdb__sigdump] : Backtrace of program './drhook_ex1.x' :
+/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/drhook.c:832  :  drhook_ex1.x(strftime+0x1d07) [0x805705f]
+         /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/_drhook_ex1.F90:35  :  drhook_ex1.x(sub2_+0x4a) [0x8055c4a]
+                                                             <Unknown>  :  libpthread.so.0 [0x5556ecc7]
+                                                             <Unknown>  :  libc.so.6 [0x555debf0]
+         /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/_drhook_ex1.F90:24  :  drhook_ex1.x(sub1_+0x63) [0x8055bc3]
+         /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/_drhook_ex1.F90:10  :  drhook_ex1.x(MAIN_+0xa3) [0x8055b03]
+                                                             <Unknown>  :  drhook_ex1.x(main+0x69) [0x8055a29]
+                                                             <Unknown>  :  libc.so.6(__libc_start_main+0xce) [0x555cad3e]
+                                       ../sysdeps/i386/elf/start.S:105  :  drhook_ex1.x(strcpy+0x39) [0x8055911]
+[gdb__sigdump] : End of backtrace
+Done tracebacks, calling exit with sig=8, time =    0.02
+ ABORT!    1 Dr.Hook calls ABOR1 ...
+ ABOR1 CALLED
+ Dr.Hook calls ABOR1 ...
+[myproc#1,tid#1,pid#32361]:  DRHOOK_EX1 
+[myproc#1,tid#1,pid#32361]:   SUB1 
+[myproc#1,tid#1,pid#32361]:    SUB2 
+ SDL_TRACEBACK: No traceback implemented.
+[myproc#1,tid#1,pid#32361,signal#6(SIGABRT)]: Received signal :: 7MB (heap), 7MB (rss), 0MB (stack), 0 (paging), nsigs 2, time     0.02
+Killed 
++ :
+
+#-------------------------------------------------------------------------
+# Example#2 : With the previous case fixed experience with watch point
+#-------------------------------------------------------------------------
+
+./insert_drhook drhook_ex2.F90
++ ./insert_drhook drhook_ex2.F90
+insert_hook: drhook_ex2.F90 => _drhook_ex2.F90
+$FC -I. _drhook_ex2.F90 -o drhook_ex2.x $LIBS
++ pgf90 -mp -I. -g -Ktrap=fp -O1 -fPIC -I. _drhook_ex2.F90 -o drhook_ex2.x -L. -ldrhook -lmpi_serial -Wl,-export-dynamic
+env DR_HOOK=1 ./drhook_ex2.x || :
++ env DR_HOOK=1 ./drhook_ex2.x
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+signal_drhook(SIGABRT=6): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGBUS=7): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGSEGV=11): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGILL=4): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGSTKFLT=16): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGFPE=8): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGTRAP=5): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGINT=2): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGQUIT=3): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGTERM=15): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGXCPU=24): New handler installed at 0x805899b; old preserved at 0x0
+signal_drhook(SIGSYS=31): New handler installed at 0x805899b; old preserved at 0x0
+***Warning: Watch point 'MAIN: array A(N)' was created for address 0x80b30b0 (800 bytes, on myproc#1, tid#1) : crc32=3160622197
+***Error: Watch point 'MAIN: array A(N)' at address 0x80b30b0 on myproc#1 has changed (detected in tid#1 when leaving routine SUB2) : new crc32=3567971738
+ ABOR1FL HAS BEEN CALLED AT drhook.c:001965
+ ABORT!    1 *** Fatal error; aborting (SIGABRT) ...
+ ABOR1 CALLED
+ *** Fatal error; aborting (SIGABRT) ...
+[myproc#1,tid#1,pid#32382]:  DRHOOK_EX2 
+[myproc#1,tid#1,pid#32382]:   SUB1 
+[myproc#1,tid#1,pid#32382]:    SUB2 
+ SDL_TRACEBACK: No traceback implemented.
+[myproc#1,tid#1,pid#32382,signal#6(SIGABRT)]: Received signal :: 7MB (heap), 7MB (rss), 0MB (stack), 0 (paging), nsigs 1, time     0.01
+Activating SIGALRM=14 and calling alarm(10), time =    0.01
+JSETSIG: sl->active = 0
+signal_drhook(SIGALRM=14): New handler installed at 0x805899b; old preserved at 0x0
+tid#1 starting drhook traceback, time =    0.01
+[myproc#1,tid#1,pid#32382]:  DRHOOK_EX2 
+[myproc#1,tid#1,pid#32382]:   SUB1 
+[myproc#1,tid#1,pid#32382]:    SUB2 
+tid#1 starting sigdump traceback, time =    0.01
+[gdb__sigdump] : Received signal#6(SIGABRT), pid=32382
+[gdb__sigdump] : Backtrace of program './drhook_ex2.x' :
+/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/drhook.c:832  :  drhook_ex2.x [0x805855f]
+                                                             <Unknown>  :  libc.so.6(kill+0x11) [0x555decc1]
+                                                             <Unknown>  :  libpthread.so.0 [0x5556ecc7]
+                                                             <Unknown>  :  libc.so.6 [0x555debf0]
+                                                             <Unknown>  :  libpthread.so.0(raise+0x2b) [0x5556b38b]
+ /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/endian.c:68  :  drhook_ex2.x(ec_raise_+0x1f) [0x80630e7]
+/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/module/sdl_module.F90:71  :  drhook_ex2.x(sdl_module_sdl_srlabort_+0x25) [0x80632a5]
+    /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/abor1.F90:39  :  drhook_ex2.x(abor1_+0x4ec) [0x806203c]
+    /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/abor1.F90:53  :  drhook_ex2.x(abor1fl_+0x143) [0x8062193]
+   /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/drhook.c:1965  :  drhook_ex2.x [0x805bce1]
+   /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/drhook.c:2210  :  drhook_ex2.x(c_drhook_end_+0xc8) [0x805c571]
+/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/support/dr_hook_util.F90:36  :  drhook_ex2.x(dr_hook_util_+0x1da) [0x80577ca]
+      /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/ifsaux/module/yomhook.F90:44  :  drhook_ex2.x(yomhook_dr_hook_default_+0x3e) [0x805610e]
+                /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/_drhook_ex2.F90:39  :  drhook_ex2.x(sub2_+0x74) [0x80560a4]
+                /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/_drhook_ex2.F90:27  :  drhook_ex2.x(sub1_+0x63) [0x8055ff3]
+                /var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116/_drhook_ex2.F90:11  :  drhook_ex2.x(MAIN_+0x138) [0x8055f38]
+                                                                    <Unknown>  :  drhook_ex2.x(main+0x69) [0x8055dc9]
+                                                                    <Unknown>  :  libc.so.6(__libc_start_main+0xce) [0x555cad3e]
+                                              ../sysdeps/i386/elf/start.S:105  :  drhook_ex2.x(strcpy+0x31) [0x8055cb1]
+[gdb__sigdump] : End of backtrace
+Done tracebacks, calling exit with sig=6, time =    0.02
++ :
+
+#-------------------------------------------------------------------------
+# Example#3 : Experience with different profilings. Also silence Dr.Hook!
+#-------------------------------------------------------------------------
+
+./insert_drhook drhook_ex3.F90
++ ./insert_drhook drhook_ex3.F90
+insert_hook: drhook_ex3.F90 => _drhook_ex3.F90
+$FC -I. _drhook_ex3.F90 -o drhook_ex3.x $LIBS
++ pgf90 -mp -I. -g -Ktrap=fp -O1 -fPIC -I. _drhook_ex3.F90 -o drhook_ex3.x -L. -ldrhook -lmpi_serial -Wl,-export-dynamic
+export DR_HOOK=1
++ export DR_HOOK=1
+
+export DR_HOOK_SILENT=1
++ export DR_HOOK_SILENT=1
+export DR_HOOK_SHOW_PROCESS_OPTIONS=0
++ export DR_HOOK_SHOW_PROCESS_OPTIONS=0
+
+#-- Wall clock profile
+env DR_HOOK_OPT=wallprof ./drhook_ex3.x
++ env DR_HOOK_OPT=wallprof ./drhook_ex3.x
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+Writing profiling information of proc#1 into file 'drhook.prof.1'
+Profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144441
+	Instrumentation overhead: 58.33%
+	Wall-time is 0.00 sec on proc#1 (1 procs, 1 threads)
+	Thread#1:        0.00 sec (100.00%)
+mv drhook.prof.1 drhook.prof.1.wallprof
++ mv drhook.prof.1 drhook.prof.1.wallprof
+cat drhook.prof.1.wallprof
++ cat drhook.prof.1.wallprof
+Profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144441
+	Instrumentation overhead: 58.33%
+	Memory usage : 7 MBytes (heap), 7 MBytes (rss), 0 MBytes (stack), 0 (paging)
+	Wall-time is 0.00 sec on proc#1 (1 procs, 1 threads)
+	Thread#1:        0.00 sec (100.00%)
+
+    #  % Time         Cumul         Self        Total     # of calls        Self       Total    Routine@<thread-id>
+                                                                                                 (Size; Size/sec; AvgSize/call)
+        (self)        (sec)        (sec)        (sec)                    ms/call     ms/call
+
+    1    51.25        0.001        0.001        0.002           2500        0.00        0.00    SUB2@1
+    2    46.59        0.003        0.001        0.004            100        0.01        0.04    SUB1@1
+    3     2.16        0.003        0.000        0.004              1        0.06        3.73    DRHOOK_EX3@1
+
+#-- CPU-time profile
+env DR_HOOK_OPT=cpuprof ./drhook_ex3.x
++ env DR_HOOK_OPT=cpuprof ./drhook_ex3.x
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+Writing profiling information of proc#1 into file 'drhook.prof.1'
+Profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144441
+	Instrumentation overhead: 0.00%
+	Total CPU-time is 0.01 sec on proc#1 (1 procs, 1 threads)
+	Thread#1:        0.01 sec (100.00%)
+mv drhook.prof.1 drhook.prof.1.cpuprof
++ mv drhook.prof.1 drhook.prof.1.cpuprof
+cat drhook.prof.1.cpuprof
++ cat drhook.prof.1.cpuprof
+Profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144441
+	Instrumentation overhead: 0.00%
+	Memory usage : 7 MBytes (heap), 7 MBytes (rss), 0 MBytes (stack), 0 (paging)
+	Total CPU-time is 0.01 sec on proc#1 (1 procs, 1 threads)
+	Thread#1:        0.01 sec (100.00%)
+
+    #  % Time         Cumul         Self        Total     # of calls        Self       Total    Routine@<thread-id>
+                                                                                                 (Size; Size/sec; AvgSize/call)
+        (self)        (sec)        (sec)        (sec)                    ms/call     ms/call
+
+    1   100.00        0.010        0.010        0.010            100        0.10        0.10    SUB1@1
+    2     0.00        0.010        0.000        0.010              1        0.00       10.00    DRHOOK_EX3@1
+    3    -0.00        0.010       -0.000       -0.000           2500       -0.00       -0.00    SUB2@1
+
+#-- Mflop-counter profile
+env DR_HOOK_OPT=hpmprof ./drhook_ex3.x
++ env DR_HOOK_OPT=hpmprof ./drhook_ex3.x
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+Writing profiling information of proc#1 into file 'drhook.prof.1'
+Profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144441
+	Instrumentation overhead: 59.67%
+	Wall-time is 0.00 sec on proc#1, 0 MFlops (ops#0*10^6), 0 MIPS (ops#0*10^6) (1 procs, 1 threads)
+	Thread#1:        0.00 sec (100.00%), 0 MFlops (ops#0*10^6), 0 MIPS (ops#0*10^6)
+mv drhook.prof.1 drhook.prof.1.hpmprof
++ mv drhook.prof.1 drhook.prof.1.hpmprof
+cat drhook.prof.1.hpmprof
++ cat drhook.prof.1.hpmprof
+Profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144441
+	Instrumentation overhead: 59.67%
+	Memory usage : 7 MBytes (heap), 7 MBytes (rss), 0 MBytes (stack), 0 (paging)
+	Wall-time is 0.00 sec on proc#1, 0 MFlops (ops#0*10^6), 0 MIPS (ops#0*10^6) (1 procs, 1 threads)
+	Thread#1:        0.00 sec (100.00%), 0 MFlops (ops#0*10^6), 0 MIPS (ops#0*10^6)
+
+    #  % Time         Cumul         Self        Total     # of calls    MIPS  MFlops   Div-%    Routine@<thread-id>
+                                                                                                 (Size; Size/sec; AvgSize/call)
+        (self)        (sec)        (sec)        (sec)                                       
+
+    1    51.40        0.001        0.001        0.002           2500       0       0     0.0    SUB2@1
+    2    46.50        0.003        0.001        0.004            100       0       0     0.0    SUB1@1
+    3     2.10        0.003        0.000        0.004              1       0       0     0.0    DRHOOK_EX3@1
+
+#-- Memory profile (only)
+env DR_HOOK_OPT=memprof ./drhook_ex3.x
++ env DR_HOOK_OPT=memprof ./drhook_ex3.x
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+Writing memory-profiling information of proc#1 into file 'drhook.prof.1-mem'
+Memory-profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144443
+mv drhook.prof.1-mem drhook.prof.1.memprof
++ mv drhook.prof.1-mem drhook.prof.1.memprof
+cat drhook.prof.1.memprof
++ cat drhook.prof.1.memprof
+Memory-profiling information for program='./drhook_ex3.x', proc#1:
+	No. of instrumented routines called : 3
+	Instrumentation started : 20060427 144441
+	Instrumentation   ended : 20060427 144443
+	Memory usage : 0 MBytes (max.seen), 0 MBytes (leaked), 7 MBytes (heap), 7 MBytes (max.rss), 0 MBytes (max.stack), 0 (paging)
+
+    #  Memory-%      Self-alloc     + Children    Self-Leaked          Heap       Max.Stack     Paging     #Calls    #Allocs     #Frees   Routine@<thread-id>
+         (self)         (bytes)        (bytes)        (bytes)        (bytes)        (bytes)    (delta)
+    1      0.00               0              0              0        7958528              0          0          1          0          0    DRHOOK_EX3@1
+    2      0.00               0              0              0        7958528              0          0        100          0          0    SUB1@1
+    3      0.00               0              0              0        7958528              0          0       2500          0          0    SUB2@1
+
+unset DR_HOOK
++ unset DR_HOOK
+unset DR_HOOK_SILENT
++ unset DR_HOOK_SILENT
+unset DR_HOOK_SHOW_PROCESS_OPTIONS
++ unset DR_HOOK_SHOW_PROCESS_OPTIONS
+
+#-------------------------------------------------------------------------
+# Example#4 : Check whether your Dr.Hook works with C-main program
+#-------------------------------------------------------------------------
+
+rc=0
++ rc=0
+$CC -c drhook_ex4.c || {
+  set +xv
+  echo "***Error: Your Dr.Hook C-main program test did not compile"
+  rc=1
+}
++ gcc -g -m32 -ansi -Werror -c drhook_ex4.c
+
+if [[ $rc -eq 0 ]] ; then
+  set +xv
+  $CC drhook_ex4.o -o ./drhook_ex4.x $LIBS $ODB_FCLIBS || {
+    echo "***Error: Your Dr.Hook C-main program test did not link"
+    rc=2
+  }
+fi
++ set +xv
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+signal_drhook(SIGABRT=6): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGBUS=7): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGSEGV=11): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGILL=4): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGSTKFLT=16): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGFPE=8): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGTRAP=5): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGINT=2): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGQUIT=3): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGTERM=15): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGXCPU=24): New handler installed at 0x805808b; old preserved at 0x0
+signal_drhook(SIGSYS=31): New handler installed at 0x805808b; old preserved at 0x0
+./drhook_ex4.x: no. of C-args = 5 and F90-args (numargs) = 4 (cmpl_iargc_() = 4)
+argv[0] = './drhook_ex4.x' (./drhook_ex4.x) : getarg(0, farg) --> farg = './drhook_ex4.x'
+argv[1] = 'SIGFPE' (SIGFPE) : getarg(1, farg) --> farg = 'SIGFPE'
+argv[2] = 'ARG TEST' (ARG TEST) : getarg(2, farg) --> farg = 'ARG TEST'
+argv[3] = 'test arg' (test arg) : getarg(3, farg) --> farg = 'test arg'
+argv[4] = '/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116' (/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116) : getarg(4, farg) --> farg = '/var/tmp/tmpdir/mps/ia32/drhook_CY30R2.116'
+MPL_INIT : MPL_METHOD=JP_BLOCKING_BUFFERED
+MPL_INIT : MAILBOX SIZE=     1000000
+MPL_BUFFER_METHOD:  2           0
+./drhook_ex4.x: no. of C-args = 1 and F90-args (numargs) = 0 (cmpl_iargc_() = 0)
+argv[0] = './drhook_ex4.x' (./drhook_ex4.x) : getarg(0, farg) --> farg = './drhook_ex4.x'
+Writing profiling information of proc#1 into file 'cdrhook.prof.1'
+Profiling information for program='./drhook_ex4.x', proc#1:
+	No. of instrumented routines called : 8
+	Instrumentation started : 20060427 144443
+	Instrumentation   ended : 20060427 144443
+	Instrumentation overhead: 53.87%
+	Wall-time is 0.44 sec on proc#1 (1 procs, 1 threads)
+	Thread#1:        0.44 sec (100.00%)
+Profiling information for program='./drhook_ex4.x', proc#1:
+	No. of instrumented routines called : 8
+	Instrumentation started : 20060427 144443
+	Instrumentation   ended : 20060427 144443
+	Instrumentation overhead: 53.87%
+	Memory usage : 7 MBytes (heap), 7 MBytes (rss), 0 MBytes (stack), 0 (paging)
+	Wall-time is 0.44 sec on proc#1 (1 procs, 1 threads)
+	Thread#1:        0.44 sec (100.00%)
+
+    #  % Time         Cumul         Self        Total     # of calls        Self       Total    Routine@<thread-id>
+                                                                                                 (Size; Size/sec; AvgSize/call)
+        (self)        (sec)        (sec)        (sec)                    ms/call     ms/call
+
+    1    32.25        0.143        0.143        0.598           1000        0.14        0.60    sub@1:drhook_ex4.c
+    2    31.26        0.282        0.139        0.216         200000        0.00        0.00    mysin@1:drhook_ex4.c
+    3    23.21        0.385        0.103        0.250         100000        0.00        0.00    mycos@1:drhook_ex4.c
+    4    13.15        0.443        0.058        0.097         100000        0.00        0.00    mysqrt@1:drhook_ex4.c
+    5     0.11        0.443        0.000        0.599              1        0.47      598.69    LOOP_BLOCK@1:drhook_ex4.c
+    6     0.01        0.443        0.000        0.000              1        0.05        0.05    ARGLIST_TEST@1:drhook_ex4.c
+    7     0.00        0.443        0.000        0.599              1        0.01      598.75    real_main@1:drhook_ex4.c
+    8     0.00        0.443        0.000        0.000              1        0.00        0.01    CDRHOOKINIT@1

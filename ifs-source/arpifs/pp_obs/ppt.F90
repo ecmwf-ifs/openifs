@@ -1,0 +1,338 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE PPT(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,&
+ & PRES,PLNPRES,LDBELO,LDBELS,LDBLOW,LDBLES,LDEXTR,&
+ & POROG,PRXP,PRXPD,PTSTAR,PT0,PR0,PTF,PTPP,PSTTF,PR2,PRTPP)
+
+!**** *PPT* - POST-PROCESS TEMPERATURE.
+
+!     PURPOSE.
+!     --------
+!           PERFORMS THE VERTICAL INTERPOLATION OF TEMPERATURETO A GIVEN
+!       MODEL CO-ORDINATE LEVEL. ALSO EXTRAPOLATES TEMPERATURE
+!       BELOW SURFACE AND BOTTOM MODEL LEVEL IF SO REQUESTED.
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *PPT(...)*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+
+!        KPROMA                    - HORIZONTAL DIMENSION.             (INPUT-C)
+!        KSTART                    - START OF WORK.                    (INPUT-C)
+!        KPROF                     - DEPTH OF WORK.                    (INPUT-C)
+!        KFLEV                     - NUMBER OF INPUT PRESSURE LEVELS   (INPUT-C)
+!        KLEVP                     - NUMBER OF OUTPUT PRESSURE LEVELS  (INPUT-C)
+!        KLOLEV                    - BEGINING FOR THE INTERPOLATION    (INPUT-C)
+!        KPPM     - Number of interpolation methods in post-processing (INPUT-C)
+
+!        KLEVB(KPROMA,KLEVP,KPPM)  - INPUT LEVEL JUST BELOW PLNPRES    (INPUT-C)
+!                                    (SEE PPFLEV)
+!        PLNPRES(KPROMA,KFLEV)     - POST-PROCESS LEVEL PRESSURES (LOG)(INPUT-C)
+!        POROG(KPROMA)             - MODEL OROGRAPHY.                  (INPUT-C)
+!        LDBELO(KPROMA,KLEVP)      - .TRUE. IF PRESSURE IS UNDER
+!                                     LOWEST (FULL) MODEL LEVEL        (INPUT-C)
+!        LDBELS(KPROMA,KLEVP)      - .TRUE. IF PRESSURE IS UNDER
+!                                     MODEL SURFACE                    (INPUT-C)
+!        LDBLOW                    - .TRUE. IF LDBELO(J) IS CONTAINING
+!                                    AT LEAST ONE .TRUE.               (INPUT-C)
+!        LDBLES                    - .TRUE. IF LDBELS(J) IS CONTAINING
+!                                    AT LEAST ONE .TRUE.               (INPUT-C)
+!        LDEXTR                    - .TRUE. IF EXTRAPOLATION REQUESTED (INPUT-C)
+!        PRXP(KPROMA,0:KFLEV,KPPM) - HALF,FULL AND LN HALF,FULL LEVEL
+!                                    PRESSURES (SEE PPINIT)            (INPUT)
+!        PRXPD(KPROMA,0:KFLEV,KPPM)- 1./D(P) AND 1./D(LN(P))           (INPUT)
+!        PTSTAR(KPROMA)            - SURFACE TEMPERATURE               (INPUT)
+!        PT0(KPROMA)               - STANDARD SURFACE TEMPERATURE      (INPUT)
+!        PTF(KPROMA,0:KFLEV)       - TEMPERATURE ON FULL INPUT LEVELS. (INPUT)
+
+!        PTPP(KPROMA,KLEVP)        - POST-PROCESSED TEMPERATURE        (OUTPUT)
+!        PSTTF                     - ICAO TEMPERATURES ON FULL LEVELS  (INPUT)
+
+!     IMPLICIT ARGUMENTS :  CONSTANTS FROM YOMCST AND YOMSTA.
+!     --------------------
+!     EXTERNALS.
+!     ----------
+
+!     AUTHOR.
+!     -------
+!      ORIGINAL : 89-01-26
+
+!     MODIFICATIONS.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!      A.Geer        24-Jul-2015 Pre-OOPS: 0:NFLEVG deprecated
+!     ------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST   , ONLY : RG, RD
+USE YOMSTA   , ONLY : RDTDZ1
+USE YOMCT0   , ONLY : LOLDPP
+USE YOMPPVI  , ONLY : LNOTS_T
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROMA
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFLEV
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVP
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTART
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROF
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLOLEV
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPPM
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVB(KPROMA,KLEVP,KPPM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRES(KPROMA,KLEVP)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLNPRES(KPROMA,KLEVP)
+LOGICAL           ,INTENT(IN)    :: LDBELO(KPROMA,KLEVP)
+LOGICAL           ,INTENT(IN)    :: LDBELS(KPROMA,KLEVP)
+LOGICAL           ,INTENT(IN)    :: LDBLOW(KLEVP)
+LOGICAL           ,INTENT(IN)    :: LDBLES(KLEVP)
+LOGICAL           ,INTENT(IN)    :: LDEXTR
+REAL(KIND=JPRB)   ,INTENT(IN)    :: POROG(KPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRXP(KPROMA,0:KFLEV,KPPM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRXPD(KPROMA,0:KFLEV,KPPM)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTAR(KPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PT0(KPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PR0(KPROMA,KFLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTF(KPROMA,KFLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTPP(KPROMA,KLEVP)
+REAL(KIND=JPRB)   ,INTENT(IN), OPTIONAL :: PSTTF(KPROMA,0:KFLEV)
+REAL(KIND=JPRB)   ,INTENT(IN), OPTIONAL :: PR2(KPROMA,KFLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT), OPTIONAL :: PRTPP(KPROMA,KLEVP)
+REAL(KIND=JPRB) :: ZSTTF(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) :: ZTF(KPROMA,0:KFLEV),       ZSTZF(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) :: ZALPHA(KPROMA),            ZR0(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) :: ZSTZP(KPROMA,KLEVP),       ZRP(KPROMA,KLEVP)
+REAL(KIND=JPRB) :: ZRP2(KPROMA,KLEVP)
+
+INTEGER(KIND=JPIM) :: IBL, ISLCT, JL, JLEV, JLEVP
+LOGICAL :: LL_RT
+
+REAL(KIND=JPRB) :: ZALP, ZALPC, ZFI2000, ZFI2500, ZGAM, ZTXX, ZUSDFI, ZXX, ZXXX
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB) :: ZPTF(KPROMA,0:KFLEV)
+
+#include "ppintp.intfb.h"
+#include "ppsta.intfb.h"
+#include "ppt_old.intfb.h"
+
+IF (LHOOK) CALL DR_HOOK('PPT',0,ZHOOK_HANDLE)
+
+!     ------------------------------------------------------------------
+
+ZPTF(KSTART:KPROF,1:KFLEV) = PTF(KSTART:KPROF,1:KFLEV)
+
+IF (PRESENT(PR2).AND.PRESENT(PRTPP)) THEN
+  LL_RT=.TRUE.
+ELSE
+  LL_RT=.FALSE.
+ENDIF
+
+!     ------------------------------------------------------------------
+!     0.    TEMPORARY USAGE OF "OLD" PPT
+!     ------------------------------------------------------------------
+
+IF (LOLDPP) THEN
+
+  CALL PPT_OLD(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,&
+   & PRES,LDBELO,LDBELS,LDBLOW,LDBLES,LDEXTR,&
+   & POROG,PRXP,PRXPD,PTSTAR,PT0,ZPTF,PTPP)
+
+  IF (LL_RT) THEN
+    DO JLEV = 1, KFLEV
+      DO JL = KSTART, KPROF
+        ZR0(JL,JLEV) = PR2(JL,JLEV)
+      ENDDO
+    ENDDO
+    ! extrapolation above top
+    DO JL = KSTART, KPROF
+        ZR0(JL,0) = ZR0(JL,1)
+    ENDDO
+
+    ISLCT=2
+    CALL PPINTP(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,ISLCT,&
+     & LDBELO,LDBLOW,PRES,PRXP,PRXPD,ZR0,ZRP2)
+
+    DO JLEVP = KLOLEV, KLEVP
+      IF (LDBLOW(JLEVP)) THEN
+        DO JL = KSTART, KPROF
+          IF (LDBELO(JL,JLEVP)) THEN
+            ZRP2(JL,JLEVP) = ZR0(JL,KFLEV)
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDDO
+    PRTPP(KSTART:KPROF,1:KLEVP)=ZRP2(KSTART:KPROF,1:KLEVP)*&
+         & PTPP(KSTART:KPROF,1:KLEVP)
+  ENDIF
+
+  IF (LHOOK) CALL DR_HOOK('PPT',1,ZHOOK_HANDLE)
+  RETURN
+ENDIF
+
+
+!     ------------------------------------------------------------------
+!*    1.    POST-PROCESS TEMPERATURE.
+!           -------------------------
+
+IF (.NOT.PRESENT(PSTTF)) THEN
+  CALL PPSTA('PPREF',KPROMA,KSTART,KPROF,KFLEV+1,1,PRXP(1,0,2),PRXP(1,0,4),&
+   & ZSTTF,ZSTZF)
+  DO JLEV = 1, KFLEV
+    DO JL = KSTART, KPROF
+      ZTF(JL,JLEV) = ZPTF(JL,JLEV)-ZSTTF(JL,JLEV)*RD/PR0(JL,JLEV)
+      ZR0(JL,JLEV) = PR0(JL,JLEV)
+    ENDDO
+  ENDDO
+ELSE
+    DO JLEV = 1, KFLEV
+    DO JL = KSTART, KPROF
+      ZTF(JL,JLEV) = ZPTF(JL,JLEV)-PSTTF(JL,JLEV)*RD/PR0(JL,JLEV)
+      ZR0(JL,JLEV) = PR0(JL,JLEV)
+    ENDDO
+  ENDDO
+ENDIF
+
+CALL PPSTA('PPREF',KPROMA,KSTART,KPROF,KLEVP,KLOLEV,PRES,PLNPRES,PTPP,ZSTZP)
+
+!*    1.1   PREPARE FOR EXTRAPOLATION ABOVE TOP
+
+DO JL = KSTART,KPROF
+  ZTF(JL,0) = ZTF(JL,1)
+  ZR0(JL,0) = ZR0(JL,1)
+ENDDO
+
+!*    1.2   INTERPOLATE R LINEARLY IN P
+
+ISLCT=2
+CALL PPINTP(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,ISLCT,&
+ & LDBELO,LDBLOW,PRES,PRXP,PRXPD,ZR0,ZRP)
+
+IF (LL_RT) THEN
+  DO JLEV = 1, KFLEV
+    DO JL = KSTART, KPROF
+      ZR0(JL,JLEV) = PR2(JL,JLEV)
+    ENDDO
+  ENDDO
+  ! extrapolation above top
+  DO JL = KSTART, KPROF
+    ZR0(JL,0) = ZR0(JL,1)
+  ENDDO
+
+  CALL PPINTP(KPROMA,KSTART,KPROF,KFLEV,KLEVP,KLOLEV,KPPM,KLEVB,ISLCT,&
+   & LDBELO,LDBLOW,PRES,PRXP,PRXPD,ZR0,ZRP2)
+
+  DO JLEVP = KLOLEV, KLEVP
+    IF (LDBLOW(JLEVP)) THEN
+      DO JL = KSTART, KPROF
+        IF (LDBELO(JL,JLEVP)) THEN
+          ZRP2(JL,JLEVP) = ZR0(JL,KFLEV)
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDDO
+ENDIF
+
+!*    1.3   INTERPOLATE TEMPERATURE QUADRATICALY IN LOG(P) TO KEEP GEOPOTENTIAL
+!*          IN UPPERAIR AND BETWEEN LOWEST LEVEL AND SURFACE.
+
+DO JLEVP = KLOLEV, KLEVP
+  IF (.NOT. LDBLOW(JLEVP)) THEN
+    DO JL = KSTART,KPROF
+      IBL = KLEVB(JL,JLEVP,4)
+      ZXX = (PRXP(JL,IBL,4)-PLNPRES(JL,JLEVP))&
+       & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))
+      ZGAM=(PRXP(JL,IBL-1,4)+PRXP(JL,IBL,4)-2.0_JPRB*PRXP(JL,IBL-1,3))&
+       & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))
+      PTPP(JL,JLEVP) = PTPP(JL,JLEVP) * RD/ZRP(JL,JLEVP)&
+       & + ZTF(JL,IBL)&
+       & + (ZTF(JL,IBL-1)-ZTF(JL,IBL))&
+       & * (ZXX + 3._JPRB * ZGAM * ZXX * (ZXX - 1.0_JPRB))
+    ENDDO
+  ELSE
+    DO JL = KSTART,KPROF
+      IF (.NOT.LDBELO(JL,JLEVP)) THEN
+        IBL = KLEVB(JL,JLEVP,4)
+        ZXX = (PRXP(JL,IBL,4)-PLNPRES(JL,JLEVP))&
+         & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))
+        ZGAM=(PRXP(JL,IBL-1,4)+PRXP(JL,IBL,4)-2.0_JPRB*PRXP(JL,IBL-1,3))&
+         & / (PRXP(JL,IBL,4)-PRXP(JL,IBL-1,4))
+        PTPP(JL,JLEVP) = PTPP(JL,JLEVP) * RD/ZRP(JL,JLEVP)&
+         & + ZTF(JL,IBL)&
+         & + (ZTF(JL,IBL-1)-ZTF(JL,IBL))&
+         & * (ZXX + 3._JPRB * ZGAM * ZXX * (ZXX - 1.0_JPRB))
+      ELSEIF (LDBELO(JL,JLEVP) .AND. .NOT.LDBELS(JL,JLEVP)) THEN
+        IF (LNOTS_T) THEN
+          ZXX = (PLNPRES(JL,JLEVP)-PRXP(JL,KFLEV,4))/(PRXP(JL,KFLEV,4)-PRXP(JL,KFLEV-1,4))
+          PTPP(JL,JLEVP) = ZPTF(JL,KFLEV)+ZXX*(ZPTF(JL,KFLEV)-ZPTF(JL,KFLEV-1))
+        ELSE
+          ZXX = (PRXP(JL,KFLEV,3)-PLNPRES(JL,JLEVP)) /&
+            & (PRXP(JL,KFLEV,3)-PRXP(JL,KFLEV,4))  
+          PTPP(JL,JLEVP) = PTSTAR(JL)+ZXX*(ZPTF(JL,KFLEV)-PTSTAR(JL))
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDIF
+ENDDO
+
+!*       1.4   EXTRAPOLATE TEMPERATURE BELOW SURFACE.
+
+IF (LDEXTR) THEN
+  ZTXX    = 298.0_JPRB
+  ZFI2000 = 2000.0_JPRB * RG
+  ZFI2500 = 2500.0_JPRB * RG
+  ZUSDFI  = 1.0_JPRB / (ZFI2500 - ZFI2000)
+  ZALPC   = -RDTDZ1 * RD / RG
+  DO JL = KSTART, KPROF
+    ZXXX = RD * MIN(1.0_JPRB, MAX(0.0_JPRB, (POROG(JL)-ZFI2000) * ZUSDFI))
+    ZALPHA(JL) = MAX(0.0_JPRB, ZALPC + ZXXX * MIN(0.0_JPRB, ZTXX - PT0(JL))&
+     & / MAX(POROG(JL), ZFI2000) )
+  ENDDO
+
+  DO JLEVP = KLOLEV, KLEVP
+    IF (LDBLES(JLEVP)) THEN
+      DO JL = KSTART, KPROF
+        IF (LDBELS(JL,JLEVP)) THEN
+          ZALP = ZALPHA(JL) * (PLNPRES(JL,JLEVP)-PRXP(JL,KFLEV,3))
+          PTPP(JL,JLEVP) = PTSTAR(JL) *&
+           & (1.0_JPRB + (1.0_JPRB + (0.5_JPRB + ZALP/6._JPRB) * ZALP) * ZALP)
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDDO
+ELSE
+  DO JLEVP = KLOLEV, KLEVP
+    IF (LDBLES(JLEVP)) THEN
+      DO JL = KSTART, KPROF
+        IF (LDBELS(JL,JLEVP)) THEN
+          PTPP(JL,JLEVP) = ZPTF(JL,KFLEV)
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDDO
+ENDIF
+
+!*       1.5  COMPUTE INTERPOLATED RT VARIABLE.
+
+IF (PRESENT(PRTPP)) THEN
+  DO JLEVP = 1, KLEVP
+    PRTPP(KSTART:KPROF,JLEVP)= ZRP2(KSTART:KPROF,JLEVP) * PTPP(KSTART:KPROF,JLEVP)
+  ENDDO
+ENDIF
+
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('PPT',1,ZHOOK_HANDLE)
+END SUBROUTINE PPT

@@ -1,0 +1,24 @@
+# Environment variables inherited by all t21 tests:
+
+export OMP_STACKSIZE="64M"
+
+export CRAYBLAS_AUTOTUNING_OFF=1
+export ATP_ENABLED=1
+
+export MPICH_RANK_REORDER_DISPLAY=1
+
+export GRIB_API_IO_BUFFER_SIZE=4194304
+export GRIB_API_WRITE_ON_FAIL=0
+export GRIB_API_LARGE_CONSTANT_FIELDS=1
+
+export DR_HOOK=1
+export DR_HOOK_IGNORE_SIGNALS=0
+
+export DR_HOOK_OPT="prof"
+export DATA=${WORK_DIR}
+
+export FDB_DEBUG=no
+export FDB_IO=aio
+export TRACEBACK_LEVEL=2
+
+export MPICH_MAX_THREAD_SAFETY=multiple

@@ -1,0 +1,81 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#:set ranks  = [2, 3, 4]
+#:set shapes = ['', ':', ':,:', ':,:,:', ':,:,:,:', ':,:,:,:,:']
+#:set config_file = os.path.dirname(_THIS_FILE_) + '/surface_fields_config.yaml'
+#:set config = field_config.VariableConfiguration(config_file)
+#:set prognostic = [field_config.VariableGroup(**group) for group in config.schema['prognostic']]
+#:set diagnostic = [field_config.VariableGroup(**group) for group in config.schema['diagnostic']]
+#:set variable_groups = prognostic + diagnostic
+
+MODULE SURFACE_VARIABLES_MOD
+  ! The SURFACE_VARIABLES type provides namespaced access to individual
+  ! groups of surface VARIABLE objects via group-specific container
+  ! types.
+  !
+  ! The generated group types contain the set of VARIABLE objects
+  ! configured for each surface group. The VARIABLES in turn that hold
+  ! metadata for surface fields and provide access to the underlying
+  ! storage FIELD objects and respective data pointers for
+  ! thread-parallel regions.
+
+USE PARKIND1, ONLY: JPIM, JPRB
+USE VARIABLE_MODULE, ONLY: VARIABLE_2D, VARIABLE_3D
+USE FIELD_MODULE, ONLY: FIELD_3D, FIELD_4D
+
+IMPLICIT NONE
+
+! Prognostic variable group types
+#:for group in prognostic
+TYPE SURFACE_VARIABLE_GROUP_${group.name}$
+  ! Prognostic surface variable group
+#:for v in group.variables
+#:set array = (', ALLOCATABLE, DIMENSION(%s)' % shapes[v.array]) if v.array else ''
+  TYPE(VARIABLE_${group.dimension}$D)${array}$ :: V${v.name}$   ! ${v.comment}$
+#:endfor
+
+  ! Store a field encapsualting the entire group array for backward compatibility
+  TYPE(FIELD_${group.dimension+1}$D) :: F_GROUP
+END TYPE SURFACE_VARIABLE_GROUP_${group.name}$
+
+#:endfor
+
+! Diagnostic variable group types
+#:for group in diagnostic
+TYPE SURFACE_VARIABLE_GROUP_${group.name}$
+  ! Diagnostic surface variable group
+#:for v in group.variables
+#:set array = (', ALLOCATABLE, DIMENSION(%s)' % shapes[v.array]) if v.array else ''
+  TYPE(VARIABLE_${group.dimension}$D)${array}$ :: V${v.name}$   ! ${v.comment}$
+#:endfor
+
+  ! Store a field encapsualting the entire group array for backward compatibility
+  TYPE(FIELD_${group.dimension+1}$D) :: F_GROUP
+END TYPE SURFACE_VARIABLE_GROUP_${group.name}$
+
+#:endfor
+
+TYPE SURFACE_VARIABLES
+  ! Global variable and field storage for surface variables
+
+  ! Prognostic variable groups
+#:for group in prognostic
+  TYPE(SURFACE_VARIABLE_GROUP_${group.name}$) :: GSP_${group.short}$
+#:endfor
+
+  ! Diagnostic variable groups
+#:for group in diagnostic
+  TYPE(SURFACE_VARIABLE_GROUP_${group.name}$) :: GSD_${group.short}$
+#:endfor
+END TYPE SURFACE_VARIABLES
+
+END MODULE SURFACE_VARIABLES_MOD

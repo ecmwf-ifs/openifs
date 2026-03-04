@@ -1,0 +1,88 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE GET_CLINC (CDINC, KSTEP, KDIGITS, PTSTEP)
+
+!**** *GET_CLINC*  - Get time extension for output files
+
+!     Author. 
+!     ------- 
+!      Philippe Marguinaud *METEO FRANCE* 
+!      Original : 01-10-2014
+
+USE PARKIND1, ONLY : JPRB, JPIM
+USE YOMHOOK , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMOPH0 , ONLY : NTIMEFMT
+
+IMPLICIT NONE
+
+CHARACTER (LEN=*)  , INTENT (OUT)          :: CDINC
+INTEGER (KIND=JPIM), INTENT (IN)           :: KSTEP
+INTEGER (KIND=JPIM), INTENT (IN)           :: KDIGITS
+REAL (KIND=JPRB),    INTENT (IN), OPTIONAL :: PTSTEP
+
+#include "abor1.intfb.h"
+
+CHARACTER(LEN=6)   :: CLINC_HH
+CHARACTER(LEN=3)   :: CLINC_MM
+CHARACTER(LEN=3)   :: CLINC_SS
+INTEGER(KIND=JPIM) :: IINC_HH, IINC_MM, IINC_SS
+
+INTEGER (KIND=JPIM) :: IST
+
+REAL (KIND=JPHOOK) :: ZHOOK_HANDLE
+
+IF (LHOOK) CALL DR_HOOK ('GET_CLINC',0,ZHOOK_HANDLE)
+
+IF (PRESENT(PTSTEP)) THEN
+  SELECT CASE (NTIMEFMT)
+    CASE (0) 
+      IINC_HH=NINT(REAL(KSTEP,JPRB)*PTSTEP/3600._JPRB)
+      IINC_MM=0
+      IINC_SS=0
+    CASE (1) 
+      IINC_HH=INT(REAL(KSTEP,JPRB)*PTSTEP/3600._JPRB)
+      IINC_MM=NINT((REAL(KSTEP,JPRB)*PTSTEP-IINC_HH*3600._JPRB)/60._JPRB)
+      IINC_SS=0
+    CASE (2) 
+      IINC_HH=INT(REAL(KSTEP,JPRB)*PTSTEP/3600._JPRB)
+      IINC_MM=INT((REAL(KSTEP,JPRB)*PTSTEP-IINC_HH*3600._JPRB)/60._JPRB)
+      IINC_SS=NINT(REAL(KSTEP,JPRB)*PTSTEP-IINC_HH*3600._JPRB-IINC_MM*60._JPRB)
+    CASE DEFAULT
+      CALL ABOR1 ('GET_CLINC: UNEXPECTED NTIMEFMT')
+  END SELECT
+ELSE
+  IINC_HH=KSTEP
+  IINC_MM=0
+  IINC_SS=0
+ENDIF
+
+WRITE(CLINC_HH,'(I6.6)')     IINC_HH
+WRITE(CLINC_MM,'(":",I2.2)') IINC_MM
+WRITE(CLINC_SS,'(":",I2.2)') IINC_SS
+
+IST=6-KDIGITS+1
+
+SELECT CASE (NTIMEFMT) 
+  CASE (0)
+    CDINC = CLINC_HH(IST:6)
+  CASE (1)
+    CDINC = TRIM (CLINC_HH(IST:6)) // CLINC_MM
+  CASE (2)
+    CDINC = TRIM (CLINC_HH(IST:6)) // CLINC_MM // CLINC_SS
+  CASE DEFAULT
+    CALL ABOR1 ('GET_CLINC: UNEXPECTED NTIMEFMT')
+END SELECT
+
+
+IF (LHOOK) CALL DR_HOOK ('GET_CLINC',1,ZHOOK_HANDLE)
+
+END SUBROUTINE GET_CLINC

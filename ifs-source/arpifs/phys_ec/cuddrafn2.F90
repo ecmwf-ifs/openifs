@@ -1,0 +1,438 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE CUDDRAFN2 &
+ & (YDECUMF2,YDEPHLI,&
+ & KIDIA,    KFDIA,    KLON,    KLEV,&
+ & KCBOT,    KCTOP,    LDCUM,   LDRAIN1D,&
+ & PTENH,    PQENH,&
+ & PTEN,     PQSEN,    PGEO,&
+ & PGEOH,    PAPH,     PTU,      PQU,&
+ & PRFL,     PTD,      PQD,      PMFU,&
+ & PMFD,     PMFDS,    PMFDQ,    PDMFDP,&
+ & KDTOP,    LDDRAF,&
+ & PMFDDE_RATE, PERATED )  
+
+!          THIS ROUTINE CALCULATES LEVEL OF FREE SINKING FOR
+!          CUMULUS DOWNDRAFTS, PROFILES OF T,Q,U AND V VALUES,
+!          AND PROFILE OF Md(Z)/Md(LFS).
+
+!          PURPOSE.
+!          --------
+!          TO PRODUCE CUMULUS DOWNDRAFTS FOR THE
+!          SIMPLIFIED MASSFLUX CUMULUS PARAMETERIZATION
+
+!          INTERFACE
+!          ---------
+!          THIS ROUTINE IS CALLED FROM *CUMASTR*.
+!          INPUT ARE ENVIRONMENTAL VALUES OF T,Q,U,V,P,PHI
+!          AND UPDRAFT VALUES T,Q,U AND V AND ALSO
+!          CLOUD BASE MASSFLUX AND CU-PRECIPITATION RATE.
+!          IT RETURNS T,Q,U AND V VALUES AND MASSFLUX AT LFS.
+
+!          METHOD.
+
+!          CHECK FOR NEGATIVE BUOYANCY OF AIR OF EQUAL PARTS OF
+!          MOIST ENVIRONMENTAL AIR AND CLOUD AIR.
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*        START POINT
+!    *KFDIA*        END POINT
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KLEV*         NUMBER OF LEVELS
+!    *KCBOT*        CLOUD BASE LEVEL
+!    *KCTOP*        CLOUD TOP LEVEL
+
+!    INPUT PARAMETERS (LOGICAL):
+
+!    *LDCUM*        FLAG: .TRUE. FOR CONVECTIVE POINTS
+
+!    INPUT PARAMETERS (REAL):
+
+!    *PTENH*        ENV. TEMPERATURE (T+1) ON HALF LEVELS          K
+!    *PQENH*        ENV. SPEC. HUMIDITY (T+1) ON HALF LEVELS     KG/KG
+!    *PTEN*         PROVISIONAL ENVIRONMENT TEMPERATURE (T+1)       K
+!    *PQSEN*        ENVIRONMENT SPEC. SATURATION HUMIDITY (T+1)   KG/KG
+!    *PGEO*         GEOPOTENTIAL                                  M2/S2
+!    *PGEOH*        GEOPOTENTIAL ON HALF LEVELS                  M2/S2
+!    *PAPH*         PROVISIONAL PRESSURE ON HALF LEVELS           PA
+!    *PTU*          TEMPERATURE IN UPDRAFTS                        K
+!    *PQU*          SPEC. HUMIDITY IN UPDRAFTS                   KG/KG
+!    *PMFU*         MASSFLUX IN UPDRAFTS                         KG/(M2*S)
+
+!    UPDATED PARAMETERS (REAL):
+
+!    *PRFL*         PRECIPITATION RATE                           KG/(M2*S)
+
+!    OUTPUT PARAMETERS (REAL):
+
+!    *PTD*          TEMPERATURE IN DOWNDRAFTS                      K
+!    *PQD*          SPEC. HUMIDITY IN DOWNDRAFTS                 KG/KG
+!    *PMFD*         MASSFLUX IN DOWNDRAFTS                       KG/(M2*S)
+!    *PMFDS*        FLUX OF DRY STATIC ENERGY IN DOWNDRAFTS       J/(M2*S)
+!    *PMFDQ*        FLUX OF SPEC. HUMIDITY IN DOWNDRAFTS         KG/(M2*S)
+!    *PDMFDP*       FLUX DIFFERENCE OF PRECIP. IN DOWNDRAFTS     KG/(M2*S)
+!    *PMFDDE_RATE*  DOWNDRAFT DETRAINMENT RATE                   KG/(M2*S)
+!    *PERATED*      DOWNDRAFT ENTRAINMENT                  
+
+!    OUTPUT PARAMETERS (INTEGER):
+
+!    *KDTOP*        TOP LEVEL OF DOWNDRAFTS
+
+!    OUTPUT PARAMETERS (LOGICAL):
+
+!    *LDDRAF*       .TRUE. IF DOWNDRAFTS EXIST
+
+!    EXTERNALS
+!    ---------
+!    *CUADJTQ* FOR CALCULATING WET BULB T AND Q AT LFS
+
+!    AUTHOR.
+!    -------
+!     M.TIEDTKE         E.C.M.W.F.    12/86 MODIF. 12/89
+
+!    MODIFICATIONS
+!    -------------
+!     M.Hamrud     01-Oct-2003 CY28 Cleaning
+!     P. Lopez    11-01-2007  Added switch LDRAIN (1D-Var rain)
+!     P. Lopez    20-06-2007  Bug correction in latent heat ZOELHM
+!     P. Lopez    04-09-2007  Revision to improve match to Tiedtke scheme
+!     A. Geer     01-10-2008  LDRAIN1D name change to reflect usage
+!     P. Lopez    23-01-2013  Revision to improve match to non-linear scheme
+!----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMCST   , ONLY : RCPD     ,RETV     ,RLVTT    ,RLSTT    ,RTT   ,RG  
+USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
+                    & R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
+                    & RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
+                    & RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOECUMF2 , ONLY : TECUMF2
+USE YOEPHLI  , ONLY : TEPHLI
+
+IMPLICIT NONE
+
+TYPE(TECUMF2)     ,INTENT(INOUT) :: YDECUMF2
+TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KCBOT(KLON) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KCTOP(KLON) 
+LOGICAL           ,INTENT(IN)    :: LDCUM(KLON)
+LOGICAL           ,INTENT(IN)    :: LDRAIN1D 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENH(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQENH(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQSEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEO(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOH(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PRFL(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTD(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PQD(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMFU(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PMFD(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PMFDS(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PMFDQ(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PDMFDP(KLON,KLEV) 
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KDTOP(KLON) 
+LOGICAL           ,INTENT(INOUT) :: LDDRAF(KLON) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PMFDDE_RATE(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PERATED(KLON,KLEV)
+
+INTEGER(KIND=JPIM) :: IKHSMIN(KLON)
+
+REAL(KIND=JPRB) :: ZTENWB(KLON,KLEV),   ZQENWB(KLON,KLEV),&
+                 & ZCOND2(KLON),        ZPH(KLON),&
+                 & ZHSMIN(KLON),        ZSDH(KLON,KLEV),&
+                 & ZSENH(KLON,KLEV),    ZDTOPDE(KLON), &
+                 & ZBUOY(KLON),         ZOENTR(KLON)
+
+LOGICAL ::  LLO2(KLON)
+
+INTEGER(KIND=JPIM) :: ICALL, IK, IKE, IS, JK, JL, ITOPDE
+
+REAL(KIND=JPRB) :: ZBUO, ZHSK, ZMFTOP, ZOEALFA,&
+                 & ZOELHM, ZQTEST, ZTARG, ZTTEST,&
+                 & ZEPS, ZDEL, ZENT, ZCD, ZRAIN,&
+                 & ZRG, ZRCPD, ZCOND1, ZDMFEN, ZDMFDE,&
+                 & ZDZ, ZRFLMIN, ZFACT1,&
+                 & ZFACT2, ZFACT3, ZBUOYZ
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "cuadjtq.intfb.h"
+#include "cuadjtqs.intfb.h"
+
+#include "fcttre.func.h"
+!----------------------------------------------------------------------
+
+!     0.           INITIALIZATION OF CONSTANTS AND ARRAYS
+!                  --------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('CUDDRAFN2',0,ZHOOK_HANDLE)
+ASSOCIATE(ENTRDD2=>YDECUMF2%ENTRDD2, NJKT32=>YDECUMF2%NJKT32, &
+ & RMFDEPS2=>YDECUMF2%RMFDEPS2, &
+ & LPHYLIN=>YDEPHLI%LPHYLIN, RLPTRC=>YDEPHLI%RLPTRC)
+ZCD=0.3_JPRB
+ZRG=1.0_JPRB/RG
+ZRCPD=1.0_JPRB/RCPD
+
+ZSDH(:,:)=0.0_JPRB
+
+ITOPDE=NJKT32
+
+DO JK=1,KLEV
+  DO JL=KIDIA,KFDIA
+    ZSENH(JL,JK) = RCPD*PTENH(JL,JK)+PGEOH(JL,JK)
+  ENDDO
+ENDDO
+
+!     1.           SET DEFAULT VALUES FOR DOWNDRAFTS
+!                  ---------------------------------
+
+DO JL=KIDIA,KFDIA
+  LDDRAF(JL)=.FALSE.
+  IKHSMIN(JL)=KLEV+1
+  ZHSMIN(JL)=1.E8_JPRB
+  ZFACT1=1.0_JPRB/(PGEOH(JL,ITOPDE)-PGEOH(JL,KLEV+1))
+  ZDTOPDE(JL)=RG*ZFACT1
+  ZBUOY(JL)=0.0_JPRB
+  ZOENTR(JL)=0.0_JPRB
+ENDDO
+
+!----------------------------------------------------------------------
+
+!     2.           DETERMINE LEVEL OF FREE SINKING:
+!                  DOWNDRAFTS SHALL START AT MODEL LEVEL OF MINIMUM
+!                  OF SATURATION MOIST STATIC ENERGY OR BELOW
+!                  RESPECTIVELY
+
+!                  FOR EVERY POINT AND PROCEED AS FOLLOWS:
+
+!                    (1) DETERMINE LEVEL OF MINIMUM OF HS
+!                    (2) DETERMINE WET BULB ENVIRONMENTAL T AND Q
+!                    (3) DO MIXING WITH CUMULUS CLOUD AIR
+!                    (4) CHECK FOR NEGATIVE BUOYANCY
+!                    (5) IF BUOYANCY>0 REPEAT (2) TO (4) FOR NEXT
+!                        LEVEL BELOW
+
+!                  THE ASSUMPTION IS THAT AIR OF DOWNDRAFTS IS MIXTURE
+!                  OF 50% CLOUD AIR + 50% ENVIRONMENTAL AIR AT WET BULB
+!                  TEMPERATURE (I.E. WHICH BECAME SATURATED DUE TO
+!                  EVAPORATION OF RAIN AND CLOUD WATER)
+!                  ----------------------------------------------------
+
+DO JK=3,KLEV-2
+
+  IF (LPHYLIN .OR. LDRAIN1D) THEN
+
+    DO JL=KIDIA,KFDIA
+      ZTARG=PTEN(JL,JK)
+      ZOEALFA=MIN(1.0_JPRB,0.545_JPRB*(TANH(0.17_JPRB*(ZTARG-RLPTRC))+1.0_JPRB))
+      ZOELHM =ZOEALFA*RLVTT+(1.0_JPRB-ZOEALFA)*RLSTT
+      ZHSK=RCPD*PTEN(JL,JK)+PGEO(JL,JK)+ZOELHM*PQSEN(JL,JK)
+      IF(ZHSK < ZHSMIN(JL)) THEN
+        ZHSMIN(JL)=ZHSK
+        IKHSMIN(JL)=JK
+      ENDIF
+    ENDDO
+
+  ELSE
+
+    DO JL=KIDIA,KFDIA
+      ZHSK=RCPD*PTEN(JL,JK)+PGEO(JL,JK)+FOELHMCU(PTEN(JL,JK))*PQSEN(JL,JK)
+      IF(ZHSK < ZHSMIN(JL)) THEN
+        ZHSMIN(JL)=ZHSK
+        IKHSMIN(JL)=JK
+      ENDIF
+    ENDDO
+
+  ENDIF
+
+ENDDO
+IKE=KLEV-3
+DO JK=3,IKE
+
+!     2.1          CALCULATE WET-BULB TEMPERATURE AND MOISTURE
+!                  FOR ENVIRONMENTAL AIR IN *CUADJTQ*
+!                  -------------------------------------------
+
+  IS=0
+  DO JL=KIDIA,KFDIA
+    ZTENWB(JL,JK)=PTENH(JL,JK)
+    ZQENWB(JL,JK)=PQENH(JL,JK)
+    ZPH(JL)=PAPH(JL,JK)
+    LLO2(JL)=LDCUM(JL).AND.PRFL(JL) > 0.0_JPRB.AND..NOT.LDDRAF(JL).AND.&
+     & (JK < KCBOT(JL).AND.JK > KCTOP(JL)).AND.&
+     & JK >= IKHSMIN(JL)  
+    IF(LLO2(JL))THEN
+      IS=IS+1
+    ENDIF
+  ENDDO
+  IF(IS == 0) CYCLE
+
+  IK=JK
+  IF (LPHYLIN .OR. LDRAIN1D) THEN
+    ICALL=2
+    CALL CUADJTQS &
+     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     &   ZPH,      ZTENWB,   ZQENWB,  LLO2,     ICALL)  
+  ELSE
+    ICALL=2
+    CALL CUADJTQ &
+     & ( YDEPHLI,  KIDIA,    KFDIA,   KLON,     KLEV,     IK,&
+     &   ZPH,      ZTENWB,   ZQENWB,  LLO2,     ICALL)  
+  ENDIF
+
+!     2.2          DO MIXING OF CUMULUS AND ENVIRONMENTAL AIR
+!                  AND CHECK FOR NEGATIVE BUOYANCY.
+!                  THEN SET VALUES FOR DOWNDRAFT AT LFS.
+!                  ----------------------------------------
+
+!DIR$ IVDEP
+!OCL NOVREC
+  DO JL=KIDIA,KFDIA
+    IF(LLO2(JL)) THEN
+      ZTTEST=0.5_JPRB*(PTU(JL,JK)+ZTENWB(JL,JK))
+      ZQTEST=0.5_JPRB*(PQU(JL,JK)+ZQENWB(JL,JK))
+      ZBUO=ZTTEST*(1.0_JPRB+RETV*ZQTEST)&
+        & -PTENH(JL,JK)*(1.0_JPRB+RETV*PQENH(JL,JK))  
+      ZCOND1=PQENH(JL,JK)-ZQENWB(JL,JK)
+      ZMFTOP=-RMFDEPS2
+      ZRFLMIN=10._JPRB*ZMFTOP*ZCOND1
+      IF(ZBUO < 0.0_JPRB.AND.PRFL(JL) > ZRFLMIN) THEN
+        KDTOP(JL)=JK
+        LDDRAF(JL)=.TRUE.
+        PTD(JL,JK)=ZTTEST
+        PQD(JL,JK)=ZQTEST
+        ZSDH(JL,JK)=RCPD*PTD(JL,JK)+PGEOH(JL,JK)
+        PMFD(JL,JK)=ZMFTOP
+        PMFDS(JL,JK)=PTD(JL,JK)
+        PMFDQ(JL,JK)=PQD(JL,JK)
+        PDMFDP(JL,JK-1)=-0.5_JPRB*PMFD(JL,JK)*ZCOND1
+        PRFL(JL)=PRFL(JL)+PDMFDP(JL,JK-1)
+      ENDIF
+    ENDIF
+  ENDDO
+
+ENDDO
+
+!   ** COMPUTE VERTICAL PROFILES OF DOWNDRAFT CHARACTERISTICS
+!   ** WITH INCLUSION OF ENTRAINMENT 
+!   ** COMPUTE VERTICAL PROFILE OF Md(z)/Md(LSF) 
+!   ** WITH INCLUSION OF ENTRAINMENT AND DETRAINMENT
+
+DO JK=3,KLEV
+
+  IS=0 
+  DO JL=KIDIA,KFDIA
+    LLO2(JL)=LDDRAF(JL).AND.PMFD(JL,JK-1) < 0.0_JPRB
+    IF(LLO2(JL)) THEN
+      IS=IS+1
+    ENDIF
+  ENDDO
+  IF(IS == 0) CYCLE
+
+!DEC$ IVDEP
+  DO JL=KIDIA,KFDIA
+    IF (LLO2(JL)) THEN
+      ZDZ = (PGEOH(JL,JK-1)-PGEOH(JL,JK))*ZRG
+
+      IF (JK > ITOPDE) THEN
+        ZEPS = 0.0_JPRB
+        ZDEL = PMFD(JL,ITOPDE) * ZDTOPDE(JL)
+      ELSE
+        ZEPS = ENTRDD2 + ZOENTR(JL)
+        ZDEL = ENTRDD2 * PMFD(JL,JK-1)
+      ENDIF
+
+      ZENT = ZEPS * ZDZ
+      ZENT = MIN(ZENT,0.3_JPRB)
+      ZDMFDE = ZDEL * ZDZ 
+      ZDMFEN = ZENT * PMFD(JL,JK-1)
+      ZDMFEN = MAX(ZDMFEN,-0.75_JPRB*PMFU(JL,JK)-(PMFD(JL,JK-1)-ZDMFDE))
+      ZDMFEN = MIN(ZDMFEN,0.0_JPRB)
+
+! Downdraft temperature and specific humidity
+      PQD (JL,JK) = PQD(JL,JK-1) *(1.0_JPRB-ZENT) + PQENH(JL,JK-1)*ZENT
+      ZSDH(JL,JK) = ZSDH(JL,JK-1)*(1.0_JPRB-ZENT) + ZSENH(JL,JK-1)*ZENT 
+      ZCOND2(JL) = PQD(JL,JK)
+      PTD (JL,JK) = (ZSDH(JL,JK)-PGEOH(JL,JK))*ZRCPD
+      ZPH (JL) = PAPH(JL,JK)
+
+! Store entrainment rates for momentum computations
+      PERATED(JL,JK) = ZENT
+
+! Downdraft mass-flux
+      PMFD(JL,JK)= PMFD(JL,JK-1) + ZDMFEN - ZDMFDE
+
+! Detrainment rate
+      PMFDDE_RATE(JL,JK) = -ZDMFDE
+
+    ENDIF
+  ENDDO
+
+  IK=JK
+  IF (LPHYLIN .OR. LDRAIN1D) THEN
+    ICALL=2
+    CALL CUADJTQS &
+     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     &   ZPH,      PTD,      PQD,     LLO2,     ICALL)  
+  ELSE
+    ICALL=2
+    CALL CUADJTQ &
+     & ( YDEPHLI,  KIDIA,    KFDIA,   KLON,     KLEV,     IK,&
+     &   ZPH,      PTD,      PQD,     LLO2,     ICALL)  
+  ENDIF
+
+  DO JL=KIDIA,KFDIA
+    IF(LLO2(JL)) THEN
+      ZSDH(JL,JK)=RCPD*PTD(JL,JK)+PGEOH(JL,JK)
+      ZCOND2(JL)=ZCOND2(JL)-PQD(JL,JK)
+      ZBUO=PTD(JL,JK)*(1.0_JPRB+RETV*PQD(JL,JK))&
+        & -PTENH(JL,JK)*(1.0_JPRB+RETV*PQENH(JL,JK))  
+      IF(PRFL(JL) > 0.0_JPRB.AND.PMFU(JL,JK) > 0.0_JPRB) THEN
+        ZFACT2=1.0_JPRB/PMFU(JL,JK)
+        ZRAIN=PRFL(JL)*ZFACT2
+        ZBUO=ZBUO-PTD(JL,JK)*ZRAIN
+      ENDIF
+      ZRFLMIN=PMFD(JL,JK)*ZCOND2(JL)
+      IF(ZBUO >= 0.0_JPRB.OR.PRFL(JL) <= ZRFLMIN .OR.&
+         & PMFD(JL,JK) > 0.0_JPRB) PMFD(JL,JK)=0.0_JPRB
+      PMFDS(JL,JK)=PTD(JL,JK)
+      PMFDQ(JL,JK)=PQD(JL,JK)
+      PDMFDP(JL,JK-1)=-ZCOND2(JL)*PMFD(JL,JK)
+      PRFL(JL)=PRFL(JL)+PDMFDP(JL,JK-1)
+
+! COMPUTE ORGANIZED ENTRAINMENT FOR USE AT NEXT LEVEL
+
+      ZBUOYZ=ZBUO/PTENH(JL,JK)
+      ZBUOYZ=MIN(ZBUOYZ,0.0_JPRB)
+      ZDZ=-(PGEO(JL,JK-1)-PGEO(JL,JK))
+      ZBUOY(JL)=ZBUOY(JL)+ZBUOYZ*ZDZ
+      ZFACT3=1.0_JPRB/(1.0_JPRB+ZBUOY(JL))
+      ZOENTR(JL)=-RG*ZBUOYZ*0.5_JPRB*ZFACT3
+
+    ENDIF
+  ENDDO
+
+ENDDO
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('CUDDRAFN2',1,ZHOOK_HANDLE)
+END SUBROUTINE CUDDRAFN2

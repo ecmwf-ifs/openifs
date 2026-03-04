@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+
+#SBATCH --output=%x.%j.log
+#SBATCH --job-name=oifs-run
+#SBATCH --qos=np
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=32
+#SBATCH --cpus-per-task=4
+#SBATCH --hint=nomultithread
+#SBATCH --time=01:00:00
+
+set -eu -o pipefail
+
+#==========================================================================
+#
+#
+#    Submit OpenIFS 48r1 model experiment to scheduler
+#
+#    ECMWF Atos HPCF hpc2020
+#
+#
+#==========================================================================
+
+
+# define logging helper
+log_err()  { echo -e "[OpenIFS ERROR] $*" >&2; }
+
+# set OpenIFS platform environment:
+PLATFORM_CFG="/path/to/your/config/oifs-config.edit_me.sh"
+if [ ! -f "${PLATFORM_CFG}" ]; then
+   log_err "platform config file ${PLATFORM_CFG} NOT found - EXITING"
+   exit 1
+else
+   echo -e "\nevaluating platform config: ${PLATFORM_CFG}"
+   source ${PLATFORM_CFG}
+fi
+
+# config file specific to this experiment:
+EXP_CFG="exp-config.h"
+if [ ! -f "${EXP_CFG}" ]; then
+   log_err "experiment config file ${EXP_CFG} NOT found - EXITING"
+   exit 1
+else
+   # replace settings with values for batch job before reading
+   sed -i "/^OIFS_NPROC=/c\OIFS_NPROC=${SLURM_NPROCS}" "${EXP_CFG}" \
+     || { log_err "could not update OIFS_NPROC - EXITING"; exit 1; }
+   sed -i "/^OIFS_NTHREAD=/c\OIFS_NTHREAD=${SLURM_CPUS_PER_TASK:-1}" "${EXP_CFG}" \
+     || { log_err "could not update OIFS_NTHREAD - EXITING"; exit 1; }
+   sed -i '/^LAUNCH=/c\LAUNCH="srun"' "${EXP_CFG}" \
+     || { log_err "could not update LAUNCH - EXITING"; exit 1; }
+   source ${EXP_CFG}
+fi
+
+echo
+echo "==============================================================="
+echo "  Starting model experiment..."
+echo "==============================================================="
+echo
+
+#  Nodes have 128 physical cores (256 virtual, if multithreading is on).
+#  QOS=np if using more than 64 physical cores, nf else.
+#  Nodes/ntasks-per-node/cpus-per-tasks (nprocs is calculated; 
+#  make sure that  : ntasks-per-node * cpus-per-tasks = 128 to fill the nodes): 
+
+#  Set number of OpenMP threads to use. Must be compiled
+#  with openmp for this to have any effect.
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
+export OMP_STACKSIZE=64M
+export OMP_PLACES=threads
+echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+echo "OMP_STACKSIZE=${OMP_STACKSIZE}"
+echo "OMP_PLACES=${OMP_PLACES}"
+
+#  Set number of MPI tasks to use. This should be less or equal to the 
+#  requested ${SLURM_NPROCS}
+export OIFS_NPROC=${SLURM_NPROCS}
+export OIFS_NTHREAD=${OMP_NUM_THREADS}
+echo "OIFS_NPROC=${OIFS_NPROC}"
+echo "OIFS_NTHREAD=${OIFS_NTHREAD}"
+
+env | grep -i slurm
+
+#  MPI mailbox size: OpenIFS usually needs larger value than default
+#  If the model hangs in the MPI library, try setting or increasing
+#  this value (may need to be reduced if available memory is not sufficient).
+####export MBX_SIZE=128000000
+
+#  Make sure process stack limit is increased
+ulimit -s unlimited
+
+./oifs-run
+
+exit 0
+

@@ -1,0 +1,63 @@
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+
+# Openifs version
+openifs_version : "48r1"
+
+# The OpenIFS branch to extract from repo
+openifs_branch : "main"
+
+# Climate data version
+climate_version : "climate.v020"
+
+# Base URL for OpenIFS data files
+openifs_data_base_url : "https://sites.ecmwf.int/openifs/openifs-download/ifsdata"
+
+# SCM experiment data URL (tar.gz or tar file)
+scm_url : "https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz"
+
+# OpenIFS experiment package (low res)
+openifs_expt_url : "https://sites.ecmwf.int/openifs/openifs-download/experiments/48r1/2016-09-25_Karl/ab7z.tar.gz"
+
+# Docker image - the following images are known to work.
+#base_docker_image : "12.3.0-bullseye"
+base_docker_image : "13"
+
+# Path for the Docker file template
+docker_template : "./Dockerfile"
+
+# Directory to store the OpenIFS Dockerfile and base OpenIFS version and files
+openifs_build_docker_dir : "~/oifs_docker_create_dir"
+
+# The URL for the OpenIFS repository, where the branch will be extracted
+openifs_repo_url : "git@github.com:ecmwf-ifs/openifs.git" 
+
+# True to clone OpenIFS repository, False to use existing
+clone_openifs : True
+
+# Force removal of existing clone directory without prompting
+force_reclone : True
+
+# Force rebuild of Docker image even if it exists
+force_rebuild : False
+
+# Run tests after building image
+run_tests : True
+
+# Run SCM test after main tests
+run_scm_test : True
+
+# Force removal of test container after tests complete (True = remove with --rm, False = keep for inspection)
+remove_test_container : False
+
+# Skip URL validation (useful if behind firewall or for offline builds)
+skip_url_validation : False
+

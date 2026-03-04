@@ -1,0 +1,359 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE CUSTRAT &
+ & (YDEPHLI, KIDIA,    KFDIA,    KLON,   KLEV,&
+ & LDCUM,    PTSPHY,   PVDIFTS,&
+ & PAP,      PAPH,     PGEO,&
+ & PTEN,     PQEN,     PQSAT,    PENTH,&
+ & PTENT,    PTENQ                              )  
+
+!**** *CUSTRAT* - COMPUTES T,Q TENDENCIES FOR STRATOCUMULUS
+!                 CONVECTION
+
+!     PURPOSE.
+!     --------
+
+!           THIS ROUTINE DOES THE PARAMETERIZATION OF BOUNDARY-LAYER
+!     MIXING BY ENHANCED VERTICAL DIFFUSION OF SENSIBLE HEAT
+!     AND MOISTURE FOR THE CASE OF STRATOCUMULUS CONVECTION.
+!     THE SCHEME IS ONLY APPLIED IN THE BOUNDARY-LAYER AND ONLY
+!     WHEN NEITHER PENETRATIVE NOR SHALLOW CONVECTION ARE ACTIVATED.
+
+!**   INTERFACE.
+!     ----------
+
+!           THIS ROUTINE IS CALLED FROM *CUCALL*:
+!     IT TAKES ITS INPUT FROM THE LONG-TERM STORAGE:
+!     T,Q AT (T-1) AS WELL AS THE PROVISIONAL T,Q TENDENCIES AND
+!     RETURNS ITS OUTPUT TO THE SAME SPACE:
+!       MODIFIED TENDENCIES OF T AND Q
+
+!     METHOD.
+!     -------
+
+!           ENHANCED VERTICAL DIFFUSION OF MOISTURE AND SENSIBLE
+!     HEAT OCCURS, WHENEVER
+!        1. LIFTED SURFACE AIR IS BUOYANT AND
+!        2. CONDENSATION LEVEL EXISTS FOR FREE CONVECTION
+!     THEN THE EXCHANGE COEFFICIENT IS AS FOLLOWS;
+!         K=C1 IN CLOUD LAYER
+!         K=C1*F(RH) AT CLOUD TOP (TOP ENTRAINMENT)
+
+!     THE MATRIX INVERSION IS PERFORMED ANALOGOUSLY TO ROUTINE *VDIFF*
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*        START POINT
+!    *KFDIA*        END POINT
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KLEV*         NUMBER OF LEVELS
+
+!    INPUT PARAMETERS (LOGICAL):
+
+!    *LDCUM*        FLAG: .TRUE. FOR CONVECTIVE POINTS 
+
+!C     INPUT PARAMETERS (REAL)
+
+!    *PTSPHY*       TIME STEP FOR THE PHYSICS                       S
+!    *PAP*          PROVISIONAL PRESSURE ON FULL LEVELS            PA
+!    *PAPH*         PROVISIONAL PRESSURE ON HALF LEVELS            PA
+!    *PGEO*         GEOPOTENTIAL                                  M2/S2
+!    *PTEN*         PROVISIONAL ENVIRONMENT TEMPERATURE (T+1)       K
+!    *PQEN*         PROVISIONAL ENVIRONMENT SPEC. HUMIDITY (T+1)  KG/KG
+!    *PQSAT*        ENVIRONMENT SPEC. SATURATION HUMIDITY (T+1)   KG/KG
+!    *PENTH*        INCREMENT OF DRY STATIC ENERGY                 J/(KG*S)
+
+!    UPDATED PARAMETERS (REAL):
+
+!    *PTENT*        TEMPERATURE TENDENCY                           K/S
+!    *PTENQ*        MOISTURE TENDENCY                             KG/(KG S)
+
+!     EXTERNALS.
+!     ----------
+
+!          *CUADJTQ* ADJUST T AND Q DUE TO CONDENSATION IN ASCENT
+
+!     AUTHOR.
+!     -------
+!      M.TIEDTKE      E.C.M.W.F.    4/89 MODIF. 12/89
+
+!     MODIFICATIONS.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!----------------------------------------------------------------------
+
+USE YOEPHLI  , ONLY : TEPHLI
+USE PARKIND1 , ONLY : JPIM     ,JPRB
+USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMCST   , ONLY : RG       ,RD       ,RCPD     ,RETV
+
+IMPLICIT NONE
+
+TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+LOGICAL           ,INTENT(IN)    :: LDCUM(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVDIFTS
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEO(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQEN(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQSAT(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PENTH(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENT(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENQ(KLON,KLEV) 
+REAL(KIND=JPRB) ::     ZTC(KLON,KLEV),         ZQC(KLON,KLEV),&
+ & ZCF(KLON,KLEV),         ZCPTGZ(KLON,KLEV),&
+ & ZTDIF(KLON,KLEV),       ZQDIF(KLON,KLEV),&
+ & ZCPTS(KLON),            ZQS(KLON),&
+ & ZEBS(KLON,KLEV),        ZTCOE(KLON),&
+ & ZAP(KLON,KLEV+1),       ZQOLD(KLON)  
+REAL(KIND=JPRB) ::     ZPP(KLON)
+INTEGER(KIND=JPIM) ::  ILAB(KLON,KLEV)
+LOGICAL ::  LLFLAG(KLON),           LLO2(KLON),            LLBL(KLON)
+INTEGER(KIND=JPIM) :: ICALL, IK, ILEVH, JK, JL
+
+REAL(KIND=JPRB) :: ZBUO, ZCONS1, ZCONS2, ZCONS3, ZDISC,&
+ & ZDQDT, ZDTDT, ZFAC, ZKDIFF1, ZKDIFF2, ZQDP, ZTMST, ZTPFAC1, ZTPFAC2  
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "cuadjtq.intfb.h"
+
+!-----------------------------------------------------------------------
+
+!     2.           PHYSICAL CONSTANTS AND PARAMETERS.
+!                  ---------------------------------
+
+IF (LHOOK) CALL DR_HOOK('CUSTRAT',0,ZHOOK_HANDLE)
+ZTPFAC1=PVDIFTS
+ZTPFAC2=1.0_JPRB/ZTPFAC1
+ZKDIFF1=10._JPRB
+ZKDIFF2=2.5_JPRB
+ZTMST=PTSPHY
+ZCONS1=ZTPFAC1*ZTMST*RG**2/(0.5_JPRB*RD)
+ZCONS2=1.0_JPRB/ZTMST
+ZCONS3=ZTMST*RCPD
+ILEVH=KLEV/2
+
+!----------------------------------------------------------------------
+
+!*    3.           PRELIMINARY COMPUTATIONS.
+!                  ------------------------
+
+DO JK=1,KLEV
+  DO JL=KIDIA,KFDIA
+    ZCPTGZ(JL,JK)=PGEO(JL,JK)+PTEN(JL,JK)*RCPD
+    ZCF(JL,JK)=0.0_JPRB
+    ILAB(JL,JK)=0
+  ENDDO
+ENDDO
+
+!-----------------------------------------------------------------
+
+!     4.           DETERMINE EXCHANGE COEFFICIENTS THEREFORE
+!                  (A) LIFT SURFACE AIR, CHECK FOR BUOYANCY AND SET FLAG
+!                  (B) THEN DEFINE DIFFUSION COEFFICIENTS,I.E.
+!                       K=C1 FOR CLOUD LAYER
+!                       K=C1*F(RH) FOR CLOUD TOP (TOP ENTRAINMENT)
+!                   ----------------------------------------------------
+
+DO JL=KIDIA,KFDIA
+  ZTC(JL,KLEV)=PTEN(JL,KLEV)+0.25_JPRB
+  ZQC(JL,KLEV)=PQEN(JL,KLEV)
+  IF(.NOT.LDCUM(JL)) THEN
+    ILAB(JL,KLEV)=1
+  ELSE
+    ILAB(JL,KLEV)=0
+  ENDIF
+  LLO2(JL)=.FALSE.
+  LLBL(JL)=.TRUE.
+ENDDO
+
+DO JK=KLEV-1,ILEVH,-1
+
+  DO JL=KIDIA,KFDIA
+    IF(PAP(JL,JK) < 0.9_JPRB*PAPH(JL,KLEV+1)) LLBL(JL)=.FALSE.
+  ENDDO
+
+  DO JL=KIDIA,KFDIA
+    IF(LLBL(JL)) THEN
+      ZTC(JL,JK)=(ZTC(JL,JK+1)*RCPD+PGEO(JL,JK+1)-PGEO(JL,JK))/RCPD
+      ZQC(JL,JK)=ZQC(JL,JK+1)
+      IF(ILAB(JL,JK+1) > 0) THEN
+        LLFLAG(JL)=.TRUE.
+      ELSE
+        LLFLAG(JL)=.FALSE.
+      ENDIF
+      ZAP(JL,JK)=PAP(JL,JK)
+      ZPP(JL)=PAP(JL,JK)
+      ZQOLD(JL)=ZQC(JL,JK)
+    ENDIF
+  ENDDO
+
+  DO JL=KIDIA,KFDIA
+    IF(.NOT.LLBL(JL)) LLFLAG(JL)=.FALSE.
+  ENDDO
+
+  IK=JK
+  ICALL=1
+  CALL CUADJTQ &
+   & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK,&
+   &   ZPP,      ZTC,      ZQC,      LLFLAG,   ICALL)  
+
+  DO JL=KIDIA,KFDIA
+    IF(LLBL(JL)) THEN
+      IF(ZQC(JL,JK) /= ZQOLD(JL)) THEN
+        ILAB(JL,JK)=2
+      ENDIF
+    ENDIF
+  ENDDO
+
+!DIR$ IVDEP
+!OCL NOVREC
+  DO JL=KIDIA,KFDIA
+    IF(LLBL(JL)) THEN
+      ZBUO=ZTC(JL,JK)*(1.0_JPRB+RETV  *ZQC(JL,JK))-&
+       & PTEN(JL,JK)*(1.0_JPRB+RETV  *PQEN(JL,JK))  
+      IF(ZBUO < 0.0_JPRB) ILAB(JL,JK)=0
+      IF(ZBUO > 0.0_JPRB.AND.ILAB(JL,JK) == 0.AND.ILAB(JL,JK+1) == 1)&
+       & ILAB(JL,JK)=1  
+      IF(ILAB(JL,JK) == 2) LLO2(JL)=.TRUE.
+    ENDIF
+  ENDDO
+
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  LLBL(JL)=.TRUE.
+ENDDO
+
+DO JK=KLEV-1,ILEVH,-1
+
+  DO JL=KIDIA,KFDIA
+    IF(PAP(JL,JK) < 0.9_JPRB*PAPH(JL,KLEV+1)) LLBL(JL)=.FALSE.
+  ENDDO
+
+  DO JL=KIDIA,KFDIA
+    IF(LLBL(JL)) THEN
+      IF(ILAB(JL,JK) == 2) THEN
+        ZCF(JL,JK)=ZKDIFF1
+        IF(ILAB(JL,KLEV-2) == 0) THEN
+          ZCF(JL,JK)=ZKDIFF2
+        ENDIF
+      ELSE
+        ZCF(JL,JK)=0.0_JPRB
+      ENDIF
+      IF(ZCF(JL,JK+1) > 0.0_JPRB.AND.ILAB(JL,JK) == 0) THEN
+        ZCF(JL,JK)=ZCF(JL,JK+1)*5._JPRB*&
+         & MAX(PQEN(JL,JK+1)/PQSAT(JL,JK+1)-0.8_JPRB,0.0_JPRB)*&
+         & MAX(PQEN(JL,JK+1)/PQSAT(JL,JK+1)-PQEN(JL,JK)/&
+         & PQSAT(JL,JK),0.0_JPRB)  
+        LLBL(JL)=.FALSE.
+      ENDIF
+    ENDIF
+  ENDDO
+
+ENDDO
+
+!*    4.7          EXCHANGE COEFFICIENTS.
+
+DO JK=ILEVH,KLEV-1
+  DO JL=KIDIA,KFDIA
+    ZCF(JL,JK)=ZCF(JL,JK)*ZCONS1*PAPH(JL,JK+1)/&
+     & ((PGEO(JL,JK)-PGEO(JL,JK+1))*&
+     & (PTEN(JL,JK)+PTEN(JL,JK+1)))  
+  ENDDO
+ENDDO
+
+!*    4.8          DUMMY SURFACE VALUES OF T AND Q AT SURFACE
+
+DO JL=KIDIA,KFDIA
+  ZCPTS(JL)=ZTPFAC2*ZCPTGZ(JL,KLEV)
+  ZQS(JL)=ZTPFAC2*PQEN(JL,KLEV)
+ENDDO
+
+!----------------------------------------------------------------------
+
+!     5.           SOLUTION OF THE VERTICAL DIFFUSION EQUATION.
+!                  --------------------------------------------
+
+!*    5.1          SETTING OF RIGHT HAND SIDES.
+
+DO JK=ILEVH,KLEV
+  DO JL=KIDIA,KFDIA
+    ZTDIF(JL,JK)=ZTPFAC2*ZCPTGZ(JL,JK)
+    ZQDIF(JL,JK)=ZTPFAC2*PQEN(JL,JK)
+  ENDDO
+ENDDO
+
+!*    5.2          TOP LAYER ELIMINATION.
+
+DO JL=KIDIA,KFDIA
+  ZTCOE(JL)=ZCF(JL,ILEVH)
+  ZQDP=1.0_JPRB/(PAPH(JL,ILEVH+1)-PAPH(JL,ILEVH))
+  ZDISC=1.0_JPRB/(1.0_JPRB+ZCF(JL,ILEVH)*ZQDP)
+  ZEBS(JL,ILEVH)=ZDISC*(ZCF(JL,ILEVH)*ZQDP)
+  ZQDIF(JL,ILEVH)=ZDISC*ZQDIF(JL,ILEVH)
+  ZTDIF(JL,ILEVH)=ZDISC*ZTDIF(JL,ILEVH)
+ENDDO
+
+!*    5.3          ELIMINATION FOR LAYERS BELOW
+
+DO JK=ILEVH+1,KLEV
+  DO JL=KIDIA,KFDIA
+    ZQDP=1.0_JPRB/(PAPH(JL,JK+1)-PAPH(JL,JK))
+    ZFAC=ZTCOE(JL)*ZQDP
+    ZTCOE(JL)=ZCF(JL,JK)
+    ZDISC=1.0_JPRB/(1.0_JPRB+ZFAC*(1.0_JPRB-ZEBS(JL,JK-1))+ZCF(JL,JK)*ZQDP)
+    ZEBS(JL,JK)=ZDISC*(ZCF(JL,JK)*ZQDP)
+    ZQDIF(JL,JK)=ZDISC*(ZQDIF(JL,JK)+ZFAC*ZQDIF(JL,JK-1))
+    ZTDIF(JL,JK)=ZDISC*(ZTDIF(JL,JK)+ZFAC*ZTDIF(JL,JK-1))
+  ENDDO
+ENDDO
+
+DO JL=KIDIA,KFDIA
+  ZQDIF(JL,KLEV)=ZQDIF(JL,KLEV)+(ZEBS(JL,KLEV)*ZQS(JL))
+  ZTDIF(JL,KLEV)=ZTDIF(JL,KLEV)+(ZEBS(JL,KLEV)*ZCPTS(JL))
+ENDDO
+
+!*    5.5          BACK-SUBSTITUTION.
+
+DO JK=KLEV-1,ILEVH,-1
+  DO JL=KIDIA,KFDIA
+    ZQDIF(JL,JK)=ZQDIF(JL,JK)+(ZEBS(JL,JK)*ZQDIF(JL,JK+1))
+    ZTDIF(JL,JK)=ZTDIF(JL,JK)+(ZEBS(JL,JK)*ZTDIF(JL,JK+1))
+  ENDDO
+ENDDO
+
+!---------------------------------------------------------------------
+
+!*    6.           INCREMENTATION OF T AND Q TENDENCIES.
+!                  -------------------------------------
+
+DO JK=ILEVH,KLEV
+  DO JL=KIDIA,KFDIA
+    ZDQDT=(ZQDIF(JL,JK)-ZTPFAC2*PQEN(JL,JK))*ZCONS2
+    PTENQ(JL,JK)=PTENQ(JL,JK)+ZDQDT
+    ZDTDT=(ZTDIF(JL,JK)-ZTPFAC2*ZCPTGZ(JL,JK))/ZCONS3
+    PTENT(JL,JK)=PTENT(JL,JK)+ZDTDT
+    PENTH(JL,JK)=(ZTDIF(JL,JK)-ZTPFAC2*ZCPTGZ(JL,JK))*ZCONS2
+  ENDDO
+ENDDO
+
+700 CONTINUE
+
+IF (LHOOK) CALL DR_HOOK('CUSTRAT',1,ZHOOK_HANDLE)
+END SUBROUTINE CUSTRAT

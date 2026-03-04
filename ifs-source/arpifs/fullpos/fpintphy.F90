@@ -1,0 +1,320 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE FPINTPHY(YDRQPHY,YDNAMFPINT,YDAFN,YDFPSUW,YDFPWSTD,KFPMASK,KASLB1,KSLWIDE,KFIELDS,KGPST,KGPEND,PROW,PBUF, &
+ & KFPROMA,KFLDBUF,LDCLI,LDNIL,LDONE,KBLOCK)
+
+!**** *FPINTPHY*  - FULL-POS horizontal interpolations of physical fields
+
+!     PURPOSE.
+!     --------
+!        Performs horizontal interpolations or buffer transfers.
+
+!**   INTERFACE.
+!     ----------
+!       *CALL* *FPINTPHY*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!        INPUT:
+!         KASLB1   : size of interpolation buffer (core + halo)
+!         KSLWIDE  : width of halo part of interpolation buffer
+!         KFIELDS  : number of fields in row
+!         KGPST    : first output point in row.
+!         KGPEND   : last output point in row.
+!         PBUF     : buffer which contain the fields to interpolate.
+!         KFPROMA  : length of the output row.
+!         KFLDBUF  : number of fields in input buffer
+!         LDCLI    : .T. if the field is overwritten by the climatology
+!         LDNIL    : .T. if the field is not interpolatable
+!         KBLOCK   : current KFPROMA-sized block
+
+!        OUTPUT:
+!         LDONE    : .T. if the field has been interpolated
+!         PROW     : interpolated fields.
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+!          None
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+!       See below
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!        See documentation about FULL-POS.
+
+!     AUTHOR.
+!     -------
+!      RYAD EL KHATIB *METEO-FRANCE*
+!      ORIGINAL : 94-04-08
+
+!     MODIFICATIONS.
+!     --------------
+!      R. El Khatib : 01-05-04 Duration of total precipitations,HUn,HUx
+!      R. El Khatib : 01-08-07 Pruning options
+!      R. El Khatib : 03-04-17 Fullpos improvemnts
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      R. El Khatib  10-May-2005 %LLLSM replaced by mask index.
+!      R. El Khatib  20-May-2005 NFPWIDE moved to YOMWFPDS
+!      K. Yessad: 28-02-2007 DM-features optimisations in FULL-POS
+!      K. Yessad (oct 2010): multi-linear interpolations.
+!      G.Mozdzynski (Jan 2011): OOPS cleaning, use of derived type SL_STRUCT
+!      P.Marguinaud (Oct 2014): Interpolation of PREP fields
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMLUN    ,ONLY : NULOUT
+
+USE YOMAFN   , ONLY : TAFN
+USE YOMFP4L, ONLY : TRQFP
+USE YOMWFPB, ONLY : TFPWSTD, TFPSUW
+USE YOMFPC, ONLY : TNAMFPINT
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE (TRQFP),  INTENT(IN) :: YDRQPHY
+TYPE(TNAMFPINT)   ,INTENT(IN)  :: YDNAMFPINT
+TYPE(TAFN)        ,INTENT(IN)  :: YDAFN
+TYPE(TFPSUW)      ,INTENT(IN)  :: YDFPSUW
+TYPE(TFPWSTD)     ,INTENT(IN)  :: YDFPWSTD
+INTEGER(KIND=JPIM),INTENT(IN)  :: KFPMASK
+INTEGER(KIND=JPIM),INTENT(IN)  :: KASLB1
+INTEGER(KIND=JPIM),INTENT(IN)  :: KSLWIDE
+INTEGER(KIND=JPIM),INTENT(IN)  :: KFIELDS 
+INTEGER(KIND=JPIM),INTENT(IN)  :: KFPROMA 
+INTEGER(KIND=JPIM),INTENT(IN)  :: KFLDBUF 
+INTEGER(KIND=JPIM),INTENT(IN)  :: KGPST 
+INTEGER(KIND=JPIM),INTENT(IN)  :: KGPEND 
+REAL(KIND=JPRB)   ,INTENT(OUT) :: PROW(KFPROMA,KFIELDS) 
+REAL(KIND=JPRB)   ,INTENT(IN)  :: PBUF(KASLB1*KFLDBUF) 
+LOGICAL           ,INTENT(IN)  :: LDCLI(KFIELDS) 
+LOGICAL           ,INTENT(IN)  :: LDNIL(KFIELDS) 
+LOGICAL           ,INTENT(OUT) :: LDONE(KFIELDS) 
+INTEGER(KIND=JPIM),INTENT(IN)  :: KBLOCK
+
+!     ------------------------------------------------------------------
+
+!     IDER   : Number of "boxes"  for each field (for "horizontal derivative")
+!     LLMONO : .TRUE. for monotonic interpolations
+!     LLMNMX : .TRUE. to replace interpolations by the search of the
+!              nearest point
+!     IMASK  : mask for the interpolations :
+!              0 = no mask
+!              1 = land-sea mask
+!              2 = sea mask
+!     LLSKIP : logical mask for skipping interpolations.
+
+! PREP undef value :
+REAL (KIND=JPRB), PARAMETER :: PPSFXUNDEF = 1.E+20_JPRB
+
+LOGICAL :: LLSKIP(KFIELDS), LLINT(KFLDBUF)
+LOGICAL :: LLMNMX(KFIELDS), LLMONO(KFIELDS)
+LOGICAL :: LLDO(KFIELDS)
+LOGICAL :: LLML
+INTEGER(KIND=JPIM) :: IBOX(KGPEND), IDER(KFIELDS), IDMP(KFLDBUF)
+INTEGER(KIND=JPIM) :: IMASK(KFIELDS)
+INTEGER(KIND=JPIM) :: ISTB, IENB, IFPROW
+
+INTEGER(KIND=JPIM) :: JF, ICOD
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "fpint12.intfb.h"
+#include "fpint4.intfb.h"
+#include "fpint4x.intfb.h"
+#include "fpavg.intfb.h"
+#include "fpnear.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('FPINTPHY',0,ZHOOK_HANDLE)
+ASSOCIATE(NFPINPHY=>YDNAMFPINT%NFPINPHY, LFPML_STD=>YDNAMFPINT%LFPML_STD, &
+ & LFPML_LAN=>YDNAMFPINT%LFPML_LAN, LFPML_SEA=>YDNAMFPINT%LFPML_SEA, NFPSFXINT=>YDNAMFPINT%NFPSFXINT, &
+ & GFP_PHYDS=>YDAFN%GFP_PHYDS, NSFXMSK_BAS=>YDAFN%NSFXMSK_BAS, NSFXMSK_CNT=>YDAFN%NSFXMSK_CNT, &
+ & NPSLSFX=>YDFPSUW%NPSLSFX, WSFXPS=>YDFPSUW%WSFXPS, SFXMSK=>YDFPSUW%SFXMSK, &
+ & LWLAN12=>YDFPSUW%LWLAN12, LWLAN04=>YDFPSUW%LWLAN04, LWSEA12=>YDFPSUW%LWSEA12, &
+ & LWSEA04=>YDFPSUW%LWSEA04, WLAN12=>YDFPSUW%WLAN12, WLAN04=>YDFPSUW%WLAN04, &
+ & WLANML=>YDFPSUW%WLANML, WSEA12=>YDFPSUW%WSEA12, WSEA04=>YDFPSUW%WSEA04, &
+ & WSEAML=>YDFPSUW%WSEAML, &
+ & LWSTD12=>YDFPWSTD%LWSTD12, LWSTD04=>YDFPWSTD%LWSTD04, WSTD12=>YDFPWSTD%WSTD12, &
+ & WSTD04=>YDFPWSTD%WSTD04, WSTDML=>YDFPWSTD%WSTDML, ML0=>YDFPWSTD%ML0,MS1=>YDFPWSTD%MS1)
+
+!     ------------------------------------------------------------------
+
+!*       1. PREPARATIONS
+!           ------------
+
+IFPROW=SIZE(ML0,DIM=2)
+
+DO JF=1,KFIELDS
+  ICOD=YDRQPHY%ICOD(JF)
+  LLINT (JF)=.NOT.(LDCLI(JF).OR.LDNIL(JF))
+  LLMONO(JF)=GFP_PHYDS(ICOD)%LLMON
+  LLMNMX(JF)=(GFP_PHYDS(ICOD)%INTER == 0).OR.(NFPINPHY == 0)
+  IF ((NSFXMSK_BAS+1 <= GFP_PHYDS(ICOD)%IMASK) .AND. (GFP_PHYDS(ICOD)%IMASK <= NSFXMSK_BAS+NSFXMSK_CNT)) THEN
+! This is a PREP field
+    IMASK (JF)=GFP_PHYDS(ICOD)%IMASK
+  ELSE
+    IMASK (JF)=MIN(GFP_PHYDS(ICOD)%IMASK,KFPMASK) ! a security
+  ENDIF
+  IDER  (JF)=1
+ENDDO
+
+IBOX(:)=1
+IDMP(:)=0
+
+ISTB=KFPROMA*(KBLOCK-1)+1
+IENB=KFPROMA*(KBLOCK-1)+KGPEND-KGPST+1
+
+
+!*       2. INTERPOLATIONS WITHOUT MASK
+!           ---------------------------
+
+! Fields that will be computed now :
+DO JF=1,KFIELDS
+  LLDO(JF)=(IMASK(JF) == 0) .AND. LLINT(JF)
+ENDDO
+DO JF=1,KFIELDS
+  LLSKIP(JF)=.NOT.LLDO(JF)
+ENDDO
+LLML=LFPML_STD
+IF (ANY(LLDO)) THEN
+  IF ((NFPINPHY == 12 .OR. NFPINPHY == 0) .AND. LWSTD12) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT12 STD is called'
+    CALL FPINT12(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,LLMONO,IBOX,ML0(:,:,KBLOCK),WSTD12(:,:,KBLOCK),WSTDML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)
+  ELSEIF ((NFPINPHY == 4 .OR. NFPINPHY == 0) .AND. LWSTD04) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT4 STD is called'
+    CALL FPINT4(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,IBOX,ML0(:,:,KBLOCK),WSTD04(:,:,KBLOCK),WSTDML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)
+  ELSE
+    CALL ABOR1('FPINTPHY: NO INTERPOLATOR FOUND - 0 !')
+  ENDIF
+ENDIF
+! Signal FIRST event
+DO JF=1,KFIELDS
+  LDONE(JF)=LLDO(JF)
+ENDDO
+
+
+!*       3. INTERPOLATIONS WITH MASK
+!           ------------------------
+
+!*       3.1 INTERPOLATIONS WITH LAND(-SEA) MASK
+
+! Fields that will be computed now : 
+DO JF=1,KFIELDS
+  LLDO(JF)=(IMASK(JF) == 1) .AND. LLINT(JF)
+ENDDO
+DO JF=1,KFIELDS
+  LLSKIP(JF)=.NOT.LLDO(JF)
+ENDDO
+LLML=LFPML_LAN
+IF (ANY(LLDO)) THEN
+  IF ((NFPINPHY == 12 .OR. NFPINPHY == 0) .AND. LWLAN12) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT12 LAN is called'
+    CALL FPINT12(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,LLMONO,IBOX,ML0(:,:,KBLOCK),WLAN12(:,:,KBLOCK),WLANML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)
+  ELSEIF ((NFPINPHY == 4 .OR. NFPINPHY == 0) .AND. LWLAN04) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT4 LAN is called'
+    CALL FPINT4(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,IBOX,ML0(:,:,KBLOCK),WLAN04(:,:,KBLOCK),WLANML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)  
+  ELSEIF ((NFPINPHY == 12 .OR. NFPINPHY == 0) .AND. LWSTD12) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT12 STD is called'
+    CALL FPINT12(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,LLMONO,IBOX,ML0(:,:,KBLOCK),WSTD12(:,:,KBLOCK),WSTDML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)
+  ELSEIF ((NFPINPHY == 4 .OR. NFPINPHY == 0) .AND. LWSTD04) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT4 STD is called'
+    CALL FPINT4(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,IBOX,ML0(:,:,KBLOCK),WSTD04(:,:,KBLOCK),WSTDML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)  
+  ELSE
+    CALL ABOR1('FPINTPHY: NO INTERPOLATOR FOUND - 1 !')
+  ENDIF
+ENDIF
+! Signal SUPPLEMENTARY event
+DO JF=1,KFIELDS
+  LDONE(JF)=LDONE(JF).OR.LLDO(JF)
+ENDDO
+
+!*       3.2 INTERPOLATIONS WITH MASK SEA(-LAND) MASK
+
+! Fields that will be computed now :
+DO JF=1,KFIELDS
+  LLDO(JF)=(IMASK(JF) == 2) .AND. LLINT(JF)
+ENDDO
+DO JF=1,KFIELDS
+  LLSKIP(JF)=.NOT.LLDO(JF)
+ENDDO
+LLML=LFPML_SEA
+IF (ANY(LLDO)) THEN
+  IF ((NFPINPHY == 12 .OR. NFPINPHY == 0) .AND. LWSEA12) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT12 SEA is called'
+    CALL FPINT12(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,LLMONO,IBOX,ML0(:,:,KBLOCK),WSEA12(:,:,KBLOCK),WSEAML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)
+  ELSEIF (NFPINPHY == 4 .AND. LWSEA04) THEN
+    IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT4 SEA is called'
+    CALL FPINT4(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,IDER,IDMP, &
+     & LLML,LLMNMX,IBOX,ML0(:,:,KBLOCK),WSEA04(:,:,KBLOCK),WSEAML(:,5:16,KBLOCK),LLSKIP,PBUF,PROW)
+  ELSE
+    CALL ABOR1('FPINTPHY: NO INTERPOLATOR FOUND - 1 !')
+  ENDIF
+ENDIF
+! Signal SUPPLEMENTARY event
+DO JF=1,KFIELDS
+  LDONE(JF)=LDONE(JF).OR.LLDO(JF)
+ENDDO
+
+!*       4.2 INTERPOLATIONS WITH SURFEX MASKS
+
+! Fields that will be computed now :
+
+
+DO JF=1,KFIELDS
+  LLDO(JF)=(NSFXMSK_BAS+1 <= IMASK(JF)) .AND. (IMASK(JF) <= NSFXMSK_BAS+NSFXMSK_CNT).AND. LLINT(JF)
+ENDDO
+DO JF=1,KFIELDS
+  LLSKIP(JF)=.NOT.LLDO(JF)
+ENDDO
+
+IF (ANY (LLDO)) THEN
+  SELECT CASE (NFPSFXINT)
+    CASE (0)
+      IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPINT4X is called'
+      CALL FPINT4X(KASLB1,IFPROW,KFIELDS,KGPST,KGPEND,KFPROMA,KFLDBUF,&
+       & ML0(:,:,KBLOCK),WSFXPS (:,1:4,1:16,KBLOCK),NPSLSFX,LLSKIP,PBUF,PROW,PPSFXUNDEF)
+    CASE (1)
+      IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPAVG is called'
+      CALL FPAVG(KASLB1,KSLWIDE,KFIELDS,NSFXMSK_CNT,KGPST,KGPEND,KFPROMA,KFLDBUF,IMASK-NSFXMSK_BAS,&
+       & MS1(:,:,KBLOCK),LLSKIP,PBUF,SFXMSK(:,:,KBLOCK),PPSFXUNDEF,PROW)
+    CASE (2)
+      IF (KBLOCK==1) WRITE (NULOUT,*) ' FPINTPHY: FPNEAR is called'
+      CALL FPNEAR(KASLB1,KSLWIDE,KFIELDS,NSFXMSK_CNT,KGPST,KGPEND,KFPROMA,KFLDBUF,IMASK-NSFXMSK_BAS,&
+       & MS1(:,:,KBLOCK),LLSKIP,PBUF,SFXMSK(:,:,KBLOCK),PPSFXUNDEF,PROW)
+    CASE DEFAULT
+      CALL ABOR1('FPINTPHY: NO INTERPOLATOR FOUND - 1 !')
+  END SELECT
+ENDIF
+
+DO JF=1,KFIELDS
+  LDONE(JF)=LDONE(JF).OR.LLDO(JF)
+ENDDO
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('FPINTPHY',1,ZHOOK_HANDLE)
+END SUBROUTINE FPINTPHY
+
+

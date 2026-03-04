@@ -1,0 +1,30 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE GNHPREH(&
+ & YDGEOMETRY, KPDVAR,KPROMA,KFLEV,KST,KEND,PSPD,PREH,PDELP,PLNPR,PNHPPI,PNHPRE,&
+ & PNHPREH,PDELNHPRE&
+ & )
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1 , ONLY : JPIM, JPRB
+TYPE(GEOMETRY) ,INTENT(IN) :: YDGEOMETRY
+INTEGER(KIND=JPIM),INTENT(IN) :: KPDVAR
+INTEGER(KIND=JPIM),INTENT(IN) :: KPROMA
+INTEGER(KIND=JPIM),INTENT(IN) :: KFLEV
+INTEGER(KIND=JPIM),INTENT(IN) :: KST
+INTEGER(KIND=JPIM),INTENT(IN) :: KEND
+REAL(KIND=JPRB) ,INTENT(IN) :: PSPD(KPROMA,KFLEV)
+REAL(KIND=JPRB) ,INTENT(IN) :: PREH(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) ,INTENT(IN) :: PDELP(KPROMA,KFLEV)
+REAL(KIND=JPRB) ,INTENT(IN) :: PLNPR(KPROMA,KFLEV)
+REAL(KIND=JPRB) ,INTENT(IN) :: PNHPPI(KPROMA,KFLEV)
+REAL(KIND=JPRB) ,INTENT(IN) :: PNHPRE(KPROMA,KFLEV)
+REAL(KIND=JPRB) ,INTENT(OUT) :: PNHPREH(KPROMA,0:KFLEV)
+REAL(KIND=JPRB) ,INTENT(OUT) :: PDELNHPRE(KPROMA,KFLEV)
+call abor1("gnhpreh.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE GNHPREH

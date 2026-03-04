@@ -1,0 +1,123 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+      MODULE YOWSARAS
+
+      USE PARKIND_WAVE, ONLY : JWIM, JWRB, JWRU
+
+      IMPLICIT NONE
+
+      INTEGER(KIND=JWIM), PARAMETER   :: MPARTSW = 18
+
+      REAL(KIND=JWRB), PARAMETER      :: PPSARCF = 1.8_JWRB
+      REAL(KIND=JWRB), PARAMETER      :: PPSDM = 1.0_JWRB
+
+      INTEGER(KIND=JWIM)              :: NSPEC
+      INTEGER(KIND=JWIM)              :: NSPECW
+      INTEGER(KIND=JWIM)              :: JPSIW
+      INTEGER(KIND=JWIM)              :: MAXMPART=0
+
+      INTEGER(KIND=JWIM), PARAMETER   :: NSARINVI = 2
+      INTEGER(KIND=JWIM), PARAMETER   :: NSARINVR = 11 
+      INTEGER(KIND=JWIM)              :: NSAR 
+
+      INTEGER(KIND=JWIM), ALLOCATABLE :: NW1D(:)
+      INTEGER(KIND=JWIM), ALLOCATABLE :: NIGW(:)
+      INTEGER(KIND=JWIM), ALLOCATABLE :: NIJW(:)
+      INTEGER(KIND=JWIM), ALLOCATABLE :: NTOSIW1D(:)
+      INTEGER(KIND=JWIM), ALLOCATABLE :: NSIW1D(:,:)
+      INTEGER(KIND=JWIM), ALLOCATABLE :: IJSAR(:) 
+
+      INTEGER(KIND=JWIM), ALLOCATABLE :: ISARINV(:,:)
+
+      REAL(KIND=JWRB)                 :: SARCORDIA
+
+      REAL(KIND=JWRB), ALLOCATABLE    :: SPEC(:,:,:,:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: LONG(:,:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: LAT(:,:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: XKLOW(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: XKUP(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: XKCUTOFF(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: COSSARLAT(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: SINSARLAT(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: U10(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: USSAR(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: THW(:)
+
+      REAL(KIND=JWRB), ALLOCATABLE    :: SPECW(:,:,:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: DIST(:,:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: UW10(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: USW(:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: THWW(:)
+
+      REAL(KIND=JWRB), ALLOCATABLE    :: RSARINV(:,:)
+      REAL(KIND=JWRB), ALLOCATABLE    :: DUVSAR(:,:)
+
+
+!     VARIABLE   TYPE     PURPOSE                                  
+!     --------   ----     -------                                  
+!     *MPARTSW*  INTEGER  MAXIMUM NUMBER OF PARTITIONINGS (for arrays).
+!     *PPSARCF   REAL     PPSARCF*SARCORDIA IS THE MAXIMUM INFLUENCE
+!                         DISTANCE FOR THE SAR ASSIMILATION. NW1D
+!     *PPSDM*    REAL     RATIO SIGMA_OBS/SIGMA_FG.
+
+!     *NSPEC*    INTEGER  NUMBER OF VALID OBSERVATIONS.
+!     *MSPECW*   INTEGER  MAXIMUM NUMBER OF ANALYSED POINTS.
+!     *JPSIW*    INTEGER  MAXIMUM  NUMBER OF SAR POINTS INFLUENCING
+!                         ONE WAM POINT.
+!     *MAXMPART  INTEGER  MAXIMUM NUMBER OF PARTITIONINGS USED AFTER
+!                         PARTITIONING OF SAR AND MODEL SPECTRA. 
+!     *NSARINVI  INTEGER  NUMBER OF INTEGER PARAMETERS COLLECTED FROM
+!                         THE SAR INVERSION IN WAM.
+!     *NSARINVR  INTEGER  NUMBER OF REAL PARAMETERS COLLECTED FROM
+!                         THE SAR INVERSION IN WAM BESIDE THE SPECTRA.
+!     *NSAR      INTEGER  TOTAL OF SAR SPECTRA INVERTED BY WAM.
+!     *NW1D*     INTEGER  INDEX IN THE 1D ARRAY OF MODEL POINTS 
+!                         INFLUENCED BY THE SAR DATA POINTS FOR EACH
+!                         WAM POINT ( referred to by its block indices)
+!                         =0 FOR POINTS NOT INFLUENCED BY DATA POINT.
+!     *NIGW*     INTEGER  BLOCK INDEX OF POINT IN 1D ARRAY.
+!     *NIJW*     INTEGER  INDEX IN A BLOCK OF POINT IN 1D ARRAY.
+!     *NTOSIW1D* INTEGER  NUMBER OF SAR DATA POINTS INFLUENCING A WAM
+!                         POINT INDEXED IN THE 1D ARRAY.
+!     *NSIW1D*   INTEGER  INDEX OF THE SAR SPECTRUM IN THE SAR DATA
+!                         ARRAY IFLUENCING THE WAM POINT INDEXED IN THE
+!                         1D ARRAY.
+!     *IJSAR*    INTEGER  BLOCK INDEX OF THE CLOSEST MODEL SEA POINT
+!                         O will indicate that it is outside the model
+!                         sea point grid. 
+!     *SARINV*   INTEGER  ARRAY CONTAINING THE INTEGER PARAMETERS NEEDED
+!                         FOR THE SAR ASSIMILATION OBTAINED FROM THE SAR
+!                         INVERSION FROM WITHIN WAM.
+!     *SARCORDIA*REAL     SAR MODEL MAXIMUM CORRELATION DISTANCE in m 
+!     *SPEC*     REAL     INPUT SAR SPECTRA FOR FIRST GUESS SPECTRUM = 1
+!                         SAR RETRIEVED SPECTRUM = 2.
+!     *LONG*     REAL     LONGITUDE OF SPEC (IN DEGREE).
+!     *LAT*      REAL     LATITUDE OF SPEC (IN DEGREE).
+!     *XKLOW*    REAL     LOWER SAR WAVE NUMBER BOUNDARY.     
+!     *XKUP*     REAL     UPPER SAR WAVE NUMBER BOUNDARY. 
+!     *XKCUTOFF* REAL     CUT OFF WAVE LENGHT FROM THE SAR INVERSION.
+!     *COSSARLAT*REAL     COSINE OF LAT.
+!     *SINSARLAT*REAL     SINE OF LAT.
+!     *U10*      REAL     FIRST GUESS U10 AT SPEC LOCATION. 
+!     *USSAR*    REAL     FIRST GUESS USTAR AT SPEC LOCATION. 
+!     *THW*      REAL     FIRST GUESS WIND DIRECTION AT SPEC LOCATION. 
+!     *SPECW*    REAL     WAM SPECTRA TO BE ANALYSED.
+!     *DIST*     REAL     DISTANCE BETWEEN WAM AND SAR POINT
+!                         INFLUENCING WAM POINT.
+!     *UW10*     REAL     WIND SPEED AT XLATW,XLONW. 
+!     *USW*      REAL     USTAR AT XLATW,XLONW. 
+!     *THWW*     REAL     WIND DIRECTION  AT XLATW,XLONW. 
+!     *RSARINV*  REAL     ARRAY CONTAINING THE REAL PARAMETERS NEEDED
+!                         FOR THE SAR ASSIMILATION OBTAINED FROM THE SAR
+!                         INVERSION FROM WITHIN WAM INCLUDING THE
+!                         SPECTRA.
+!     *DUVSAR*   REAL     ARRAY CONTAINING THE INCREMENTS TO THE
+!                         WIND SPEED COMPONENTS DUE TO THE SAR.
+! ----------------------------------------------------------------------
+      END MODULE YOWSARAS

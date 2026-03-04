@@ -1,0 +1,442 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUSTA(YDGEOMETRY)
+
+!**** *SUSTA*  - Prescribe the STANDARD ATMOSPHERE
+
+!     Purpose.
+!     --------
+!           Initialize STANDARD ATMOSPHERE
+!        and reference atmosphere for Post-Processing.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUSTA
+
+!        Explicit arguments :
+!        --------------------
+!        None
+
+!        Implicit arguments :
+!        --------------------
+!        Common YOMSTA
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!     Standard atmosphere definition taken from:
+!     Triplet & Roche, Meteorologie generale.
+!     U.S. Standard Atmosphere (1976),
+!     and S.B. Fels, JAS, 1986, 43, 2, 219-221.
+
+!     Author.
+!     -------
+!      Mats Hamrud and Philippe Courtier  *ECMWF*
+!      Original : 87-10-15
+
+!     Modifications.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Hamrud      01-Dec-2003 CY28R1 Cleaning
+!      Modified 04-09-15 F. Bouyssel. Use STPREH 
+!      K. Yessad (Jan 2011): French comments translated into English.
+!      K. Yessad (Dec 2011): use GPHPRE.
+!      T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!      K. Yessad (July 2014): Move some variables.
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1 , ONLY : JPIM, JPRB, JPRD
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST   , ONLY : RG, RD
+USE YOMCT0   , ONLY : LECMWF
+USE YOMMP0   , ONLY : LOUTPUT, NPRINTLEV
+USE YOMLUN   , ONLY : NULOUT, NULNAM
+USE YOMDYNCORE,ONLY : RPLRG
+USE YOMVERT  , ONLY : VP00
+USE YOMSTA   , ONLY : RDTDZ1, RDTDZ2, RDTDZ3, RDTDZ4, RDTDZ5, RDTDZ6, RDTDZ7, RDTDZ8, RDTDZ9, &
+ &                    RZTROP, RZSTRA, RZSTR2, RZSTPO, RZMESO, RZMES2, RZMEPO, RZABOV, RTSUR,  &
+ &                    RTTROP, RTSTRA, RTSTR2, RTSTPO, RTMESO, RTMES2, RTMEPO, RTABOV, RPTROP, &
+ &                    RPSTRA, RPSTR2, RPSTPO, RPMESO, RPMES2, RPMEPO, RPABOV, NLEXTRAP,HEXTRAP,&
+ &                    VDTDZ1, VDTDZ2, VDTDZ3, VDTDZ4, VDTDZ5, VDTDZ6, VDTDZ7, VDTDZ8, VDTDZ9, &
+ &                    VPABOV, VPMEPO, VPMES2, VPMESO, VPSTPO, VPSTR2, VPSTRA, VPTROP, VTABOV, &
+ &                    VTMEPO, VTMES2, VTMESO, VTSTPO, VTSTR2, VTSTRA, VTSUR , VTTROP, VZABOV, &
+ &                    VZMEPO, VZMES2, VZMESO, VZSTPO, VZSTR2, VZSTRA, VZTROP
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY), INTENT(INOUT) :: YDGEOMETRY
+INTEGER(KIND=JPIM) :: JPPRO
+
+PARAMETER (JPPRO=9)
+REAL(KIND=JPRB) :: ZZ(JPPRO),ZDTDZ(JPPRO),ZT(JPPRO),ZP(JPPRO)
+REAL(KIND=JPRB) :: ZPRESH(0:YDGEOMETRY%YRDIMV%NFLEVG),ZPRESF(YDGEOMETRY%YRDIMV%NFLEVG),ZLNPRESF(YDGEOMETRY%YRDIMV%NFLEVG)
+
+INTEGER(KIND=JPIM) :: ILEV, JJPR, JK, JLEV
+
+REAL(KIND=JPRB) :: ZDIFF, ZDZ, ZMIN, ZMIN1, ZSUR, ZTHRESH, ZZDT, ZZDZ
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+#include "namsta.nam.h"
+!     ------------------------------------------------------------------
+
+#include "gphpre.intfb.h"
+#include "posnam.intfb.h"
+#include "ppsta.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SUSTA',0,ZHOOK_HANDLE)
+!     ------------------------------------------------------------------
+
+!*       1.    Allocate YRSTA.
+!              ------------------
+
+ALLOCATE(YDGEOMETRY%YRSTA%STPREH(0:YDGEOMETRY%YRDIMV%NFLEVG))
+ALLOCATE(YDGEOMETRY%YRSTA%STPRE(YDGEOMETRY%YRDIMV%NFLEVG))
+ALLOCATE(YDGEOMETRY%YRSTA%STPHI(YDGEOMETRY%YRDIMV%NFLEVG))
+ALLOCATE(YDGEOMETRY%YRSTA%STTEM(YDGEOMETRY%YRDIMV%NFLEVG))
+ALLOCATE(YDGEOMETRY%YRSTA%STDEN(YDGEOMETRY%YRDIMV%NFLEVG))
+ALLOCATE(YDGEOMETRY%YRSTA%STZ  (YDGEOMETRY%YRDIMV%NFLEVG))
+
+ASSOCIATE(YDVAB=>YDGEOMETRY%YRVAB,YDVETA=>YDGEOMETRY%YRVETA,YDVFE=>YDGEOMETRY%YRVFE,YDSTA=>YDGEOMETRY%YRSTA, &
+ & YDDIMV=>YDGEOMETRY%YRDIMV,YDCVER=>YDGEOMETRY%YRCVER, &
+ & YDLAP=>YDGEOMETRY%YRLAP,YDCSGLEG=>YDGEOMETRY%YRCSGLEG, &
+ & YDCSGEOM=>YDGEOMETRY%YRCSGEOM,YDCSGEOM_NB=>YDGEOMETRY%YRCSGEOM_NB,YDGSGEOM=>YDGEOMETRY%YRGSGEOM, &
+ & YDGSGEOM_NB=>YDGEOMETRY%YRGSGEOM_NB, YDSPGEOM=>YDGEOMETRY%YSPGEOM)
+ASSOCIATE(NFLEVG=>YDGEOMETRY%YRDIMV%NFLEVG, &
+ & STDEN=>YDSTA%STDEN, &
+ & STPHI=>YDSTA%STPHI, STPRE=>YDSTA%STPRE, STPREH=>YDSTA%STPREH, &
+ & STTEM=>YDSTA%STTEM, STZ=>YDSTA%STZ)
+!*       1.    Initialize YRSTA.
+!              ------------------
+
+!      ZZ : Height where temperarure vertical gradient changes.
+!      ZP : Pressure at height ZZ.
+!      ZT : Temperature at height ZZ.
+!      ZDTDZ : Temperature vertical gradient above height ZZ.
+
+!*    1.0 Initialisation of ZZ and ZDTDZ
+
+ZSUR =0._JPRB
+RZTROP=11000._JPRB
+RZSTRA=20000._JPRB
+RZSTR2=32100._JPRB
+RZSTPO=47400._JPRB
+RZMESO=51400._JPRB
+RZMES2=71700._JPRB
+RZMEPO=85700._JPRB
+RZABOV=100000._JPRB
+
+RDTDZ1=-6.5E-3_JPRB
+RDTDZ2=0._JPRB
+IF(.NOT.LECMWF) THEN
+  RDTDZ3=1.E-3_JPRB
+  RDTDZ4=2.75E-3_JPRB
+  RDTDZ5=0._JPRB
+  RDTDZ6=-2.75E-3_JPRB
+  RDTDZ7=-1.97E-3_JPRB
+  RDTDZ8=0._JPRB
+  RDTDZ9=0._JPRB
+ELSE
+  RDTDZ3=0._JPRB
+  RDTDZ4=0._JPRB
+  RDTDZ5=0._JPRB
+  RDTDZ6=0._JPRB
+  RDTDZ7=0._JPRB
+  RDTDZ8=0._JPRB
+  RDTDZ9=0._JPRB
+ENDIF
+
+  RTSUR=288.15_JPRB
+
+DO JJPR=1,JPPRO
+  IF(JJPR == 1) THEN
+    ZZ(1)=ZSUR
+    ZDTDZ(1)=RDTDZ1
+    ZT(1)=RTSUR
+    ZP(1)=VP00
+  ELSEIF(JJPR == 2) THEN
+    ZZ(2)=RZTROP
+    ZDTDZ(2)=RDTDZ2
+  ELSEIF(JJPR == 3) THEN
+    ZZ(3)=RZSTRA
+    ZDTDZ(3)=RDTDZ3
+  ELSEIF(JJPR == 4) THEN
+    ZZ(4)=RZSTR2
+    ZDTDZ(4)=RDTDZ4
+  ELSEIF(JJPR == 5) THEN
+    ZZ(5)=RZSTPO
+    ZDTDZ(5)=RDTDZ5
+  ELSEIF(JJPR == 6) THEN
+    ZZ(6)=RZMESO
+    ZDTDZ(6)=RDTDZ6
+  ELSEIF(JJPR == 7) THEN
+    ZZ(7)=RZMES2
+    ZDTDZ(7)=RDTDZ7
+  ELSEIF(JJPR == 8) THEN
+    ZZ(8)=RZMEPO
+    ZDTDZ(8)=RDTDZ8
+  ELSEIF(JJPR == 9) THEN
+    ZZ(9)=RZABOV
+    ZDTDZ(9)=RDTDZ9
+  ENDIF
+ENDDO
+
+!*    1.1 Initialisation of ZT and ZP
+
+DO JJPR=1,JPPRO-1
+  ZZDT=ZDTDZ(JJPR)
+  ZZDZ=ZZ(JJPR+1)-ZZ(JJPR)
+  IF (ZZDT /= 0.0_JPRB) THEN
+    ZT(JJPR+1)=ZT(JJPR)+ZZDT*ZZDZ
+    ZP(JJPR+1)=ZP(JJPR)*(1.0_JPRB+ZZDT*ZZDZ/ZT(JJPR))**(-RG/RPLRG/RD/ZZDT)
+  ELSE
+    ZT(JJPR+1)=ZT(JJPR)
+    ZP(JJPR+1)=ZP(JJPR)*EXP( -RG/RPLRG/RD/ZT(JJPR)*ZZDZ )
+  ENDIF
+ENDDO
+
+DO JJPR=2,JPPRO
+  IF(JJPR == 2) THEN
+    RPTROP=ZP(2)
+    RTTROP=ZT(2)
+  ELSEIF(JJPR == 3) THEN
+    RPSTRA=ZP(3)
+    RTSTRA=ZT(3)
+  ELSEIF(JJPR == 4) THEN
+    RPSTR2=ZP(4)
+    RTSTR2=ZT(4)
+  ELSEIF(JJPR == 5) THEN
+    RPSTPO=ZP(5)
+    RTSTPO=ZT(5)
+  ELSEIF(JJPR == 6) THEN
+    RPMESO=ZP(6)
+    RTMESO=ZT(6)
+  ELSEIF(JJPR == 7) THEN
+    RPMES2=ZP(7)
+    RTMES2=ZT(7)
+  ELSEIF(JJPR == 8) THEN
+    RPMEPO=ZP(8)
+    RTMEPO=ZT(8)
+  ELSEIF(JJPR == 9) THEN
+    RPABOV=ZP(9)
+    RTABOV=ZT(9)
+  ENDIF
+ENDDO
+
+!*    1.2 Computes height (STZ), temperature (STTEM),
+!         geopotential (STPHI), density (STDEN),
+!         and pressure (STPRE) at modele levels.
+
+ZPRESH(NFLEVG)=VP00
+CALL GPHPRE(1,NFLEVG,1,1,YDVAB,YDCVER,ZPRESH,PRESF=ZPRESF)
+
+DO JLEV=1,NFLEVG
+  ZLNPRESF(JLEV)=LOG(ZPRESF(JLEV))
+ENDDO
+
+CALL PPSTA('ICAO',1,1,1,NFLEVG,1,ZPRESF,ZLNPRESF,STTEM,STPHI)
+
+DO JLEV=0,NFLEVG
+  STPREH(JLEV)=ZPRESH(JLEV)
+ENDDO
+
+DO JLEV=1,NFLEVG
+  STZ(JLEV)=STPHI(JLEV)/RG
+  STDEN(JLEV)=ZPRESF(JLEV)/RD/STTEM(JLEV)
+  STPRE(JLEV)=ZPRESF(JLEV)
+ENDDO
+
+IF (LOUTPUT.AND.NPRINTLEV >= 1) THEN
+  WRITE(UNIT=NULOUT,FMT='('' STANDARD ATMOSPHERE'')')
+  WRITE(UNIT=NULOUT,FMT='(1X,''JLEV'',1X,&
+   & 5X,''  PRESSURE          '',&
+   & 5X,''  TEMPERATURE       '',&
+   & 5X,''  HEIGHT            '',&
+   & 5X,''  DENSITY           '')')  
+  DO JLEV=1,NFLEVG
+    WRITE(UNIT=NULOUT,FMT='(1X,I3,2X,4(5X,F20.10))')&
+     & JLEV,STPRE(JLEV),STTEM(JLEV),STZ(JLEV),STDEN(JLEV)  
+  ENDDO
+ENDIF
+
+!*    1.3 Computes NLEXTRAP (level from where temperature is extrapolated).
+
+WRITE(NULOUT,*) 'SUSTA - STANDARD ATMOSPHERE HEIGHT'
+
+IF (LECMWF) THEN
+  HEXTRAP=150._JPRB
+ELSE
+  HEXTRAP=100._JPRB
+ENDIF
+
+CALL POSNAM(NULNAM,'NAMSTA')
+READ(NULNAM,NAMSTA)
+
+
+NLEXTRAP=NFLEVG
+ZMIN1=1.E+12_JPRB
+DO JK=NFLEVG,1,-1
+
+  WRITE(NULOUT,*) JK,STZ(JK)
+
+  ZDZ=ABS(STZ(JK)-HEXTRAP)
+  IF(ZDZ < ZMIN1) THEN
+    NLEXTRAP=JK
+  ENDIF
+  ZMIN1=MIN(ZMIN1,ZDZ)
+ENDDO
+
+WRITE(NULOUT,*) 'SUSTA - NLEXTRAP ',NLEXTRAP
+
+!     ------------------------------------------------------------------
+
+!*       2.    REFERENCE FOR POST-PROCESSING
+!              -----------------------------
+
+!*       2.1   DEFAULT IS SAME AS ICAO
+
+DO JJPR=1,JPPRO
+  IF(JJPR == 1) THEN
+    VTSUR=RTSUR
+    VDTDZ1=RDTDZ1
+  ELSEIF(JJPR == 2) THEN
+    VZTROP=RZTROP
+    VTTROP=RTTROP
+    VPTROP=RPTROP
+    VDTDZ2=RDTDZ2
+  ELSEIF(JJPR == 3) THEN
+    VZSTRA=RZSTRA
+    VTSTRA=RTSTRA
+    VPSTRA=RPSTRA
+    VDTDZ3=RDTDZ3
+  ELSEIF(JJPR == 4) THEN
+    VZSTR2=RZSTR2
+    VTSTR2=RTSTR2
+    VPSTR2=RPSTR2
+    VDTDZ4=RDTDZ4
+  ELSEIF(JJPR == 5) THEN
+    VZSTPO=RZSTPO
+    VTSTPO=RTSTPO
+    VPSTPO=RPSTPO
+    VDTDZ5=RDTDZ5
+  ELSEIF(JJPR == 6) THEN
+    VZMESO=RZMESO
+    VTMESO=RTMESO
+    VPMESO=RPMESO
+    VDTDZ6=RDTDZ6
+  ELSEIF(JJPR == 7) THEN
+    VZMES2=RZMES2
+    VTMES2=RTMES2
+    VPMES2=RPMES2
+    VDTDZ7=RDTDZ7
+  ELSEIF(JJPR == 8) THEN
+    VZMEPO=RZMEPO
+    VTMEPO=RTMEPO
+    VPMEPO=RPMEPO
+    VDTDZ8=RDTDZ8
+  ELSEIF(JJPR == 9) THEN
+    VZABOV=RZABOV
+    VTABOV=RTABOV
+    VPABOV=RPABOV
+    VDTDZ9=RDTDZ9
+  ENDIF
+ENDDO
+
+!*       2.2   FIND OUT FULL LEVEL CLOSEST TO ICAO TROPOPAUSE
+!*             IF CLOSEST LEVEL IS MORE THAN ZTHRESH hPa AWAY
+!*             DO NOTHING (i.e. USE THE ICAO ATMOSPHERE).
+
+ZMIN=ABS(STPRE(1)-ZP(2))
+ILEV=1
+DO JLEV=2,NFLEVG
+  ZDIFF=ABS(STPRE(JLEV)-ZP(2))
+  IF(ZDIFF <= ZMIN) THEN
+    ZMIN=ZDIFF
+    ILEV=JLEV
+  ENDIF
+ENDDO
+
+ZTHRESH=5000._JPRB
+IF(ZMIN <= ZTHRESH) THEN
+  IF (LOUTPUT.AND.NPRINTLEV >= 1) THEN
+    WRITE(NULOUT,*) ' SUSTA: ICAO TROPOPAUSE: ',ZP(2),ZT(2),ZZ(2)
+    WRITE(NULOUT,*) ' SUSTA: CLOSEST FULL LEVEL: ',ILEV,STPRE(ILEV)
+  ENDIF
+
+!*       2.3   FIND OUT ICAO Z AND T AT NEW PRESSURE
+
+  VPTROP=STPRE(ILEV)
+  VZTROP=ZSUR+VTSUR/VDTDZ1*(REAL(VPTROP/VP00,JPRD)**REAL(-VDTDZ1*RD/RG,JPRD)-1.0_JPRD)
+  VTTROP=VTSUR+VDTDZ1*(VZTROP-ZSUR)
+  VDTDZ2=(RTSTRA-VTTROP)/(RZSTRA-VZTROP)
+
+!*       2.4   Initialisation of ZT and ZP
+
+  ZZ(2)=VZTROP
+  ZT(2)=VTTROP
+  ZP(2)=VPTROP
+  ZDTDZ(2)=VDTDZ2
+  DO JJPR=2,JPPRO-1
+    ZZDT=ZDTDZ(JJPR)
+    ZZDZ=ZZ(JJPR+1)-ZZ(JJPR)
+    IF (ZZDT /= 0.0_JPRB) THEN
+      ZT(JJPR+1)=ZT(JJPR)+ZZDT*ZZDZ
+      ZP(JJPR+1)=ZP(JJPR)*REAL(1.0_JPRD+ZZDT*ZZDZ/ZT(JJPR),JPRD)**REAL(-RG/RD/ZZDT, JPRD)
+    ELSE
+      ZT(JJPR+1)=ZT(JJPR)
+      ZP(JJPR+1)=ZP(JJPR)*EXP( -RG/RD/ZT(JJPR)*ZZDZ )
+    ENDIF
+  ENDDO
+
+  DO JJPR=3,JPPRO
+    IF(JJPR == 3) THEN
+      VPSTRA=ZP(3)
+      VTSTRA=ZT(3)
+    ELSEIF(JJPR == 4) THEN
+      VPSTR2=ZP(4)
+      VTSTR2=ZT(4)
+    ELSEIF(JJPR == 5) THEN
+      VPSTPO=ZP(5)
+      VTSTPO=ZT(5)
+    ELSEIF(JJPR == 6) THEN
+      VPMESO=ZP(6)
+      VTMESO=ZT(6)
+    ELSEIF(JJPR == 7) THEN
+      VPMES2=ZP(7)
+      VTMES2=ZT(7)
+    ELSEIF(JJPR == 8) THEN
+      VPMEPO=ZP(8)
+      VTMEPO=ZT(8)
+    ELSEIF(JJPR == 9) THEN
+      VPABOV=ZP(9)
+      VTABOV=ZT(9)
+    ENDIF
+  ENDDO
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUSTA',1,ZHOOK_HANDLE)
+END SUBROUTINE SUSTA

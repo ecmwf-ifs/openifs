@@ -1,0 +1,698 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SUGRIDG(YDGEOMETRY,YDSURF,YDEPHY,YDMCC,YDDYN,KFILE,LDSPOR,PBLH,PFIELD)
+
+!**** *SUGRIDG*  - Initialize the gridpoint fields from GRIB
+
+!     Purpose.
+!     --------
+!           Initialize the gridpoint fields of the model from GRIB file.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUGRIDG(....*
+
+!        Explicit arguments :
+!        ------------------
+!               KFILE   - indicator for which file is to be read
+!                         KFILE = 0 the CFNIGG file is read
+!                         KFILE = 1 the CFNGGG file is read
+!                         KFILE = 2 the CFNRF  file is read
+!                         KFILE = 8 the CFNPANGG file is read
+!                         KFILE = 9 the CFNVAREPS file is read (for VAREPS)
+!                         KFILE =12 the CFNBGHRGG file is read
+!               LDSPOR  - switch indicating whether spectral orography
+!                         field has been read
+!               PBLH    - boundary-layer height (optional)
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!      Mats Hamrud *ECMWF*
+!      Original : 93-05-15  (from SUGRIDP and CPREP1)
+
+!     Modifications.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M.Hamrud      01-Dec-2003 CY28R1 Cleaning
+!      R.Buizza :    20-May-2005 Introduce KFILE=9, to read VAREPS file with acc fields
+!      M.Hamrud      01-Dec-2005 Generalized IO scheme
+!      JJMorcrette   09-05-2006  Dust climatol.surf.fields
+!      S. Serrar     05-06-23 CO2 surface fields GRIB identifiers defined
+!      JJMorcrette   20060715 MODIS albedo
+!      M.Hamrud      01-Jul-2006 Revised surface fields
+!      H.Hersbach    04-Dec-2009 Read VDIAG in trajectory
+!      M.Leutbecher  21-Mar-2011 Conserving interpolation of VAREPS acc. fields
+!      G.Balsamo     14-Jun-2013 Add lake prognostic variables
+!      S.Lang        28-Oct-2015 Overwrite interp total precip by sum of
+!                                CVP and LSP (KFILE=9)
+!      R. El Khatib  04-Aug-2014 Pruning of the conf. 927/928
+!      E. Dutra/G.Arduini Jun 2017    Snow multi-layer
+!      M. Chrust     06-Apr-2021 Add high resolution background=12
+!     ------------------------------------------------------------------
+
+USE YOEPHY             , ONLY : TEPHY
+USE YOMDYN             , ONLY : TDYN
+USE YOMMCC             , ONLY : TMCC
+USE GEOMETRY_MOD       , ONLY : GEOMETRY
+USE SURFACE_FIELDS_MIX , ONLY : TSURF, GPOPER, TYPE_SFL_COMM
+USE PARKIND1           , ONLY : JPIM, JPRB
+USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCT0             , ONLY : LIFSTRAJ,L_OOPS,NCONF
+USE YOMLUN             , ONLY : NULOUT
+USE YOM_GRIB_CODES     , ONLY : NGRBBLH
+USE YOM_GRIB_CODES     , ONLY : NGRBTP, NGRBCP, NGRBLSP
+USE YOMOPH0            , ONLY : CFNGGG, CFNIGG, CFNVAREPS, CFNPANGG, CFNBGHRGG
+USE YOMVAREPS          , ONLY : LVAREPS, NAFVAREPS, NAFVAREPSGC
+USE IOSTREAM_MIX       , ONLY : SETUP_IOSTREAM, SETUP_IOREQUEST, IO_GET,&
+ &                              CLOSE_IOSTREAM, TYPE_IOSTREAM, TYPE_IOREQUEST, CLOSE_IOREQUEST,&
+ &                              IO_INQUIRE
+USE ALGORITHM_STATE_MOD, ONLY : GET_NUPTRA
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)             :: YDGEOMETRY
+TYPE(TSURF)       ,INTENT(INOUT)          :: YDSURF
+TYPE(TDYN)        ,INTENT(INOUT)          :: YDDYN
+TYPE(TEPHY)       ,INTENT(INOUT)          :: YDEPHY
+TYPE(TMCC)        ,INTENT(INOUT)          :: YDMCC
+INTEGER(KIND=JPIM),INTENT(IN)             :: KFILE
+LOGICAL           ,INTENT(OUT)            :: LDSPOR
+REAL(KIND=JPRB)   ,OPTIONAL,INTENT(INOUT) :: PBLH(:)
+REAL(KIND=JPRB)   ,OPTIONAL,INTENT(INOUT) :: PFIELD(:,:)
+
+
+INTEGER(KIND=JPIM), EXTERNAL :: ISRCHEQ
+REAL(KIND=JPRB), ALLOCATABLE :: ZFPDGG(:,:,:)
+REAL(KIND=JPRB),    ALLOCATABLE :: ZFPDGGML(:,:,:,:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: KLEVSFC(:)
+
+
+INTEGER(KIND=JPIM), ALLOCATABLE, DIMENSION(:) :: IGRIB2D, IGRIB3D
+CHARACTER (LEN = 16) ::  CLFN
+CHARACTER (LEN = 1 ) ::  CLNUPTRA
+
+INTEGER(KIND=JPIM) :: JC, I, IMAXFI, IGGMAX, IFIELDS,IFIELDSML, INVALS
+INTEGER(KIND=JPIM) :: IML
+INTEGER(KIND=JPIM) :: JFLD, JROF, JV, IFLDP
+INTEGER(KIND=JPIM) ::  JAF, ILEN
+INTEGER(KIND=JPIM) ::  IDXTP, IDXCP, IDXLSP
+
+INTEGER(KIND=JPIM) :: JSTGLO, IEND, JL, IBL, JLEV
+TYPE(TYPE_IOSTREAM) :: YL_IOSTREAM
+TYPE(TYPE_IOREQUEST) :: YL_IOREQUEST
+TYPE(TYPE_SFL_COMM) :: YLCOM
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+#include "abor1.intfb.h"
+#include "modgrin.intfb.h"
+#include "modgrinml.intfb.h"
+
+
+!     ------------------------------------------------------------------
+
+!*       1.    READ IN GRID-POINT FIELDS FROM GRIB DATA.
+!              -----------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SUGRIDG',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP)
+ASSOCIATE(NPROMA=>YDDIM%NPROMA, NRESOL=>YDDIM%NRESOL, &
+ & NGPTOT=>YDGEM%NGPTOT, &
+ & NSURFL=>YDSURF%NSURFL, SD_VD=>YDSURF%SD_VD, SD_VF=>YDSURF%SD_VF, &
+ & SD_VP=>YDSURF%SD_VP, SD_WS=>YDSURF%SD_WS, SD_WW=>YDSURF%SD_WW, &
+ & SP_RR=>YDSURF%SP_RR, SP_SB=>YDSURF%SP_SB, SP_SG=>YDSURF%SP_SG, &
+ & SP_SL=>YDSURF%SP_SL, YSD_VD=>YDSURF%YSD_VD, YSD_VDD=>YDSURF%YSD_VDD, &
+ & YSD_VF=>YDSURF%YSD_VF, YSD_VFD=>YDSURF%YSD_VFD, YSD_VP=>YDSURF%YSD_VP, &
+ & YSD_VPD=>YDSURF%YSD_VPD, YSD_WS=>YDSURF%YSD_WS, YSD_WSD=>YDSURF%YSD_WSD, &
+ & YSD_WW=>YDSURF%YSD_WW, YSD_WWD=>YDSURF%YSD_WWD, YSP_RR=>YDSURF%YSP_RR, &
+ & YSP_RRD=>YDSURF%YSP_RRD, YSP_SB=>YDSURF%YSP_SB, YSP_SBD=>YDSURF%YSP_SBD, &
+ & YSP_SG=>YDSURF%YSP_SG, YSP_SGD=>YDSURF%YSP_SGD, YSP_SL=>YDSURF%YSP_SL, &
+ & YSP_SLD=>YDSURF%YSP_SLD)
+IMAXFI=MAX(NAFVAREPS,NSURFL)+5
+
+ALLOCATE (IGRIB2D(IMAXFI))
+ALLOCATE (IGRIB3D(IMAXFI))
+
+I=0
+
+! Initialise igribio data structure
+!   1 - grib code
+!   2 - processor directed to perform grib input
+!   3 - indicator to show field has been read
+
+WRITE(NULOUT,'("SUGRIDG: KFILE=",I10)') KFILE
+IF(LVAREPS.AND.(KFILE == 9)) THEN
+  IF(.NOT.PRESENT(PFIELD)) CALL ABOR1('SUGRIDG-PFIELD MISSING')
+  WRITE(NULOUT,'("SUGRIDG: LOOP JAF - NAFVAREPS=",I10)') NAFVAREPS
+  DO JAF=1,NAFVAREPS
+    I=I+1
+    IGRIB2D(I)=NAFVAREPSGC(JAF)
+  ENDDO
+  IGGMAX=I
+ELSE
+  CALL GPOPER(YDGEOMETRY%YRDIM,YDDYN,'GRIBIN',YDSURF,KBL=1,YDCOM=YLCOM)
+  I = YLCOM%ICOUNT
+  IML = YLCOM%ICOUNTML
+  IGRIB2D(1:I)   =YLCOM%ICODES(1:I)
+  IGRIB3D(1:IML) =YLCOM%ICODESML(1:IML)
+  LDSPOR=.FALSE.
+  IF (PRESENT(PBLH)) THEN
+    I=I+1
+    IGRIB2D(I)=NGRBBLH
+  ENDIF
+  IFIELDSML=IML
+  ! For back-compatibility with single-layer, we put the MAX between 1 and LEVSNOW
+  ! However the grib reader loop through KLEVSFC, so probably the soil and snow 
+  ! must be divided if we don't want to initialise empty levels that are not used
+  ! through the model integration. Also the SETUP_IOREQUEST requires the Number 
+  ! of levels to be specified, not sure how to overcome this with a single input file 
+  ! ALLOCATE (ZFPDGGML(NGPTOT,MAX(YSP_SBD%NLEVS,YSP_SGD%NLEVS),IFIELDSML,1))
+  ! ALLOCATE (KLEVSFC(MAX(YSP_SBD%NLEVS,YSP_SGD%NLEVS)))
+  ALLOCATE (ZFPDGGML(NGPTOT,MAX(1,YSP_SGD%NLEVS),IFIELDSML,1))
+  ALLOCATE (KLEVSFC(MAX(1,YSP_SGD%NLEVS)))
+  DO JLEV=1,SIZE(KLEVSFC)
+    KLEVSFC(JLEV)=JLEV
+  ENDDO
+ENDIF
+
+IFIELDS=I
+IF(IFIELDS > IMAXFI) THEN
+  WRITE(NULOUT,*) ' IFIELDS GT IMAXFI '
+  CALL ABOR1(' ERROR IN SUGRIDG')
+ENDIF
+
+WRITE(UNIT=NULOUT,FMT='(A)') ' READ SURFACE FIELDS FROM GRIB '
+IF (KFILE == 0) THEN
+  CLFN=CFNIGG
+  WRITE(UNIT=NULOUT,FMT='(A,A)')' INITIAL DATA TO BE READ FROM FILE ',CLFN
+ELSEIF (KFILE == 1) THEN
+  IF (L_OOPS) THEN
+    WRITE(CLNUPTRA,FMT='(I1)') GET_NUPTRA()
+    CLFN=CFNGGG(1:13)//'_'//CLNUPTRA
+  ELSE
+    CLFN=CFNGGG
+  ENDIF
+  WRITE(UNIT=NULOUT,FMT='(A,A)')&
+   & ' STARTING POINT FOR MINIMIZATION TO BE READ FROM FILE ',CLFN
+  WRITE(UNIT=NULOUT,FMT='(A,A)')&
+   & ' PRE-PROCESSED GRIDPOINT DATA TO BE READ FROM FILE ',CLFN
+ELSEIF (KFILE == 8) THEN
+  CLFN=CFNPANGG
+  WRITE(UNIT=NULOUT,FMT='(A,A)')&
+   & ' PREVIOUS ANALYSIS TO BE READ FROM FILE ',CLFN
+ELSEIF (KFILE == 9) THEN
+  ILEN=INDEX(CFNVAREPS,' ')-1
+  CFNIGG=CFNVAREPS(1:ILEN)
+  CLFN=CFNIGG
+  WRITE(UNIT=NULOUT,FMT='(A,A)')&
+   & ' VAREPS accumulated fields TO BE READ FROM FILE ',CLFN
+ELSEIF (KFILE == 12) THEN
+  CLFN=CFNBGHRGG(1:13)
+  WRITE(UNIT=NULOUT,FMT='(A,A)')&
+   & ' HIGH RES GP SFC BG TO BE READ FROM FILE ',CLFN
+ELSE
+  WRITE(*,'('' INVALID ARGUMENT TO SUGRIDG, KFILE='',I3)') KFILE
+  CALL ABOR1(' INVALID ARGUMENT TO SUGRIDG')
+ENDIF
+
+ALLOCATE (ZFPDGG(NGPTOT,IFIELDS,1))
+
+CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JFLD)
+DO JFLD=1,IFIELDS
+  ZFPDGG(:,JFLD,1)=0.0_JPRB
+ENDDO
+!$OMP END PARALLEL DO
+
+IF (KFILE/=9) THEN
+  DO JLEV=1,SIZE(KLEVSFC)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JFLD)
+  DO JFLD=1,IFIELDSML
+    ZFPDGGML(:,JLEV,JFLD,1)=0.0_JPRB
+  ENDDO
+!$OMP END PARALLEL DO
+  ENDDO
+ENDIF
+CALL GSTATS(1409,1)
+
+IF (KFILE/=9) THEN
+  CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=1)
+  CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+    & KGRIB2D=IGRIB2D(1:IFIELDS),KGRIB3D=IGRIB3D(1:IFIELDSML),KLEVS3D=KLEVSFC,KPROMA=NGPTOT)
+ELSE
+  !
+  !   get numberOfValues of higher resolution fields in file CLFN
+  !
+  CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=1)
+  CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+       & LDINTONLY=.TRUE.,KCHUNKSIZE=1)
+  CALL IO_INQUIRE(YL_IOSTREAM,YL_IOREQUEST, KNVALS=INVALS)
+  CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+  CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+  !
+  !   request reading and interpolation of the higher resolution
+  !     accumulated fields from the previous leg
+  !
+  CALL SETUP_IOSTREAM(YL_IOSTREAM,'CIO',TRIM(CLFN),CDMODE='r',KIOMASTER=1,&
+       &KNVALS=INVALS)
+  CALL SETUP_IOREQUEST(YL_IOREQUEST,'GRIDPOINT_FIELDS',LDGRIB=.TRUE.,KRESOL=NRESOL,&
+       & KGRIB2D=IGRIB2D(1:IFIELDS),KPROMA=NGPTOT,&
+       & LDINTERP=.TRUE.,KTYPE_INTERP=3)
+ENDIF
+
+IF (KFILE/=9) THEN
+  CALL IO_GET(YL_IOSTREAM,YL_IOREQUEST,PR3=ZFPDGG(:,1:IFIELDS,:),PR4=ZFPDGGML(:,:,1:IFIELDSML,:))
+ELSE
+  CALL IO_GET(YL_IOSTREAM,YL_IOREQUEST,PR3=ZFPDGG(:,1:IFIELDS,:))
+ENDIF
+CALL CLOSE_IOREQUEST(YL_IOREQUEST)
+CALL CLOSE_IOSTREAM(YL_IOSTREAM)
+
+!     ------------------------------------------------------------------
+
+!        2.    MODIFICATIONS TO FIELDS.
+!              ------------------------
+
+IF(LVAREPS.AND.(KFILE == 9)) THEN
+  WRITE(NULOUT,'("SUGRIDG: KFILE=9 >> NO CALL MODGRIN - IFIELDS=",I10,1X)') IFIELDS
+ELSE
+  WRITE(NULOUT,'("SUGRIDG: CALL MODGRIN - IFIELDS=",I10)') IFIELDS
+  CALL MODGRINML(YDGEOMETRY%YRGEM,YDMCC,YDEPHY,KFIELDS2D=IFIELDS,KFIELDS3D=IFIELDSML,KPAR2D=IGRIB2D,KPAR3D=IGRIB3D,&
+                & KLEVSM=MAX(1,YSP_SGD%NLEVS), PFPDGG2D=ZFPDGG(:,:,1), PFPDGG3D=ZFPDGGML(:,:,:,1) )
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!        3.    COPY PROGNOSTIC FIELDS.
+!              -----------------------
+
+IF(LVAREPS.AND.(KFILE == 9)) THEN
+
+!*       3.0   Accumulated fields for VAREPS
+
+  WRITE(NULOUT,'("SUGRIDG: KFILE=9 >> COPY ACCUMULATED FIELDS")')
+  DO JAF=1,NAFVAREPS
+    CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JROF)
+    DO JROF=1,NGPTOT
+      PFIELD(JROF,JAF) = ZFPDGG(JROF,JAF,1)
+    ENDDO
+!$OMP END PARALLEL DO
+    CALL GSTATS(1409,1)
+  ENDDO
+
+  ! Overwrite NGRBTP with sum of NGRBCP and NGRBLSP
+  ! this is needed because the conserving interpolation (KTYPE_INTERP=3) is non-linear
+
+  IF ( ANY( NAFVAREPSGC(1:NAFVAREPS) == NGRBTP).AND.ANY( NAFVAREPSGC(1:NAFVAREPS) == NGRBCP).AND.&
+   &ANY( NAFVAREPSGC(1:NAFVAREPS) == NGRBLSP) ) THEN
+
+    WRITE(NULOUT,'("SUGRIDG: KFILE=9 >> REPLACING TP by CP+LSP")')
+
+    IDXTP  = MINLOC(ABS(NAFVAREPSGC(1:NAFVAREPS) - NGRBTP), 1)
+    IDXCP  = MINLOC(ABS(NAFVAREPSGC(1:NAFVAREPS) - NGRBCP), 1)
+    IDXLSP = MINLOC(ABS(NAFVAREPSGC(1:NAFVAREPS) - NGRBLSP), 1)
+
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JROF)
+    DO JROF=1,NGPTOT
+      PFIELD(JROF,IDXTP) = ZFPDGG(JROF,IDXCP,1) + ZFPDGG(JROF,IDXLSP,1)
+    ENDDO
+!$OMP END PARALLEL DO
+
+  ELSE
+
+    WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+    WRITE(NULOUT,'(2X,''ONE OF THE GRIB CODES '',i6,i6,i6,&
+     & '' NOT FOUND BY SUGRIDG '')') NGRBTP, NGRBCP, NGRBLSP
+    WRITE(NULOUT,'(2X,'' overlap field TP not replaced by sum of CP and LSP '')')
+    WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+
+  ENDIF
+
+ELSE
+
+!*       3.2   SOILB
+
+  DO JC=1,YSP_SBD%NLEVS
+    DO JV=1,YSP_SBD%NUMFLDS
+      IF(YSP_SB%YSB(JV)%IGRBCODE(JC) /= -999) THEN
+        IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSP_SB%YSB(JV)%IGRBCODE(JC))
+        IF(IFLDP <= IFIELDS) THEN
+          CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+          DO JSTGLO=1,NGPTOT,NPROMA
+            IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+            IBL=(JSTGLO-1)/NPROMA+1
+            DO JL=1,IEND
+              SP_SB(JL,JC,JV,IBL) =  ZFPDGG(JSTGLO+JL-1,IFLDP,1)
+            ENDDO
+          ENDDO
+!$OMP END PARALLEL DO
+          CALL GSTATS(1409,1)
+          WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+           & '' READ FROM GRIB FILE INTO SOILB '',&
+           & I2.2,1X,I2.2)')&
+           & YSP_SB%YSB(JV)%IGRBCODE(JC),JC,JV
+        ELSE
+          WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+          WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+           & '' NOT FOUND BY SUGRIDG '')')YSP_SB%YSB(JV)%IGRBCODE(JC)
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDDO
+
+!*       3.4   LAKEB
+
+  DO JV=1,YSP_SLD%NUMFLDS
+    IF(YSP_SL%YSL(JV)%IGRBCODE /= -999) THEN
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSP_SL%YSL(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SP_SL(JL,JV,IBL) = ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO LAKEB '',&
+         & I2.2)')&
+         & YSP_SL%YSL(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSP_SL%YSL(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+  ENDDO
+
+
+!*       3.5   SNOWG
+  DO JV=1,YSP_SGD%NUMFLDS
+    IF(YSP_SG%YSG(JV)%IGRBCODE(1) /= -999 ) THEN
+      IFLDP=ISRCHEQ(IFIELDSML,IGRIB3D,1,YSP_SG%YSG(JV)%IGRBCODE(1))
+      IF(IFLDP <= IFIELDSML) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL,JLEV)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            DO JLEV=1,YSP_SGD%NLEVS
+              SP_SG(JL,JLEV,JV,IBL) = ZFPDGGML(JSTGLO-1+JL,JLEV,IFLDP,1)
+            ENDDO
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO SNOWG '',&
+         & I2.2)')&
+         & YSP_SG%YSG(JV)%IGRBCODE(1),JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSP_SG%YSG(JV)%IGRBCODE(1)
+      ENDIF
+    ENDIF
+  ENDDO
+
+!*       3.6   RESVR
+
+  DO JV=1,YSP_RRD%NUMFLDS
+    IF(YSP_RR%YRR(JV)%IGRBCODE /= -999) THEN
+! get the interpolated surface temperature for Full_pos vertical int.
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSP_RR%YRR(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SP_RR(JL,JV,IBL) = ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO RESVR '',&
+         & I2.2)')&
+         & YSP_RR%YRR(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSP_RR%YRR(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+  ENDDO
+
+!*       3.7   WAVES
+
+  DO JV=1,YSD_WSD%NUMFLDS
+    IF(YSD_WS%YWS(JV)%IGRBCODE /= -999) THEN
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSD_WS%YWS(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SD_WS(JL,JV,IBL) =  ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO WAVES '',&
+         & I2.2,1X,I2.2)')&
+         & YSD_WS%YWS(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSD_WS%YWS(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+  ENDDO
+
+  DO JV=1,YSD_WWD%NUMFLDS
+    IF(YSD_WW%YWW(JV)%IGRBCODE /= -999) THEN
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSD_WW%YWW(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SD_WW(JL,JV,IBL) =  ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO WAVES '',&
+         & I2.2,1X,I2.2)')&
+         & YSD_WW%YWW(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSD_WW%YWW(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+  ENDDO
+
+
+!*       3.8   EXTRP
+
+!!$  DO JC=1,NCXP
+!!$    DO JV=1,NVXP
+!!$      IFIELD=IFIELD+1
+!!$      IF(NEXTRPGB(JC,JV) /= -999) THEN
+!!$        IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,NEXTRPGB(JC,JV))
+!!$        IF(IFLDP <= IFIELDS) THEN
+!!$          CALL GSTATS(1409,0)
+!!$!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JROF)
+!!$          DO JROF=1,NGPTOT
+!!$            PFIELD(JROF,IFIELD) = ZFPDGG(JROF,IFLDP,1)
+!!$          ENDDO
+!!$!$OMP END PARALLEL DO
+!!$          CALL GSTATS(1409,1)
+!!$          WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+!!$           & '' READ FROM GRIB FILE INTO EXTRP '',&
+!!$           & I2.2,1X,I2.2,1X,i6)')&
+!!$           & NEXTRPGB(JC,JV),JC,JV,NFLDPTP(IFIELD)
+!!$        ELSE
+!!$          WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+!!$          WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+!!$           & '' NOT FOUND BY SUGRIDG '')')NEXTRPGB(JC,JV)
+!!$        ENDIF
+!!$      ENDIF
+!!$    ENDDO
+!!$  ENDDO
+!!$
+!!$!*       3.9   XTRP2
+!!$
+!!$  DO JV=1,NVXP2
+!!$    IFIELD=IFIELD+1
+!!$    IF(NXTRP2GB(JV) /= -999) THEN
+!!$      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,NXTRP2GB(JV))
+!!$      IF(IFLDP <= IFIELDS) THEN
+!!$        CALL GSTATS(1409,0)
+!!$!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JROF)
+!!$        DO JROF=1,NGPTOT
+!!$          PFIELD(JROF,IFIELD) = ZFPDGG(JROF,IFLDP,1)
+!!$        ENDDO
+!!$!$OMP END PARALLEL DO
+!!$        CALL GSTATS(1409,1)
+!!$        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+!!$         & '' READ FROM GRIB FILE INTO XTRP2 '',&
+!!$         & I2.2,1X,i6)')&
+!!$         & NXTRP2GB(JV),JV,NFLDPTP(IFIELD)
+!!$      ELSE
+!!$        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+!!$        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+!!$         & '' NOT FOUND BY SUGRIDG '')')NXTRP2GB(JV)
+!!$      ENDIF
+!!$    ENDIF
+!!$  ENDDO
+!!$
+!!$!     ------------------------------------------------------------------
+
+! 4.0 VDIAG; only required in trajectory)
+
+  IF(LIFSTRAJ.OR.(L_OOPS.AND.NCONF==131)) THEN
+   DO JV=1,YSD_VDD%NUMFLDS
+    IF(YSD_VD%YVD(JV)%IGRBCODE /= -999) THEN
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSD_VD%YVD(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SD_VD(JL,JV,IBL) = ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO VDIAG '',I2.2)')&
+         & YSD_VD%YVD(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSD_VD%YVD(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+   ENDDO
+  ENDIF
+
+
+! 4.1 VARSF
+
+  DO JV=1,YSD_VFD%NUMFLDS
+    IF(YSD_VF%YVF(JV)%IGRBCODE /= -999) THEN
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSD_VF%YVF(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SD_VF(JL,JV,IBL) = ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+        CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO VARSF '',I2.2)')&
+         & YSD_VF%YVF(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSD_VF%YVF(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+  ENDDO
+
+!*       4.2   VCLIP
+
+  DO JV=1,YSD_VPD%NUMFLDS
+    IF(YSD_VP%YVP(JV)%IGRBCODE /= -999) THEN
+      IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,YSD_VP%YVP(JV)%IGRBCODE)
+      IF(IFLDP <= IFIELDS) THEN
+        CALL GSTATS(1409,0)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JSTGLO,IEND,IBL,JL)
+        DO JSTGLO=1,NGPTOT,NPROMA
+          IEND = MIN(NPROMA,NGPTOT-JSTGLO+1)
+          IBL=(JSTGLO-1)/NPROMA+1
+          DO JL=1,IEND
+            SD_VP(JL,JV,IBL) = ZFPDGG(JSTGLO-1+JL,IFLDP,1)
+          ENDDO
+        ENDDO
+!$OMP END PARALLEL DO
+         CALL GSTATS(1409,1)
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' READ FROM GRIB FILE INTO VCLIP '',&
+         & I2.2)')&
+         & YSD_VP%YVP(JV)%IGRBCODE,JV
+      ELSE
+        WRITE(NULOUT,'(2X,'' WARNING! WARNING! WARNING! '')')
+        WRITE(NULOUT,'(2X,''GRIB CODE '',i6,&
+         & '' NOT FOUND BY SUGRIDG '')')YSD_VP%YVP(JV)%IGRBCODE
+      ENDIF
+    ENDIF
+  ENDDO
+ENDIF
+
+IF(PRESENT(PBLH)) THEN
+  IFLDP=ISRCHEQ(IFIELDS,IGRIB2D,1,NGRBBLH)
+  IF(IFLDP <= IFIELDS) THEN
+    PBLH(:) = ZFPDGG(:,IFLDP,1)
+  ENDIF
+ENDIF
+
+DEALLOCATE (IGRIB2D)
+DEALLOCATE (ZFPDGG)
+
+DEALLOCATE(IGRIB3D)
+IF (ALLOCATED(ZFPDGGML))THEN
+  DEALLOCATE(ZFPDGGML)
+  DEALLOCATE(KLEVSFC)
+ENDIF
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('SUGRIDG',1,ZHOOK_HANDLE)
+END SUBROUTINE SUGRIDG

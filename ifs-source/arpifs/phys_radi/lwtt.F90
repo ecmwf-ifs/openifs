@@ -1,0 +1,209 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+!OPTIONS XOPT(HSFUN)
+SUBROUTINE LWTT ( KIDIA, KFDIA, KLON, PGA  , PGB, PUU  , PTT             )
+
+!**** *LWTT* - LONGWAVE TRANSMISSION FUNCTIONS
+
+!     PURPOSE.
+!     --------
+!           THIS ROUTINE COMPUTES THE TRANSMISSION FUNCTIONS FOR ALL THE
+!     ABSORBERS (H2O, UNIFORMLY MIXED GASES, AND O3) IN ALL SIX SPECTRAL
+!     INTERVALS.
+
+!**   INTERFACE.
+!     ----------
+!          *LWTT* IS CALLED FROM *LWVN*, *LWVD*, *LWVB*
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!     ==== INPUTS ===
+! KND    :                    ; WEIGHTING INDEX
+! PUU    : (KLON,NUA)         ; ABSORBER AMOUNTS
+!     ==== OUTPUTS ===
+! PTT    : (KLON,NTRA)        ; TRANSMISSION FUNCTIONS
+
+!        IMPLICIT ARGUMENTS :   NONE
+!        --------------------
+
+!     METHOD.
+!     -------
+
+!          1. TRANSMISSION FUNCTION BY H2O AND UNIFORMLY MIXED GASES ARE
+!     COMPUTED USING PADE APPROXIMANTS AND HORNER'S ALGORITHM.
+!          2. TRANSMISSION BY O3 IS EVALUATED WITH MALKMUS'S BAND MODEL.
+!          3. TRANSMISSION BY H2O CONTINUUM AND AEROSOLS FOLLOW AN
+!     A SIMPLE EXPONENTIAL DECREASE WITH ABSORBER AMOUNT.
+
+!     EXTERNALS.
+!     ----------
+
+!          NONE
+
+!     REFERENCE.
+!     ----------
+
+!        SEE RADIATION'S PART OF THE MODEL'S DOCUMENTATION AND
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS
+
+!     AUTHOR.
+!     -------
+!      JEAN-JACQUES MORCRETTE  *ECMWF*
+!      ORIGINAL : 88-12-15
+
+!     MODIFICATIONS.
+!     --------------
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      M. Janiskova  11-Jan_2006 Optimisation
+!-----------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOELW    , ONLY : NTRA     ,NUA      ,RPTYPE   ,RETYPE   ,&
+ & RO1H     ,RO2H     ,RPIALF0  
+USE YOELWCONST,ONLY : RCH4A, RCH4B, RCN2OA, RCN2OB
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGA(KLON,8,2) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGB(KLON,8,2) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUU(KLON,NUA) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTT(KLON,NTRA) 
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: JA, JL
+
+REAL(KIND=JPRB) :: ZA11, ZA12, ZAERCN, ZEU10, ZEU11, ZEU12,&
+ & ZEU13, ZODH41, ZODH42, ZODN21, ZODN22, ZPU10, &
+ & ZPU11, ZPU12, ZPU13, ZSQ1, ZSQ2, ZSQH41, &
+ & ZSQH42, ZSQN21, ZSQN22, ZTO1, ZTO2, ZTTF11, &
+ & ZTTF12, ZUU11, ZUU12, ZUXY, ZVXY, &
+ & ZXD, ZXN, ZZ, ZUXYCH4, ZVXYCH4, &
+ & ZUXYN2O, ZVXYN2O
+REAL(KIND=JPRB) :: ZXDIV, ZDIV1, ZDIV2, ZDIV3, ZDIV4, ZDIV5, ZDIV6
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+!DIR$ VFUNCTION SQRTHF
+
+!*         1.     HORNER'S ALGORITHM FOR H2O AND CO2 TRANSMISSION
+!                 -----------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LWTT',0,ZHOOK_HANDLE)
+DO JA = 1 , 8
+  DO JL = KIDIA,KFDIA
+    ZZ  = SQRT(PUU(JL,JA))
+    ZXD = PGB( JL,JA,1) + ZZ* (PGB( JL,JA,2) + ZZ )
+    ZXN = PGA( JL,JA,1) + ZZ* (PGA( JL,JA,2)      )
+    ZXDIV = 1.0_JPRB / ZXD
+    PTT(JL,JA) = ZXN * ZXDIV
+  ENDDO
+ENDDO
+
+DO JL = KIDIA,KFDIA
+  PTT(JL,3)=MAX(PTT(JL,3),0.0_JPRB)
+ENDDO
+!     ------------------------------------------------------------------
+
+!*         2.     CONTINUUM, OZONE AND AEROSOL TRANSMISSION FUNCTIONS
+!                 ---------------------------------------------------
+
+DO JL = KIDIA,KFDIA
+  PTT(JL, 9) = PTT(JL, 8)
+
+!-  CONTINUUM ABSORPTION: E- AND P-TYPE (from Giorgetta and Wild, 1997)
+
+  ZPU10 = RPTYPE(1) * PUU(JL,10)
+  ZPU11 = RPTYPE(2) * PUU(JL,10)
+  ZPU12 = RPTYPE(3) * PUU(JL,10)
+  ZPU13 = RPTYPE(4) * PUU(JL,10)
+  ZEU10 = RETYPE(1) * PUU(JL,11)
+  ZEU11 = RETYPE(2) * PUU(JL,11)
+  ZEU12 = RETYPE(3) * PUU(JL,11)
+  ZEU13 = RETYPE(4) * PUU(JL,11)
+
+!-  OZONE ABSORPTION
+
+  ZDIV1 = 1.0_JPRB / (RPIALF0 * PUU(JL,13))
+  ZUXY = 4._JPRB * PUU(JL,12) * PUU(JL,12) * ZDIV1
+  ZSQ1 = SQRT(1.0_JPRB + RO1H * ZUXY ) - 1.0_JPRB
+  ZSQ2 = SQRT(1.0_JPRB + RO2H * ZUXY ) - 1.0_JPRB
+  ZDIV2 = 1.0_JPRB / PUU(JL,12)
+  ZVXY = 0.5_JPRB * RPIALF0 * PUU(JL,13) * ZDIV2
+  ZAERCN = PUU(JL,17) + ZEU12 + ZPU12
+  ZTO1 = EXP( - ZVXY * ZSQ1 - ZAERCN )
+  ZTO2 = EXP( - ZVXY * ZSQ2 - ZAERCN )
+
+!-- TRACE GASES (CH4, N2O, CFC-11, CFC-12)
+
+!* CH4 IN INTERVAL 800-970 + 1110-1250 CM-1
+
+  ZDIV3 = 1.0_JPRB / PUU(JL,20)
+  ZUXYCH4 = PUU(JL,19)*PUU(JL,19)*ZDIV3
+  ZDIV4 = 1.0_JPRB / PUU(JL,19)
+  ZVXYCH4 = PUU(JL,20)*ZDIV4
+  ZUXY = RCH4A * ZUXYCH4
+  ZSQH41 = SQRT(1.0_JPRB + 33.7_JPRB * ZUXY) - 1.0_JPRB
+  ZVXY = 0.0515_JPRB * ZVXYCH4
+  ZODH41 = ZVXY * ZSQH41
+
+!* N2O IN INTERVAL 800-970 + 1110-1250 CM-1
+
+  ZDIV5 = 1.0_JPRB / PUU(JL,22)
+  ZUXYN2O = PUU(JL,21)*PUU(JL,21)*ZDIV5
+  ZDIV6 = 1.0_JPRB / PUU(JL,21)
+  ZVXYN2O = PUU(JL,22)*ZDIV6
+  ZUXY = RCN2OA * ZUXYN2O
+  ZSQN21 = SQRT(1.0_JPRB + 21.3_JPRB * ZUXY) - 1.0_JPRB
+  ZVXY = 0.208_JPRB * ZVXYN2O
+  ZODN21 = ZVXY * ZSQN21
+
+!* CH4 IN INTERVAL 1250-1450 + 1880-2820 CM-1
+
+  ZUXY = RCH4B * ZUXYCH4
+  ZSQH42 = SQRT(1.0_JPRB + 400._JPRB * ZUXY) - 1.0_JPRB
+  ZVXY = 0.0565_JPRB * ZVXYCH4
+  ZODH42 = ZVXY * ZSQH42
+
+!* N2O IN INTERVAL 1250-1450 + 1880-2820 CM-1
+
+  ZUXY = RCN2OB * ZUXYN2O
+  ZSQN22 = SQRT(1.0_JPRB + 2000._JPRB * ZUXY) - 1.0_JPRB
+  ZVXY = 0.0985_JPRB * ZVXYN2O
+  ZODN22 = ZVXY * ZSQN22
+
+!* CFC-11 IN INTERVAL 800-970 + 1110-1250 CM-1
+
+  ZA11 = 2.0_JPRB * PUU(JL,23) * 4.404E+05_JPRB
+  ZTTF11 = 1.0_JPRB - ZA11 * 0.003225_JPRB
+
+!* CFC-12 IN INTERVAL 800-970 + 1110-1250 CM-1
+
+  ZA12 = 2.0_JPRB * PUU(JL,24) * 6.7435E+05_JPRB
+  ZTTF12 = 1.0_JPRB - ZA12 * 0.003225_JPRB
+
+  ZUU11 = - PUU(JL,15) - ZEU10 - ZPU10
+  ZUU12 = - PUU(JL,16) - ZEU11 - ZPU11 - ZODH41 - ZODN21
+  PTT(JL,10) = EXP( - PUU(JL,14) )
+  PTT(JL,11) = EXP( ZUU11 )
+  PTT(JL,12) = EXP( ZUU12 ) * ZTTF11 * ZTTF12
+  PTT(JL,13) = 0.7554_JPRB * ZTO1 + 0.2446_JPRB * ZTO2
+  PTT(JL,14) = PTT(JL,10) * EXP( - ZEU13 - ZPU13 )
+  PTT(JL,15) = EXP ( - PUU(JL,14) - ZODH42 - ZODN22 )
+
+ENDDO
+
+IF (LHOOK) CALL DR_HOOK('LWTT',1,ZHOOK_HANDLE)
+END SUBROUTINE LWTT

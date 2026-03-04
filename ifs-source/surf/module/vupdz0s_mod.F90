@@ -1,0 +1,438 @@
+! (C) Copyright 1990- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+MODULE VUPDZ0S_MOD
+USE PARKIND1  , ONLY : JPIM, JPRB
+
+IMPLICIT NONE
+
+PRIVATE PZ0WN
+PUBLIC VUPDZ0S
+
+CONTAINS
+SUBROUTINE VUPDZ0S(KIDIA,KFDIA,KLON,KTILES,KSTEP,&
+ & KTVL, KTVH, &
+ & PCVL    , PCVH   , PUMLEV , PVMLEV  , &
+ & PTMLEV  , PQMLEV , PAPHMS , PGEOMLEV, &
+ & PUSTRTI , PVSTRTI, PAHFSTI, PEVAPTI , &
+ & PTSKTI  , PCHAR  , PFRTI  , &
+ & YDCST   , YDEXC  , YDVEG  ,YDFLAKE  , &
+ & PZ0MTI  , PZ0HTI , PZ0QTI , PBUOMTI , PZDLTI , PRAQTI)
+
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_EXCS  , ONLY : RCHBCD, DRITBL, RCHBBCD, RCHBB, RCHB23A, RITBL, &
+ & RCHBA, RCHBHDL, RCDHALF, RCHETB, RCHBD, RCHETA, RCDHPI2, JPRITBL
+USE YOS_CST   , ONLY : TCST
+USE YOS_EXC   , ONLY : TEXC
+USE YOS_VEG   , ONLY : TVEG
+USE YOS_FLAKE , ONLY : TFLAKE
+
+!     ------------------------------------------------------------------
+
+!**   *VUPDZ0S* - COMPUTES Z0M,Z0H,Z0Q OVER SEA; SETS Z0H,Z0Q OVER LAND
+
+!     Original   A.C.M. BELJAARS       E.C.M.W.F.    26/03/90.
+!     Modified   A.C.M. BELJAARS  26/03/99   Surface tiling
+!     Modified   P. Viterbo ECMWF 12/05/2005 Externalize SURF
+!                M. Janiskova     17/02/2006 Code re-organization for
+!                                            efficient TL/AD versions
+!                M. Janiskova     21/05/2007 clean-up of z0 initialization
+!                                            as done in vupdz0
+!                G. Balsamo       16/10/2008 lake tile
+!                M. Janiskova     21/01/2015 stability param.consistent with NL
+!                J. Bidlot        15/12/2018  to use PZ0WN to initialise Z0M over the oceans for step 0
+!                J. Bidlot        15/02/2021 Sea state effect in Z0H and Z0Q over the oceans (under LWCOU2W and LWCOUHMF switches)
+
+
+!     PURPOSE
+!     -------
+
+!     DERIVE Z0M,Z0H AND Z0Q FROM SURFACE FLUXES OVER SEA, SET Z0H AND
+!     Z0Q OVER LAND AND DERIVE THE BUOYANCY FLUX.
+!     (THE T-1 VALUES ARE UPDATED WITH FLUXES FROM THE PREVIOUS TIME
+!      STEP)
+
+!     INTERFACE
+!     ---------
+
+!     *VUPDZ0S* IS CALLED BY *SURFEXCDRIVERS_CTL*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START OF LOOPS
+!     *KFDIA*        END OF LOOPS
+!     *KLON*         NUMBER OF POINTS IN PACKET
+!     *KTILES*       NUMBER OF TILES
+!     *KSTEP*        TIME STEP INDEX
+!     *KTVL*         LOW VEGETATION TYPE
+!     *KTVH*         HIGH VEGETATION TYPE
+
+!    Reals (In):
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PCVL*        LOW VEGETATION COVER (CLIMATOLOGICAL)
+!     *PCVH*        HIGH VEGETATION COVER (CLIMATOLOGICAL)
+!     *PUMLEV*      WIND X-COMPONENT AT T-1, lowest model level
+!     *PVMLEV*      WIND Y-COMPONENT AT T-1, lowest model level
+!     *PTMLEV*      TEMPERATURE AT T-1, lowest model level
+!     *PQMLEV*      SPECIFIC HUMUDITY AT T-1, lowest model level
+!     *PAPHMS*      PRESSURE AT T-1, surface
+!     *PGEOMLEV*    GEOPOTENTIAL T-1, lowest model level
+!     *PUSTRTI*     X-STRESS
+!     *PVSTRTI*     Y-STRESS
+!     *PAHFSTI*     SENSIBLE HEAT FLUX
+!     *PEVAPTI*     MOISTURE FLUX
+!     *PTSKTI*      SURFACE TEMPERATURE
+!     *PCHAR*       "EQUIVALENT" CHARNOCK PARAMETER
+!     *PFRTI*       TILE FRACTION
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PZ0MTI*      NEW AERODYNAMIC ROUGHNESS LENGTH
+!     *PZ0HTI*      NEW ROUGHNESS LENGTH FOR HEAT
+!     *PZ0QTI*      NEW ROUGHNESS LENGTH FOR MOISTURE
+!     *PBUOMTI*     BUOYANCY FLUX
+!     *PZDLTI*      Z/L AT LOWEST MODEL LEVEL
+!     *PRAQTI*      PRELIMINARY AERODYNAMIC RESISTANCE FOR MOISTURE 
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTILES
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTEP
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTVL(KLON)
+INTEGER(KIND=JPIM),INTENT(IN)    :: KTVH(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVL(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVH(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PUMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PVMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPHMS(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOMLEV(:) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PUSTRTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PVSTRTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PAHFSTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PEVAPTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSKTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCHAR(:) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRTI(:,:)
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TEXC)        ,INTENT(IN)    :: YDEXC
+TYPE(TVEG)        ,INTENT(IN)    :: YDVEG
+TYPE(TFLAKE)      ,INTENT(IN)    :: YDFLAKE
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PZ0MTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PZ0HTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PZ0QTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBUOMTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZDLTI(:,:) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PRAQTI(:,:) 
+
+!*    LOCAL STORAGE
+!     ----- -------
+
+INTEGER(KIND=JPIM) :: JL, JTILE
+
+REAL(KIND=JPRB) :: ZUST(KLON,KTILES), ZUST2(KLON,KTILES)
+REAL(KIND=JPRB) :: ZRHO(KLON), ZDU2(KLON), ZDUA(KLON), ZDIV6(KLON)
+REAL(KIND=JPRB) :: Z1DZ0Q, ZCON2, ZIPBL, ZNLEV, ZPRH1,&
+ & ZPRQ, ZPRQ0, ZROWQ, ZROWT, ZUST4, ZWST2, ZXLNQ,&
+ & ZZCDN
+REAL(KIND=JPRB) :: Z0S, Z1S, Z2S, Z3S, Z4S, Z5S, Z6S, Z7S, Z8S
+REAL(KIND=JPRB) :: ZEXP1, ZEXP2
+REAL(KIND=JPRB) :: ZDIV1, ZDIV2, ZDIV4, ZDIV5
+REAL(KIND=JPRB) :: ZDIV7, ZDIV8, ZDIV9
+REAL(KIND=JPRB) :: ZRCPDI, ZRGI
+REAL(KIND=JPRB) :: ZCDFC
+REAL(KIND=JPRB) :: Z0H, Z0Q
+REAL(KIND=JPRB) :: ZLICE(KLON),ZLWAT(KLON)
+LOGICAL :: LLINIT
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!             INCLUDE STABILITY FUNCTIONS
+!             ------- --------- ---------
+
+!#include "fcsvdfs.h"
+
+!             INCLUDE ROUGNESS LENGTH FUNCTIONS
+!             ------- -------- ------ ---------
+#include "fcz0.h"
+
+!     ------------------------------------------------------------------
+
+!*       1.     INITIALIZE CONSTANTS
+!               ---------- ----------
+
+IF (LHOOK) CALL DR_HOOK('VUPDZ0S_MOD:VUPDZ0S',0,ZHOOK_HANDLE)
+ASSOCIATE(RCPD=>YDCST%RCPD, RD=>YDCST%RD, RETV=>YDCST%RETV, RG=>YDCST%RG, &
+ & REPDU2=>YDEXC%REPDU2, REPUST=>YDEXC%REPUST, RKAP=>YDEXC%RKAP, &
+ & RNUH=>YDEXC%RNUH, RNUM=>YDEXC%RNUM, RNUQ=>YDEXC%RNUQ, RPARZI=>YDEXC%RPARZI, &
+ & RZ0ICE=>YDEXC%RZ0ICE, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, &
+ & LWCOU2W=>YDEXC%LWCOU2W, LWCOUHMF=>YDEXC%LWCOUHMF, &
+ & RVZ0H=>YDVEG%RVZ0H, RVZ0M=>YDVEG%RVZ0M)
+
+IF (KTILES.LT.8) THEN
+  STOP "Wrong number of tiles in VDFUPDZ0S"
+ENDIF
+
+ZCON2  =2.0_JPRB/3._JPRB
+ZRCPDI = 1.0_JPRB/RCPD
+ZRGI = 1.0_JPRB/RG
+
+!     PBL HEIGHT FOR W* - EFFECT
+
+ZIPBL=RPARZI
+
+LLINIT= ( KSTEP == 0)
+
+!     ------------------------------------------------------------------
+
+!*         2.     PRE-COMPUTATION OF TILE INDEPENDENT ARRAYS
+
+DO JL=KIDIA,KFDIA
+  ZDIV1 = 1.0_JPRB/(RD*PTMLEV(JL)*(1.0_JPRB+RETV*PQMLEV(JL)))
+  ZRHO(JL) = PAPHMS(JL)*ZDIV1
+  Z0S = PUMLEV(JL)**2+PVMLEV(JL)**2
+  IF (REPDU2 >= Z0S) THEN
+    ZDU2(JL) = REPDU2
+  ELSE
+    ZDU2(JL)  = Z0S
+  ENDIF
+ENDDO
+
+!*         3.   ESTIMATE SURF.FL. FOR STEP 0
+!*              (ASSUME NEUTRAL STRATIFICATION)
+
+IF (LLINIT) THEN
+  DO JL=KIDIA,KFDIA
+    ZDUA(JL) = SQRT(ZDU2(JL)) 
+
+!       - Preliminatry value for water
+    PZ0MTI(JL,1)=PZ0WN(ZDUA(JL),PGEOMLEV(JL), PCHAR(JL), RG, RNUM, RKAP)
+!       - Sea ice
+    PZ0MTI(JL,2)=PZ0ICE(RZ0ICE,PFRTI(JL,2))
+!       - Wet skin
+    PZ0MTI(JL,3)=PCVL(JL)*RVZ0M(KTVL(JL))+PCVH(JL)*RVZ0M(KTVH(JL))&
+      & +(1.-PCVL(JL)-PCVH(JL))*RVZ0M(0)  
+!       - Low Vegetation
+    PZ0MTI(JL,4)=RVZ0M(KTVL(JL))
+!       - Exposed snow
+    PZ0MTI(JL,5)=RVZ0M(12)
+!       - High vegetation
+    PZ0MTI(JL,6)=RVZ0M(KTVH(JL))
+!       - Sheltered snow
+    PZ0MTI(JL,7)=RVZ0M(KTVH(JL))
+!       - Bare soil
+    PZ0MTI(JL,8)=RVZ0M(0)
+    IF (LEFLAKE) THEN
+!       - Preliminatry value for lakes
+      PZ0MTI(JL,9)=1.E-4_JPRB
+    ENDIF
+  ENDDO
+
+  DO JTILE=1,KTILES
+    DO JL=KIDIA,KFDIA
+      ZZCDN=(RKAP/LOG(1.0_JPRB+PGEOMLEV(JL)/(RG*PZ0MTI(JL,JTILE))))**2
+      PUSTRTI(JL,JTILE)=ZRHO(JL)*PUMLEV(JL)*ZDUA(JL)*ZZCDN
+      PVSTRTI(JL,JTILE)=ZRHO(JL)*PVMLEV(JL)*ZDUA(JL)*ZZCDN
+      PAHFSTI(JL,JTILE)=0.0_JPRB
+      PEVAPTI(JL,JTILE)=0.0_JPRB
+    ENDDO
+  ENDDO
+ENDIF
+
+!*         4.      STABILITY PARAMETERS AND FREE CONVECTION
+!                  VELOCITY SCALE
+
+!                  ZCDFC is a rough estimate of the drag coefficient used  
+!                  to convert w*-gustiness at the lowest model level into u*. 
+!                  The value is choosen from Fig. 1 on page 37 of the ECMWF 
+!                  seminar proceedings on "Atmopshere-surface interaction", 
+!                  ie charqacteristic for 1 m/s in unstable situations. 
+ZCDFC=2.E-3_JPRB
+
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+    ZROWQ = PEVAPTI(JL,JTILE)
+    ZROWT = PAHFSTI(JL,JTILE)*ZRCPDI
+    ZDIV2 = 1.0_JPRB/(PTSKTI(JL,JTILE)*ZRHO(JL))
+    PBUOMTI(JL,JTILE) = -RG*(RETV*ZROWQ*PTSKTI(JL,JTILE)+ZROWT)*ZDIV2
+    ZUST4 = PUSTRTI(JL,JTILE)**2+PVSTRTI(JL,JTILE)**2
+    Z1S = SQRT(ZUST4)
+    ZDIV4 = 1.0_JPRB/ZRHO(JL)
+    ZUST2(JL,JTILE) =  Z1S*ZDIV4
+
+!     APPLY W* CORRECTION
+
+    IF (PBUOMTI(JL,JTILE) > 0.0_JPRB) THEN
+      ZWST2 = (PBUOMTI(JL,JTILE)*ZIPBL)**ZCON2
+      ZUST2(JL,JTILE) = ZUST2(JL,JTILE)+ZCDFC*ZWST2
+    ENDIF
+
+    Z2S = SQRT(ZUST2(JL,JTILE))
+    IF (Z2S >= REPUST) THEN
+      ZUST(JL,JTILE) = Z2S
+    ELSE
+      ZUST(JL,JTILE) = REPUST
+    ENDIF
+    Z3S = -RKAP*PGEOMLEV(JL)
+    ZDIV5 = 1.0_JPRB/ZUST(JL,JTILE)
+    PZDLTI(JL,JTILE) = ZRGI*(Z3S*PBUOMTI(JL,JTILE))*(ZDIV5**3)
+  ENDDO
+ENDDO
+
+!*         5.    SETTING OF ROUGHNESS LENGTHS
+!                ----------------------------
+
+JTILE=1
+!   - Ocean open water
+DO JL=KIDIA,KFDIA
+  ZDIV6(JL) = 1.0_JPRB/ZUST(JL,JTILE)
+  PZ0MTI(JL,JTILE) = RNUM*ZDIV6(JL) + (ZRGI*PCHAR(JL))*ZUST2(JL,JTILE)
+ENDDO
+
+! Heat and moisture:
+IF( LWCOU2W .AND. LWCOUHMF) THEN
+  ! Sea state effect:
+!!can be simplified following 
+!!Peter A.E.M. Janssen, Jean-Raymond Bidlot, 2018: Progress in Operational Wave Forecasting,
+!!Procedia IUTAM 26, 14-29. IUTAM Symposium on Wind Waves,
+  DO JL=KIDIA,KFDIA
+    Z0H              = RNUH*ZDIV6(JL)
+    PZ0HTI(JL,JTILE) = SQRT(Z0H*PZ0MTI(JL,JTILE))
+    Z0Q              = RNUQ*ZDIV6(JL)
+    PZ0QTI(JL,JTILE) = SQRT(Z0Q*PZ0MTI(JL,JTILE))
+  ENDDO
+ELSE
+  DO JL=KIDIA,KFDIA
+    PZ0HTI(JL,JTILE) = RNUH*ZDIV6(JL)
+    PZ0QTI(JL,JTILE) = RNUQ*ZDIV6(JL)
+  ENDDO
+ENDIF
+
+JTILE = 2
+!   - Sea ice
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=PZ0ICE(RZ0ICE,PFRTI(JL,JTILE))
+  PZ0HTI(JL,JTILE)=RZ0ICE
+  PZ0QTI(JL,JTILE)=RZ0ICE
+ENDDO
+
+JTILE = 3
+!   - Wet skin
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=PCVL(JL)*RVZ0M(KTVL(JL))+PCVH(JL)*RVZ0M(KTVH(JL)) &
+   & +(1.-PCVL(JL)-PCVH(JL))*RVZ0M(0)
+  PZ0HTI(JL,JTILE)=PCVL(JL)*RVZ0H(KTVL(JL))+PCVH(JL)*RVZ0H(KTVH(JL)) &
+   & +(1.-PCVL(JL)-PCVH(JL))*RVZ0H(0)
+  PZ0QTI(JL,JTILE)=PZ0HTI(JL,JTILE)
+ENDDO
+
+JTILE = 4
+!   - Low Vegetation
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=RVZ0M(KTVL(JL))
+  PZ0HTI(JL,JTILE)=RVZ0H(KTVL(JL))
+  PZ0QTI(JL,JTILE)=PZ0HTI(JL,JTILE)
+ENDDO
+
+JTILE = 5
+!   - Exposed snow
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=RVZ0M(12)
+  PZ0HTI(JL,JTILE)=RVZ0H(12)
+  PZ0QTI(JL,JTILE)=PZ0HTI(JL,JTILE)
+ENDDO
+
+JTILE = 6
+!   - High vegetation
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=RVZ0M(KTVH(JL))
+  PZ0HTI(JL,JTILE)=RVZ0H(KTVH(JL))
+  PZ0QTI(JL,JTILE)=PZ0HTI(JL,JTILE)
+ENDDO
+
+JTILE = 7
+!   - Sheltered snow
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=RVZ0M(KTVH(JL))
+  PZ0HTI(JL,JTILE)=RVZ0H(KTVH(JL))
+  PZ0QTI(JL,JTILE)=PZ0HTI(JL,JTILE)
+ENDDO
+
+JTILE = 8
+!   - Bare soil
+DO JL=KIDIA,KFDIA
+  PZ0MTI(JL,JTILE)=RVZ0M(0)
+  PZ0HTI(JL,JTILE)=RVZ0H(0)
+  PZ0QTI(JL,JTILE)=PZ0HTI(JL,JTILE)
+ENDDO
+
+IF (LEFLAKE) THEN
+  JTILE=9
+!   - Lake (preliminary)
+  DO JL=KIDIA,KFDIA
+    PZ0MTI(JL,JTILE)=1.E-4_JPRB
+    PZ0HTI(JL,JTILE)=1.E-4_JPRB
+    PZ0QTI(JL,JTILE)=1.E-4_JPRB
+  ENDDO
+ENDIF
+
+!*        7.   COMPUTE PRELIMINARY AERODYNAMIC RESISTANCE FOR COMPUTATION
+!*             OF APPARENT SURFACE HUMIDITY IN VDFSURF
+
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+    ZNLEV=ZRGI*PGEOMLEV(JL)+PZ0MTI(JL,JTILE)
+    ZDIV7 = 1.0_JPRB/PZ0QTI(JL,JTILE)
+    Z1DZ0Q = ZNLEV*ZDIV7
+    ZXLNQ = LOG(Z1DZ0Q)
+    ZDIV8 = 1.0_JPRB/Z1DZ0Q
+    Z4S = PZDLTI(JL,JTILE)*ZDIV8
+    IF (PZDLTI(JL,JTILE)  >  0.0_JPRB) THEN
+      ZEXP1 = EXP  (-RCHBD*PZDLTI(JL,JTILE))
+      Z5S = SQRT(1.0_JPRB+RCHB23A*PZDLTI(JL,JTILE))
+      ZPRH1 = -RCHBB*(PZDLTI(JL,JTILE)-RCHBCD)*ZEXP1 &
+       & - (1.0_JPRB+RCHB23A*PZDLTI(JL,JTILE))*Z5S-RCHBBCD+1.0_JPRB
+
+      ZEXP2 = EXP  (-RCHBD*Z4S)
+      Z6S = SQRT(1.0_JPRB+RCHB23A*Z4S)
+      ZPRQ0 =  -RCHBB*(Z4S-RCHBCD)*ZEXP2 &
+       & - (1.0_JPRB+RCHB23A*Z4S)*Z6S-RCHBBCD+1.0_JPRB
+    ELSE
+      Z7S = SQRT(1.0_JPRB-RCDHALF*PZDLTI(JL,JTILE))
+      ZPRH1 = 2.0_JPRB*LOG((1.0_JPRB+Z7S)*0.5_JPRB)
+   
+      Z8S = SQRT(1.0_JPRB-RCDHALF*Z4S)
+      ZPRQ0 = 2.0_JPRB*LOG((1.0_JPRB+Z8S)*0.5_JPRB)
+    ENDIF
+    ZPRQ   =ZXLNQ-ZPRH1+ZPRQ0
+    ZDIV9 = 1.0_JPRB/(ZUST(JL,JTILE)*RKAP)
+    PRAQTI(JL,JTILE)=(ZXLNQ-ZPRH1+ZPRQ0)*ZDIV9
+  ENDDO
+ENDDO
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('VUPDZ0S_MOD:VUPDZ0S',1,ZHOOK_HANDLE)
+END SUBROUTINE VUPDZ0S
+
+! Function to compute Z0M for neutral wind conditions
+#include "fcz0wn.h"
+
+END MODULE VUPDZ0S_MOD

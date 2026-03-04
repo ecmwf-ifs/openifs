@@ -1,0 +1,44 @@
+#!/bin/bash
+
+do_grep() {
+  # Wrap grep so that finding nothing isn't fatal under "set -e"
+  if ! grep "$@"; then
+    local rc=$?
+    [[ $rc -le 1 ]] || return $rc
+  fi
+}
+
+LATEST_NORM_FILE=NORMS
+SAVED_NORM_FILE=SAVED_NORMS
+
+case "${IFS_TEST_BITIDENTICAL:-0}" in
+  2|init)
+    perl ifs-grep-norms.pl NODE.* >"$SAVED_NORM_FILE"
+    if [[ -s $SAVED_NORM_FILE ]]; then
+      echo "Norms generated and saved as $SAVED_NORM_FILE"
+    else
+      echo "No norms produced"
+      exit 1
+    fi
+    ;;
+  1|true|yes|on|check)
+    perl ifs-grep-norms.pl NODE.* >"$LATEST_NORM_FILE"
+    if [[ ! -s $SAVED_NORM_FILE ]]; then
+      echo "No $SAVED_NORM_FILE to check against"
+      exit 1
+    fi
+    if diff -qs "$LATEST_NORM_FILE" "$SAVED_NORM_FILE"; then
+      echo "Bit-identical test PASSED"
+    else
+      echo "Bit-identical test FAILED"
+      exit 1
+    fi
+    ;;
+  0|false|no|off)
+    ;;
+  *)
+    echo "Unknown IFS_TEST_BITIDENTICAL value"
+    exit 1
+    ;;
+esac
+

@@ -1,0 +1,27 @@
+# (C) Copyright 2011- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+
+# GRIB INSTALLATION
+export GRIB_DEFINITION_PATH=@ECCODES_DEFINITION_PATH@
+export GRIB_SAMPLES_PATH=@ECCODES_IFS_SAMPLES_PATH@/grib1_mlgrib2
+
+# IFS INSTALLATION
+export IFS_EXECUTABLE=@IFS_EXECUTABLE@
+export SCM_EXECUTABLE=@SCM_EXECUTABLE@
+export IFS_CYCLE=@IFS_CYCLE@
+export IFS_NAMELIST=@IFS_NAMELIST@
+export IFS_NUNDEFLD=@IFS_NUNDEFLD@
+export IFS_HAVE_OOPS=@ifs_HAVE_OOPS@
+
+export PATH=$PATH:@IFS_BIN_DIR@
+
+# IFS BLACKLIST LOCATION
+export @LD_LIBRARY_PATH_VAR@=$@LD_LIBRARY_PATH_VAR@:@IFS_BLACKLIST_LIBRARY_PATH@
+
+# IFS SETTINGS
+export NUNDEFLD=@IFS_NUNDEFLD@

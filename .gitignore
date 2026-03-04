@@ -1,0 +1,24 @@
+# Ignore the OpenIFS build/source/install directories and any log files
+/source/
+/build/
+/install/
+/*.log
+
+# ecbundle (cloned at build time by openifs-bundle)
+/ecbundle/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Fortran build artifacts
+*.o
+*.mod
+
+# macOS
+.DS_Store
+
+# User-specific Docker config
+scripts/docker/config/my_config.yml

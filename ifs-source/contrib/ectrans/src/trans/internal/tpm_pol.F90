@@ -1,0 +1,123 @@
+! (C) Copyright 2000- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+MODULE TPM_POL
+
+!     MODIFICATIONS.
+!     --------------
+!      R. El Khatib 17-Feb-2016 Optional allocation/computation of DDC/DDD/DDE
+!      since they are (big and) not used in supolf.
+
+USE PARKIND1  ,ONLY : JPRD, JPIM
+
+IMPLICIT NONE
+
+SAVE
+
+REAL(KIND=JPRD),ALLOCATABLE :: DDC(:,:), DDD(:,:), DDE(:,:)
+REAL(KIND=JPRD),ALLOCATABLE :: DDA(:), DDI(:), DDH(:)
+
+REAL(KIND=JPRD),ALLOCATABLE :: DFA(:), DFB(:), DFF(:), DFG(:), DFI(:), DFH(:)
+
+CONTAINS
+!======================================================================
+SUBROUTINE INI_POL(KNSMAX,LDFAST)
+
+INTEGER(KIND=JPIM), INTENT(IN) :: KNSMAX
+LOGICAL, INTENT(IN), OPTIONAL :: LDFAST
+
+REAL(KIND=JPRD) :: DA,DC,DD,DE
+INTEGER(KIND=JPIM) :: KKN, KKM
+
+INTEGER(KIND=JPIM) :: JN, JM
+LOGICAL :: LLFAST
+
+DC(KKN,KKM)=SQRT( (REAL(2*KKN+1,JPRD)*REAL(KKN+KKM-1,JPRD)&
+                   &*REAL(KKN+KKM-3,JPRD))&
+                &/ (REAL(2*KKN-3,JPRD)*REAL(KKN+KKM,JPRD)&
+                   &*REAL(KKN+KKM-2,JPRD)) )
+DD(KKN,KKM)=SQRT( (REAL(2*KKN+1,JPRD)*REAL(KKN+KKM-1,JPRD)&
+                   &*REAL(KKN-KKM+1,JPRD))&
+                &/ (REAL(2*KKN-1,JPRD)*REAL(KKN+KKM,JPRD)&
+                  &*REAL(KKN+KKM-2,JPRD)) )
+DE(KKN,KKM)=SQRT( (REAL(2*KKN+1,JPRD)*REAL(KKN-KKM,JPRD))&
+                &/ (REAL(2*KKN-1,JPRD)*REAL(KKN+KKM,JPRD)) )
+DA(KKN,KKM)=SQRT( (REAL(2*KKN+1,JPRD)*REAL(KKN-KKM,JPRD)&
+                   &*REAL(KKN+KKM,JPRD))&
+                &/  REAL(2*KKN-1,JPRD) )
+
+IF (PRESENT(LDFAST)) THEN
+  LLFAST=LDFAST
+ELSE
+  LLFAST=.FALSE.
+ENDIF
+IF (.NOT.LLFAST) ALLOCATE( DDC(0:KNSMAX,0:KNSMAX) )
+IF (.NOT.LLFAST) ALLOCATE( DDD(0:KNSMAX,0:KNSMAX) )
+IF (.NOT.LLFAST) ALLOCATE( DDE(0:KNSMAX,0:KNSMAX) )
+
+ALLOCATE( DDA(0:KNSMAX) )
+ALLOCATE( DDI(0:KNSMAX) )
+ALLOCATE( DDH(0:KNSMAX) )
+
+ALLOCATE( DFA(0:KNSMAX) )
+ALLOCATE( DFB(0:KNSMAX) )
+ALLOCATE( DFF(0:KNSMAX) )
+ALLOCATE( DFG(0:KNSMAX) )
+ALLOCATE( DFI(0:KNSMAX) )
+ALLOCATE( DFH(0:KNSMAX) )
+
+
+DO JN=1,KNSMAX
+  DFA(JN) = 1._JPRD/SQRT(REAL(JN*(JN+1),JPRD))
+  DFB(JN) = SQRT(REAL(2*JN+1,JPRD)/REAL(JN*(JN+1),JPRD))
+  DFF(JN) = REAL(2*JN-1,JPRD)/REAL(JN,JPRD)
+  DFG(JN) = REAL(JN-1,JPRD)/REAL(JN,JPRD)
+  DFI(JN) = REAL(JN,JPRD)
+  DFH(JN) = SQRT(REAL(2*JN+1,JPRD)/REAL(2*JN,JPRD))
+ENDDO
+
+IF (.NOT.LLFAST) THEN
+  DO JN=3,KNSMAX
+    DO JM=2,JN-1
+      DDC(JM,JN) = DC(JN,JM)
+      DDD(JM,JN) = DD(JN,JM)
+      DDE(JM,JN) = DE(JN,JM)
+    ENDDO
+  ENDDO
+ENDIF
+
+DO JN=1,KNSMAX
+  DDA(JN) = 1._JPRD/SQRT(REAL(JN*(JN+1),JPRD))
+  DDI(JN) = REAL(JN,JPRD)
+  DDH(JN) = SQRT(REAL(2*JN+1,JPRD)/REAL(2*JN,JPRD))
+ENDDO
+
+END SUBROUTINE INI_POL
+
+SUBROUTINE END_POL
+
+IF (ALLOCATED (DDC) ) DEALLOCATE( DDC )
+IF (ALLOCATED (DDD) ) DEALLOCATE( DDD )
+IF (ALLOCATED (DDE) ) DEALLOCATE( DDE )
+
+DEALLOCATE( DDA )
+DEALLOCATE( DDI )
+DEALLOCATE( DDH )
+
+DEALLOCATE( DFA )
+DEALLOCATE( DFB )
+DEALLOCATE( DFF )
+DEALLOCATE( DFG )
+DEALLOCATE( DFI )
+DEALLOCATE( DFH )
+
+END SUBROUTINE END_POL
+
+END MODULE TPM_POL

@@ -1,0 +1,785 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE APACHE(LDNEIGE,KPROMA,KSTART,KPROF,KLEV,KOPLEV,KPPGFL,KPPM,YDKC,&
+ & LDPDEP,LDWHALF,LDWFULL,LDGFL,LDOBS,LDSPCH,PRHBNDS,&
+ & PORO1,PORO2,PDPBLC,PTS1,PTS2,PEPS2,PEPR2F,PEPR2H,&
+ & YDVERT_GEOM,&
+ & PT1,PU1,PV1,PSPD1,PWW1,PGFL1,&
+ & PRES1H,PRES1F,PLNPR1,PALPH1,PR1,PKAPA1,PRHF1,&
+ & PT2,PU2,PV2,PSPD2,PWH2,PWF2,PGFL2,PFI2,PRH2,PEORG)
+
+!**** *APACHE* - Arpege Pour Arpege CHamps Echange.
+
+!     PURPOSE.
+!     --------
+!           VERTICAL INTERPOLATOR.
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *APACHE (...)
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!        * INPUT:
+!        KPROMA    : Horizontal Dimension
+!        KSTART    : Starting value for Horizontal Work
+!        KPROF     : Depth of Horizontal Work
+!        KLEV      : Number of Levels in System 1
+!        KOPLEV    : Number of Levels in System 2
+!        KPPGFL    : Number of GFL variables in PGFL1 and PGFL2
+!        KPPM      : Number of interpolation methods in post-processing (INPUT)
+!        YDKC      : allows to localise individual variables in PGFL1 and PGFL2.
+!        LDPDEP    : pp of NH pressure departure requested
+!        LDWHALF   : pp of NH vertic. velocity at half levels requested
+!        LDWFULL   : pp of NH vertic. velocity at full levels requested
+!        LDGFL     : pp of GFL requested
+!        LDOBS     : key for outputs needed for obs-operator
+!                    .TRUE. : Additional outputs: PHI2, PEORG
+!                    .FALSE.: Standard output.
+!         !!!        NECESSARY: IF(LDOBS): ALSO .NOT. LDSPCH !!!
+!        LDSPCH    : .TRUE. : Specific Humidity interpolated
+!                    .FALSE.: Relative Humidity interpolated
+!        PRHBNDS   : min and max allowed values for relative humidity
+!        PORO1     : Orography 1
+!        PORO2     : Orography 2
+!        PDPBLC    : Critical Thickness of PBL
+!        PTS1      : Surface Temperature 1
+!        PTS2      : Surface Temperature 2
+!        PEPS2     : Surface Pressure 2
+!        PEPR2F    : "FULL" Pressures 2
+!        PEPR2H    : "HALF" Pressures 2
+!        YDVERT_GEOM : model vertical geometry profiles
+
+!        * INPUT (output for jlev=0 for 3D arrays PT1,PU1,PV1,PSPD1,PGFL1):
+!        PT1       : Temperature 1
+!        PU1,PV1   : Wind Components 1
+!        PSPD1     : Pressure Departure 1 (unscaled)
+!                    If LNHDYN=F or if NH effects are ignored in the caller,
+!                    input PSPD1 should contain zero.
+!        PWW1      : Vertical Divergence 1 at half levels
+!        PGFL1     : GFL 1
+!        PRES1H    : Half level hydrostatic pressure 1
+!        PRES1F    : Full level hydrostatic pressure 1
+!        PLNPR1    : "delta" 1 (see GPXYB)
+!        PALPH1    : "alpha" 1 (see GPXYB)
+!        PR1       : Moist air constant 1
+!        PKAPA1    : Kappa 1
+!        PRHF1     : Relative humidity 1
+
+!        * OUTPUT:
+!        PT2       : Temperature 2
+!        PU2,PV2   : Wind Components 2
+!        PSPD2     : Pressure Departure 2 (unscaled)
+!                    Should be filled by zeros if HYD or LDPDEP=F.
+!        PWH2,PWF2 : Vertical velocity w half and full levels 2
+!        PGFL2     : GFL 2
+!        PFI2      : Geopotential 2  (used if LDOBS only)
+!        PRH2      : Relative Humidity 2
+!        PEORG     : Pressures of data origin (computed if LDOBS=T only)
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ARPEGE/ALADIN DOCUMENTATION.
+
+!     AUTHOR.
+!     -------
+!      RADMILA BUBNOVA *GMAP/COMPAS - STAGE MICECO*
+!      ORIGINAL : 91-10-24
+
+!     MODIFICATIONS.
+!     --------------
+!      N. Wedi and K. Yessad (Jan 2008): different dev for NH model and PC scheme
+!      K. Yessad (Aug 2009): rewrite vertical interpolator in post-processing.
+!      K. Yessad (Dec 2011): use GPHPRE.
+!      Y. Seity :01-2012 : add independant options per variable for LESCALE
+!      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!      A. Geer        Dec 2015    PP routines no longer take 0:KFLEVG but 1:KFLEVG
+!      K. Yessad (Feb 2018): remove deep-layer formulations.
+!     ------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM, JPRB,   JPRD
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST   , ONLY : RATM, RV, RCPV, RETV, RCW, RCS, RLVTT, RLSTT, RTT,&
+ & RALPW, RBETW, RGAMW, RALPS, RBETS, RGAMS, RALPD, RBETD, RGAMD, RG
+USE YOMLUN   , ONLY : NULOUT
+USE YOMSTA   , ONLY : RDTDZ1
+USE YOMPPVI  , ONLY : LESCALE  ,LESCALE_T, LESCALE_Q, LESCALE_U,&
+ & LESCALE_PD, LESCALE_GFL, LPPVIVX  ,RPPVIVX  ,RPPVIVP 
+USE TYPE_GFLFLDS, ONLY : TYPE_IGFLFLD
+USE INTDYN_MOD,ONLY : YYTXYB
+
+USE YOMVERT  , ONLY : TVERTICAL_GEOM
+
+!     -----------------------------------------------------------------
+
+IMPLICIT NONE
+
+LOGICAL           ,INTENT(IN)    :: LDNEIGE
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROMA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTART 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROF 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KOPLEV 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPPGFL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPPM
+TYPE(TYPE_IGFLFLD),INTENT(IN)    :: YDKC
+LOGICAL           ,INTENT(IN)    :: LDPDEP
+LOGICAL           ,INTENT(IN)    :: LDWHALF
+LOGICAL           ,INTENT(IN)    :: LDWFULL
+LOGICAL           ,INTENT(IN)    :: LDGFL(KPPGFL)
+LOGICAL           ,INTENT(IN)    :: LDOBS 
+LOGICAL           ,INTENT(IN)    :: LDSPCH 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRHBNDS(2)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PORO1(KPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PORO2(KPROMA)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PDPBLC 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTS1(KPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTS2(KPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEPS2(KPROMA) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEPR2F(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PEPR2H(KPROMA,KOPLEV,0:1)
+TYPE(TVERTICAL_GEOM), INTENT(IN) :: YDVERT_GEOM
+REAL(KIND=JPRB)   ,INTENT(IN) :: PT1(KPROMA,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN) :: PU1(KPROMA,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN) :: PV1(KPROMA,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSPD1(KPROMA,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWW1(KPROMA,0:KLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFL1(KPROMA,KLEV,KPPGFL) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRES1H(KPROMA,0:KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRES1F(KPROMA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLNPR1(KPROMA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PALPH1(KPROMA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PR1(KPROMA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PKAPA1(KPROMA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PRHF1(KPROMA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PT2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PU2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PV2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSPD2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PWH2(KPROMA,KOPLEV,0:1) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PWF2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PGFL2(KPROMA,KOPLEV,KPPGFL) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFI2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PRH2(KPROMA,KOPLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PEORG(KPROMA,KOPLEV) 
+
+!     -----------------------------------------------------------------
+
+!  SYSTEM 1:
+REAL(KIND=JPRB) :: ZEPS1(KPROMA)
+REAL(KIND=JPRB) :: ZPXPD1(KPROMA,0:KLEV,4),ZPXP1(KPROMA,0:KLEV,4)
+REAL(KIND=JPRB) :: ZRH1(KPROMA,0:KLEV) ! Relative humidity 1
+REAL(KIND=JPRB) :: ZTHET1(KPROMA,KLEV) ! Potential temperature 1
+REAL(KIND=JPRB) :: ZTHETS1(KPROMA) ! Surf potential temperature 1
+REAL(KIND=JPRB) :: ZVBH1(KPROMA,1:KLEV) ! B-coefficients 1 filled to string
+REAL(KIND=JPRB) :: ZBORG1(KPROMA,KOPLEV) ! B-coefficients 1 int. to output L
+REAL(KIND=JPRB) :: ZTSEA1(KPROMA) ! Standard surf temperature 1 at sea level
+REAL(KIND=JPRB) :: ZTSTAR1(KPROMA)
+REAL(KIND=JPRB) :: ZRRED1(KPROMA,KLEV)
+
+! SYSTEM ESCALE:
+REAL(KIND=JPRB) :: ZPESCH(KPROMA,0:KLEV),ZPESCF(KPROMA,KLEV)
+REAL(KIND=JPRB) :: ZXYBE(KPROMA,KLEV,YYTXYB%NDIM)
+REAL(KIND=JPRB) :: ZPXDES(KPROMA,0:KLEV,4),ZPXES(KPROMA,0:KLEV,4)
+REAL(KIND=JPRB) :: ZGRHLE(KPROMA,0:KLEV)
+REAL(KIND=JPRB) :: ZUE(KPROMA,KLEV),ZVE(KPROMA,KLEV) 
+REAL(KIND=JPRB) :: ZTE(KPROMA,KLEV)
+REAL(KIND=JPRB) :: ZSPDE(KPROMA,KLEV),ZWWDE(KPROMA,0:KLEV)
+REAL(KIND=JPRB) :: ZGFLE(KPROMA,KLEV,KPPGFL)
+REAL(KIND=JPRB) :: ZZESE(KPROMA,KLEV),ZRHFE(KPROMA,KLEV)
+REAL(KIND=JPRB) :: ZRE(KPROMA,KLEV),ZRREDE(KPROMA,KLEV)
+
+! OUTPUT - SYSTEM 2:
+REAL(KIND=JPRB) :: ZWALFAF(KPROMA,KOPLEV),ZWALFAH(KPROMA,KOPLEV,0:1)
+! ZWORK,ZWORKV : WORKING ARRAYS.
+REAL(KIND=JPRB) :: ZWORK(KPROMA,KOPLEV),ZWORKV(KPROMA,KOPLEV)
+REAL(KIND=JPRB) :: ZLNP2F(KPROMA,KOPLEV) ! Log(pressures 2 at full levels)
+REAL(KIND=JPRB) :: ZTHETS2(KPROMA) ! Surf potential temperature 2
+REAL(KIND=JPRB) :: ZCINT(KPROMA) ! Geopotential integration const.
+REAL(KIND=JPRB) :: ZSUM(KPROMA)
+REAL(KIND=JPRB) :: ZSTTF(KPROMA,0:KLEV),ZSTZF(KPROMA,0:KLEV)
+
+! LLBELO: .TRUE. IF GO UNDER LOWEST FULL LEVEL OF SYSTEM 1.
+! LLBELS: .TRUE. IF GO UNDER PORO1.
+! LLBLOW: TABLE OF OCCURENCE OF LLBELO.
+! LLBLS : TABLE OF OCCURENCE OF LLBELS.
+LOGICAL :: LLBELO(KPROMA,KOPLEV), LLBELOH(KPROMA,KOPLEV,0:1)
+LOGICAL :: LLBELS(KPROMA,KOPLEV), LLBELSH(KPROMA,KOPLEV,0:1)
+LOGICAL :: LLBLOW(KOPLEV)       , LLBLOH(KOPLEV,0:1)
+LOGICAL :: LLBLS (KOPLEV)       , LLBLSH(KOPLEV,0:1)
+
+INTEGER(KIND=JPIM) :: ILEVB(KPROMA,KOPLEV,4), ILEVBH(KPROMA,KOPLEV,4,0:1)
+
+LOGICAL :: LLEXTR
+
+REAL(KIND=JPRB) :: ZDELTA, ZES, ZRELH, ZDTDZSG, ZEPS, ZZ1, ZZ2
+INTEGER(KIND=JPIM) :: IPROF, IST, JLEV, JROF, JVAR, ISLCT, JH
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+
+!     -----------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "fpview.intfb.h"
+#include "gphpre.intfb.h"
+#include "gprcp.intfb.h"
+#include "gprh.intfb.h"
+#include "ppinit.intfb.h"
+#include "pp2dint.intfb.h"
+#include "ppflev.intfb.h"
+#include "ppgeop.intfb.h"
+#include "ppq.intfb.h"
+#include "ppt.intfb.h"
+#include "ppuv.intfb.h"
+#include "ppsta.intfb.h"
+
+#include "fcttrm.func.h"
+
+!     -----------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('APACHE',0,ZHOOK_HANDLE)
+ASSOCIATE(YDVAB=>YDVERT_GEOM%YRVAB,YDCVER=>YDVERT_GEOM%YRCVER)
+!     -----------------------------------------------------------------
+
+!*       1.    PRELIMINARY CALCULATIONS.
+!              -------------------------
+
+!*    1.1   PREPARATIONS
+
+IF(LDOBS.AND.LDSPCH) THEN
+  WRITE(NULOUT,*) 'OBS-OPERATOR OPTION REQUIRES LDSPCH=.FALSE.!'
+  CALL ABOR1(' APACHE 1.1a: Case LDOBS.AND.LDSPCH not supported in APACHE')
+ENDIF
+
+IST = KSTART
+IPROF = KPROF
+ZDTDZSG=-RDTDZ1/RG
+ZEPS1(IST:IPROF)=PRES1H(IST:IPROF,KLEV)
+
+! compute (pre1/prehyd1)*PR1 for input to PPGEOP.
+DO JLEV=1,KLEV
+  DO JROF=IST,IPROF
+    ZRRED1(JROF,JLEV)=&
+     & (1.0_JPRB+PSPD1(JROF,JLEV)/PRES1F(JROF,JLEV))*PR1(JROF,JLEV)
+  ENDDO
+ENDDO
+
+!*    1.2   SYSTEM 1: PREPARE FOR INTERPOLATIONS.
+
+CALL PPINIT(KPROMA,IST,IPROF,KLEV,KPPM,PRES1H,PRES1F,ZPXP1,ZPXPD1)
+
+!     -----------------------------------------------------------------
+
+!*       2.    COMPUTE PRESSURES IN SYSTEM 2 AND WEIGHTS WALFA.
+!              ------------------------------------------------
+
+!*      2.1 Weights
+
+CALL FPVIEW(KPROMA,IST,IPROF,KOPLEV,ZEPS1,PEPS2,PEPR2F,PDPBLC,ZWALFAF)
+IF (LDWHALF) THEN
+  DO JLEV=0,1
+    CALL FPVIEW(KPROMA,IST,IPROF,KOPLEV,ZEPS1,PEPS2,PEPR2H(1,1,JLEV),PDPBLC,&
+     & ZWALFAH(1,1,JLEV))  
+  ENDDO
+ENDIF
+
+!     -----------------------------------------------------------------
+
+!*       3     PREPARE ESCALE SYSTEM.
+!              ----------------------
+
+IF(LESCALE) THEN
+
+  !*     3.1   COMPUTE PRESSURES AT ESCALE LEVELS.
+
+  DO JROF=IST,IPROF
+    ZPESCH(JROF,KLEV) = PEPS2(JROF)
+  ENDDO
+  CALL GPHPRE(KPROMA,KLEV,IST,IPROF,YDVAB,YDCVER,ZPESCH,PXYB=ZXYBE,PRESF=ZPESCF)
+
+  !*       3.2   INITIALIZATION OF ESCALE SYSTEM.
+
+  CALL PPINIT(KPROMA,IST,IPROF,KLEV,KPPM,ZPESCH,ZPESCF,ZPXES,ZPXDES)
+
+ENDIF
+
+!     -----------------------------------------------------------------
+
+!*       4     VERTICAL INTERPOLATION (FORMER "AVAL").
+!              ---------------------------------------
+
+!*       4.1   TRANSFER SYSTEM 1 TO ESCALE SYSTEM.
+
+DO JLEV=1,KLEV
+  DO JROF=IST,IPROF
+    ZVBH1(JROF,JLEV)=YDVAB%VBH(JLEV)
+  ENDDO
+ENDDO
+
+IF (LDOBS) THEN
+  DO JLEV=1,KOPLEV
+    DO JROF=IST,IPROF
+      ZBORG1(JROF,JLEV)=0.0_JPRB
+      PFI2(JROF,JLEV)=0.0_JPRB
+      PEORG(JROF,JLEV)=0.0_JPRB
+    ENDDO
+  ENDDO
+ENDIF
+
+IF(LESCALE) THEN
+
+  !*     4.1.1 PREPARATION FOR TEMPERATURE -  COMPUTE THETA,
+  !            STANDARD SEA LEVEL TEMPERATURE, SCALE VD (NHDYN)
+
+  DO JLEV=1,KLEV
+    DO JROF=IST,IPROF
+      ZTHET1(JROF,JLEV)=PT1(JROF,JLEV)*(RATM/PRES1F(JROF,JLEV))&
+       & **PKAPA1(JROF,JLEV)  
+    ENDDO
+  ENDDO
+
+  DO JROF=IST,IPROF
+    ZTHETS1(JROF)=PTS1(JROF)*(RATM/PRES1H(JROF,KLEV))**PKAPA1(JROF,KLEV)
+    ZTHETS2(JROF)=PTS2(JROF)*(RATM/ZPESCH(JROF,KLEV))**PKAPA1(JROF,KLEV)
+    ZTSEA1(JROF)=PTS1(JROF)+ZDTDZSG*PORO1(JROF)
+    ZTSTAR1(JROF)=PTS1(JROF)
+  ENDDO
+
+  !*     4.1.2 TRANSFER TEMPERATURE.
+
+  DO JLEV=1,KLEV
+    DO JROF=IST,IPROF
+      ZTE(JROF,JLEV)=(ZTHET1(JROF,JLEV)-ZTHETS1(JROF)+ZTHETS2(JROF))&
+       & *(ZPESCF(JROF,JLEV)/RATM)**PKAPA1(JROF,JLEV)  
+    ENDDO
+  ENDDO
+
+  !*     4.1.3 TRANSFER OTHER "GMV" VARIABLES.
+
+  DO JLEV=1,KLEV
+    DO JROF=IST,IPROF
+      ZUE(JROF,JLEV)=PU1(JROF,JLEV)
+      ZVE(JROF,JLEV)=PV1(JROF,JLEV)
+      ZSPDE(JROF,JLEV)=PSPD1(JROF,JLEV)
+    ENDDO
+  ENDDO
+  IF(LDWHALF.OR.LDWFULL) THEN
+    DO JLEV=1,KLEV
+      DO JROF=IST,IPROF
+        ZWWDE(JROF,JLEV)=PWW1(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+
+  !*     4.1.4 GFL: TRANSFER SPECIFIC OR RELATIVE HUMIDITY (KEPT)
+  !            ACCORDING TO THE VALUE OF LDSPCH .
+
+  ! preliminary set ZGFLE to 0.
+  ZGFLE(:,:,:)=0.0_JPRB
+
+  IF(LDSPCH) THEN
+    DO JLEV=1,KLEV
+      DO JROF=IST,IPROF
+        ZGFLE(JROF,JLEV,YDKC%IQ)=PGFL1(JROF,JLEV,YDKC%IQ)
+      ENDDO
+    ENDDO
+  ELSE
+
+    DO JLEV=1,KLEV
+      DO JROF=IST,IPROF
+        IF(LDNEIGE) THEN
+          ZDELTA=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-PT1(JROF,JLEV)))
+        ELSE
+          ZDELTA=0.0_JPRB
+        ENDIF
+        ZES=FOEW(PT1(JROF,JLEV),ZDELTA)
+        ZRELH=(PRES1F(JROF,JLEV)*PGFL1(JROF,JLEV,YDKC%IQ)*(RETV+1.0_JPRB))&
+         & /((1.0_JPRB+RETV*PGFL1(JROF,JLEV,YDKC%IQ))*ZES)  
+        ZRH1(JROF,JLEV)=MAX(PRHBNDS(1),MIN(ZRELH,PRHBNDS(2)))
+      ENDDO
+    ENDDO
+
+    DO JLEV=1,KLEV
+      DO JROF=IST,IPROF
+        IF(LDNEIGE) THEN
+          ZDELTA=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTE(JROF,JLEV)))
+        ELSE
+          ZDELTA=0.0_JPRB
+        ENDIF
+        ZES=FOEW(ZTE(JROF,JLEV),ZDELTA)
+        ZGFLE(JROF,JLEV,YDKC%IQ)=-ZRH1(JROF,JLEV)*ZES/(RETV*&
+         & ZRH1(JROF,JLEV)*ZES-ZPESCF(JROF,JLEV)*(RETV+1.0_JPRB))  
+      ENDDO
+    ENDDO
+
+  ENDIF
+
+  !*     4.1.5 GFL: TRANSFER GFL OTHER THAN HUMIDITY (KEPT).
+ 
+  DO JVAR=1,KPPGFL
+    IF(LDGFL(JVAR) .AND. (JVAR /= YDKC%IQ)) THEN
+      DO JLEV=1,KLEV
+        DO JROF=IST,IPROF
+          ZGFLE(JROF,JLEV,JVAR)=PGFL1(JROF,JLEV,JVAR)
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDDO
+  ! Hail+Graupel:
+  ZGRHLE(IST:IPROF,1:KLEV)=ZGFLE(IST:IPROF,1:KLEV,YDKC%IG)+ZGFLE(IST:IPROF,1:KLEV,YDKC%IH)
+
+  !*     4.1.6 DIAGNOSE OTHER QUANTITIES VIA "GP" ROUTINES FROM Z[X]E.
+
+  ! We find there all calls to GP, GNH routines for system "ESCALE".
+
+  ! relative humidity RH:
+  IF(.NOT.LDSPCH) THEN
+    CALL GPRH(.FALSE.,KPROMA,IST,IPROF,KLEV,PRHBNDS(2),PRHBNDS(1),&
+     & ZGFLE(1,1,YDKC%IQ),ZTE(1,1),ZPXES(1,1,2),ZZESE,ZRHFE(1,1))
+  ENDIF
+
+  ! moist air constant R:
+  CALL GPRCP(KPROMA,IST,IPROF,KLEV,PQ=ZGFLE(1,1,YDKC%IQ),PQI=ZGFLE(1,1,YDKC%II),&
+   & PQL=ZGFLE(1,1,YDKC%IL),PQR=ZGFLE(1,1,YDKC%IRR),PQS=ZGFLE(1,1,YDKC%IS),&
+   & PQG=ZGRHLE(1,1),PR=ZRE)
+
+  ! (preE/prehydE)*ZRE (for input to PPGEOP).
+  DO JLEV=1,KLEV
+    DO JROF=IST,IPROF
+      ZRREDE(JROF,JLEV)=&
+       & (1.0_JPRB+ZSPDE(JROF,JLEV)/ZPESCF(JROF,JLEV))*ZRE(JROF,JLEV)
+    ENDDO
+  ENDDO
+
+ELSE
+
+  DO JROF=IST,IPROF
+    ZTSEA1(JROF)=PTS1(JROF)+ZDTDZSG*PORO1(JROF)
+    ZTSTAR1(JROF)=PTS1(JROF)
+  ENDDO
+
+ENDIF
+
+!*       4.2.  LAUNCH.
+!              -------
+
+! From now on no GP.. or GNH.. routine must be called in this routine.
+
+!*       4.2.1 INITIALIZE FLAGS FOR SYSTEM 1 AND LOG(PEPR2F).
+
+CALL PPFLEV(KPROMA,IST,IPROF,KLEV,KOPLEV,KPPM,&
+ & PEPR2F,PRES1H,PRES1F,&
+ & ILEVB,LLBELO,LLBELS,LLBLOW,LLBLS)  
+IF (LDWHALF) THEN
+  DO JH=0,1
+    CALL PPFLEV(KPROMA,IST,IPROF,KLEV,KOPLEV,KPPM,&
+     & PEPR2H(1,1,JH),PRES1H,PRES1F,&
+     & ILEVBH(1,1,1,JH),LLBELOH(1,1,JH),&
+     & LLBELSH(1,1,JH),LLBLOH(1,JH),LLBLSH(1,JH))  
+  ENDDO
+ENDIF
+
+DO JLEV=1,KOPLEV
+  DO JROF=IST,IPROF
+    ZLNP2F(JROF,JLEV)=LOG(PEPR2F(JROF,JLEV))
+  ENDDO
+ENDDO
+
+CALL PPSTA('PPREF',KPROMA,IST,IPROF,KLEV+1,1,ZPXP1(1,0,2),ZPXP1(1,0,4),&
+ & ZSTTF,ZSTZF)  
+
+!*       4.2.2 GMV VARIABLES 1 ---> POST PROC. ---> 2
+
+! winds
+CALL PPUV(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+ & LLBELO,LLBLOW,ZLNP2F,ZPXP1,ZPXPD1,PU1,PV1,PU2,PV2)
+
+! temperature
+LLEXTR = .TRUE.
+CALL PPT(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+ & PEPR2F,ZLNP2F,LLBELO,LLBELS,LLBLOW,LLBLS,LLEXTR,PORO1,&
+ & ZPXP1,ZPXPD1,ZTSTAR1,ZTSEA1,PR1,PT1,PT2,ZSTTF)  
+
+! pressure departure
+IF(LDPDEP) THEN
+  CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+   & PEPR2F,LLBELO,LLBLOW,ZPXP1,ZPXPD1,PSPD1,PSPD2)
+ELSE
+  PSPD2(:,:)=0.0_JPRB
+ENDIF
+
+! vertical velocity
+IF(LDWFULL) THEN
+  ISLCT=1
+  CALL PP2DINT(KPROMA,IST,IPROF,KLEV,KPPM,KOPLEV,1,KOPLEV,ILEVB,&
+   & ISLCT,LLBELS,LLBLS,PEPR2F,ZPXP1,ZPXPD1,PWW1,PWF2)
+ENDIF
+IF(LDWHALF) THEN
+  ISLCT=1
+  DO JH=0,1
+    CALL PP2DINT(KPROMA,IST,IPROF,KLEV,KPPM,KOPLEV,1,KOPLEV,&
+     & ILEVBH(1,1,1,JH),ISLCT,LLBELSH(1,1,JH),&
+     & LLBLSH(1,JH),PEPR2H(1,1,JH),ZPXP1,ZPXPD1,PWW1,PWH2(1,1,JH))
+  ENDDO
+ENDIF
+
+!*       4.2.3 OTHER DIAGNOSTIC VARIABLES 1 ---> POST PROC. ---> 2
+
+! geopotential
+IF(LDOBS) THEN
+  LLEXTR = .TRUE.
+  CALL PPGEOP(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+   & PEPR2F,ZLNP2F,LLBELO,LLBELS,LLBLOW,LLBLS,LLEXTR,PORO1,YDVERT_GEOM,&
+   & ZPXP1,ZPXPD1,ZTSTAR1,PR1,PLNPR1,PALPH1,PT1,&
+   & PFI2,PSTTF=ZSTTF,PRRED=ZRRED1)
+ENDIF
+
+! relative humidity
+CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+ & PEPR2F,LLBELO,LLBLOW,ZPXP1,ZPXPD1,PRHF1,PRH2)
+
+!*       4.2.4 GFL 1 ---> POST PROC. ---> 2
+
+DO JVAR=1,KPPGFL
+  IF(LDGFL(JVAR)) THEN
+    CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+     & PEPR2F,LLBELO,LLBLOW,ZPXP1,ZPXPD1,PGFL1(1,1,JVAR),PGFL2(1,1,JVAR))
+  ENDIF
+ENDDO
+
+!*       4.3.  INTERPOLATE THE SYSTEM ESCALE AND MAKE FINAL PROFILE.
+
+IF(LESCALE) THEN
+
+  !*     4.3.1 INITIALIZE FLAGS FOR SYSTEM ESCALE.
+
+  CALL PPFLEV(KPROMA,IST,IPROF,KLEV,KOPLEV,KPPM,&
+   & PEPR2F,ZPESCH,ZPESCF,&
+   & ILEVB,LLBELO,LLBELS,LLBLOW,LLBLS)  
+
+  CALL PPSTA('PPREF',KPROMA,IST,IPROF,KLEV+1,1,ZPXES(1,0,2),ZPXES(1,0,4),&
+   & ZSTTF,ZSTZF)  
+
+  ! Interpolate B coefficients ----> 2
+  IF(LDOBS) THEN
+    CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+     & PEPR2F,LLBELO,LLBLOW,ZPXES,ZPXDES,ZVBH1,ZBORG1,LDBOB=.TRUE.,PBOB0HACK=YDVAB%VBH(0))  
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        PEORG(JROF,JLEV)=PEPR2F(JROF,JLEV)+(1.0_JPRB-ZWALFAF(JROF,JLEV))*&
+         & ZBORG1(JROF,JLEV)*(PRES1H(JROF,KLEV)-PEPS2(JROF))  
+      ENDDO
+    ENDDO
+  ENDIF
+
+  !*     4.3.2 GMV VARIABLES E ---> POST PROC. ---> ZWORK
+  !            call interpolator then combine two GMV profiles to get P[GMV]2.
+
+  ! winds
+  IF (LESCALE_U) THEN
+    CALL PPUV(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+     & LLBELO,LLBLOW,ZLNP2F,ZPXES,ZPXDES,ZUE,ZVE,ZWORK,ZWORKV)
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        PU2(JROF,JLEV)=ZWALFAF(JROF,JLEV)*PU2(JROF,JLEV)&
+         & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)
+        PV2(JROF,JLEV)=ZWALFAF(JROF,JLEV)*PV2(JROF,JLEV)&
+         & + (1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORKV(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+
+  IF (LPPVIVX) THEN
+    ZEPS=1.E-04_JPRB
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        ZZ1=MAX(0.0_JPRB,SIGN(1.0_JPRB,PEPR2F(JROF,JLEV)-RPPVIVP))&
+         & +RPPVIVX/SQRT(ZEPS+PU2(JROF,JLEV)**2+PV2(JROF,JLEV)**2)
+        ZZ2=MIN(1.0_JPRB,ZZ1)
+        PU2(JROF,JLEV)=ZZ2*PU2(JROF,JLEV)
+        PV2(JROF,JLEV)=ZZ2*PV2(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+
+  ! temperature
+  IF (LESCALE_T) THEN
+    LLEXTR=.TRUE.
+    CALL PPT(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+     & PEPR2F,ZLNP2F,LLBELO,LLBELS,LLBLOW,LLBLS,LLEXTR,PORO2,&
+     & ZPXES,ZPXDES,PTS2,ZTSEA1,ZRE,ZTE,ZWORK,ZSTTF)  
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        PT2(JROF,JLEV)=ZWALFAF(JROF,JLEV)*PT2(JROF,JLEV)&
+         & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)  
+      ENDDO
+    ENDDO
+  ENDIF
+
+  ! pressure departure
+  IF(LDPDEP.AND.LESCALE_PD) THEN
+    CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+     & PEPR2F,LLBELO,LLBLOW,ZPXES,ZPXDES,ZSPDE,ZWORK)
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        PSPD2(JROF,JLEV)=ZWALFAF(JROF,JLEV)*PSPD2(JROF,JLEV)&
+         & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ELSE
+    PSPD2(:,:)=0.0_JPRB
+  ENDIF
+
+  ! vertical velocity "w"
+  IF(LDWFULL.AND.LESCALE_U) THEN
+    ISLCT=1
+    CALL PP2DINT(KPROMA,IST,IPROF,KLEV,KPPM,KOPLEV,1,KOPLEV,ILEVB,&
+     & ISLCT,LLBELS,LLBLS,PEPR2F,ZPXES,ZPXDES,ZWWDE,ZWORK)
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        PWF2(JROF,JLEV) =ZWALFAF(JROF,JLEV)*PWF2(JROF,JLEV)&
+         & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)
+      ENDDO
+    ENDDO
+  ENDIF
+  IF(LDWHALF.AND.LESCALE_U) THEN
+    DO JH=0,1
+      ISLCT=1
+      CALL PP2DINT(KPROMA,IST,IPROF,KLEV,KPPM,KOPLEV,1,KOPLEV,&
+       & ILEVBH(1,1,1,JH),ISLCT,LLBELSH(1,1,JH),&
+       & LLBLSH(1,JH),PEPR2H(1,1,JH),ZPXES,ZPXDES,ZWWDE,ZWORK)
+      DO JLEV=1,KOPLEV
+        DO JROF=IST,IPROF
+          PWH2(JROF,JLEV,JH)=&
+           & ZWALFAH(JROF,JLEV,JH)*PWH2(JROF,JLEV,JH)&
+           & +(1.0_JPRB-ZWALFAH(JROF,JLEV,JH))*ZWORK(JROF,JLEV)
+        ENDDO
+      ENDDO
+    ENDDO
+  ENDIF
+
+  !*     4.3.3 OTHER DIAGNOSTIC VARIABLES E ---> POST PROC. ---> ZWORK
+  !            call interpolator then combine two profiles to get P[X]2.
+
+  ! geopotential
+  IF(LDOBS) THEN
+    LLEXTR=.TRUE.
+    CALL PPGEOP(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+     & PEPR2F,ZLNP2F,LLBELO,LLBELS,LLBLOW,LLBLS,LLEXTR,PORO2,YDVERT_GEOM,&
+     & ZPXES,ZPXDES,PTS2,ZRE,ZXYBE(:,:,YYTXYB%M_LNPR),ZXYBE(:,:,YYTXYB%M_ALPH),ZTE,&
+     & ZWORK,PSTTF=ZSTTF,PRRED=ZRREDE)
+    DO JROF=IST,IPROF
+      ZCINT(JROF)=0.0_JPRB
+      ZSUM (JROF)=0.0_JPRB
+      DO JLEV=1,KOPLEV
+        ZCINT(JROF)=ZCINT(JROF)+(PFI2(JROF,JLEV)-&
+         & ZWORK(JROF,JLEV))*(1.0_JPRB-ZWALFAF(JROF,JLEV))*&
+         & (1.0_JPRB-ZWALFAF(JROF,JLEV))  
+        ZSUM(JROF)=ZSUM(JROF)+(1.0_JPRB-ZWALFAF(JROF,JLEV))*&
+         & (1.0_JPRB-ZWALFAF(JROF,JLEV))  
+      ENDDO
+    ENDDO
+    DO JROF=IST,IPROF
+      ZCINT(JROF)=ZCINT(JROF)/MAX(ZSUM(JROF),1.E-12_JPRB)
+    ENDDO
+    DO JLEV=1,KOPLEV
+      DO JROF=IST,IPROF
+        PFI2(JROF,JLEV)=ZWALFAF(JROF,JLEV)*PFI2(JROF,JLEV)&
+         & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*(ZWORK(JROF,JLEV)+&
+         & ZCINT(JROF))  
+      ENDDO
+    ENDDO
+  ENDIF
+
+  !*     4.3.4 SPECIFIC OR RELATIVE HUMIDITY E ---> POST PROC. ---> ZWORK
+  !            call interpolator then combine two profiles to get P[X]2.
+  
+  ! specific or relative humidity according to the value of LDSPCH
+  IF(LESCALE_Q) THEN
+    IF(LDSPCH) THEN
+      CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+       & PEPR2F,LLBELO,LLBLOW,ZPXES,ZPXDES,ZGFLE(1,1,YDKC%IQ),ZWORK)
+      DO JLEV=1,KOPLEV
+        DO JROF=IST,IPROF
+          PGFL2(JROF,JLEV,YDKC%IQ)=ZWALFAF(JROF,JLEV)*PGFL2(JROF,JLEV,YDKC%IQ)&
+           & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)
+        ENDDO
+      ENDDO
+      DO JLEV=1,KOPLEV
+        DO JROF=IST,IPROF
+          IF(LDNEIGE) THEN
+            ZDELTA=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-PT2(JROF,JLEV)))
+          ELSE
+            ZDELTA=0.0_JPRB
+          ENDIF
+          ZES=FOEW(PT2(JROF,JLEV),ZDELTA)
+          ZRELH=(PEPR2F(JROF,JLEV)*PGFL2(JROF,JLEV,YDKC%IQ)*(RETV+1.0_JPRB))&
+           & /((1.0_JPRB+RETV*PGFL2(JROF,JLEV,YDKC%IQ))*ZES)
+          PRH2(JROF,JLEV)=MAX(PRHBNDS(1),MIN(ZRELH,PRHBNDS(2)))
+        ENDDO 
+      ENDDO
+    ELSE
+      CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+       & PEPR2F,LLBELO,LLBLOW,ZPXES,ZPXDES,ZRHFE,ZWORK)
+      DO JLEV=1,KOPLEV
+        DO JROF=IST,IPROF
+          PRH2(JROF,JLEV)=ZWALFAF(JROF,JLEV)*PRH2(JROF,JLEV)&
+           & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)
+        ENDDO
+      ENDDO
+      DO JLEV=1,KOPLEV
+        DO JROF=IST,IPROF
+          IF(LDNEIGE) THEN
+            ZDELTA=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-PT2(JROF,JLEV)))
+          ELSE
+            ZDELTA=0.0_JPRB
+          ENDIF
+          ZES=FOEW(PT2(JROF,JLEV),ZDELTA)
+          PGFL2(JROF,JLEV,YDKC%IQ)=-PRH2(JROF,JLEV)*ZES/(RETV*&
+           & PRH2(JROF,JLEV)*ZES-PEPR2F(JROF,JLEV)*(RETV+1.0_JPRB))
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+  !*     4.3.5 GFL (OTHER THAN SPEC. HUMIDITY) E ---> POST PROC. ---> ZWORK
+  !            call interpolator then combine two GFL profiles to get P[GFL]2.
+
+  DO JVAR=1,KPPGFL
+    IF(LDGFL(JVAR) .AND. (JVAR /= YDKC%IQ) .AND. LESCALE_GFL) THEN
+      CALL PPQ(KPROMA,IST,IPROF,KLEV,KOPLEV,1,KPPM,ILEVB,&
+       & PEPR2F,LLBELO,LLBLOW,ZPXES,ZPXDES,ZGFLE(1,1,JVAR),ZWORK)
+      DO JLEV=1,KOPLEV
+        DO JROF=IST,IPROF
+          PGFL2(JROF,JLEV,JVAR)=ZWALFAF(JROF,JLEV)*PGFL2(JROF,JLEV,JVAR)&
+           & +(1.0_JPRB-ZWALFAF(JROF,JLEV))*ZWORK(JROF,JLEV)
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDDO
+
+ENDIF
+
+!     -----------------------------------------------------------------
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('APACHE',1,ZHOOK_HANDLE)
+END SUBROUTINE APACHE

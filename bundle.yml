@@ -1,0 +1,207 @@
+# (C) Copyright 2011- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+
+---
+### Bundle
+
+name    : ifs-bundle
+version : 48.1.1
+cmake   : >
+    ECBUILD_2_COMPAT=ON
+    ECBUILD_2_COMPAT_DEPRECATE=OFF
+    INSTALL_LIB_DIR=lib
+    ECBUILD_INSTALL_LIBRARY_HEADERS=OFF
+    ECBUILD_INSTALL_FORTRAN_MODULES=OFF
+    CMAKE_LINK_DEPENDS_NO_SHARED=ON
+    BUILD_ifs_dp=ON
+    BUILD_ifs_sp=ON
+    ENABLE_OMP=ON
+    ENABLE_SINGLE_PRECISION=ON
+    FFTW_ENABLE_MKL=OFF
+    ENABLE_SCMEC=OFF
+    IFS_TEST_FORCE_FETCH=ON
+
+projects :
+
+    - ecbuild :
+        git     : https://github.com/ecmwf/ecbuild
+        version : 3.7.0
+        bundle  : false
+
+    - eccodes :
+        git     : https://github.com/ecmwf/eccodes
+        version : 2.28.1
+        cmake   : >
+            ENABLE_ECCODES_THREADS=ON
+            ECCODES_ENABLE_NETCDF=OFF
+            ECCODES_ENABLE_FORTRAN=ON
+            ECCODES_ENABLE_MEMFS=ON
+            ECCODES_INSTALL_EXTRA_TOOLS=ON
+            ECCODES_ENABLE_AEC=ON
+            ECCODES_ENABLE_JPG_LIBOPENJPEG=OFF
+
+    - eckit :
+        git     : https://github.com/ecmwf/eckit
+        version : 1.18.8
+        cmake   : >
+            ECKIT_ENABLE_XXHASH=OFF
+            ECKIT_ENABLE_VIENNACL=OFF
+            ECKIT_ENABLE_EIGEN=OFF
+            ECKIT_ENABLE_ARMADILLO=OFF
+            ECKIT_ENABLE_CUDA=OFF
+            ECKIT_ENABLE_SANDBOX=OFF
+            ECKIT_ENABLE_MKL=OFF
+            ECKIT_ENABLE_LAPACK=OFF
+            ECKIT_ENABLE_MPI=ON
+
+    - fckit :
+        git     : https://github.com/ecmwf/fckit
+        version : 0.10.0
+        require : eckit
+        cmake   : FCKIT_ENABLE_FINAL=OFF
+
+    - metkit :
+        git     : https://github.com/ecmwf/metkit
+        version : 1.8.10
+        require : eckit
+
+    - fdb5 :
+        git     : https://github.com/ecmwf/fdb
+        version : 5.10.6
+        require : eckit metkit
+        cmake   : >
+            ENABLE_FDB_REMOTE=OFF
+            ENABLE_FDB_BUILD_TOOLS=OFF
+
+    - atlas :
+        git     : https://github.com/ecmwf/atlas
+        version : 0.34.0
+        require : eckit fckit
+        cmake   : >
+            ATLAS_ENABLE_TESSELATION=OFF
+            ATLAS_ENABLE_TRANS=OFF
+            ATLAS_ENABLE_CLANG_TIDY=OFF
+            ATLAS_ENABLE_GRIDTOOLS_STORAGE=OFF
+
+    - multio :
+        git     : https://github.com/ecmwf/multio/
+        version : 1.5.1
+
+    - fcm :
+        git     : https://github.com/metomi/fcm
+        version : 2019.09.0
+        bundle  : false
+
+    - ifs-source :
+        dir     : $PWD/ifs-source
+        version : 48.1.1
+        bundle  : false
+
+    - ifs_dp :
+        dir    :  ifs-source
+        cmake   : >
+            ENABLE_IFS_NETCDF=ON
+            IFS_DP_ENABLE_SINGLE_PRECISION=OFF
+            FCM_EXECUTABLE=${SOURCE_DIR}/fcm/bin/fcm
+
+    - ifs_sp :
+        dir     : ifs-source
+        cmake   : >
+            ENABLE_IFS_NETCDF=ON
+            FCM_EXECUTABLE=${SOURCE_DIR}/fcm/bin/fcm
+
+
+
+    - ifs-test :
+        dir     : $PWD/ifs-test
+        version : 48.1.1
+        cmake   : IFS_TEST_ENABLE_TESTS=ON
+
+options :
+
+    - without-ifs-test :
+        help  : Disable ifs-test compilation
+        cmake : BUILD_ifs-test=OFF
+
+    - with-test-force-fetch:
+        help  : Force fetch ifs-test data even if data already exists.
+        cmake : IFS_TEST_FORCE_FETCH=ON
+
+    - without-test-force-fetch:
+        help  : Don't force fetch ifs-test data if data already exists.
+        cmake : IFS_TEST_FORCE_FETCH=OFF
+
+    - test-data-path:
+        help  : Custom path to the ifs-test input data.
+        cmake : IFS_TEST_CUSTOM_DATA_SOURCE={{value}}
+
+    - with-scmec :
+        help  : Enable SCM compilation
+        cmake : ENABLE_SCMEC=ON
+
+    - with-magics :
+        help  : Enable Magics compilation
+        cmake : BUILD_magics=ON
+
+    - with-static-linking :
+        help  : Link with static IFS libraries
+        cmake : IFS_SHARED_LIBS=OFF
+
+    - with-single-precision :
+        help  : Add a single precision IFS build
+        cmake : BUILD_ifs_sp=ON ENABLE_SINGLE_PRECISION=ON
+
+    - without-single-precision :
+        help  : Remove single precision & add a double precision build
+        cmake : BUILD_ifs_sp=OFF BUILD_ifs_dp=ON ENABLE_SINGLE_PRECISION=OFF
+
+    - with-double-precision :
+        help  : Add a double precision IFS build
+        cmake : BUILD_ifs_dp=ON
+
+    - without-double-precision :
+        help  : Remove double precision & add a single precision build
+        cmake : BUILD_ifs_sp=ON BUILD_ifs_dp=OFF ENABLE_SINGLE_PRECISION=ON
+
+    - init-snan :
+        help  : Initialize REAL variables with a signaling NaN
+        cmake : IFS_INIT_SNAN=ON
+
+    - no-init-snan :
+        help  : Do not initialize REAL variables with a signaling NaN
+        cmake : IFS_INIT_SNAN=OFF
+
+    - check-bounds :
+        help  : Enable run-time bounds checking
+        cmake : IFS_CHECK_BOUNDS=ON
+
+    - with-mkl :
+        help  : Use Intel MKL for BLAS
+        cmake : ENABLE_MKL=ON
+
+    - forecast-only :
+        help  : Build IFS in forecast configuration only
+        cmake : >
+            ENABLE_FORECAST_ONLY=ON
+            BUILD_odc=OFF
+            BUILD_oops=OFF ENABLE_OOPS=OFF
+            ENABLE_AEOLUS=OFF
+            BUILD_cope=OFF
+            BUILD_odb-tools=OFF
+
+    - openifs-only :
+        help  : Build IFS in OpenIFS configuration only
+        cmake : >
+            ENABLE_OPENIFS_ONLY=ON
+            ENABLE_FORECAST_ONLY=ON
+            BUILD_odc=OFF
+            BUILD_oops=OFF ENABLE_OOPS=OFF
+            ENABLE_AEOLUS=OFF
+            BUILD_cope=OFF
+            BUILD_odb-tools=OFF
+            ENABLE_NEMO=OFF

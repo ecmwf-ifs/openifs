@@ -1,0 +1,530 @@
+! (C) Copyright 2000- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+SUBROUTINE RDCLIM(NCID)
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+#ifdef DOC
+
+!**** *RDCLIM * - Reading netCDF file containing surface climate fields
+
+!     Purpose.
+!     --------
+!            initialization surface characteristics
+
+!**   Interface.
+!     ----------
+!        *CALL* *RDCLIM(NCID)
+
+!     Explicit arguments :
+!     --------------------
+!     NCID      INT     NetCDF file code
+
+
+!        Implicit arguments :
+!        --------------------
+
+
+!     Method.
+!     -------
+!       Opens a file called 'surfclim' to read relevant fields
+!       In the file, fields are assumed to be stored as 
+!           FIELD(LAT,LON)
+!       or
+!           FIELD(MONTH,LAT,LON)
+!       or
+!           FIELD(MONTH,VTYPE,LAT,LON) In this case, the climatology is given
+!           for each vegetation type (20) and bare soil.
+
+
+!     Externals.
+!     ----------
+!       NETCDF-utilities
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk, KNMI
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-07
+!     E. Dutra  07/14/2008  : Reading lake related fields (depth and cover) 
+!     E. Dutra  17/11/2009  : Reading LAI fields
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL based on:  
+!	 Marita Voogt (KNMI) new tiling (13), vegetation types (7)
+!                            and climatology (dec 2004)
+!        Sebastien LAFONT (ECMWF) LAI,fract,Z0 are read for all the vegetation type
+!                                 Then the value are computed only 
+!                                 for the dominant low and dominant high 
+!      E. Dutra 07/2014 : netcdf4 
+!      R. Hogan 15/01/2019   6-component MODIS albedo
+!      A. Agusti-Panareda 17/06/2021: Add C3/C4 type of photosynthetic pathway
+!      
+!     ------------------------------------------------------------------
+
+#endif
+
+USE YOMGPD1S , ONLY : GPD &
+                     &,VFZ0F,VFALBF,VFZ0H,VFITM,VFGEO &
+                     &,VFALUVP,VFALUVD,VFALNIP,VFALNID &
+                     &,VFALUVI,VFALUVV,VFALUVG &
+                     &,VFALNII,VFALNIV,VFALNIG &
+                     &,VFCVL, VFCUR &
+                     &,VFCVH,VFTVL,VFTVH,VFSST,VFCI,VFSOTY &
+                     &,VFSDOR, VFCO2TYP&
+                     &,VFLDEPTH,VFCLAKE, VFCLAKEF &
+                     &,VFZO,VFHO,VFHO_INV,VFDO,VFOCDEPTH,VFADVT &
+                     &,VFADVS, VFTRI0, VFTRI1, VFSWDK_SAVE &
+                     &,VFLAIL,VFLAIH,VFFWET,VFRSML,VFRSMH,VFR0VT&
+                     &,VFPGLOB
+USE YOMCC1S  , ONLY : GPCC,VCALB,VCLAIL,VCLAIH,VCFWET
+USE YOMGC1S  , ONLY : LMASK
+USE YOMDPHY  , ONLY : NLON, NLAT, NPOI, NVSF, NGCC, NLALO  ,NVHILO, NCLIMDAT,NCOM, NPOIP, NPOIOFF
+USE YOMLUN1S , ONLY : NULOUT, RMISS
+USE YOMLOG1S , ONLY : NDIMCDF
+USE YOEPHY   , ONLY : LELAIV, LEURBAN, LEC4MAP
+USE NETCDF
+USE NETCDF_UTILS, ONLY: NCERROR
+USE MPL_MODULE
+IMPLICIT NONE
+
+!* Arguments
+INTEGER(KIND=JPIM),INTENT(IN) :: NCID
+
+!* NetCDF interface
+INTEGER ISTART2(2),ICOUNT2(2)
+INTEGER ISTART3(3),ICOUNT3(3)
+INTEGER ISTART4(4),ICOUNT4(4)
+REAL(KIND=JPRB),ALLOCATABLE :: ZREALD(:)
+REAL(KIND=JPRB),ALLOCATABLE :: ZREAL3D(:,:)
+REAL(KIND=JPRB),ALLOCATABLE :: ZBUF(:)
+INTEGER NILON,NIDLON,NILAT,NIDLAT,IERR,NIDMON,NIMON,NVARID,NVARTYP,NIDVT,NIVT
+INTEGER NDIMS(100),NVDIMS,NVATTS
+INTEGER NDIM, NVARS, NGATTS, IRECDIM
+CHARACTER*100 CNAME
+CHARACTER*8 CDUM
+
+REAL(KIND=JPRB),ALLOCATABLE :: ZCVT1(:,:)
+REAL(KIND=JPRB) :: ZR0VT(NPOI,NVHILO)
+
+!* Other variables
+INTEGER(KIND=JPIM) :: NMX,NMY,IMON,JL,J,JMO,JMON,IVAR,JVT,JD,DIMLEN,STATUS
+LOGICAL LOPRES
+INTEGER(KIND=JPIM)           :: NVARS2D
+CHARACTER(LEN=20)            :: CVARS2D(40),CVAR
+INTEGER(KIND=JPIM)           :: MYPROC, NPROC
+REAL(KIND=JPHOOK)              :: ZHOOK_HANDLE
+INTEGER(KIND=JPIM)           :: ISTP, IENP
+DATA ISTART2/1,1/
+DATA ISTART3/1,1,1/
+DATA ISTART4/1,1,1,1/
+
+#include "minmax.intfb.h"
+
+IF (LHOOK) CALL DR_HOOK('RDCLIM',0,ZHOOK_HANDLE)
+
+MYPROC = MPL_MYRANK()
+NPROC  = MPL_NPROC()
+
+ISTP  = NPOIOFF(MYPROC)+1
+IENP = NPOIOFF(MYPROC+1)
+
+!* check the dimensions
+NILON=-999
+NILAT=-999
+
+IF( MYPROC == 1 ) THEN
+  CALL NCERROR (NF90_INQUIRE(NCID, nDimensions=NDIM,nVariables=NVARS),'FINDING N DIMS')
+  DO JD=1,NDIM
+    CALL NCERROR(NF90_INQUIRE_DIMENSION(NCID, JD, name=CNAME, len=DIMLEN),'INQ DIMENSION')
+    SELECT CASE (TRIM(CNAME))
+      CASE('x','lon')
+        NILON=DIMLEN
+        WRITE(*,*)'DIMENSION x ',TRIM(CNAME),' FOUND WITH LEN=',NILON
+     CASE('y','lat')
+        NILAT=DIMLEN
+        WRITE(*,*)'DIMENSION y ',TRIM(CNAME),' FOUND WITH LEN=',NILAT
+     CASE('month')
+        NIMON=DIMLEN
+        WRITE(*,*)'DIMENSION month ',TRIM(CNAME),' FOUND WITH LEN=',NIMON
+    END SELECT
+  ENDDO
+ENDIF
+
+CALL MPL_BROADCAST(NDIM, KROOT=1,KTAG=100,CDSTRING='NDIM')
+CALL MPL_BROADCAST(NILON,KROOT=1,KTAG=200,CDSTRING='NILON')
+CALL MPL_BROADCAST(NILAT,KROOT=1,KTAG=300,CDSTRING='NILAT')
+CALL MPL_BROADCAST(NIMON,KROOT=1,KTAG=400,CDSTRING='NIMON')
+
+IF (NDIMCDF == 1 ) THEN
+  NILAT = 0
+ENDIF
+
+!NIDVT = NCDID(NCID, 'nvtiles', IERR)
+!CALL NCDINQ(NCID,NIDVT,CNAME,NIVT,IERR)
+NIVT=2
+
+IF(NILON /= NLON .OR. NILAT /= NLAT) THEN
+  WRITE(*,*)'NLON OR NLAT NOT SPECIFIED CORRECTLY:'
+  WRITE(*,*)'NLON IN NAMELIST AND SURFCLIM: ',NLON,NILON
+  WRITE(*,*)'NLAT IN NAMELIST AND SURFCLIM: ',NLAT,NILAT
+  CALL ABORT
+ENDIF
+
+IF(NIMON /= NCLIMDAT) THEN
+  WRITE(NULOUT,*)'NMONTH IN SURFCLIM UNEQUAL TO ',NCLIMDAT
+  CALL ABORT
+ENDIF
+IF(NIVT /= NVHILO) THEN
+  WRITE(NULOUT,*)'NVHILO IN SURFCLIM UNEQUAL TO ',NVHILO
+  CALL ABORT
+ENDIF
+
+
+
+!* Note the reversal of the order of array storage
+
+IF(NDIMCDF == 2)THEN
+  ICOUNT2(1)=NILON
+  ICOUNT2(2)=NILAT
+
+  ICOUNT3(1)=NILON
+  ICOUNT3(2)=NILAT
+  ICOUNT3(3)=NCLIMDAT
+
+  ICOUNT4(1)=NILON
+  ICOUNT4(2)=NILAT
+  ICOUNT4(3)=NVHILO
+  ICOUNT4(4)=NCLIMDAT
+
+  NMX=NLON
+  NMY=NLAT
+ELSE
+  ICOUNT2(1)=NILON
+
+  ICOUNT3(1)=NILON
+  ICOUNT3(2)=NCLIMDAT
+
+  ICOUNT4(1)=NILON
+  ICOUNT4(2)=NVHILO
+  ICOUNT4(3)=NCLIMDAT
+
+  NMX=NLALO
+  NMY=1
+ENDIF
+
+ALLOCATE (ZREALD(NLALO))
+ALLOCATE (ZREAL3D(NLALO,NCLIMDAT))
+ALLOCATE (ZBUF(NPOI))
+
+CALL MPL_BARRIER()
+
+!* Read surface climate values
+
+IF( MYPROC == 1 ) THEN
+!* -- albedo
+  CALL NCERROR( NF90_INQ_VARID(NCID, 'Malbedo', NVARID),'getting varid Malbedo' )
+  CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREAL3D,ISTART3,ICOUNT3),'READING Malbedo')
+ENDIF
+VCALB(1:NPOI,1:NCLIMDAT)=0._JPRB
+
+DO JMON=1,NCLIMDAT
+  IF( MYPROC == 1 ) THEN
+    WRITE(CDUM,'(A6,I2.2)')'ALBEDO',JMON 
+    !ZREALD(:)=ZREAL3D(:,JMON)
+    CALL MINMAX(CDUM,ZREAL3D(:,JMON),NMX,NMY,LMASK,NULOUT)
+  ENDIF
+  CALL MPL_SCATTERV(PRECVBUF=ZBUF(:),KROOT=1,PSENDBUF=ZREAL3D(:,JMON),KSENDCOUNTS=NPOIP(:),CDSTRING="RDCLIM:VCALB")
+  VCALB(:,JMON)=PACK(ZBUF(:),LMASK(ISTP:IENP))
+ENDDO
+
+VFALBF(1:NPOI)=0._JPRB
+VFALBF(1:NPOI)=SUM(VCALB(1:NPOI,1:NCLIMDAT),DIM=2)/NCLIMDAT
+VFALUVP(1:NPOI)=VFALBF(1:NPOI)
+VFALUVD(1:NPOI)=VFALBF(1:NPOI)
+VFALNIP(1:NPOI)=VFALBF(1:NPOI)
+VFALNID(1:NPOI)=VFALBF(1:NPOI)
+
+! For a solar-zenith-angle-independent albedo, set only the isotropic
+! term
+VFALUVI(1:NPOI)=VFALBF(1:NPOI)
+VFALUVV(1:NPOI)=0.0_JPRB
+VFALUVG(1:NPOI)=0.0_JPRB
+VFALNII(1:NPOI)=VFALBF(1:NPOI)
+VFALNIV(1:NPOI)=0.0_JPRB
+VFALNIG(1:NPOI)=0.0_JPRB
+
+!
+!* -- wetland fraction
+IF( MYPROC == 1 ) THEN
+  CALL NCERROR( NF90_INQ_VARID(NCID, 'fwet', NVARID),'getting varid fwet' )
+  CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREAL3D,ISTART3,ICOUNT3),'READING fwet')
+ENDIF
+VCFWET(1:NPOI,1:NCLIMDAT)=0._JPRB
+
+DO JMON=1,NCLIMDAT
+  IF( MYPROC == 1 ) THEN
+   WRITE(CDUM,'(A6,I2.2)')'FWET',JMON
+   !ZREALD(:)=ZREAL3D(:,JMON)
+   CALL MINMAX(CDUM,ZREAL3D(:,JMON),NMX,NMY,LMASK,NULOUT)
+  ENDIF
+  CALL MPL_SCATTERV(PRECVBUF=ZBUF(:),KROOT=1,PSENDBUF=ZREAL3D(:,JMON),KSENDCOUNTS=NPOIP(:),CDSTRING="RDCLIM:VCFWET")
+  VCFWET(:,JMON)=PACK(ZBUF(:),LMASK(ISTP:IENP))
+ENDDO
+VFFWET(1:NPOI)=SUM(VCFWET(1:NPOI,1:NCLIMDAT),DIM=2)/NCLIMDAT
+
+!CALL NCERROR( NF90_INQ_VARID(NCID, 'Mfwet', NVARID),'getting varid Mfwet' )
+!CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREAL3D,ISTART3,ICOUNT3),'READING Mfwet')
+!DO JMON=1,NCLIMDAT
+!  WRITE(CDUM,'(A6,I2.2)')'FWET',JMON
+!  ZREALD(:)=ZREAL3D(:,JMON)
+!  CALL MINMAX(CDUM,ZREALD,NMX,NMY,LMASK,NULOUT)
+!  VCFWET(:,JMON)=PACK(ZREAL3D(:,JMON),LMASK)
+!ENDDO
+!VFFWET(:)=SUM(VCFWET,DIM=2)/NCLIMDAT
+
+
+
+
+
+
+
+
+
+! !* LAI
+IF (LELAIV) THEN
+  IF( MYPROC == 1 ) THEN
+    STATUS = NF90_INQ_VARID(NCID, 'Mlail', NVARID) 
+    IF ( STATUS /= 0 ) THEN
+      WRITE(NULOUT,'(A)')'Mlail NOT PRESENT IN INPUT FILE'
+      WRITE(NULOUT,'(A)')'PUT LELAIV TO FALSE IN NAMELIST OR ADD FIELD TO CLIM NETCDF'
+      CALL ABORT
+    ENDIF
+    CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREAL3D,ISTART3,ICOUNT3),'READING Mlail')
+  ENDIF
+  DO JMON=1,NCLIMDAT
+    IF( MYPROC == 1 ) THEN
+    WRITE(CDUM,'(A4,I2.2)')'LAIL',JMON
+      !ZREALD(:)=ZREAL3D(:,JMON)
+      CALL MINMAX(CDUM,ZREAL3D(:,JMON),NMX,NMY,LMASK,NULOUT)
+    ENDIF
+    CALL MPL_SCATTERV(PRECVBUF=ZBUF(:),KROOT=1,PSENDBUF=ZREAL3D(:,JMON),KSENDCOUNTS=NPOIP(:),CDSTRING="RDCLIM:VCLAIL")    
+    VCLAIL(:,JMON)=PACK(ZBUF(:),LMASK(ISTP:IENP))
+  ENDDO
+  
+  IF( MYPROC == 1 ) THEN 
+    CALL NCERROR( NF90_INQ_VARID(NCID, 'Mlaih', NVARID),'getting varid Mlaih' )
+    CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREAL3D,ISTART3,ICOUNT3),'READING Mlaih')
+  ENDIF
+  DO JMON=1,NCLIMDAT
+    IF( MYPROC == 1 ) THEN
+      WRITE(CDUM,'(A4,I2.2)')'LAIH',JMON
+      !ZREALD(:)=ZREAL3D(:,JMON)
+      CALL MINMAX(CDUM,ZREAL3D(:,JMON),NMX,NMY,LMASK,NULOUT)
+    ENDIF
+    CALL MPL_SCATTERV(PRECVBUF=ZBUF(:),KROOT=1,PSENDBUF=ZREAL3D(:,JMON),KSENDCOUNTS=NPOIP(:),CDSTRING="RDCLIM:VCLAIH")
+    VCLAIH(:,JMON)=PACK(ZBUF(:),LMASK(ISTP:IENP))
+  ENDDO
+  VFLAIL(1:NPOI)=SUM(VCLAIL(1:NPOI,1:NCLIMDAT),DIM=2)/NCLIMDAT
+  VFLAIH(1:NPOI)=SUM(VCLAIH(1:NPOI,1:NCLIMDAT),DIM=2)/NCLIMDAT    
+ELSE
+  VCLAIH(1:NPOI,1:NCLIMDAT)=0._JPRB
+  VCLAIL(1:NPOI,1:NCLIMDAT)=0._JPRB
+  VFLAIL(1:NPOI)=0._JPRB
+  VFLAIH(1:NPOI)=0._JPRB
+ENDIF
+
+!* -- vegetation coverage
+!  not in climate fields, but calculated from LAI.
+! not used in CTESSEL
+DO JL=1,NPOI
+    VFRSML(JL)=0._JPRB
+    VFRSMH(JL)=0._JPRB
+ENDDO
+
+!! 2D FIELDS
+IF (LEURBAN) THEN
+NVARS2D=18
+CVARS2D(1:NVARS2D)=(/'landsea','geopot ','cvl    ', &
+                      'cvh    ','tvl    ','tvh    ','cu     ','sotype ','sdor   ',&
+                      'sst    ','seaice ','LDEPTH ','CLAKE  ','z0m    ','lz0h   ',&
+                      'x      ','CLAKEF ','Ctype  '/)
+ELSE
+NVARS2D=17
+CVARS2D(1:NVARS2D)=(/'landsea','geopot ','cvl    ', &
+                      'cvh    ','tvl    ','tvh    ','sotype ','sdor   ',&
+                      'sst    ','seaice ','LDEPTH ','CLAKE  ','z0m    ','lz0h   ',&
+                      'x      ','CLAKEF ','Ctype  '/)
+VFCUR(1:NPOI)=0._JPRB !Creates an array of zeros if urban is not used
+ENDIF
+
+DO IVAR=1,NVARS2D
+  CVAR=TRIM(CVARS2D(IVAR))
+  IF( MYPROC == 1 ) THEN
+    STATUS = NF90_INQ_VARID(NCID, CVAR, NVARID)
+    IF ( STATUS /= 0 ) THEN
+      WRITE(NULOUT,'(A)') CVAR//' NOT PRESENT IN INPUT FILE'
+    ELSE
+      CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREALD,ISTART2,ICOUNT2),'READING '//CVAR)
+    ENDIF
+  ENDIF
+  CALL MPL_BROADCAST(STATUS,KROOT=1,KTAG=100,CDSTRING='STATUS')
+  CALL MPL_SCATTERV(PRECVBUF=ZBUF(:),KROOT=1,PSENDBUF=ZREALD(:),KSENDCOUNTS=NPOIP(:),CDSTRING='RDCLIM: '//CVAR)
+  SELECT CASE(CVAR)
+    CASE('landsea')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFITM(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('geopot')
+      IF ( STATUS /= 0 ) ZBUF(:) = 0._JPRB
+      VFGEO(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('cvl')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFCVL(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('cvh')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFCVH(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('tvl')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFTVL(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('tvh')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFTVH(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('cu')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFCUR(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('sotype')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFSOTY(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('sdor')
+      IF ( STATUS /= 0 ) CALL ABORT
+      VFSDOR(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('sst')
+      IF ( STATUS /= 0 ) ZBUF(:) = 288.15_JPRB
+      VFSST(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('seaice')
+      IF ( STATUS /= 0 ) ZBUF(:) = 0._JPRB
+      VFCI(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('LDEPTH')
+      IF ( STATUS /= 0 ) ZBUF(:) = 10._JPRB
+      VFLDEPTH(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('CLAKE')
+       IF ( STATUS /= 0 ) ZBUF(:) = 0._JPRB
+       VFCLAKE(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('z0m')
+       IF ( STATUS /= 0 ) ZBUF(:) = 1._JPRB
+       VFZ0F(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('lz0h')
+       IF ( STATUS /= 0 ) ZBUF(:) = 1.
+       VFZ0H(1:NPOI)=EXP(PACK(ZBUF,LMASK(ISTP:IENP)))
+    CASE('x')
+       IF ( STATUS /= 0 ) ZBUF(:) = -1
+       VFPGLOB(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+    CASE('CLAKEF')
+       IF ( STATUS /= 0 ) THEN
+         WRITE(NULOUT,*) 'CFLAKEF not found, set == to CLAKE'
+         VFCLAKEF(1:NPOI)=VFCLAKE(1:NPOI)
+       ELSE
+         VFCLAKEF(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+       ENDIF
+    CASE('Ctype')
+      IF (LEC4MAP) THEN
+         IF ( STATUS /= 0 ) THEN
+            WRITE(NULOUT,*) CVAR, ' Not defined in RDCLIM'
+            CALL ABORT()
+         ENDIF
+      ELSE
+           ZBUF(:) = 3._JPRB
+      ENDIF
+      VFCO2TYP(1:NPOI)=PACK(ZBUF,LMASK(ISTP:IENP))
+      WRITE(*,*) 'VFCO2TYP READ ',  VFCO2TYP(1)
+    CASE DEFAULT
+      WRITE(NULOUT,*) CVAR, ' Not defined in RDCLIM'
+      CALL ABORT()
+  END SELECT
+  IF( MYPROC == 1 ) THEN
+    CALL MINMAX(CVAR,ZREALD,NMX,NMY,LMASK,NULOUT)
+  ENDIF
+  CALL MPL_BARRIER()
+ENDDO
+
+!* -- reference respiration
+! 3rd dimension is now NVHILO instead of month
+
+DEALLOCATE (ZREAL3D)
+ALLOCATE (ZREAL3D(NLALO,NVHILO))
+IF(NDIMCDF == 2)THEN
+  ICOUNT3(3)=NVHILO
+ELSE
+  ICOUNT3(2)=NVHILO
+ENDIF
+
+IF( MYPROC == 1 ) THEN
+  STATUS = NF90_INQ_VARID(NCID, 'r0vt', NVARID)
+  IF ( STATUS /= 0 ) THEN
+    ZREAL3D(:,:)=0.145E-06_JPRB
+    WRITE(NULOUT,'(A)')'R0VT NOT PRESENT IN INPUT FILE NOW SET TO 0.145E-06 kg CO2/m2/s'
+    WRITE(NULOUT,'(A)')'PUT LECTESSEL TO FALSE IN NAMELIST OR ADD R0VT FIELD TO CLIM NETCDF'
+  ELSE
+    CALL NCERROR( NF90_GET_VAR(NCID,NVARID,ZREAL3D,ISTART3,ICOUNT3),'READING '//CVAR)
+  ENDIF
+ENDIF
+DO JVT=1,NVHILO
+  IF( MYPROC == 1 ) THEN
+  WRITE(CDUM,'(A4,I2.2)')'R0VT',JVT
+    !ZREALD(:)=ZREAL3D(:,JVT)
+    CALL MINMAX(CDUM,ZREAL3D(:,JVT),NMX,NMY,LMASK,NULOUT)
+  ENDIF
+  CALL MPL_SCATTERV(PRECVBUF=ZBUF(:),KROOT=1,PSENDBUF=ZREAL3D(:,JVT),KSENDCOUNTS=NPOIP(:),CDSTRING="RDCLIM:VFR0VT")
+  VFR0VT(1:NPOI,JVT)=PACK(ZBUF(:),LMASK(ISTP:IENP))
+ENDDO  
+
+!* -- KPP!
+! 2nd dimension is now NCOM instead of month
+VFZO(1:NPOI,1:(NCOM+1))=0.
+VFHO(1:NPOI,1:(NCOM+1))=0.
+VFHO_INV(1:NPOI,1:(NCOM+1))=0.
+VFDO(1:NPOI,1:(NCOM+1))=0.
+VFOCDEPTH(1:NPOI)=0.
+VFADVT(1:NPOI,1:NCOM)=0.
+VFADVS(1:NPOI,1:NCOM)=0.
+VFTRI0(1:NPOI,1:(NCOM+1))=0.
+VFTRI1(1:NPOI,1:(NCOM+1))=0.
+VFSWDK_SAVE(1:NPOI,1:(NCOM+1))=0.
+WRITE(NULOUT,*) 'RDCLIM CALLED, VFTRI, VFSWDK_SAVE, VFOCDEPTH... RESET'
+
+!* Check final values
+
+DO JL=1,NPOI
+  DO J=1,NVSF
+    IF (GPD(JL,J) == -999.) THEN
+      WRITE(NULOUT,*) 'INCORRECT SURFACE PROPERTIES IN RDCLIM'
+      WRITE(NULOUT,*)JL,J
+      CALL ABORT
+    ENDIF
+  ENDDO
+  DO J=1,NGCC
+    DO JMO=1,NCLIMDAT
+      IF (GPCC(JL,jmo,J) == -999.) THEN
+        WRITE(NULOUT,*)'INCORRECT SURFACE SEASONAL PROPERTIES IN RDCLIM'
+        CALL ABORT
+      ENDIF
+    ENDDO
+  ENDDO
+ENDDO
+
+DEALLOCATE (ZREALD)
+DEALLOCATE (ZREAL3D)
+DEALLOCATE (ZBUF)
+
+CALL MPL_BARRIER()
+
+IF (LHOOK) CALL DR_HOOK('RDCLIM',1,ZHOOK_HANDLE)
+
+END SUBROUTINE RDCLIM

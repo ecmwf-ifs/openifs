@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PREFIX=${SCRIPT_DIR}/..
+
+cat "$@" | perl -w ${PREFIX}/share/fiat/drhook/drhook_merge_walltime.pl

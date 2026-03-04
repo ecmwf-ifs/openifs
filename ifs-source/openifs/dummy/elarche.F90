@@ -1,0 +1,28 @@
+! (C) Copyright 2011- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+
+SUBROUTINE ELARCHE(YDML_DYN,KPROMA,KSTART,KPROF,KFLEV,YDSL,YDEGSL,YDEGEO,YDGSGEOM,PSCO,PCCO)
+USE MODEL_DYNAMICS_MOD , ONLY : MODEL_DYNAMICS_TYPE
+USE PARKIND1 ,ONLY : JPIM ,JPRB
+USE YEMGEO , ONLY : TEGEO
+USE YEMGSL , ONLY : TEGSL
+USE YOMGSGEOM, ONLY : TGSGEOM
+USE EINT_MOD , ONLY : SL_STRUCT
+TYPE(MODEL_DYNAMICS_TYPE),INTENT(IN):: YDML_DYN
+INTEGER(KIND=JPIM),INTENT(IN) :: KPROMA
+INTEGER(KIND=JPIM),INTENT(IN) :: KFLEV
+INTEGER(KIND=JPIM),INTENT(IN) :: KSTART
+INTEGER(KIND=JPIM),INTENT(IN) :: KPROF
+TYPE(SL_STRUCT), INTENT(IN) :: YDSL
+TYPE(TEGSL) ,INTENT(IN) :: YDEGSL
+TYPE(TEGEO) ,INTENT(IN) :: YDEGEO
+TYPE(TGSGEOM) ,INTENT(IN) :: YDGSGEOM
+REAL(KIND=JPRB) ,INTENT(IN) :: PSCO(KPROMA,KFLEV,YDML_DYN%YYTSCO%NDIM)
+REAL(KIND=JPRB) ,INTENT(INOUT) :: PCCO(KPROMA,KFLEV,YDML_DYN%YYTCCO%NDIM)
+call abor1("elarche.F90 should never be called with OpenIFS - EXITING")
+END SUBROUTINE ELARCHE

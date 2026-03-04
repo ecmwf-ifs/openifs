@@ -1,0 +1,702 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#ifdef RS6K
+@PROCESS NOCHECK
+#endif
+!option! -O nomove
+SUBROUTINE LARMES(YDGEOMETRY,YDRIP,YDML_DYN,KST,KPROF,YDSL,KSTABUF,PB1,PB2,&
+ & PLSDEPI,KIBL,&
+ & KVSEPC,KVSEPL,&
+ & PSCO,PLEV,PCCO,PUF,PVF,PWF,&
+ & KL0,KLH0,KLEV,PLSCAW,PRSCAW)  
+
+!----compiled for Cray with -hcontiguous----
+
+!**** *LARMES - semi-LAgrangian scheme:
+!                Research of the origin point on the Sphere.
+
+!     Purpose.
+!     --------
+
+!      The computation of the location of the interpolation point of
+!     the lagrangian trajectory is performed by an iterative
+!     method described by Robert and adapted to the sphere by M. Rochas.
+!     Trajectories are great circles.
+!     Finally we find the departure (origin) point "O".
+
+!**   Interface.
+!     ----------
+!        *CALL* *LARMES(...)
+
+!        Explicit arguments :
+!        --------------------
+
+!        INPUT:
+!          KST      - first element of arrays where computations are performed.
+!          KPROF    - depth of work.
+!          YDSL     - SL_STRUCT definition
+!          KSTABUF  - for a latitude IGL, KSTABUF(IGL) is the
+!                     address of the element corresponding to
+!                     (ILON=1,IGL) in the NPROMA arrays.
+!          PB1      - SLBUF1-buffer for interpolations.
+!          PB2      - SLBUF2-buf to communicate info from non lag. to lag. dyn.
+!          PLSDEPI  - (Number of points by latitude) / (2 * PI) .
+!          KIBL     - index into YRCSGEOM/YRGSGEOM instances in YDGEOMETRY
+
+!        INPUT/OUTPUT:
+!          KVSEPC   - vertical separation (used in S/L adjoint, cubic interp.)
+!          KVSEPL   - vertical separation (used in S/L adjoint, linear interp.)
+
+!        OUTPUT:
+!          PSCO     - information about geographic position of interpol. point.
+!          PLEV     - vertical coordinate of the interpolation point.
+!          PCCO     - information about comput. space position of interpol. point.
+!          PUF      - U-comp of wind necessary to
+!                     find the position of the origin point,
+!                     in a local repere linked to computational sphere.
+!          PVF      - V-comp of wind necessary to
+!                     find the position of the origin point,
+!                     in a local repere linked to computational sphere.
+!          PWF      - interpolated etadot used to find the vertical displacement.
+!          KL0      - index of the four western points
+!                     of the 16 points interpolation grid.
+!          KLH0     - second value of index of the four western points
+!                     of the 16 points interpolation grid if needed.
+!          KLEV     - lower level of the vertical interpolation
+!                     grid needed for vertical interpolations.
+!          PLSCAW   - linear weights (distances) for interpolations.
+!          PRSCAW   - non-linear weights for interpolations.
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation about semi-Lagrangian scheme.
+
+!     Externals.
+!     ----------
+!        Calls  LARCINA.
+!        Is called by LAPINEA (3D model)
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!      K. YESSAD after LAGRMIL and a part of CPLGDY2 written by
+!      Maurice IMBARD     METEO FRANCE/EERM/CRMD
+!      Original : JUNE 1991
+
+!     Modifications.
+!     --------------
+!      N. Wedi and K. Yessad (Jan 2008): different dev for NH model and PC scheme
+!      30-Jun-2008 J. Masek    Dataflow for new SLHD interpolators.
+!      K. Yessad Nov 2008: rationalisation of dummy argument interfaces
+!      K. Yessad (Aug 2009): always use root (QX,QY) for (p,q) variables names
+!      K. Yessad (Nov 2009): keep LLO.OR.LELTRA=T only in SL2TL.
+!      K. Yessad (Jan 2011): introduce INTDYN_MOD structures.
+!      F. Vana 21-Feb-2011: update of weights dimensions (hor. turbulence)
+!      G.Mozdzynski (Jan 2011): OOPS cleaning, use of derived type SL_STRUCT
+!      G.Mozdzynski (Feb 2011): OOPS cleaning, use of derived types TGSGEOM and TCSGEOM
+!      K. Yessad (Nov 2011): introduce LRALTVDISP.
+!      F. Vana  13-Feb-2014  update of variables for LARCINA
+!      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!      S. Malardel (Nov 2013): COMAD weights for SL interpolations
+!      K. Yessad (July 2014): Rename some variables.
+!      F. Vana    21-Nov-2017: Options LSLDP_CURV and LHOISLT
+!      K. Yessad (Feb 2018): remove deep-layer formulations.
+!      F. Vana    July 2018: Optimization
+!      F. Vana October 2018: Extended LSLDP_CURV.
+!   R. El Khatib 27-02-2019 Use pointer function SC2PRG to avoid bounds violation
+! End Modifications
+!     ------------------------------------------------------------------
+
+USE MODEL_DYNAMICS_MOD , ONLY : MODEL_DYNAMICS_TYPE
+USE GEOMETRY_MOD       , ONLY : GEOMETRY
+USE PARKIND1           , ONLY : JPIM, JPRB
+USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE SC2PRG_MOD         , ONLY : SC2PRG
+USE YOMCST             , ONLY : RPI
+USE YOMCT0             , ONLY : NCONF
+USE YOMLUN             , ONLY : NULERR
+USE YOMRIP             , ONLY : TRIP
+USE EINT_MOD           , ONLY : SL_STRUCT
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(GEOMETRY)    ,INTENT(IN)    :: YDGEOMETRY
+TYPE(MODEL_DYNAMICS_TYPE),INTENT(IN):: YDML_DYN
+TYPE(TRIP)        ,INTENT(IN)    :: YDRIP
+INTEGER(KIND=JPIM),INTENT(IN)    :: KST
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPROF
+TYPE(SL_STRUCT)   ,INTENT(INOUT) :: YDSL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTABUF(YDSL%NDGSAH:YDSL%NDGENH)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PB1(YDSL%NASLB1,YDML_DYN%YRPTRSLB1%NFLDSLB1)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PB2(YDGEOMETRY%YRDIM%NPROMA,YDML_DYN%YRPTRSLB2%NFLDSLB2)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PLSDEPI(YDSL%NDGSAH:YDSL%NDGENH)
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIBL
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KVSEPC
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KVSEPL
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSCO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTSCO%NDIM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PLEV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCCO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTCCO%NDIM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PUF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PVF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KL0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,0:3)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KLH0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,0:3)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KLEV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PLSCAW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTLSCAW%NDIM)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PRSCAW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTRSCAW%NDIM)
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIM) :: IHVI
+INTEGER(KIND=JPIM) :: ILEVEXP
+INTEGER(KIND=JPIM) :: IROFEXP
+INTEGER(KIND=JPIM) :: IROT
+INTEGER(KIND=JPIM) :: ISTESB(YDGEOMETRY%YRDIM%NPROMA)
+INTEGER(KIND=JPIM) :: ISTEST(YDGEOMETRY%YRDIM%NPROMA)
+INTEGER(KIND=JPIM) :: ISTEST0(YDGEOMETRY%YRDIM%NPROMA)
+INTEGER(KIND=JPIM) :: ITIP
+INTEGER(KIND=JPIM) :: JITER
+INTEGER(KIND=JPIM) :: JLEV
+INTEGER(KIND=JPIM) :: JROF
+INTEGER(KIND=JPIM) :: IL0A (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,0:3)
+INTEGER(KIND=JPIM) :: IDEP (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+INTEGER(KIND=JPIM) :: INOWENO (YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+
+LOGICAL :: LLINTV
+LOGICAL :: LLO
+LOGICAL :: LLSLHD, LLSLHDQUAD
+
+REAL(KIND=JPRB) :: ZDTS22, ZDTS62, ZDTSA
+REAL(KIND=JPRB) :: ZEW, ZEWX
+REAL(KIND=JPRB) :: ZINT
+REAL(KIND=JPRB) :: ZLEVB, ZLEVO, ZLEVT
+REAL(KIND=JPRB) :: ZNOR, ZNOR2, ZNORX
+REAL(KIND=JPRB) :: ZPU, ZPV
+REAL(KIND=JPRB) :: ZSPHSV
+REAL(KIND=JPRB) :: ZVMAX1, ZVMAX2
+REAL(KIND=JPRB) :: ZEPS
+REAL(KIND=JPRB) :: ZVETAON, ZVETAOX
+
+REAL(KIND=JPRB) :: ZZF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZWF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZWFSM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZWFASM(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZSCO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTSCO%NDIM)
+REAL(KIND=JPRB) :: ZPLEV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+
+REAL(KIND=JPRB), POINTER :: ZSLB1UR0(:), ZSLB1VR0(:), ZSLB1WR0(:), ZSLB1WRA(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1ZR0(:), ZSLB2STDDISU(:), ZSLB2STDDISV(:), ZSLB2STDDISW(:)
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+! unused arguments in call to LARCINA:
+! a) input arrays - will not be used since LSLHD was set to .FALSE.
+!    in LAPINEA before call to LARMES/ELARMES => dimensions can be
+!    contracted
+REAL(KIND=JPRB) :: ZUN_KAPPA(1),ZUN_KAPPAT(1),ZUN_KAPPAM(1),ZUN_KAPPAH(1)
+
+REAL(KIND=JPRB) :: ZVDISP_1,ZZ,ZVDISP_2,ZVDISP
+REAL(KIND=JPRB) :: ZWF_2(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG),&
+ & ZWO_2(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZHVETAON,ZHVETAOX
+
+REAL(KIND=JPRB) :: ZU0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZV0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZZ0(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
+REAL(KIND=JPRB) :: ZPU0, ZPV0
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+#include "larcina.intfb.h"
+#include "laismoa.intfb.h"
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('LARMES',0,ZHOOK_HANDLE)
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, &
+ & YDMP=>YDGEOMETRY%YRMP,  YDSTA=>YDGEOMETRY%YRSTA, YDVAB=>YDGEOMETRY%YRVAB, YDVETA=>YDGEOMETRY%YRVETA, &
+ & YDVFE=>YDGEOMETRY%YRVFE, YDLAP=>YDGEOMETRY%YRLAP, YDCSGLEG=>YDGEOMETRY%YRCSGLEG,  &
+ & YDCSGEOM=>YDGEOMETRY%YRCSGEOM(KIBL), YDGSGEOM=>YDGEOMETRY%YRGSGEOM(KIBL), &
+  & YDSPGEOM=>YDGEOMETRY%YSPGEOM, YDDYN=>YDML_DYN%YRDYN,YDDYNA=>YDML_DYN%YRDYNA, &
+  & YDPTRSLB1=>YDML_DYN%YRPTRSLB1, YDPTRSLB2=>YDML_DYN%YRPTRSLB2)
+
+ASSOCIATE(NPROMA=>YDDIM%NPROMA, &
+ & NFLEN=>YDDIMV%NFLEN, NFLEVG=>YDDIMV%NFLEVG, NFLSA=>YDDIMV%NFLSA, &
+ & LFINDVSEP=>YDDYN%LFINDVSEP, LSVTSM=>YDDYN%LSVTSM, NITMP=>YDDYN%NITMP, &
+ & RPRES_SVTSM=>YDDYN%RPRES_SVTSM, VETAON=>YDDYN%VETAON, VETAOX=>YDDYN%VETAOX, &
+ & VMAX1=>YDDYN%VMAX1, VMAX2=>YDDYN%VMAX2,LSLDP_CURV=>YDDYN%LSLDP_CURV, &
+ & MSLB1UR0=>YDPTRSLB1%MSLB1UR0, MSLB1VR0=>YDPTRSLB1%MSLB1VR0, MSLB1ZR0=>YDPTRSLB1%MSLB1ZR0, &
+ & MSLB1WR0=>YDPTRSLB1%MSLB1WR0, MSLB1WRA=>YDPTRSLB1%MSLB1WRA, &
+ & NFLDSLB1=>YDPTRSLB1%NFLDSLB1, &
+ & MSLB2STDDISU=>YDPTRSLB2%MSLB2STDDISU, MSLB2STDDISV=>YDPTRSLB2%MSLB2STDDISV, &
+ & MSLB2STDDISW=>YDPTRSLB2%MSLB2STDDISW, MSLB2URL=>YDPTRSLB2%MSLB2URL, &
+ & MSLB2VRL=>YDPTRSLB2%MSLB2VRL, MSLB2WRL=>YDPTRSLB2%MSLB2WRL, &
+ & NFLDSLB2=>YDPTRSLB2%NFLDSLB2, &
+ & RDTS22=>YDRIP%RDTS22, RDTS62=>YDRIP%RDTS62, RDTSA=>YDRIP%RDTSA, &
+ & RTDT=>YDRIP%RTDT, &
+ & STPREH=>YDSTA%STPREH)
+
+CALL SC2PRG(MSLB1UR0  ,PB1      ,ZSLB1UR0)
+CALL SC2PRG(MSLB1VR0  ,PB1      ,ZSLB1VR0)
+CALL SC2PRG(MSLB1WR0  ,PB1      ,ZSLB1WR0)
+CALL SC2PRG(MSLB1WRA  ,PB1      ,ZSLB1WRA)
+CALL SC2PRG(MSLB1ZR0  ,PB1      ,ZSLB1ZR0)
+CALL SC2PRG(MSLB2STDDISU,PB2    ,ZSLB2STDDISU)
+CALL SC2PRG(MSLB2STDDISV,PB2    ,ZSLB2STDDISV)
+CALL SC2PRG(MSLB2STDDISW,PB2    ,ZSLB2STDDISW)
+
+!     ------------------------------------------------------------------
+
+!*       1.    PRELIMINARY INITIALISATIONS AND TESTS.
+!              --------------------------------------
+
+!*       1.1   Test that wind is not too strong.
+
+ZNOR=0.0_JPRB
+ZEW=0.0_JPRB
+ZVMAX1=VMAX1*VMAX1
+ZVMAX2=VMAX2*VMAX2
+ZEPS=1.E-6_JPRB
+
+DO JLEV=1,NFLEVG
+  DO JROF=KST,KPROF
+    ZNOR=MAX(PB2(JROF,MSLB2VRL+JLEV-1)*PB2(JROF,MSLB2VRL+JLEV-1),ZNOR)
+    ZEW =MAX(PB2(JROF,MSLB2URL+JLEV-1)*PB2(JROF,MSLB2URL+JLEV-1),ZEW )
+  ENDDO
+ENDDO
+
+IF (ZNOR > ZVMAX1) THEN
+  WRITE(NULERR,*) ' MAX V WIND=',SQRT(ZNOR)
+ENDIF
+IF (ZEW > ZVMAX1) THEN
+  WRITE(NULERR,*) ' MAX U WIND=',SQRT(ZEW)
+ENDIF
+IF (ZNOR > ZVMAX2) THEN
+  ZNOR=0.0_JPRB
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZNORX=PB2(JROF,MSLB2VRL+JLEV-1)*PB2(JROF,MSLB2VRL+JLEV-1)
+      ZNOR=MAX(ZNORX,ZNOR)
+      IF(ZNOR == ZNORX) THEN
+        ILEVEXP=JLEV
+        IROFEXP=JROF
+      ENDIF
+    ENDDO
+  ENDDO
+  WRITE(NULERR,*) ' V WIND =',SQRT(ZNOR),' IS TOO STRONG, EXPLOSION.'
+  WRITE(NULERR,*) ' LEVEL= ',ILEVEXP,' POINT= ',IROFEXP
+  WRITE(NULERR,*) ' LON  = ',ACOS(YDCSGEOM%RCOLON(IROFEXP))*180._JPRB/RPI,' degrees'
+  WRITE(NULERR,*) ' LAT  = ',ASIN(YDGSGEOM%GEMU(IROFEXP))*180._JPRB/RPI,' degrees'
+  CALL ABOR1(' !V WIND TOO STRONG, EXPLOSION!!!')
+ENDIF
+IF (ZEW > ZVMAX2) THEN
+  ZEW=0.0_JPRB
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZEWX=PB2(JROF,MSLB2URL+JLEV-1)*PB2(JROF,MSLB2URL+JLEV-1)
+      ZEW=MAX(ZEWX,ZEW)
+      IF(ZEW == ZEWX) THEN
+        ILEVEXP=JLEV
+        IROFEXP=JROF
+      ENDIF
+    ENDDO
+  ENDDO
+  WRITE(NULERR,*) ' U WIND =',SQRT(ZEW),' IS TOO STRONG, EXPLOSION.'
+  WRITE(NULERR,*) ' LEVEL= ',ILEVEXP,' POINT= ',IROFEXP
+  WRITE(NULERR,*) ' LON  = ',ACOS(YDCSGEOM%RCOLON(IROFEXP))*180._JPRB/RPI,' degrees'
+  WRITE(NULERR,*) ' LAT  = ',ASIN(YDGSGEOM%GEMU(IROFEXP))*180._JPRB/RPI,' degrees'
+  CALL ABOR1(' !U WIND TOO STRONG, EXPLOSION!!!')
+ENDIF
+
+!*       1.2   Miscellaneous preliminary initialisations.
+
+! in practical LLO.OR.LELTRA should now be always T for SL2TL.
+IF (YDDYNA%LTWOTL) THEN
+  LLO=.NOT.YDDYNA%LELTRA
+ELSE
+  LLO=.FALSE.
+ENDIF
+
+IF(LLO.OR.YDDYNA%LELTRA) THEN
+  ZDTS22=RDTS22*4._JPRB
+  ZDTSA=RDTSA*2._JPRB
+  ZDTS62=RDTS62*4._JPRB
+ELSE
+  ! this case may occur only for SL3TL scheme.
+  IF (YDDYNA%LTWOTL) CALL ABOR1(' LARMES 1.2 ')
+  ZDTS22=RDTS22
+  ZDTSA=RDTSA
+  ZDTS62=RDTS62
+ENDIF
+
+! deactivate computation of SLHD weights
+LLSLHD     =.FALSE.
+LLSLHDQUAD =.FALSE.
+
+!*       1.3   Computation of weights for smooth interpolation at arrival point.
+
+IF(LSVTSM) THEN
+  !*     SMOOTH INTERPOLATION AT ARRIVAL POINT
+  DO JLEV=1,NFLEVG
+    DO JROF=KST,KPROF
+      ZSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINLA)=YDGSGEOM%GEMU(JROF)-ZEPS
+      ZSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COSCO)=YDGSGEOM%GSQM2(JROF)
+      ZSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINCO)=ZEPS
+      ZSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)=1.0_JPRB-ZEPS
+      ZPLEV(JROF,JLEV)=YDVETA%VETAF(JLEV)
+    ENDDO
+  ENDDO
+  IHVI=0
+  IROT=0
+  ITIP=1
+  LLINTV=.FALSE.
+  CALL LARCINA(YDGEOMETRY,YDML_DYN,KST,KPROF,YDSL,IHVI,KSTABUF,LFINDVSEP,LLSLHD,LLSLHDQUAD,LLINTV,&
+   & ITIP,IROT,.FALSE.,PLSDEPI,&
+   & KIBL,ZSCO,ZPLEV,&
+   & ZUN_KAPPA,ZUN_KAPPAT,ZUN_KAPPAM,ZUN_KAPPAH,&
+   & ZSLB2STDDISU,ZSLB2STDDISV,ZSLB2STDDISW,&
+   & ZSLB1UR0,ZSLB1VR0,ZSLB1ZR0,ZSLB1WRA,&
+   & KVSEPC,KVSEPL,PCCO,&
+   & PUF,PVF,ZZF,ZWF,ZWFASM,&
+   & IL0A,KLH0,KLEV,PLSCAW,PRSCAW,IDEP,INOWENO)
+  CALL LAISMOA(YDSL%NASLB1,NPROMA,KST,KPROF,NFLEVG,NFLSA,&
+   & NFLEN,PLSCAW(1,1,YDML_DYN%YYTLSCAW%M_WDLO),IL0A,PLSCAW(1,1,YDML_DYN%YYTLSCAW%M_WDVER),ZSLB1WRA,ZWFASM)  
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!*       2.    ITERATIONS.
+!              -----------
+
+ISTEST0(:)=0
+
+ZLEVT=YDVETA%VETAF(0)
+ZLEVB=YDVETA%VETAF(NFLEVG+1)
+ZVETAON=(1.0_JPRB-VETAON)*YDVETA%VETAH(0)+VETAON*YDVETA%VETAF(1)
+ZVETAOX=(1.0_JPRB-VETAOX)*YDVETA%VETAH(NFLEVG)+VETAOX*YDVETA%VETAF(NFLEVG)
+IF (YDDYNA%LRALTVDISP) THEN
+  ZHVETAON=0.5_JPRB*ZVETAON
+  ZHVETAOX=1.0_JPRB-0.5_JPRB*(1.0_JPRB-ZVETAOX)
+ENDIF
+
+DO JITER=1,NITMP
+
+  !*       2.1   DETERMINATION OF THE MEDIUM POINT "M" OR THE ORIGIN POINT "O".
+
+  ! Computation of the norm of the real wind vector.
+  ! Computation of the angle (PHI=DT . NORM OF V ON RADIUS)**2
+  ! then computation of the coordinates of the medium point "M".
+  ! If (LLO=T or LELTRA=T) the origin point "O" is computed
+  ! instead of the medium point "M".
+
+  ISTEST(:)=0
+  ISTESB(:)=0
+
+  IF (JITER == 1) THEN
+
+    DO JLEV=1,NFLEVG
+!DIR$ IVDEP
+      DO JROF=KST,KPROF
+
+        ! * computations on horizontal plans.
+        
+        ! When relevant convert arrival point wind to cartesian space
+        IF (LSLDP_CURV.AND.(.NOT.YDDYNA%LELTRA)) THEN  
+          ! Arrival point wind
+          ZPU0= +PB2(JROF,MSLB2URL+JLEV-1)*YDGSGEOM%GNORDM(JROF)&
+           &    -PB2(JROF,MSLB2VRL+JLEV-1)*YDGSGEOM%GNORDL(JROF)  
+          ZPV0= +PB2(JROF,MSLB2URL+JLEV-1)*YDGSGEOM%GNORDL(JROF)&
+           &    +PB2(JROF,MSLB2VRL+JLEV-1)*YDGSGEOM%GNORDM(JROF)
+          ! Arrival point wind converted to Cartesian space
+          ZU0(JROF,JLEV)=-ZPU0*YDGSGEOM%GESLO(JROF)             &
+           &             -ZPV0*YDGSGEOM%GECLO(JROF)*YDGSGEOM%GEMU(JROF)
+          ZV0(JROF,JLEV)= ZPU0*YDGSGEOM%GECLO(JROF)             &
+           &             -ZPV0*YDGSGEOM%GESLO(JROF)*YDGSGEOM%GEMU(JROF)
+          ZZ0(JROF,JLEV)= ZPV0*YDGSGEOM%GSQM2(JROF)
+        ENDIF
+
+        PUF(JROF,JLEV)=PB2(JROF,MSLB2URL+JLEV-1)
+        PVF(JROF,JLEV)=PB2(JROF,MSLB2VRL+JLEV-1)
+        ZNOR2=( PB2(JROF,MSLB2URL+JLEV-1)*PB2(JROF,MSLB2URL+JLEV-1)&
+         & +PB2(JROF,MSLB2VRL+JLEV-1)*PB2(JROF,MSLB2VRL+JLEV-1) )  
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)=1.0_JPRB-ZDTS22*ZNOR2
+        ZSPHSV=ZDTSA*(1.0_JPRB-ZDTS62*ZNOR2)
+        ZINT=( PB2(JROF,MSLB2URL+JLEV-1)*YDGSGEOM%GNORDL(JROF)&
+         & +PB2(JROF,MSLB2VRL+JLEV-1)*YDGSGEOM%GNORDM(JROF))*ZSPHSV  
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINLA)= YDGSGEOM%GEMU(JROF)*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+         & -ZINT*YDGSGEOM%GSQM2(JROF)
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COSCO)= YDGSGEOM%GSQM2(JROF)*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+         & +ZINT*YDGSGEOM%GEMU(JROF)
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINCO)=-( PB2(JROF,MSLB2URL+JLEV-1)*YDGSGEOM%GNORDM(JROF)&
+         & -PB2(JROF,MSLB2VRL+JLEV-1)*YDGSGEOM%GNORDL(JROF) )*ZSPHSV  
+
+        ! * computations on a vertical.
+
+        IF(STPREH(JLEV) > RPRES_SVTSM .OR. (NCONF /= 1 .AND. NCONF /= 302) .OR..NOT.LSVTSM) THEN
+          ZWF(JROF,JLEV)=PB2(JROF,MSLB2WRL+JLEV-1)
+        ELSE
+          ZWF(JROF,JLEV)=ZWFASM(JROF,JLEV)
+        ENDIF
+        IF (YDDYNA%LRALTVDISP) THEN
+          ZVDISP_1=-RTDT*ZWF(JROF,JLEV)
+          ZZ=EXP(-RTDT*ZWF(JROF,JLEV)*(1.0_JPRB/(YDVETA%VETAF(JLEV)-ZHVETAON)&
+           & +1.0_JPRB/(ZHVETAOX-YDVETA%VETAF(JLEV))))&
+           & *(YDVETA%VETAF(JLEV)-ZHVETAON)/(ZHVETAOX-YDVETA%VETAF(JLEV))
+          ZVDISP_2=(ZHVETAON+ZHVETAOX*ZZ)/(1.0_JPRB+ZZ)-YDVETA%VETAF(JLEV)
+          ZVDISP=SIGN(1.0_JPRB,ZVDISP_1)*MIN(ABS(ZVDISP_1),ABS(ZVDISP_2))
+          ZLEVO=YDVETA%VETAF(JLEV)+ZVDISP
+        ELSE
+          ZLEVO=YDVETA%VETAF(JLEV)-RTDT*ZWF(JROF,JLEV)
+        ENDIF
+        ISTEST(JROF)=ISTEST(JROF)-MIN(0,MAX(-1,NINT(ZLEVO-ZLEVT-0.5_JPRB)))
+        ISTESB(JROF)=ISTESB(JROF)-MIN(0,MAX(-1,NINT(ZLEVB-ZLEVO-0.5_JPRB)))
+        ZLEVO=MIN(ZVETAOX,MAX(ZVETAON,ZLEVO))
+        IF(LLO.OR.YDDYNA%LELTRA) THEN
+          PLEV(JROF,JLEV)=ZLEVO
+        ELSE
+          PLEV(JROF,JLEV)=0.5_JPRB*(ZLEVO+YDVETA%VETAF(JLEV))
+        ENDIF
+
+      ENDDO
+    ENDDO
+
+  ELSE
+
+    DO JLEV=1,NFLEVG
+       !DIR$ IVDEP
+      DO JROF=KST,KPROF
+
+        ! * computations on horizontal plans.
+
+        !   ZPU,ZPV are the coordinates of VM in the local repere related to F.
+
+        IF(LSLDP_CURV.AND.YDDYNA%LELTRA) THEN
+          ! Convert Departure point wind back to lat,lon at Arrival point
+          ZPU = -PUF(JROF,JLEV)*YDGSGEOM%GESLO(JROF)                     &
+           &    +PVF(JROF,JLEV)*YDGSGEOM%GECLO(JROF)
+          ZPV = -PUF(JROF,JLEV)*YDGSGEOM%GECLO(JROF)*YDGSGEOM%GEMU(JROF) &
+           &    -PVF(JROF,JLEV)*YDGSGEOM%GESLO(JROF)*YDGSGEOM%GEMU(JROF) &
+           &    +ZZF(JROF,JLEV)*YDGSGEOM%GSQM2(JROF)
+        ELSEIF(YDDYNA%LELTRA) THEN
+          ZPU= PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQX)*PUF(JROF,JLEV)+PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQY)*PVF(JROF,JLEV)
+          ZPV=-PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQY)*PUF(JROF,JLEV)+PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQX)*PVF(JROF,JLEV)
+        ELSEIF(LSLDP_CURV.AND.LLO) THEN
+          ! Averaging wind to Midpoint in Cartesian space
+          PUF(JROF,JLEV)=0.5_JPRB*(PUF(JROF,JLEV)+ZU0(JROF,JLEV))
+          PVF(JROF,JLEV)=0.5_JPRB*(PVF(JROF,JLEV)+ZV0(JROF,JLEV))
+          ZZF(JROF,JLEV)=0.5_JPRB*(ZZF(JROF,JLEV)+ZZ0(JROF,JLEV))
+
+          ! Convert Midpoint wind back to lat,lon at Arrival point
+          ZPU = -PUF(JROF,JLEV)*YDGSGEOM%GESLO(JROF)                     &
+           &    +PVF(JROF,JLEV)*YDGSGEOM%GECLO(JROF)
+          ZPV = -PUF(JROF,JLEV)*YDGSGEOM%GECLO(JROF)*YDGSGEOM%GEMU(JROF) &
+           &    -PVF(JROF,JLEV)*YDGSGEOM%GESLO(JROF)*YDGSGEOM%GEMU(JROF) &
+           &    +ZZF(JROF,JLEV)*YDGSGEOM%GSQM2(JROF)
+        ELSEIF(LLO) THEN
+          ZPU= 0.5_JPRB*(PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQX)*PUF(JROF,JLEV)&
+           & +PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQY)*PVF(JROF,JLEV)&
+           & +PB2(JROF,MSLB2URL+JLEV-1)*YDGSGEOM%GNORDM(JROF)&
+           & -PB2(JROF,MSLB2VRL+JLEV-1)*YDGSGEOM%GNORDL(JROF))  
+          ZPV=0.5_JPRB*(-PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQY)*PUF(JROF,JLEV)&
+           & +PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQX)*PVF(JROF,JLEV)&
+           & +PB2(JROF,MSLB2URL+JLEV-1)*YDGSGEOM%GNORDL(JROF)&
+           & +PB2(JROF,MSLB2VRL+JLEV-1)*YDGSGEOM%GNORDM(JROF))  
+        ELSE
+          ! sl3tl
+          ZPU= PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQX)*PUF(JROF,JLEV)+PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQY)*PVF(JROF,JLEV)
+          ZPV=-PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQY)*PUF(JROF,JLEV)+PCCO(JROF,JLEV,YDML_DYN%YYTCCO%M_RQX)*PVF(JROF,JLEV)
+        ENDIF
+        ZNOR2             =(ZPU*ZPU+ZPV*ZPV)
+        IF(JITER == NITMP) THEN
+          ! * save (zpu,zpv) in (puf,pvf) with a rotation.
+          PUF(JROF,JLEV)= ZPU*YDGSGEOM%GNORDM(JROF)+ZPV*YDGSGEOM%GNORDL(JROF)
+          PVF(JROF,JLEV)=-ZPU*YDGSGEOM%GNORDL(JROF)+ZPV*YDGSGEOM%GNORDM(JROF)
+        ENDIF
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI) =1.0_JPRB-ZDTS22*ZNOR2
+        ZSPHSV            =ZDTSA*(1.0_JPRB-ZDTS62*ZNOR2)
+        ZINT              =ZPV*ZSPHSV
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINLA) = YDGSGEOM%GEMU(JROF)*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+         & -ZINT*YDGSGEOM%GSQM2(JROF)
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COSCO) = YDGSGEOM%GSQM2(JROF)*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+         & +ZINT*YDGSGEOM%GEMU(JROF)
+        PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINCO) =-ZPU*ZSPHSV
+
+        ! * computations on a vertical.
+
+        IF(LLO) THEN
+          IF(STPREH(JLEV) > RPRES_SVTSM .OR. (NCONF /= 1 .AND. NCONF /= 302) .OR..NOT.LSVTSM) THEN
+            IF (YDDYNA%LRALTVDISP) THEN
+              ZWF_2(JROF,JLEV)=ZWF(JROF,JLEV)
+              ZWO_2(JROF,JLEV)=PB2(JROF,MSLB2WRL+JLEV-1)
+            ENDIF
+            ZWF(JROF,JLEV)=0.5_JPRB*(ZWF(JROF,JLEV)+PB2(JROF,MSLB2WRL+JLEV-1))
+          ELSE
+            IF (YDDYNA%LRALTVDISP) THEN
+              ZWF_2(JROF,JLEV)=ZWFASM(JROF,JLEV)
+              ZWO_2(JROF,JLEV)=ZWFSM(JROF,JLEV)
+            ENDIF
+            ZWF(JROF,JLEV)=0.5_JPRB*(ZWFSM(JROF,JLEV)+ZWFASM(JROF,JLEV))
+          ENDIF
+        ENDIF
+
+        IF (YDDYNA%LRALTVDISP) THEN
+          ZVDISP_1=-RTDT*ZWF(JROF,JLEV)
+          IF (LLO) THEN
+            ZZ=EXP(-0.5_JPRB*RTDT*ZWF_2(JROF,JLEV)*(1.0_JPRB/(YDVETA%VETAF(JLEV)-ZHVETAON)&
+             & +1.0_JPRB/(ZHVETAOX-YDVETA%VETAF(JLEV)))&
+             & -0.5_JPRB*RTDT*ZWO_2(JROF,JLEV)*(1.0_JPRB/(PLEV(JROF,JLEV)-ZHVETAON)&
+             & +1.0_JPRB/(ZHVETAOX-PLEV(JROF,JLEV))))&
+             & *(YDVETA%VETAF(JLEV)-ZHVETAON)/(ZHVETAOX-YDVETA%VETAF(JLEV))
+          ELSE
+            ZZ=EXP(-RTDT*ZWF(JROF,JLEV)*(1.0_JPRB/(PLEV(JROF,JLEV)-ZHVETAON)&
+             & +1.0_JPRB/(ZHVETAOX-PLEV(JROF,JLEV))))&
+             & *(YDVETA%VETAF(JLEV)-ZHVETAON)/(ZHVETAOX-YDVETA%VETAF(JLEV))
+          ENDIF
+          ZVDISP_2=(ZHVETAON+ZHVETAOX*ZZ)/(1.0_JPRB+ZZ)-YDVETA%VETAF(JLEV)
+          ZVDISP=SIGN(1.0_JPRB,ZVDISP_1)*MIN(ABS(ZVDISP_1),ABS(ZVDISP_2))
+          ZLEVO=YDVETA%VETAF(JLEV)+ZVDISP
+        ELSE
+          ZLEVO=YDVETA%VETAF(JLEV)-RTDT*ZWF(JROF,JLEV)
+        ENDIF
+        ISTEST(JROF)=ISTEST(JROF)-MIN(0,MAX(-1,NINT(ZLEVO-ZLEVT-0.5_JPRB)))
+        ISTESB(JROF)=ISTESB(JROF)-MIN(0,MAX(-1,NINT(ZLEVB-ZLEVO-0.5_JPRB)))
+        ZLEVO=MIN(ZVETAOX,MAX(ZVETAON,ZLEVO))
+        IF(LLO.OR.YDDYNA%LELTRA) THEN
+          PLEV(JROF,JLEV)=ZLEVO
+        ELSE
+          PLEV(JROF,JLEV)=0.5_JPRB*(ZLEVO+YDVETA%VETAF(JLEV))
+        ENDIF
+
+        IF( YDDYNA%LSLDIA.AND.(JITER==NITMP) ) THEN
+          ! trajectory vertical velocity
+          PWF(JROF,JLEV)=ZWF(JROF,JLEV)
+        ENDIF
+
+      ENDDO
+    ENDDO
+
+  ENDIF
+
+  IF( ANY( ISTEST /= ISTEST0 ) .AND. JITER == NITMP) THEN
+    WRITE(NULERR,'(A,I6,A)') ' SMILAG TRAJECTORY OUT OF ATM ',SUM(ISTEST(KST:KPROF)),' TIMES.'
+    ! print statistics
+    IF (YDDYNA%LRPRSLTRJ) THEN
+      DO JROF=KST,KPROF
+        IF( ISTEST(JROF) /= 0 ) THEN
+          WRITE(NULERR,*) ' POINT= ',JROF,' MAX ETADOT VERTICAL VEL.= ',MAXVAL(ZWF(JROF,:))
+          WRITE(NULERR,*) ' LON  = ',ACOS(YDCSGEOM%RCOLON(JROF))*180._JPRB/RPI,' degrees'
+          WRITE(NULERR,*) ' LAT  = ',ASIN(YDGSGEOM%GEMU(JROF))*180._JPRB/RPI,' degrees'
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDIF
+  IF( ANY( ISTESB /= ISTEST0 ) .AND. JITER == NITMP) THEN
+    WRITE(NULERR,'(A,I6,A)') ' SMILAG TRAJECTORY UNDERGROUND ',SUM(ISTESB(KST:KPROF)),' TIMES.'
+    ! print statistics
+    IF (YDDYNA%LRPRSLTRJ) THEN
+      DO JROF=KST,KPROF
+        IF(ISTESB(JROF) /= 0 ) THEN
+          WRITE(NULERR,*) ' POINT= ',JROF,' MAX ETADOT VERTICAL VEL.= ',MAXVAL(ZWF(JROF,:))
+          WRITE(NULERR,*) ' LON  = ',ACOS(YDCSGEOM%RCOLON(JROF))*180._JPRB/RPI,' degrees'
+          WRITE(NULERR,*) ' LAT  = ',ASIN(YDGSGEOM%GEMU(JROF))*180._JPRB/RPI,' degrees'
+        ENDIF
+      ENDDO
+    ENDIF
+  ENDIF
+
+  !*       2.2   DETERMINATION OF THE wind AT "M" OR "O".
+
+  IF(JITER /= NITMP) THEN
+
+    ! If (LLO=T or LELTRA=T)
+    ! and JITER < NITMP wind is interpolated at
+    ! the origin point "O" instead of at the medium point "M".
+    ! In the other cases the wind is interpolated at "M".
+
+    IHVI=0
+    IF (LSLDP_CURV) THEN
+      IROT=0
+    ELSE
+      IROT=1
+    ENDIF
+    ITIP=1
+    LLINTV=.TRUE.
+
+    CALL LARCINA(YDGEOMETRY,YDML_DYN,KST,KPROF,YDSL,IHVI,KSTABUF,LFINDVSEP,LLSLHD,LLSLHDQUAD,LLINTV,&
+     & ITIP,IROT,.FALSE.,PLSDEPI,&
+     & KIBL,PSCO,PLEV,&
+     & ZUN_KAPPA,ZUN_KAPPAT,ZUN_KAPPAM,ZUN_KAPPAH,&
+     & ZSLB2STDDISU,ZSLB2STDDISV,ZSLB2STDDISW,&
+     & ZSLB1UR0,ZSLB1VR0,ZSLB1ZR0,ZSLB1WR0,&
+     & KVSEPC,KVSEPL,PCCO,&
+     & PUF,PVF,ZZF,ZWF,ZWFSM,&
+     & KL0,KLH0,KLEV,PLSCAW,PRSCAW,IDEP,INOWENO)
+
+  ENDIF
+
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!*       3.    COMPUTATION OF THE ORIGIN POINT "O" COORDINATES.
+!              ------------------------------------------------
+
+IF (.NOT.(LLO.OR.YDDYNA%LELTRA)) THEN
+  ! this case may occur only for SL3TL scheme.
+  IF (YDDYNA%LTWOTL) CALL ABOR1(' LARMES 3 ')
+
+  ZVETAON=(1.0_JPRB-VETAON)*YDVETA%VETAH(0)+VETAON*YDVETA%VETAF(1)
+  ZVETAOX=(1.0_JPRB-VETAOX)*YDVETA%VETAH(NFLEVG)+VETAOX*YDVETA%VETAF(NFLEVG)
+
+  DO JLEV=1,NFLEVG
+!DIR$ IVDEP
+    DO JROF=KST,KPROF
+
+      ! computations on horizontal plans.
+
+      PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINLA)=2.0_JPRB*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+       & *PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINLA)-YDGSGEOM%GEMU (JROF)
+      PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINCO)=2.0_JPRB*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+       & *PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_SINCO)
+      PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COSCO)=2.0_JPRB*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+       & *PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COSCO)-YDGSGEOM%GSQM2(JROF)
+
+      ! computations on a vertical.
+
+      PLEV(JROF,JLEV)=2.0_JPRB*PLEV(JROF,JLEV)-YDVETA%VETAF(JLEV)
+      PLEV(JROF,JLEV)=MAX(ZVETAON,MIN(ZVETAOX,PLEV(JROF,JLEV)))
+
+      ! Computation of the angle <0,G>.
+
+      PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)=2.0_JPRB*PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)&
+       & *PSCO(JROF,JLEV,YDML_DYN%YYTSCO%M_COPHI)-1.0_JPRB
+
+    ENDDO
+  ENDDO
+
+ENDIF
+
+!     ------------------------------------------------------------------
+
+END ASSOCIATE
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('LARMES',1,ZHOOK_HANDLE)
+END SUBROUTINE LARMES
+

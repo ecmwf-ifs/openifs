@@ -1,0 +1,64 @@
+! (C) Copyright 2005- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+MODULE MPL_ABORT_MOD
+
+USE MPL_DATA_MODULE
+USE MPL_MPIF
+USE OML_MOD
+USE EC_PARKIND  ,ONLY : JPIM
+USE YOMHOOK  , ONLY : LHOOK
+
+PRIVATE
+PUBLIC MPL_ABORT
+
+INTEGER(KIND=JPIM), SAVE :: MAB_CNT = 0 ! Must be used with OMP FLUSH inside the OMP CRITICAL regions
+
+CONTAINS 
+
+SUBROUTINE MPL_ABORT(CDMESSAGE)
+
+IMPLICIT NONE
+
+CHARACTER*(*),INTENT(IN),OPTIONAL :: CDMESSAGE
+INTEGER(KIND=JPIM) :: IRETURN_CODE,IERROR,ITID,INUMTH,IPROC,INUM_PROC
+LOGICAL :: LMPI_INITIALIZED
+
+IPROC=1
+INUM_PROC=1
+CALL MPI_INITIALIZED(LMPI_INITIALIZED,IERROR)
+IF( LMPI_INITIALIZED ) THEN
+  CALL MPI_COMM_RANK(MPI_COMM_WORLD,IPROC,IERROR)
+  IPROC = IPROC+1 ! 1-based in IFS context
+  CALL MPI_COMM_SIZE(MPI_COMM_WORLD,INUM_PROC,IERROR)
+ENDIF
+ITID=OML_MY_THREAD()
+INUMTH=OML_MAX_THREADS()
+
+CALL EC_FLUSH(MPL_UNIT)
+!------Traceback from only one thread
+!$OMP CRITICAL (CRIT_MPL_ABORT)
+!$OMP FLUSH(MAB_CNT)
+IF (MAB_CNT == 0) THEN
+  IF(PRESENT(CDMESSAGE)) THEN
+    WRITE(MPL_ERRUNIT,'(A,I0,A,I0,A,A)') 'MPL_ABORT [PROC=',IPROC,',THRD=',ITID, '] : ', CDMESSAGE
+  ELSE
+    WRITE(MPL_ERRUNIT,'(A,I0,A,I0,A)') 'MPL_ABORT [PROC=',IPROC,',THRD=',ITID, ']'
+  ENDIF
+  CALL EC_FLUSH(MPL_ERRUNIT)
+  MAB_CNT=1
+!$OMP FLUSH(MAB_CNT)
+  CALL TABORT() ! tabort.c : does not hang -- never returns
+ENDIF
+!$OMP END CRITICAL (CRIT_MPL_ABORT)
+
+END SUBROUTINE MPL_ABORT
+
+END MODULE MPL_ABORT_MOD

@@ -1,0 +1,221 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE WRPLFP_IO_SERV(YDRQSP,YDRQGP,YDGEOMETRY,KFPRGPL,KFPROMA,KSPEC2G,PFPBUF,PSPEC,CDPREF,PTSTEP)
+
+!**** *WRPLFP_IO_SERV*  - WRITES OUT THE PRESSURE LEVEL POST-PROCESSED FIELDS
+!                  IN GRIB
+
+!     PURPOSE.
+!     --------
+!        CODE IN GRIB FORMAT AND WRITE OUT, EITHER TO THE FDB OR TO A
+!     FILE, THE PRESSURE LEVEL POST-PROCESSED FIELDS.
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *WRPLFP_IO_SERV(...)
+
+!        EXPLICIT ARGUMENTS :     
+!        --------------------
+
+!        IMPLICIT ARGUMENTS :      THE SPECTRAL ARRAY.
+!        --------------------      the post-processed array(s)
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     AUTHOR.
+!     -------
+!      NILS WEDI  *ECMWF*
+!      ORIGINAL : 97-02-20 (From WRPLPPG)
+
+!     MODIFICATIONS.
+!     --------------
+!      R. El Khatib : 01-04-10 Enable post-processing of filtered spectra
+!      R. El Khatib : 01-08-07 Pruning options
+!      R. El Khatib : 02-21-20 Fullpos B-level distribution + remove IO scheme
+!      D.Dent     :02-05-15 remove references to extra field 099
+!      D. Salmond   : 05-22-02 Fix to stop Orography overwriting of Geopotential
+!      R. El Khatib : 03-04-17 Fullpos improvments
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      R. El Khatib: 29-Feb-2012 simplified interface to norms computation
+!      R. El Khatib: 19-Jul-2012 LFIT* => NFIT*
+!      R. El Khatib: 10-Aug-2012 prepare for Fullpos-2
+!      R. El Khatib 20-Aug-2012 GAUXBUF removed and replaced by HFPBUF
+!      R. El Khatib 13-Dec-2012 Fullpos buffers reshaping
+!     ------------------------------------------------------------------
+
+USE GEOMETRY_MOD , ONLY : GEOMETRY
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+USE YOMMP0   , ONLY : MYSETV   
+USE YOMFP4L            , ONLY : TRQFP
+USE IOSPECE_MOD,  ONLY : IOSPECE_PL_SELECTF,  IOSPECE_PL_SELECTD,  IOSPECE_PL_COUNT
+USE IOGRIDUE_MOD, ONLY : IOGRIDUE_PL_SELECTF, IOGRIDUE_PL_SELECTD, IOGRIDUE_PL_COUNT
+USE IOFLDDESC_MOD, ONLY : IOFLDDESC
+USE YOMIO_SERV_MAP_PLAN, ONLY : IO_SERV_SEND_PLAN
+USE YOMIO_SERV, ONLY : IO_SERV_C001
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+TYPE (TRQFP),  INTENT(IN) :: YDRQSP
+TYPE (TRQFP),  INTENT(IN) :: YDRQGP
+TYPE(GEOMETRY),INTENT(IN)    :: YDGEOMETRY
+INTEGER (KIND=JPIM), INTENT(IN) :: KFPRGPL
+INTEGER (KIND=JPIM), INTENT(IN) :: KFPROMA
+INTEGER (KIND=JPIM), INTENT(IN) :: KSPEC2G
+REAL(KIND=JPRB), INTENT(IN)  :: PFPBUF(:,:,:)
+REAL(KIND=JPRB), INTENT(IN)  :: PSPEC(:,:)
+CHARACTER(LEN=1),    INTENT (IN),    OPTIONAL :: CDPREF
+REAL(KIND=JPRB), INTENT(IN), OPTIONAL  :: PTSTEP
+
+!     ------------------------------------------------------------------
+
+#include "io_serv_map_send_part1.intfb.h"
+#include "io_serv_map_send_part2.intfb.h"
+
+! Spectral
+
+INTEGER (KIND=JPIM), PARAMETER :: ITAG_ECIO_WRSPECE_PL = 200000
+INTEGER (KIND=JPIM), PARAMETER :: ITAG_ECIO_WRSPECE_PV = 200010
+INTEGER (KIND=JPIM), PARAMETER :: ITAG_ECIO_WRSPECE_PT = 200020
+
+TYPE (IO_SERV_SEND_PLAN) :: YLIOSMPP_SP
+TYPE (IOFLDDESC), ALLOCATABLE :: YLFLDSC_SP_L (:), YLFLDSC_SP_G (:)
+
+INTEGER (KIND=JPIM) :: IFNUM_SP_L, IFNUM_SP_G, IFNUM_SP_O
+
+! Grid-point
+
+INTEGER (KIND=JPIM), PARAMETER :: ITAG_ECIO_WRGRIDE_PL = 200001
+INTEGER (KIND=JPIM), PARAMETER :: ITAG_ECIO_WRGRIDE_PV = 200011
+INTEGER (KIND=JPIM), PARAMETER :: ITAG_ECIO_WRGRIDE_PT = 200021
+
+TYPE (IO_SERV_SEND_PLAN) :: YLIOSMPP_GP
+TYPE (IOFLDDESC), ALLOCATABLE :: YLFLDSC_GP (:)
+INTEGER (KIND=JPIM) :: IFNUM_GRUE,ITAG_SP,ITAG_GP
+CHARACTER(LEN=1) :: CLPREF
+
+REAL (KIND=JPRB) :: ZIOPROC1, ZIOPROC2
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+
+IF (LHOOK) CALL DR_HOOK('WRPLFP_IO_SERV',0,ZHOOK_HANDLE)
+
+CLPREF = 'p'
+IF(PRESENT(CDPREF)) CLPREF = CDPREF
+
+SELECT CASE (CLPREF)
+CASE ('p')
+  ITAG_SP = ITAG_ECIO_WRSPECE_PL
+  ITAG_GP = ITAG_ECIO_WRGRIDE_PL
+CASE ('v')
+  ITAG_SP = ITAG_ECIO_WRSPECE_PV
+  ITAG_GP = ITAG_ECIO_WRGRIDE_PV
+CASE ('t')
+  ITAG_SP = ITAG_ECIO_WRSPECE_PT
+  ITAG_GP = ITAG_ECIO_WRGRIDE_PT
+CASE DEFAULT
+  CALL ABOR1 ('IOSPECE_MOD:IOSPECE_PL_SELECTD: UNKNOWN LEVEL TYPE')
+END SELECT
+
+IF (YDRQSP%NFIELDG > 0) THEN
+
+! Reckon the total number of spectral fields
+
+  IFNUM_SP_G = 0
+  CALL IOSPECE_PL_COUNT (YDRQSP,IFNUM_SP_G,CDPREF=CDPREF)
+
+  IF (IFNUM_SP_G > 0) THEN
+
+! Retrieve global descriptors list
+
+    ALLOCATE (YLFLDSC_SP_G (IFNUM_SP_G))
+    CALL IOSPECE_PL_SELECTD (YDRQSP,KSPEC2G,YLFLDSC_SP_G,CDPREF=CDPREF)
+
+! Number of fields and field offset for current vset
+
+    IFNUM_SP_L = COUNT (YLFLDSC_SP_G%IVSET == MYSETV)
+    IFNUM_SP_O = COUNT (YLFLDSC_SP_G%IVSET < MYSETV)
+    
+    IF (IFNUM_SP_L > 0) THEN
+
+! Get descriptors list of fields on current vset
+
+      ALLOCATE (YLFLDSC_SP_L (IFNUM_SP_L))
+      YLFLDSC_SP_L = PACK (YLFLDSC_SP_G, YLFLDSC_SP_G%IVSET == MYSETV)
+
+! Range of IO tasks to address
+
+      ZIOPROC1 = REAL (IFNUM_SP_O, JPRB) / REAL (IFNUM_SP_G, JPRB)
+      ZIOPROC2 = REAL (IFNUM_SP_O + IFNUM_SP_L, JPRB) / REAL (IFNUM_SP_G, JPRB)
+
+! Allocate buffers & encode descriptors
+
+      CALL IO_SERV_MAP_SEND_PART1 (IO_SERV_C001, YDGEOMETRY%YRDIM%NSPEC2, YDGEOMETRY%YRDIM%NSPEC2G, &
+                                 & YLFLDSC_SP_L, ITAG_SP, YLIOSMPP_SP,&
+ &                                PIOPROC1=ZIOPROC1,PIOPROC2=ZIOPROC2,PTSTEP=PTSTEP)
+
+
+! Fill field buffers
+
+      CALL IOSPECE_PL_SELECTF (PSPEC, YLIOSMPP_SP%YLBUFD, YLFLDSC_SP_L,CDPREF=CDPREF)
+
+! Send to IO server
+
+      CALL IO_SERV_MAP_SEND_PART2 (IO_SERV_C001, YLIOSMPP_SP)
+
+      DEALLOCATE (YLFLDSC_SP_L)
+
+    ENDIF
+
+  ENDIF
+
+    DEALLOCATE (YLFLDSC_SP_G)
+
+ENDIF
+
+IF (YDRQGP%NFIELDG > 0) THEN
+
+  IFNUM_GRUE = 0
+  CALL IOGRIDUE_PL_COUNT(YDRQGP,YDGEOMETRY%YRGEM,KFPRGPL,KFPROMA,IFNUM_GRUE,CDPREF=CDPREF)
+
+  IF (IFNUM_GRUE > 0) THEN
+
+    ALLOCATE (YLFLDSC_GP (IFNUM_GRUE))
+
+    CALL IOGRIDUE_PL_SELECTD(YDRQGP,YDGEOMETRY%YRGEM,KFPRGPL,KFPROMA,YLFLDSC_GP,CDPREF=CDPREF)
+   
+! Allocate buffers & encode field descriptors
+
+    CALL IO_SERV_MAP_SEND_PART1 (IO_SERV_C001, YDGEOMETRY%YRGEM%NGPTOT, YDGEOMETRY%YRGEM%NGPTOTG, &
+                               & YLFLDSC_GP, ITAG_GP, YLIOSMPP_GP ,PTSTEP=PTSTEP)
+
+! Fill grid-point buffer
+
+    CALL IOGRIDUE_PL_SELECTF(YDRQGP,YDGEOMETRY%YRGEM,KFPRGPL,KFPROMA,YLIOSMPP_GP%YLBUFD, YLFLDSC_GP, PFPBUF, CDPREF=CDPREF)
+   
+! Send to IO server
+
+    CALL IO_SERV_MAP_SEND_PART2 (IO_SERV_C001, YLIOSMPP_GP)
+
+    DEALLOCATE (YLFLDSC_GP)
+
+  ENDIF
+
+ENDIF
+
+IF (LHOOK) CALL DR_HOOK('WRPLFP_IO_SERV',1,ZHOOK_HANDLE)
+
+END SUBROUTINE WRPLFP_IO_SERV
+

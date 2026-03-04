@@ -1,0 +1,62 @@
+/*
+ * (C) Copyright 2014- ECMWF.
+ * 
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ * In applying this licence, ECMWF does not waive the privileges and immunities
+ * granted to it by virtue of its status as an intergovernmental organisation
+ * nor does it submit to any jurisdiction.
+ */
+
+#define ECTRANS_VERSION_STR "@ectrans_VERSION_STR@"
+#define ECTRANS_VERSION     "@ectrans_VERSION@"
+
+#define ECTRANS_MAJOR_VERSION @ectrans_VERSION_MAJOR@
+#define ECTRANS_MINOR_VERSION @ectrans_VERSION_MINOR@
+#define ECTRANS_PATCH_VERSION @ectrans_VERSION_PATCH@
+
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+const char * ectrans_version()     { return ECTRANS_VERSION; }
+const char * ectrans_version_str() { return ECTRANS_VERSION_STR; }
+
+unsigned int ectrans_version_int()
+{
+  return 10000*ECTRANS_MAJOR_VERSION
+         + 100*ECTRANS_MINOR_VERSION
+         +   1*ECTRANS_PATCH_VERSION;
+}
+
+static char* __git_sha1 = 0;
+
+const char * ectrans_git_sha1() { return "@ectrans_GIT_SHA1@"; }
+const char * ectrans_git_sha1_abbrev(unsigned int length)
+{
+  int N = strlen(ectrans_git_sha1())-40+length;
+  N = min(strlen(ectrans_git_sha1()),N);
+  if( __git_sha1 ) free(__git_sha1);
+  __git_sha1 = malloc( sizeof(char)*(N+1) );
+  memcpy( __git_sha1, ectrans_git_sha1(), N );
+  __git_sha1[N] = '\0';
+  return __git_sha1;
+}
+
+//-----------------------------------------------------------------------------
+
+extern const char * fiat_version();
+extern unsigned int fiat_version_int();
+extern const char * fiat_version_str();
+extern const char * fiat_git_sha1();
+extern const char * fiat_git_sha1_abbrev(unsigned int length);
+
+const char * ectrans_fiat_version()     { return fiat_version(); }
+const char * ectrans_fiat_version_str() { return fiat_version_str(); }
+unsigned int ectrans_fiat_version_int() { return fiat_version_int(); }
+const char * ectrans_fiat_git_sha1() { return fiat_git_sha1(); }
+const char * ectrans_fiat_git_sha1_abbrev(unsigned int length) { return fiat_git_sha1_abbrev(length); }
+
+//-----------------------------------------------------------------------------

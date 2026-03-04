@@ -1,0 +1,97 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+MODULE MODEL_DYNAMICS_MOD
+  USE YOMDYNA     , ONLY : TDYNA
+  USE YOMDYN      , ONLY : TDYN
+  USE YEMDYN      , ONLY : TEDYN
+  USE SPNG_MOD    , ONLY : TSPNG
+  USE PTRGPPC     , ONLY : TPTRGPPC
+  USE INTDYNSL_MOD, ONLY : TLSCAW, TRSCAW, TSCO, TCCO 
+  USE YOMSLINT    , ONLY : TSLINT
+  USE YOMSLREP    , ONLY : TSLREP
+  USE PTRSLB1     , ONLY : TPTRSLB1
+  USE PTRSLB2     , ONLY : TPTRSLB2
+  USE PTRSLB15    , ONLY : TPTRSLB15
+  USE YOMTNH      , ONLY : TTNH
+  USE EINT_MOD    , ONLY : SL_STRUCT
+#ifdef WITH_MGRIDS
+  USE MGRIDS_ADVECTION_MODULE, ONLY : MGRIDS_ADVECTION
+#endif
+  IMPLICIT NONE
+    
+  TYPE MODEL_DYNAMICS_TYPE
+  ! general stuff
+  TYPE(TDYNA)     :: YRDYNA
+  TYPE(TDYN)      :: YRDYN
+  TYPE(TEDYN)     :: YREDYN
+  TYPE(TSPNG)     :: YRSPNG
+  ! predictor-corrector
+  TYPE(TPTRGPPC)  :: YRPTRGPPC
+  ! semi-lag
+  TYPE(TLSCAW)    :: YYTLSCAW, YYTLSCAWH  !! interp at 
+  TYPE(TRSCAW)    :: YYTRSCAW, YYTRSCAWH  !! OBS location stuff
+  TYPE(TSCO)      :: YYTSCO
+  TYPE(TCCO)      :: YYTCCO
+  TYPE(TSLREP)    :: YRSLREP
+  TYPE(TSLINT)    :: YRSLINT
+  TYPE(TPTRSLB1)  :: YRPTRSLB1
+  TYPE(TPTRSLB2)  :: YRPTRSLB2
+  TYPE(TPTRSLB15) :: YRPTRSLB15
+  TYPE(TTNH)      :: YRTNH      !! traj for NH
+ ! YRSL : semi-lagrangian advection, moved here from eint_mod
+  TYPE(SL_STRUCT) :: YRSL  
+! YRAD : semi-lagrangian advection (adjoint), moved here from eint_mod
+  TYPE(SL_STRUCT) :: YRAD 
+
+#ifdef WITH_MGRIDS
+  TYPE(MGRIDS_ADVECTION) :: YR_MGRIDS_ADVECTION
+    !! Multiple grids advection
+#endif
+
+CONTAINS
+  
+  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION 
+    
+ END TYPE MODEL_DYNAMICS_TYPE
+
+  !---------------------------------------------------------------------
+
+  CONTAINS 
+
+  SUBROUTINE PRINT_CONFIGURATION(SELF, KDEPTH, KOUTNO)
+  IMPLICIT NONE
+  CLASS(MODEL_DYNAMICS_TYPE), INTENT(IN) :: SELF
+  INTEGER                   , INTENT(IN) :: KDEPTH
+  INTEGER                   , INTENT(IN) :: KOUTNO
+
+  WRITE(KOUTNO,*) REPEAT(' ',KDEPTH) // 'model%yrml_dyn : '
+  CALL SELF%YRDYN%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRSPNG%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRPTRGPPC%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YYTLSCAW%PRINT(KDEPTH+2, KOUTNO, 'YYTLSCAW')
+  CALL SELF%YYTLSCAWH%PRINT(KDEPTH+2, KOUTNO, 'YYTLSCAWH')
+  CALL SELF%YYTRSCAW%PRINT(KDEPTH+2, KOUTNO, 'YYTRSCAW')
+  CALL SELF%YYTRSCAWH%PRINT(KDEPTH+2, KOUTNO, 'YYTRSCAWH')
+  CALL SELF%YYTSCO%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YYTCCO%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRSLREP%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRPTRSLB1%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRPTRSLB2%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRPTRSLB15%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRTNH%PRINT(KDEPTH+2, KOUTNO)
+  CALL SELF%YRSL%PRINT(KDEPTH+2, KOUTNO, 'YRSL')
+  CALL SELF%YRAD%PRINT(KDEPTH+2, KOUTNO, 'YRAD')
+
+  END SUBROUTINE PRINT_CONFIGURATION
+
+END MODULE MODEL_DYNAMICS_MOD
+

@@ -1,0 +1,591 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+SUBROUTINE SLRSET(YDSL,&
+ & KSTA,KONL,KPTRFRSTLAT,KFRSTLAT,KLSTLAT)
+
+!**** *SLRSET * - Routine to initialize parallel environment
+!                 necessary for horizontal interpolations. 
+!                 Works with a lateral band of KSLWIDE[N,S] latitudes in the halo. 
+
+!                 For distributed memory computations are DM-local.
+!                 This routine is called only if distributed memory.
+!                 Called only if NPROC>1.
+
+!     Purpose.
+!     --------
+!     initialise communication tables and test for horizontal 
+!     interpolations.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SLRSET *
+
+!        Explicit arguments :
+!        --------------------
+!         INPUT:
+!          YDSL        - SL_STRUCT definition
+!          KSTA        - Position of first grid column for the latitudes on 
+!                        a processor
+!          KONL        - number of grid columns for the latitudes on a processor
+!          KFRSTLAT    - first lat of each a-set in grid-point space
+!          KLSTLAT     - last lat of each a-set in grid-point space
+
+!         OUTPUT:
+!          YDSL        - SL_STRUCT definition
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+!        Documentation about FULL-POS.
+!        Documentation about distributed memory.
+
+!     Author.
+!     -------
+!      MPP Group *ECMWF*
+!      Original : 95-10-01
+
+!     Modifications.
+!     --------------
+!      G.Mozdzynski: 01-12-18  support radiation grid
+!      G.Mozdzynski: 02-10-01  support for radiation on-demand comms
+!      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      G.Mozdzynski  15-May-2005 RDRSET
+!      K.Yessad      Jun 2009: Unify RDRSET+PHRSET+SLRSET -> SLRSET
+!      G. Mozdzynski (Jan 2011): OOPS cleaning, use of derived type SL_STRUCT
+!      G. Mozdzynski (May 2012): further cleaning
+!      T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!      R. El Khatib 22-May-2019 fix the "IFL OUT OF BOUNDS" issue
+!      P. Sekula     22.02.2019 changes of MPL routines (optimizations)
+!     ------------------------------------------------------------------
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN_IFSAUX, ONLY : NULOUT
+USE MPL_MODULE
+USE YOMCT0   , ONLY : LELAM
+USE YOMMP0   , ONLY : NPROC, LOUTPUT, LMPDIAG, NPRCIDS, MYPROC, NGPSET2PE, N_REGIONS, N_REGIONS_NS, N_REGIONS_EW
+USE YOMTAG   , ONLY : MTAGSLAG
+USE EINT_MOD , ONLY : SL_STRUCT
+
+!     ------------------------------------------------------------------
+
+IMPLICIT NONE
+
+TYPE(SL_STRUCT),   INTENT(INOUT) :: YDSL
+INTEGER(KIND=JPIM),INTENT(IN)    :: KSTA(YDSL%NDGSAG:YDSL%NDGENG+N_REGIONS_NS-1,N_REGIONS_EW) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KONL(YDSL%NDGSAG:YDSL%NDGENG+N_REGIONS_NS-1,N_REGIONS_EW) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KPTRFRSTLAT(N_REGIONS_NS) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KFRSTLAT(N_REGIONS_NS) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLSTLAT(N_REGIONS_NS) 
+
+!     ------------------------------------------------------------------
+
+INTEGER(KIND=JPIM),ALLOCATABLE :: IRTPRO(:), ISTPRO(:)
+INTEGER(KIND=JPIM),ALLOCATABLE :: IXTPRO(:), IXTLAT(:), IXTLON(:)
+INTEGER(KIND=JPIM),ALLOCATABLE :: IRLSTLON(:),IRLSTLAT(:)
+INTEGER(KIND=JPIM),ALLOCATABLE :: ISLSTLON(:),ISLSTLAT(:)
+INTEGER(KIND=JPIM),ALLOCATABLE :: ICOMBUF(:), ICOMBUF2(:)
+INTEGER(KIND=JPIM) :: ISLBUF(YDSL%NASLB1), IPPROC(YDSL%NDLON)
+INTEGER(KIND=JPIM) :: IPCNTR(NPROC),IPCNTS(NPROC), IREQSND2(NPROC), ILPOS(NPROC)
+INTEGER(KIND=JPIM) :: IREQALL, IREQ(NPROC), ILENA(NPROC)
+INTEGER(KIND=JPIM) :: ISENDNUM(NPROC+1),IRECVNUM(NPROC+1)
+
+INTEGER(KIND=JPIM) :: IDF, IDGENG, IDGENL, IDR, IDS, IFL,&
+ & IFRSTASET, IFRSTL, IGF, IGLGLO, IGS, ILAT, &
+ & ILATG, ILEN, ILL, ILSTASET, ILSTL, &
+ & IOFF, IPASA, IPOS, IPROC, &
+ & IREMAX, IREMIN, IRLAT, IRLATG, IRLOAD, IRNC, &
+ & IRPT, IRSET, ISEMAX, ISEMIN, ISLAT, ISLOAD, &
+ & ISLPROCS, ISLPROCSMX, ISNC, ISPROC, ISPT, &
+ & ISSET, ISTA, ITAG, JASET, JD, JGLLOC, JLA, &
+ & JLON, JN, JNUM, JR, JROC, JROCB, JS, JVAL, JLOOP, &
+ & ICOMBUFLEN, ISND
+
+LOGICAL :: LLNOR, LLSUD
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+#include "abor1.intfb.h"
+
+!     ------------------------------------------------------------------
+IF (LHOOK) CALL DR_HOOK('SLRSET',0,ZHOOK_HANDLE)
+!     ------------------------------------------------------------------
+
+!        1. PRELIMINARY INITIALISATIONS.
+!        -------------------------------
+
+!     Test NPROC > 1; if NPROC=1 most of the following computations are
+!      not needed and may abort due to the use of uninitialised variables, 
+!      the remaining (scalar) useful variables are computed in SLCSET.
+
+IF (NPROC == 1) CALL ABOR1(' SLRSET: NPROC MUST BE > 1 ')
+
+!     Quantities depending on LELAM.
+
+IDGENL=YDSL%NDGENL
+IDGENG=YDSL%NDGENG
+
+!     Compute send and receive lists
+
+ISLBUF(1:YDSL%NASLB1)=-1
+
+!     Determine a-set range of interest, beware of split polar mimics,
+!     which might increase the search range.
+
+IFL=MAX(MAX(YDSL%NDGSAG,YDSL%MYFRSTACTLAT-YDSL%NSLWIDEN)-YDSL%NFRSTLOFF,-YDSL%NSLWIDEN)
+ILL=MIN(MIN(IDGENG,YDSL%MYLSTACTLAT +YDSL%NSLWIDES)-YDSL%NFRSTLOFF,IDGENL+YDSL%NSLWIDES)
+IF (ILL+YDSL%NFRSTLOFF < YDSL%NDGSAG .OR. ILL+YDSL%NFRSTLOFF > IDGENG) THEN
+  CALL ABOR1(' SLRSET: ILL IS OUT OF BOUNDS ')
+ENDIF
+
+IFRSTASET = 1
+DO JASET=1,N_REGIONS_NS
+  ILATG = IFL+YDSL%NFRSTLOFF
+  IF(ILATG >= KFRSTLAT(JASET) .AND. ILATG <= KLSTLAT(JASET)) THEN
+    IFRSTASET = JASET
+    EXIT
+  ENDIF
+ENDDO
+ILSTASET = N_REGIONS_NS
+DO JASET=N_REGIONS_NS,1,-1
+  ILATG = ILL+YDSL%NFRSTLOFF
+  IF(ILATG >= KFRSTLAT(JASET) .AND. ILATG <= KLSTLAT(JASET)) THEN
+    ILSTASET = JASET
+    EXIT
+  ENDIF
+ENDDO
+
+!     Set blocks to loop over. Computes ISLBUF.
+
+DO JASET=IFRSTASET,ILSTASET
+
+!       Determine maximum and minimum extent of data to consider
+!       choice between halo and block sizes.
+
+  IFRSTL=MAX(IFL,KFRSTLAT(JASET)-YDSL%NFRSTLOFF)
+  ILSTL =MIN(ILL,KLSTLAT (JASET)-YDSL%NFRSTLOFF)
+
+  DO JGLLOC=IFL,ILL
+
+    IGLGLO=JGLLOC+YDSL%NFRSTLOFF
+
+!         Correct for extra-polar latitudes.
+
+    LLNOR=(IGLGLO >= YDSL%NDGSAG).AND.(IGLGLO <= 0).AND.(.NOT.LELAM)
+    LLSUD=(IGLGLO >= YDSL%NDGLG+1).AND.(IGLGLO <= IDGENG).AND.(.NOT.LELAM)
+    IF (LLNOR) THEN
+      ILAT=1-IGLGLO-YDSL%NFRSTLOFF
+    ELSEIF (LLSUD) THEN
+      ILAT=2*YDSL%NDGLG+1-IGLGLO-YDSL%NFRSTLOFF
+    ELSE
+      ILAT=JGLLOC
+    ENDIF
+
+!         Check within current range.
+
+    IF (IFRSTL <= ILAT.AND.ILAT <= ILSTL) THEN
+      IF (YDSL%NSLONL(JGLLOC) /= 0) THEN
+        ILATG=KPTRFRSTLAT(JASET)+ILAT+YDSL%NFRSTLOFF-KFRSTLAT(JASET)
+        DO JLON=1,YDSL%NDLON
+          IPPROC(JLON)=0
+        ENDDO
+        DO JROCB=1,N_REGIONS(JASET)
+          IPROC=NGPSET2PE(JROCB,JASET)
+          IGS=KSTA(ILATG,JROCB)
+          IGF=IGS+KONL(ILATG,JROCB)-1
+          IPPROC(IGS:IGF)=IPROC
+        ENDDO
+
+!             Now set ISLBUF to contain processor numbers
+
+        IDS=YDSL%NSLSTA(JGLLOC)
+        IDF=YDSL%NSLONL(JGLLOC)+IDS-1
+        ISTA=YDSL%NSLOFF(JGLLOC)
+        DO JLA=IDS,IDF
+          IPASA=MOD(JLA-1+YDSL%NLOENG(IGLGLO),YDSL%NLOENG(IGLGLO))+1
+          IF (IPPROC(IPASA) > 0) THEN
+            ISLBUF(JLA-IDS+ISTA+1)=IPPROC(IPASA)
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDIF
+
+  ENDDO
+
+ENDDO
+
+!     Computes arrays IXTPRO, IXTLAT, IXTLON.
+!     JLOOP=1 to compute exact size of arrays
+!     JLOOP=2 to allocate and assign values to arrays
+
+!JLOOP=1
+IRLOAD=0
+DO JGLLOC=IFL,ILL
+  IDS=YDSL%NSLSTA(JGLLOC)
+  IDF=YDSL%NSLONL(JGLLOC)+IDS-1
+  IF (YDSL%NSLONL(JGLLOC) /= 0) THEN
+    ISTA=YDSL%NSLOFF(JGLLOC)
+    DO JD=IDS,IDF
+      ISPROC=ISLBUF(JD-IDS+ISTA+1)
+      IF (ISPROC /= MYPROC) THEN
+        IRLOAD=IRLOAD+1
+      ENDIF
+    ENDDO
+  ENDIF
+ENDDO
+
+!JLOOP=2
+ALLOCATE(IXTPRO(IRLOAD))
+ALLOCATE(IXTLAT(IRLOAD))
+ALLOCATE(IXTLON(IRLOAD))
+IRLOAD=0
+DO JGLLOC=IFL,ILL
+  IGLGLO=JGLLOC+YDSL%NFRSTLOFF
+  IDS=YDSL%NSLSTA(JGLLOC)
+  IDF=YDSL%NSLONL(JGLLOC)+IDS-1
+  IF (YDSL%NSLONL(JGLLOC) /= 0) THEN
+    ISTA=YDSL%NSLOFF(JGLLOC)
+    DO JD=IDS,IDF
+      ISPROC=ISLBUF(JD-IDS+ISTA+1)
+      IF (ISPROC /= MYPROC) THEN
+        IDR=MOD(JD-1+YDSL%NLOENG(IGLGLO),YDSL%NLOENG(IGLGLO))+1
+        IRLOAD=IRLOAD+1
+        IXTPRO(IRLOAD)=ISPROC
+        IXTLAT(IRLOAD)=IGLGLO
+        IXTLON(IRLOAD)=IDR
+      ENDIF
+    ENDDO
+  ENDIF
+ENDDO
+
+!     ------------------------------------------------------------------
+
+!        2. COMPUTES IPCNTR, IRTPRO, IRLSTLAT AND IRLSTLON, IRECVNUM
+!        -----------------------------------------------------------
+
+!     Send receive list (lat,lon) to sending processors, but first
+!     get receive list into ascending processor order.
+
+IPCNTR(1:NPROC)=0
+
+DO JVAL=1,IRLOAD
+  IPCNTR(IXTPRO(JVAL))=IPCNTR(IXTPRO(JVAL))+1
+ENDDO
+
+ILENA(1:NPROC)=1
+CALL MPL_ALLTOALLV(KSENDBUF=IPCNTR, KSENDCOUNTS=ILENA, &
+  & KRECVBUF=IPCNTS, KRECVCOUNTS=ILENA, &
+  & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQALL,&
+  & CDSTRING='SLRSET_IPCNTR')
+
+
+DO JROC=1,NPROC
+  IF (IPCNTR(JROC) > YDSL%NASLB1) THEN
+    WRITE(0,'("SLRSET: ",2A," IPCNTR(JROC)=",I12," YDSL%NASLB1=",I12)')&
+     &  YDSL%CVER,IPCNTR(JROC),YDSL%NASLB1
+    CALL ABOR1(' SLRSET: INTERNAL ERROR, IPCNTR(JROC) > YDSL%NASLB1')
+  ENDIF
+ENDDO
+
+!JLOOP=1
+IOFF=0
+DO JROC=1,NPROC
+  IF (IPCNTR(JROC) /= 0) THEN
+    DO JVAL=1,IRLOAD
+      IF (IXTPRO(JVAL) == JROC) THEN
+        IOFF=IOFF+1
+      ENDIF
+    ENDDO
+  ENDIF
+ENDDO
+!JLOOP=2
+ALLOCATE(IRTPRO(IOFF))
+ALLOCATE(IRLSTLAT(IOFF))
+ALLOCATE(IRLSTLON(IOFF))
+IOFF=0
+DO JROC=1,NPROC
+  IF (IPCNTR(JROC) /= 0) THEN
+    DO JVAL=1,IRLOAD
+      IF (IXTPRO(JVAL) == JROC) THEN
+        IOFF=IOFF+1
+        IRTPRO  (IOFF)=IXTPRO(JVAL)
+        IRLSTLAT(IOFF)=IXTLAT(JVAL)
+        IRLSTLON(IOFF)=IXTLON(JVAL)
+      ENDIF
+    ENDDO
+  ENDIF
+ENDDO
+
+!     Optional prints
+
+IF (LOUTPUT.AND.LMPDIAG) THEN
+  WRITE(NULOUT,*) ' SLRSET: ',YDSL%CVER,' IRLOAD: ',IRLOAD
+! DO JVAL=1,IRLOAD
+!   WRITE(NULOUT,FMT='(1X,A8,I4,1X,I4,1X,I4,1X,I4)')&
+!    &' RTABLE ',JVAL,IRTPRO(JVAL),&
+!    &IRLSTLAT(JVAL),IRLSTLON(JVAL)
+! ENDDO
+  CALL FLUSH(NULOUT)
+ENDIF
+
+IRECVNUM(1:NPROC+1)=0
+DO JVAL=1,IRLOAD
+  IRECVNUM(IRTPRO(JVAL))=IRECVNUM(IRTPRO(JVAL))+1
+ENDDO
+IRPT=1
+IREMAX=-1
+IREMIN=IRLOAD
+IRNC=0
+IF (LOUTPUT.AND.LMPDIAG) THEN
+  DO JROC=1,NPROC
+    WRITE(NULOUT,*) ' PROCESSOR ',MYPROC, JROC,' RECVS ',IRECVNUM(JROC)
+  ENDDO
+ENDIF
+DO JROC=1,NPROC
+  IF (LOUTPUT.AND.LMPDIAG) WRITE(NULOUT,*) ' PROCESSOR ',MYPROC, JROC,' RECVS ',IRECVNUM(JROC)
+  IF (IRECVNUM(JROC) > 0) THEN
+    IRNC=IRNC+1
+    IF (IRECVNUM(JROC) > IREMAX) IREMAX=IRECVNUM(JROC)
+    IF (IRECVNUM(JROC) < IREMIN) IREMIN=IRECVNUM(JROC)
+  ENDIF
+  IRSET=IRPT
+  IRPT=IRPT+IRECVNUM(JROC)
+  IRECVNUM(JROC)=IRSET
+ENDDO
+IRECVNUM(NPROC+1)=IRPT
+YDSL%NSLRPT=IRPT-1
+
+!     ------------------------------------------------------------------
+
+!        3. COMPUTES ISLOAD, ISTPRO, ISLSTLAT AND ISLSTLON, ISENDNUM
+!        -----------------------------------------------------------
+
+!     Now send recv list to processors my processor wants halo data from
+
+ICOMBUFLEN=SUM(IPCNTR(:))*2
+ALLOCATE(ICOMBUF(ICOMBUFLEN))
+
+IOFF=0
+ISND=0
+IPOS=0
+ILPOS(1)=0
+DO JROC=1,NPROC
+  IF ( IPCNTR(JROC) /= 0 )THEN
+    !IPOS=0
+    DO JR=1,IPCNTR(JROC)
+      IOFF=IOFF+1
+      IPOS=IPOS+1
+      ICOMBUF(IPOS)=IRLSTLAT(IOFF)
+      IPOS=IPOS+1
+      ICOMBUF(IPOS)=IRLSTLON(IOFF)
+    ENDDO
+    ISND=ISND+1
+    ILPOS(ISND+1)=IPOS
+    CALL MPL_SEND(ICOMBUF(ILPOS(ISND)+1:IPOS), &
+      & KDEST=NPRCIDS(JROC),KTAG=MTAGSLAG+1, &
+      & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQ(ISND),&
+      & CDSTRING='SLRSET: IRLSTLAT, IRLSTLON')
+  ENDIF
+ENDDO
+
+!     Now receive send list.
+
+CALL MPL_WAIT(KREQUEST=IREQALL,CDSTRING='SLRSET: WAITALL')
+ICOMBUFLEN=MAXVAL(IPCNTS(:))*2
+ALLOCATE(ICOMBUF2(ICOMBUFLEN))
+
+ISLOAD=SUM(IPCNTS(:))*2
+ALLOCATE(ISTPRO(ISLOAD))
+ALLOCATE(ISLSTLAT(ISLOAD))
+ALLOCATE(ISLSTLON(ISLOAD))
+
+ISLOAD=0
+DO JROC=1,NPROC
+  IF( IPCNTS(JROC) /= 0 )THEN
+    ILEN=IPCNTS(JROC)*2
+    CALL MPL_RECV(ICOMBUF2(1:ILEN),KSOURCE=NPRCIDS(JROC),KTAG=MTAGSLAG+1,&
+     & CDSTRING='SLRSET: ISLSTLAT, ISLSTLON')  
+    IPOS=0
+    DO JS=1,IPCNTS(JROC)
+      ISLOAD=ISLOAD+1
+      ISTPRO(ISLOAD)=JROC
+      IPOS=IPOS+1
+      ISLSTLAT(ISLOAD)=ICOMBUF2(IPOS)
+      IPOS=IPOS+1
+      ISLSTLON(ISLOAD)=ICOMBUF2(IPOS)
+    ENDDO
+  ENDIF
+ENDDO
+
+CALL MPL_WAIT(IREQ(1:ISND),CDSTRING='SLRSET: SENDING HALO ICOMBUF')
+
+DEALLOCATE(ICOMBUF)
+DEALLOCATE(ICOMBUF2)
+
+!     Optional prints
+
+IF (LOUTPUT.AND.LMPDIAG) THEN
+  WRITE(NULOUT,*) ' SLRSET: ',YDSL%CVER,' ISLOAD: ',ISLOAD
+! DO JVAL=1,ISLOAD
+!   WRITE(NULOUT,FMT='(1X,A8,I4,1X,I4,1X,I4,1X,I4)')&
+!    &' STABLE ',JVAL,ISTPRO(JVAL),&
+!    &ISLSTLAT(JVAL),ISLSTLON(JVAL)
+! ENDDO
+  CALL FLUSH(NULOUT)
+ENDIF
+
+!     Sort into table pointers.
+
+ISENDNUM(1:NPROC+1)=0
+DO JVAL=1,ISLOAD
+  ISENDNUM(ISTPRO(JVAL))=ISENDNUM(ISTPRO(JVAL))+1
+ENDDO
+IF (LOUTPUT.AND.LMPDIAG) THEN
+  DO JROC=1,NPROC
+    WRITE(NULOUT,*) ' PROCESSOR ',MYPROC, JROC,' SENDS ',ISENDNUM(JROC)
+  ENDDO
+ENDIF
+ISPT=1
+ISEMAX=-1
+ISEMIN=ISLOAD
+ISNC=0
+DO JROC=1,NPROC
+  IF (ISENDNUM(JROC) > 0) THEN
+    ISNC=ISNC+1
+    IF (ISENDNUM(JROC) > ISEMAX) ISEMAX=ISENDNUM(JROC)
+    IF (ISENDNUM(JROC) < ISEMIN) ISEMIN=ISENDNUM(JROC)
+  ENDIF
+  ISSET=ISPT
+  ISPT=ISPT+ISENDNUM(JROC)
+  ISENDNUM(JROC)=ISSET
+ENDDO
+ISENDNUM(NPROC+1)=ISPT
+YDSL%NSLSPT=ISPT-1
+
+
+!        4. FINAL PRINTS.
+!        ---------------
+
+IF (LOUTPUT.AND.LMPDIAG) THEN
+  WRITE(NULOUT,*) ' SLRSET: ',YDSL%CVER,' MINFO TOTAL SEND SIZE ',ISPT
+  WRITE(NULOUT,*) ' SLRSET: ',YDSL%CVER,'MINFO TOTAL RECV SIZE ',IRPT
+  WRITE(NULOUT,*) ' SLRSET: ',YDSL%CVER,'MINFO SEND ',ISNC,' MAX/MIN ',ISEMAX,ISEMIN
+  WRITE(NULOUT,*) ' SLRSET: ',YDSL%CVER,'MINFO RECV ',IRNC,' MAX/MIN ',IREMAX,IREMIN
+
+  DO JROC=1,NPROC+1
+    WRITE(NULOUT,*) ' PROCESSOR POINTER ',MYPROC,JROC,' SENDS ',&
+     & ISENDNUM(JROC),' RECVS ',IRECVNUM(JROC)  
+  ENDDO
+  CALL FLUSH(NULOUT)
+ENDIF
+
+!     ------------------------------------------------------------------
+
+!        5. COMPUTES NSLPROCS AND QUANTITIES DEPENDING ON NSLPROCS.
+!        ----------------------------------------------------------
+
+!     Determine how many processors we need to communicate with.
+!     Initialise NSLCOMM data structure to contain the list of processors
+!     we need to communicate with (either send or receive).
+
+
+!JLOOP=1
+ISLPROCS=0
+DO JROC=1,NPROC
+  IF( IRECVNUM(JROC+1)-IRECVNUM(JROC) > 0.OR.&
+     & ISENDNUM(JROC+1)-ISENDNUM(JROC) > 0 )THEN
+    ISLPROCS=ISLPROCS+1
+  ENDIF
+ENDDO
+
+YDSL%NSLPROCS=ISLPROCS
+
+ALLOCATE(YDSL%NSLCOMM(YDSL%NSLPROCS))
+ALLOCATE(YDSL%NSLRECVPTR(YDSL%NSLPROCS+1))
+ALLOCATE(YDSL%NSLSENDPTR(YDSL%NSLPROCS+1))
+ISLPROCS=0
+!JLOOP=2
+DO JROC=1,NPROC
+    IF( IRECVNUM(JROC+1)-IRECVNUM(JROC) > 0.OR.&
+       & ISENDNUM(JROC+1)-ISENDNUM(JROC) > 0 )THEN
+      ISLPROCS=ISLPROCS+1
+      YDSL%NSLCOMM(ISLPROCS)=JROC
+      YDSL%NSLRECVPTR(ISLPROCS+1)=IRECVNUM(JROC+1)
+      YDSL%NSLRECVPTR(ISLPROCS)=IRECVNUM(JROC)
+      YDSL%NSLSENDPTR(ISLPROCS+1)=ISENDNUM(JROC+1)
+      YDSL%NSLSENDPTR(ISLPROCS)=ISENDNUM(JROC)
+  ENDIF
+ENDDO
+
+!     If the requested point is on a polar mimic latitude, the data is
+!     extracted from a latitude within the real range 1 to YDSL%NDGLG (ISLAT).
+
+ALLOCATE(YDSL%NSLSENDPOS(YDSL%NSLSENDPTR(YDSL%NSLPROCS+1)-1))
+DO JNUM=1,YDSL%NSLSENDPTR(YDSL%NSLPROCS+1)-1
+  IGLGLO=ISLSTLAT(JNUM)
+  LLNOR=(IGLGLO >= YDSL%NDGSAG).AND.(IGLGLO <= 0).AND.(.NOT.LELAM)
+  LLSUD=(IGLGLO >= YDSL%NDGLG+1).AND.(IGLGLO <= IDGENG).AND.(.NOT.LELAM)
+  IF (LLNOR) THEN
+    ISLAT=1-IGLGLO-YDSL%NFRSTLOFF
+  ELSEIF (LLSUD) THEN
+    ISLAT=2*YDSL%NDGLG+1-IGLGLO-YDSL%NFRSTLOFF
+  ELSE
+    ISLAT=IGLGLO-YDSL%NFRSTLOFF
+  ENDIF
+  YDSL%NSLSENDPOS(JNUM)=YDSL%NSLOFF(ISLAT)+ISLSTLON(JNUM)-YDSL%NSLSTA(ISLAT)+1
+ENDDO
+
+ALLOCATE(YDSL%NSLRECVPOS(YDSL%NSLRECVPTR(YDSL%NSLPROCS+1)-1))
+DO JNUM=1,YDSL%NSLRECVPTR(YDSL%NSLPROCS+1)-1
+  IRLATG=IRLSTLAT(JNUM)
+  IRLAT=IRLATG-YDSL%NFRSTLOFF
+  YDSL%NSLRECVPOS(JNUM)= MOD(IRLSTLON(JNUM)-YDSL%NSLSTA(IRLAT)+&
+   & YDSL%NLOENG(IRLATG),YDSL%NLOENG(IRLATG))+YDSL%NSLOFF(IRLAT)+1  
+ENDDO
+
+!     Find out the maximum of NSLPROCS over all processors on master
+!     processor and update on all processors.
+
+ISLPROCSMX=YDSL%NSLPROCS
+CALL MPL_ALLREDUCE(ISLPROCSMX,'MAX',CDSTRING='SLRSET:ISLPROCSMX')
+
+IF (LOUTPUT) THEN
+  WRITE(NULOUT,'(" SLRSET: N",A2,"PROCS=",I6)') YDSL%CVER,YDSL%NSLPROCS
+  WRITE(NULOUT,'(" SLRSET: N",A2,"RPT=",I9)') YDSL%CVER,YDSL%NSLRPT
+  WRITE(NULOUT,'(" SLRSET: N",A2,"SPT=",I9)') YDSL%CVER,YDSL%NSLSPT
+  WRITE(NULOUT,'(" SLRSET: N",A2,"COMM=")') YDSL%CVER
+  WRITE(NULOUT,'(10(1X,I6))') YDSL%NSLCOMM(1:YDSL%NSLPROCS)
+  IF (LMPDIAG) THEN
+    WRITE(NULOUT,'(" SLRSET: N",A2,"SENDPOS=")') YDSL%CVER
+    WRITE(NULOUT,'(10(1X,I6))') YDSL%NSLSENDPOS(1:YDSL%NSLSPT)
+    WRITE(NULOUT,'(" SLRSET: N",A2,"RECVPOS=")') YDSL%CVER
+    WRITE(NULOUT,'(10(1X,I6))') YDSL%NSLRECVPOS(1:YDSL%NSLRPT)
+    WRITE(NULOUT,'(" SLRSET: NSLSENDPTR=")')
+    WRITE(NULOUT,'(10(1X,I6))') YDSL%NSLSENDPTR(1:YDSL%NSLPROCS+1)
+    WRITE(NULOUT,'(" SLRSET: NSLRECVPTR=")')
+    WRITE(NULOUT,'(10(1X,I6))') YDSL%NSLRECVPTR(1:YDSL%NSLPROCS+1)
+  ENDIF
+  IF (LMPDIAG) CALL FLUSH(NULOUT)
+ENDIF
+
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('SLRSET',1,ZHOOK_HANDLE)
+END SUBROUTINE SLRSET

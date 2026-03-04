@@ -1,0 +1,181 @@
+! (C) Copyright 1989- Meteo-France.
+
+SUBROUTINE ZERODDH(YDDIMV,YDML_DIAG)
+!****
+!     ------------------------------------------------------------------
+
+!     INITIALIZING THE WORK ARRAYS
+!     DIAGNOSTICS PAR DOMAINES HORIZONTAUX
+!     ------------------------------------
+
+!       -------------------------------------------------------
+!     GOAL
+!     ----
+!      INITIALISING THE WORK ARRAYS IN *YOMTDDH* AT THE BEGINING
+!     OF EACH TIMESTEP
+!      2 OPERATIONS ARE PERFORMED
+!     1- ZEROING THE INSTANTANEOUS VALUES IN HDCV1
+!     2- COPY OF THE ACCUMULATED VALUES OF HDCV1 INTO HDCV0
+
+!      LA VECTORISATION SE FAIT SELON LE CHAMP. ON NE DISTINGUE PAS
+!      SELON LES NIVEAUX
+!       LA COHERENCE DANS LES DIMENSIONS EST DONC CRITIQUE !
+!       --------------------------------          --------
+
+!     INPUT PARAMETERS
+!     ----------------
+!      NONE
+
+!     ARGUMENTS IMPLICITES
+!     --------------------
+!       UNITE NULOUT
+!       INDICATEURS LOGIQUES, COMMON /YOMLDDH/
+!         DANS LE COMDECK * YOMMDDH * POUR LES MASQUES
+!       DIMENSIONS PROPRES AUX MASQUES DIAGNOSTIQUES DDH, COMMON /DDHDIM/
+!       ET DIMENSIONS POUR LES TABLEAUX DE CUMULS
+!         DANS LE COMDECK * YOMTDDH * POUR LES TABLEAUX DE CUMULS
+!       POINTEURS PROPRES AUX TABLEAUX DE CUMULS DDH, COMMON /POMTDDH/
+!       DECLARATION DES TABLEAUX DE CUMULS
+
+!     AUTRES ENTREES
+!     --------------
+
+!     OUTPUT
+!     ------
+!      INITIAL VALUES FOR EACH TIMESTEP OF ALL KPROC PLANS OF THE WORK ARRAYS
+!      OF /YOMTDDH/
+
+!     WRITTEN BY
+!     ----------
+
+!     MATS HAMRUD / PEDRO VITERBO         JAN 93
+!        R. El Khatib : 01-08-07 Pruning options
+!     ------------------------------------------------------------------
+
+USE MODEL_DIAGNOSTICS_MOD , ONLY : MODEL_DIAGNOSTICS_TYPE
+USE YOMDIMV  , ONLY : TDIMV
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE DDH_MIX  , ONLY : NTOTFIELD, LMASKDDH, MK_MASK, NTOTSURF, LMASKDDHSURF, MK_MASKSURF
+USE OML_MOD  , ONLY : OML_MAX_THREADS
+IMPLICIT NONE
+
+TYPE(TDIMV), INTENT(IN) :: YDDIMV
+TYPE(MODEL_DIAGNOSTICS_TYPE),INTENT(INOUT):: YDML_DIAG
+INTEGER(KIND=JPIM) :: IPLFIL, IPLVAR,ITHRMAX,JTHREAD,JDHI
+INTEGER(KIND=JPIM) :: IPLFIS, IPLVAS
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+!     ------------------------------------------------------------------
+
+!     0.- POINTEURS DE SEPARATION VARIABLES/TENDANCES-FLUX
+!       DERNIER MOT CONTENANT UNE VARIABLE VERTICALE
+IF (LHOOK) CALL DR_HOOK('ZERODDH',0,ZHOOK_HANDLE)
+ASSOCIATE(NFLEVG=>YDDIMV%NFLEVG, &
+ & HDCS0=>YDML_DIAG%YRTDDH%HDCS0, HDCS1=>YDML_DIAG%YRTDDH%HDCS1, HDCVB0=>YDML_DIAG%YRTDDH%HDCVB0, &
+ & HDCVB1=>YDML_DIAG%YRTDDH%HDCVB1, &
+ & LFLEXDIA=>YDML_DIAG%YRLDDH%LFLEXDIA, &
+ & NDHCS=>YDML_DIAG%YRMDDH%NDHCS, NDHCV=>YDML_DIAG%YRMDDH%NDHCV, NDHIDH=>YDML_DIAG%YRMDDH%NDHIDH, &
+ & NDHVFS=>YDML_DIAG%YRMDDH%NDHVFS, NDHVS=>YDML_DIAG%YRMDDH%NDHVS, NDHVV=>YDML_DIAG%YRMDDH%NDHVV)
+ITHRMAX=OML_MAX_THREADS()
+IPLVAR = NDHVV*(NFLEVG+1)
+IPLVAS = NDHVS+NDHVFS
+!       DERNIER MOT CONTENANT UN CHAMP
+IPLFIL = NDHCV*(NFLEVG+1)
+IPLFIS = NDHCS
+
+!*
+!     ------------------------------------------------------------------
+!     2.- ZEROING OUT THE INSTANTANEOUS VALUES
+
+
+IF (LFLEXDIA) THEN
+
+IF (NTOTFIELD /=0) THEN
+
+  IF (.NOT.ALLOCATED(LMASKDDH)) THEN
+   ! creates mask for DDH
+    CALL MK_MASK
+   ! if NTOTFIELD greater than size oh hdcvb0/1 aborts
+   ! in this case value of NDHCV in sunddh.F90 should
+   ! be manually increased
+   IF(NDHCV<NTOTFIELD) CALL ABOR1('ZERODDH')
+  ENDIF
+
+  IPLFIL=NTOTFIELD*(NFLEVG+1) 
+  DO JTHREAD=1,ITHRMAX
+     DO JDHI=1,NDHIDH
+       WHERE (LMASKDDH(1:IPLFIL)) ! mask true if element is a variable
+         !zeroing inst. values
+         HDCVB1(1:IPLFIL,JDHI,JTHREAD)=0.0_JPRB
+       ELSEWHERE
+         !copying accumulated fluxes/tendencies
+         HDCVB0(1:IPLFIL,JDHI,JTHREAD)=HDCVB1(1:IPLFIL,JDHI,JTHREAD)
+       ENDWHERE
+     ENDDO
+  ENDDO
+
+  ELSE
+    HDCVB0(:,:,:)=0.0_JPRB
+    HDCVB1(:,:,:)=0.0_JPRB
+  ENDIF
+
+ELSE
+
+  !     2.- ZEROING OUT THE INSTANTANEOUS VALUES
+
+  HDCVB1(1:IPLVAR,:,:) = 0.0_JPRB
+
+  !     ------------------------------------------------------------------
+  !     3.- COPYING THE ACCUMULATED FLUXES/TENDENCIES
+  HDCVB0(IPLVAR+1:IPLFIL,:,:) = HDCVB1(IPLVAR+1:IPLFIL,:,:)
+
+ENDIF
+
+
+!     ------------------------------------------------------------------
+!     2.- ZEROING OUT THE INSTANTANEOUS SURFACE VALUES 
+
+IF (LFLEXDIA) THEN
+
+  IF (NTOTSURF /=0) THEN
+
+    IF (.NOT.ALLOCATED(LMASKDDHSURF)) THEN
+      ! creates mask for DDH
+      CALL MK_MASKSURF
+      ! if NTOTSURF greater than size of hdcs0/1 aborts
+      ! in this case value of NDHCS in sunddh.F90 should
+      ! be manually increased
+      IF(NDHCS<NTOTSURF) CALL ABOR1('ZERODDH')
+    ENDIF
+
+    IPLFIS=NTOTSURF
+    DO JTHREAD=1,ITHRMAX
+      DO JDHI=1,NDHIDH
+        WHERE (LMASKDDHSURF(1:IPLFIS)) ! mask true if element is a variable
+          !zeroing inst. values
+          HDCS1(1:IPLFIS,JDHI,JTHREAD)=0.0_JPRB
+        ELSEWHERE
+          !copying accumulated fluxes/tendencies
+          HDCS0(1:IPLFIS,JDHI,JTHREAD)=HDCS1(1:IPLFIS,JDHI,JTHREAD)
+        ENDWHERE
+      ENDDO
+    ENDDO
+
+  ELSE
+    HDCS0(:,:,:)=0.0_JPRB
+    HDCS1(:,:,:)=0.0_JPRB
+  ENDIF
+
+ELSE ! LFLEXDIA
+
+  !     zeroing inst. surface values      
+  HDCS1(1:IPLVAS,:,:) = 0.0_JPRB
+  !     copying accumulated surface fluxes/tendencies
+  HDCS0(IPLVAS+1:IPLFIS,:,:) = HDCS1(IPLVAS+1:IPLFIS,:,:)
+
+ENDIF
+
+END ASSOCIATE
+IF (LHOOK) CALL DR_HOOK('ZERODDH',1,ZHOOK_HANDLE)
+END SUBROUTINE ZERODDH

@@ -1,0 +1,619 @@
+! (C) Copyright 2000- ECMWF.
+! (C) Copyright 2013- Meteo-France.
+! 
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+
+SUBROUTINE INV_TRANSAD(PSPVOR,PSPDIV,PSPSCALAR,PSPSC3A,PSPSC3B,PSPSC2,&
+ & FSPGL_PROC,&
+ & LDSCDERS,LDVORGP,LDDIVGP,LDUVDER,KPROMA,KVSETUV,KVSETSC,KRESOL,&
+ & KVSETSC3A,KVSETSC3B,KVSETSC2,&
+ & PGP,PGPUV,PGP3A,PGP3B,PGP2)
+
+!**** *INV_TRANSAD* - Inverse spectral transform - adjoint.
+
+!     Purpose.
+!     --------
+!        Interface routine for the inverse spectral transform - adjoint
+
+!**   Interface.
+!     ----------
+!     CALL INV_TRANSAD(...)
+
+!     Explicit arguments : All arguments except from PGP are optional.
+!     --------------------
+!     PSPVOR(:,:) - spectral vorticity (input)
+!     PSPDIV(:,:) - spectral divergence (input)
+!     PSPSCALAR(:,:) - spectral scalarvalued fields (input)
+!     PSPSC3A(:,:,:) - alternative to use of PSPSCALAR, see PGP3A below (input)
+!     PSPSC3B(:,:,:) - alternative to use of PSPSCALAR, see PGP3B below (input)
+!     PSPSC2(:,:)  - alternative to use of PSPSCALAR, see PGP2 below (input)
+!     FSPGL_PROC  - external procedure to be executed in fourier space
+!                   before transposition
+!     LDSCDERS    - indicating if derivatives of scalar variables are req.
+!     LDVORGP     - indicating if grid-point vorticity is req.
+!     LDDIVGP     - indicating if grid-point divergence is req.
+!     LDUVDER     - indicating if E-W derivatives of u and v are req.
+!     KPROMA      - required blocking factor for gridpoint output
+!     KVSETUV(:)  - indicating which 'b-set' in spectral space owns a
+!                   vor/div field. Equivalant to NBSETLEV in the IFS.
+!                   The length of KVSETUV should be the GLOBAL number
+!                   of u/v fields which is the dimension of u and v releated
+!                   fields in grid-point space.
+!     KVESETSC(:) - indicating which 'b-set' in spectral space owns a
+!                   scalar field. As for KVSETUV this argument is required
+!                   if the total number of processors is greater than
+!                   the number of processors used for distribution in
+!                   spectral wave space.
+!     KVSETSC3A(:) - as KVESETSC for PSPSC3A (distribution on first dimension)
+!     KVSETSC3B(:) - as KVESETSC for PSPSC3B (distribution on first dimension)
+!     KVSETSC2(:) - as KVESETSC for PSPSC2 (distribution on first dimension)
+!     KRESOL   - resolution tag  which is required ,default is the
+!                first defined resulution (input)
+!     PGP(:,:,:) - gridpoint fields (output)
+!                  PGP need to  dimensioned (NPROMA,IF_GP,NGPBLKS) where
+!                  NPROMA is the blocking factor, IF_GP the total number
+!                  of output fields and NGPBLKS the number of NPROMA blocks.
+!                  The ordering of the output fields is as follows (all
+!                  parts are optional depending on the input switches):
+!
+!       vorticity     : IF_UV_G fields (if psvor present and LDVORGP)
+!       divergence    : IF_UV_G fields (if psvor present and LDDIVGP)
+!       u             : IF_UV_G fields (if psvor present)
+!       v             : IF_UV_G fields (if psvor present)
+!       scalar fields : IF_SCALARS_G fields (if pspscalar present)
+!       N-S derivative of scalar fields : IF_SCALARS_G fields (if pspscalar
+!                                         present and LDSCDERS)
+!       E-W derivative of u : IF_UV_G fields (if psvor present and and LDUVDER)
+!       E-W derivative of v : IF_UV_G fields (if psvor present and and LDUVDER)
+!       E-W derivative of scalar fields : IF_SCALARS_G fields (if pspscalar
+!                                         present and LDSCDERS)
+!
+!       Here IF_UV_G is the GLOBAL number of u/v fields as given by the length
+!       of KVSETUV (or by PSPVOR if no split in spectral 'b-set' direction
+!       IF_SCALARS_G is the GLOBAL number of scalar fields as giben by the
+!       length of KVESETSC (or by number of fields in PSPSCALAR if no spectral
+!       'b-set' split
+
+!     As an alternative to using PGP you can also use a combination of the
+!     following arrays. The reason for introducing these alternative ways
+!     of calling INV_TRANS is to avoid uneccessary copies where your data
+!     structures don't fit in to the 'PSPVOR,PSPDIV, PSPSCALAR, PGP' layout.
+!     The use of any of these precludes the use of PGP and vice versa.
+!
+!     PGPUV(:,:,:,:) - the 'u-v' related grid-point variables in the order
+!                      described for PGP. The second dimension of PGPUV should
+!                      be the same as the "global" first dimension of
+!                      PSPVOR,PSPDIV (in the IFS this is the number of levels)
+!                      PGPUV need to be dimensioned(NPROMA,ILEVS,IFLDS,NGPBLKS)
+!                      IFLDS is the number of 'variables' (u,v,vor,div ...)
+!     PGP3A(:,:,:,:) - grid-point array directly connected with PSPSC3A
+!                      dimensioned(NPROMA,ILEVS,IFLDS,NGPBLKS)
+!                      IFLDS is the number of 'variables' (the same as in
+!                      PSPSC3A if no derivatives, 3 times that with der.)
+!     PGP3B(:,:,:,:) - grid-point array directly connected with PSPSC3B
+!                      dimensioned(NPROMA,ILEVS,IFLDS,NGPBLKS)
+!                      IFLDS is the number of 'variables' (the same as in
+!                      PSPSC3B if no derivatives, 3 times that with der.)
+!     PGP2(:,:,:)    - grid-point array directly connected with PSPSC2
+!                      dimensioned(NPROMA,IFLDS,NGPBLKS)
+!                      IFLDS is the number of 'variables' (the same as in
+!                      PSPSC2 if no derivatives, 3 times that with der.)
+
+!     Method.
+!     -------
+
+!     Externals.  SET_RESOL   - set resolution
+!     ----------  LTDIR_CTLAD   - control of Legendre transform
+!                 FTDIR_CTLAD   - control of Fourier transform
+
+!     Author.
+!     -------
+!        Mats Hamrud *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 00-03-03
+
+!     ------------------------------------------------------------------
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+
+!ifndef INTERFACE
+
+USE TPM_GEN         ,ONLY : NERR, NOUT, NPROMATR
+!USE TPM_DIM
+USE TPM_TRANS       ,ONLY : LDIVGP, LSCDERS, LUVDER, LVORGP, &
+     &                      NF_SC2, NF_SC3A, NF_SC3B,        &
+     &                      NGPBLKS, NPROMA
+USE TPM_DISTR       ,ONLY : D, NPRTRV, MYSETV
+!USE TPM_GEOMETRY
+!USE TPM_FIELDS
+!USE TPM_FFT
+
+USE SET_RESOL_MOD   ,ONLY : SET_RESOL
+USE INV_TRANS_CTLAD_MOD ,ONLY : INV_TRANS_CTLAD
+USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+!endif INTERFACE
+
+IMPLICIT NONE
+
+! Declaration of arguments
+
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PSPVOR(:,:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PSPDIV(:,:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PSPSCALAR(:,:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PSPSC3A(:,:,:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PSPSC3B(:,:,:)
+REAL(KIND=JPRB)    ,OPTIONAL, INTENT(OUT) :: PSPSC2(:,:)
+LOGICAL   ,OPTIONAL, INTENT(IN)  :: LDSCDERS
+LOGICAL   ,OPTIONAL, INTENT(IN)  :: LDVORGP
+LOGICAL   ,OPTIONAL, INTENT(IN)  :: LDDIVGP
+LOGICAL   ,OPTIONAL, INTENT(IN)  :: LDUVDER
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KPROMA
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KVSETUV(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KVSETSC(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KVSETSC3A(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KVSETSC3B(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KVSETSC2(:)
+INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KRESOL
+EXTERNAL  FSPGL_PROC
+OPTIONAL  FSPGL_PROC
+REAL(KIND=JPRB),OPTIONAL    ,INTENT(IN)  :: PGP(:,:,:)
+REAL(KIND=JPRB),OPTIONAL    ,INTENT(IN)  :: PGPUV(:,:,:,:)
+REAL(KIND=JPRB),OPTIONAL    ,INTENT(IN)  :: PGP3A(:,:,:,:)
+REAL(KIND=JPRB),OPTIONAL    ,INTENT(IN)  :: PGP3B(:,:,:,:)
+REAL(KIND=JPRB),OPTIONAL    ,INTENT(IN)  :: PGP2(:,:,:)
+
+!ifndef INTERFACE
+
+! Local varaibles
+INTEGER(KIND=JPIM) :: IUBOUND(4),J
+INTEGER(KIND=JPIM) :: IF_UV,IF_UV_G,IF_SCALARS,IF_SCALARS_G,IF_FS,IF_GP,IF_OUT_LT
+INTEGER(KIND=JPIM) :: IF_SCDERS,IF_UV_PAR
+INTEGER(KIND=JPIM) :: IF_SC2_G,IF_SC3A_G2,IF_SC3A_G3,IF_SC3B_G2,IF_SC3B_G3
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+!     ------------------------------------------------------------------
+
+IF (LHOOK) CALL DR_HOOK('INV_TRANSAD',0,ZHOOK_HANDLE)
+CALL GSTATS(1809,0)
+! Set current resolution
+CALL SET_RESOL(KRESOL)
+
+! Set defaults
+
+LVORGP = .FALSE.
+LDIVGP = .FALSE.
+LUVDER = .FALSE.
+IF_UV = 0
+IF_UV_G = 0
+IF_UV_PAR = 0
+IF_SCALARS = 0
+IF_SCALARS_G = 0
+IF_SCDERS = 0
+NF_SC2 = 0
+NF_SC3A = 0
+NF_SC3B = 0
+IF_SC2_G = 0
+IF_SC3A_G2 = 0
+IF_SC3B_G2 = 0
+IF_SC3A_G3 = 0
+IF_SC3B_G3 = 0
+NPROMA = D%NGPTOT
+LSCDERS = .FALSE.
+
+! Decide requirements
+
+IF(PRESENT(KVSETUV)) THEN
+  IF_UV_G = UBOUND(KVSETUV,1)
+  IF_UV_PAR = 2
+  DO J=1,IF_UV_G
+    IF(KVSETUV(J) > NPRTRV .OR. KVSETUV(J) < 1) THEN
+      WRITE(NERR,*) 'INV_TRANSAD:KVSETUV(J) > NPRTRV ',J,KVSETUV(J),NPRTRV
+      CALL ABORT_TRANS('INV_TRANSAD:KVSETUV TOO LONG OR CONTAINS VALUES OUTSIDE RANGE')
+    ENDIF
+    IF(KVSETUV(J) == MYSETV) THEN
+      IF_UV = IF_UV+1
+    ENDIF
+  ENDDO
+ELSEIF(PRESENT(PSPVOR)) THEN
+  IF_UV = UBOUND(PSPVOR,1)
+  IF_UV_G = IF_UV
+  IF_UV_PAR = 2
+ENDIF
+
+IF(PRESENT(KVSETSC)) THEN
+  IF_SCALARS_G = UBOUND(KVSETSC,1)
+  DO J=1,IF_SCALARS_G
+    IF(KVSETSC(J) > NPRTRV .OR. KVSETSC(J) < 1) THEN
+      WRITE(NERR,*) 'INV_TRANSAD:KVSETSC(J) > NPRTRV ',J,KVSETSC(J),NPRTRV
+      CALL ABORT_TRANS('INV_TRANSAD:KVSETSC TOO LONG OR CONTAINS VALUES OUTSIDE RANGE')
+    ENDIF
+    IF(KVSETSC(J) == MYSETV) THEN
+      IF_SCALARS = IF_SCALARS+1
+    ENDIF
+  ENDDO
+ELSEIF(PRESENT(PSPSCALAR)) THEN
+  IF_SCALARS = UBOUND(PSPSCALAR,1)
+  IF_SCALARS_G = IF_SCALARS
+ENDIF
+
+IF(PRESENT(KVSETSC2)) THEN
+  IF(.NOT.PRESENT(PSPSC2)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:KVSETSC2 BUT NOT PSPSC2')
+  ENDIF
+  IF_SC2_G = UBOUND(KVSETSC2,1)
+  IF_SCALARS_G = IF_SCALARS_G+UBOUND(KVSETSC2,1)
+  DO J=1,UBOUND(KVSETSC2,1)
+    IF(KVSETSC2(J) > NPRTRV .OR. KVSETSC2(J) < 1) THEN
+      WRITE(NERR,*) 'INV_TRANSAD:KVSETSC2(J) > NPRTRV ',J,KVSETSC2(J),NPRTRV
+      CALL ABORT_TRANS('INV_TRANSAD:KVSETSC2 TOO LONG OR CONTAINS VALUES OUTSIDE RANGE')
+    ENDIF
+    IF(KVSETSC2(J) == MYSETV) THEN
+      IF_SCALARS = IF_SCALARS+1
+      NF_SC2 = NF_SC2+1
+    ENDIF
+  ENDDO
+ELSEIF(PRESENT(PSPSC2)) THEN
+  IF_SC2_G = UBOUND(PSPSC2,1)
+  IF_SCALARS = IF_SCALARS+UBOUND(PSPSC2,1)
+  IF_SCALARS_G = IF_SCALARS_G +UBOUND(PSPSC2,1)
+  NF_SC2 = UBOUND(PSPSC2,1)
+ENDIF
+
+IF(PRESENT(KVSETSC3A)) THEN
+  IF(.NOT.PRESENT(PSPSC3A)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:KVSETSC3A BUT NOT PSPSC3A')
+  ENDIF
+  IF_SC3A_G2 = UBOUND(KVSETSC3A,1)
+  IF_SC3A_G3 = UBOUND(PSPSC3A,3)
+  IF_SCALARS_G = IF_SCALARS_G+IF_SC3A_G2*IF_SC3A_G3
+  DO J=1,UBOUND(KVSETSC3A,1)
+    IF(KVSETSC3A(J) > NPRTRV .OR. KVSETSC3A(J) < 1) THEN
+      WRITE(NERR,*) 'INV_TRANSAD:KVSETSC3A(J) > NPRTRV ',J,KVSETSC3A(J),NPRTRV
+      CALL ABORT_TRANS&
+       &('INV_TRANSAD:KVSETSC3A TOO LONG OR CONTAINS VALUES OUTSIDE RANGE')
+    ENDIF
+    IF(KVSETSC3A(J) == MYSETV) THEN
+      IF_SCALARS = IF_SCALARS+UBOUND(PSPSC3A,3)
+      NF_SC3A = NF_SC3A+1
+    ENDIF
+  ENDDO
+ELSEIF(PRESENT(PSPSC3A)) THEN
+  IF_SCALARS = IF_SCALARS+UBOUND(PSPSC3A,1)*UBOUND(PSPSC3A,3)
+  IF_SC3A_G2 = UBOUND(PSPSC3A,1)
+  IF_SC3A_G3 = UBOUND(PSPSC3A,3)
+  IF_SCALARS_G = IF_SCALARS_G + IF_SC3A_G2*IF_SC3A_G3
+  NF_SC3A = UBOUND(PSPSC3A,1)
+ENDIF
+
+IF(PRESENT(KVSETSC3B)) THEN
+  IF(.NOT.PRESENT(PSPSC3B)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:KVSETSC3B BUT NOT PSPSC3B')
+  ENDIF
+  IF_SC3B_G2 = UBOUND(KVSETSC3B,1)
+  IF_SC3B_G3 = UBOUND(PSPSC3B,3)
+  IF_SCALARS_G = IF_SCALARS_G+IF_SC3B_G2*IF_SC3B_G3
+  DO J=1,UBOUND(KVSETSC3B,1)
+    IF(KVSETSC3B(J) > NPRTRV .OR. KVSETSC3B(J) < 1) THEN
+      WRITE(NERR,*) 'INV_TRANSAD:KVSETSC3B(J) > NPRTRV ',J,KVSETSC3B(J),NPRTRV
+      CALL ABORT_TRANS('INV_TRANSAD:KVSETSC3B TOO LONG OR CONTAINS VALUES OUTSIDE RANGE')
+    ENDIF
+    IF(KVSETSC3B(J) == MYSETV) THEN
+      IF_SCALARS = IF_SCALARS+UBOUND(PSPSC3B,3)
+      NF_SC3B = NF_SC3B+1
+    ENDIF
+  ENDDO
+ELSEIF(PRESENT(PSPSC3B)) THEN
+  IF_SCALARS = IF_SCALARS+UBOUND(PSPSC3B,1)*UBOUND(PSPSC3B,3)
+  IF_SC3B_G2 = UBOUND(PSPSC3B,1)
+  IF_SC3B_G3 = UBOUND(PSPSC3B,3)
+  IF_SCALARS_G = IF_SCALARS_G + IF_SC3B_G2*IF_SC3B_G3
+  NF_SC3B = UBOUND(PSPSC3B,1)
+ENDIF
+
+
+IF (IF_SCALARS > 0) THEN
+  IF(PRESENT(LDSCDERS)) THEN
+    LSCDERS = LDSCDERS
+    IF (LSCDERS) IF_SCDERS = IF_SCALARS
+  ENDIF
+ENDIF
+
+IF(PRESENT(KPROMA)) THEN
+  NPROMA = KPROMA
+ENDIF
+
+IF(PRESENT(LDVORGP)) THEN
+  LVORGP = LDVORGP
+ENDIF
+
+IF(PRESENT(LDDIVGP)) THEN
+  LDIVGP = LDDIVGP
+ENDIF
+
+IF(PRESENT(LDUVDER)) THEN
+  LUVDER = LDUVDER
+ENDIF
+
+
+
+! Compute derived variables
+
+
+IF(LVORGP) LDIVGP = .TRUE.
+
+NGPBLKS = (D%NGPTOT-1)/NPROMA+1
+
+IF_OUT_LT = 2*IF_UV + IF_SCALARS+IF_SCDERS
+
+IF(IF_UV > 0 .AND. LVORGP) THEN
+  IF_OUT_LT = IF_OUT_LT+IF_UV
+ENDIF
+IF(IF_UV > 0 .AND. LDIVGP) THEN
+  IF_OUT_LT = IF_OUT_LT+IF_UV
+ENDIF
+IF_FS = IF_OUT_LT+IF_SCDERS
+IF(IF_UV > 0 .AND. LUVDER) THEN
+  IF_FS = IF_FS+2*IF_UV
+ENDIF
+
+IF_GP = 2*IF_UV_G+IF_SCALARS_G
+IF(LSCDERS) THEN
+  IF_GP  = IF_GP+2*IF_SCALARS_G
+  IF_SC2_G = IF_SC2_G*3
+  IF_SC3A_G3 = IF_SC3A_G3*3
+  IF_SC3B_G3 = IF_SC3B_G3*3
+ENDIF
+IF(IF_UV_G > 0 .AND. LVORGP) THEN
+  IF_GP = IF_GP+IF_UV_G
+  IF_UV_PAR = IF_UV_PAR+1
+ENDIF
+IF(IF_UV_G > 0 .AND. LDIVGP) THEN
+  IF_GP = IF_GP+IF_UV_G
+  IF_UV_PAR = IF_UV_PAR+1
+ENDIF
+IF(IF_UV_G > 0 .AND. LUVDER) THEN
+  IF_GP = IF_GP+2*IF_UV_G
+  IF_UV_PAR = IF_UV_PAR+2
+ENDIF
+
+! Consistency checks
+
+IF (IF_UV > 0) THEN
+  IF(.NOT. PRESENT(PSPVOR) ) THEN
+    CALL ABORT_TRANS("INV_TRANSAD : IF_UV > 0 BUT PSPVOR MISSING")
+  ENDIF
+  IF(UBOUND(PSPVOR,1) < IF_UV) THEN
+    WRITE(NERR,*)'INV_TRANSAD : UBOUND(PSPVOR,1) < IF_UV ',&
+     & UBOUND(PSPVOR,1),IF_UV
+    CALL ABORT_TRANS("INV_TRANSAD : PSPVOR TOO SHORT")
+  ENDIF
+  IF(.NOT. PRESENT(PSPDIV) ) THEN
+    CALL ABORT_TRANS("INV_TRANSAD : IF_UV > 0 BUT PSPDIV MISSING")
+  ENDIF
+  IF(UBOUND(PSPDIV,1) < IF_UV) THEN
+    WRITE(NERR,*)'INV_TRANSAD : UBOUND(PSPDIV,1) < IF_UV ',&
+     & UBOUND(PSPDIV,1),IF_UV
+    CALL ABORT_TRANS("INV_TRANSAD : PSPDIV TOO SHORT")
+  ENDIF
+ENDIF
+
+IF (IF_SCALARS > 0) THEN
+  IF(PRESENT(PSPSCALAR)) THEN
+    IF(PRESENT(PSPSC3A))THEN
+      CALL ABORT_TRANS('INV_TRANS : PSPSCALAR AND PSPSC3A BOTH PRESENT')
+    ENDIF
+    IF(PRESENT(PSPSC3B))THEN
+      CALL ABORT_TRANS('INV_TRANS : PSPSCALAR AND PSPSC3B BOTH PRESENT')
+    ENDIF
+    IF(PRESENT(PSPSC2))THEN
+      CALL ABORT_TRANS('INV_TRANS : PSPSCALAR AND PSPSC2 BOTH PRESENT')
+    ENDIF
+    IF(UBOUND(PSPSCALAR,1) < IF_SCALARS) THEN
+      WRITE(NERR,*)'INV_TRANS : UBOUND(PSPSCALAR,1) < IF_SCALARS) ',&
+       & UBOUND(PSPSCALAR,1),IF_SCALARS
+      CALL ABORT_TRANS('INV_TRANS : PSPSCALAR TOO SHORT')
+    ENDIF
+  ELSEIF(PRESENT(PSPSC3A)) THEN
+  ENDIF
+ENDIF
+
+IF(IF_UV_G == 0) THEN
+  LUVDER = .FALSE.
+ENDIF
+
+IF(NPRTRV >1) THEN
+  IF(IF_UV > 0 .AND. .NOT. PRESENT(KVSETUV)) THEN
+    WRITE(NERR,*)'NPRTRV >1 AND IF_UV > 0 AND NOT PRESENT(KVSETUV)',&
+                 &NPRTRV,IF_UV
+    CALL ABORT_TRANS('INV_TRANSAD: SPECIFY VERTICAL SPECTRAL DISTRIBUTION!')
+  ENDIF
+  IF(PRESENT(PSPSCALAR) .AND. .NOT. PRESENT(KVSETSC)) THEN
+    WRITE(NERR,*)'NPRTRV >1 AND PRESENT(PSPSCALAR) AND NOT PRESENT(KVSETSC)',&
+                 &NPRTRV
+    CALL ABORT_TRANS('INV_TRANSAD: SPECIFY VERTICAL SPECTRAL DISTRIBUTION!')
+  ENDIF
+  IF(PRESENT(PSPSC2) .AND. .NOT. PRESENT(KVSETSC2)) THEN
+    WRITE(NERR,*)'NPRTRV >1 AND PRESENT(PSPSC2) AND NOT PRESENT(KVSETSC2)',&
+                 &NPRTRV
+    CALL ABORT_TRANS('INV_TRANSAD: SPECIFY VERTICAL SPECTRAL DISTRIBUTION!')
+  ENDIF
+  IF(PRESENT(PSPSC3A) .AND. .NOT. PRESENT(KVSETSC3A)) THEN
+    WRITE(NERR,*)'NPRTRV >1 AND PRESENT(PSPSC3A) AND NOT PRESENT(KVSETSC3A)',&
+                 &NPRTRV
+    CALL ABORT_TRANS('INV_TRANSAD: SPECIFY VERTICAL SPECTRAL DISTRIBUTION!')
+  ENDIF
+  IF(PRESENT(PSPSC3B) .AND. .NOT. PRESENT(KVSETSC3B)) THEN
+    WRITE(NERR,*)'NPRTRV >1 AND PRESENT(PSPSC3B) AND NOT PRESENT(KVSETSC3B)',&
+                 &NPRTRV
+    CALL ABORT_TRANS('INV_TRANSAD: SPECIFY VERTICAL SPECTRAL DISTRIBUTION!')
+  ENDIF
+ENDIF
+
+IF(PRESENT(PGP)) THEN
+  IF(PRESENT(PGPUV)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PGP AND PGPUV CAN NOT BOTH BE PRESENT')
+  ENDIF
+  IF(PRESENT(PGP3A)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PGP AND PGP3A CAN NOT BOTH BE PRESENT')
+  ENDIF
+  IF(PRESENT(PGP3B)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PGP AND PGP3B CAN NOT BOTH BE PRESENT')
+  ENDIF
+  IF(PRESENT(PGP2)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PGP AND PGP2 CAN NOT BOTH BE PRESENT')
+  ENDIF
+  IUBOUND(1:3)=UBOUND(PGP)
+  IF(IUBOUND(1) < NPROMA) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:FIRST DIM. OF PGP TOO SMALL ',IUBOUND(1),NPROMA
+    CALL ABORT_TRANS('INV_TRANSAD:FIRST DIMENSION OF PGP TOO SMALL ')
+  ENDIF
+  IF(IUBOUND(2) < IF_GP) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:SEC. DIM. OF PGP TOO SMALL ',IUBOUND(2),IF_GP
+    WRITE(NOUT,*)'IF_UV_G,IF_SCALARS_G,LSCDERS,LVORGP,LDIVGP,LUVDER ',&
+     &            IF_UV_G,IF_SCALARS_G,LSCDERS,LVORGP,LDIVGP,LUVDER
+    CALL ABORT_TRANS('INV_TRANSAD:SECOND DIMENSION OF PGP TOO SMALL ')
+  ENDIF
+  IF(IUBOUND(3) < NGPBLKS) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:THIRD DIM. OF PGP TOO SMALL ',IUBOUND(3),NGPBLKS
+    CALL ABORT_TRANS('INV_TRANSAD:THIRD DIMENSION OF PGP TOO SMALL ')
+  ENDIF
+ELSE
+  IF(NPROMATR > 0 .AND. 2*IF_UV_G+IF_SCALARS_G > NPROMATR) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:ALTERNATIVES TO USING PGP NOT SUPPORTED WITH NPROMATR>0')
+  ENDIF
+ENDIF
+
+IF(PRESENT(PGPUV)) THEN
+  IF(.NOT.PRESENT(PSPVOR)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PSPVOR HAS TO BE PRESENT WHEN PGPUV IS')
+  ENDIF
+  IUBOUND(1:4)=UBOUND(PGPUV)
+  IF(IUBOUND(1) < NPROMA) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:FIRST DIM. OF PGPUV TOO SMALL ',IUBOUND(1),NPROMA
+    CALL ABORT_TRANS('INV_TRANSAD:FIRST DIMENSION OF PGPUV TOO SMALL ')
+  ENDIF
+  IF(IUBOUND(2) /= IF_UV_G) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:SEC. DIM. OF PGPUV INCONSISTENT ',IUBOUND(2),IF_UV_G
+    CALL ABORT_TRANS('INV_TRANSAD:SEC. DIMENSION OF PGPUV INCONSISTENT ')
+  ENDIF
+  IF(IUBOUND(3) < IF_UV_PAR) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:THIRD DIM. OF PGPUV TOO SMALL ',IUBOUND(3),IF_UV_PAR
+    CALL ABORT_TRANS('INV_TRANSAD:THIRD DIMENSION OF PGPUV TOO SMALL ')
+  ENDIF
+  IF(IUBOUND(4) < NGPBLKS) THEN
+    WRITE(NOUT,*)'INV_TRANSAD:THIRD DIM. OF PGPUV TOO SMALL ',IUBOUND(4),NGPBLKS
+    CALL ABORT_TRANS('INV_TRANSAD:THIRD DIMENSION OF PGPUV TOO SMALL ')
+  ENDIF
+ENDIF
+ 
+IF(PRESENT(PGP2)) THEN
+  IF(.NOT.PRESENT(PSPSC2)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PSPSC2 HAS TO BE PRESENT WHEN PGP2 IS')
+  ENDIF
+ENDIF
+IF(IF_SC2_G > 0) THEN
+  IF(PRESENT(PGP2)) THEN
+    IUBOUND(1:3)=UBOUND(PGP2)
+    IF(IUBOUND(1) < NPROMA) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:FIRST DIM. OF PGP2 TOO SMALL ',IUBOUND(1),NPROMA
+      CALL ABORT_TRANS('INV_TRANSAD:FIRST DIMENSION OF PGP2 TOO SMALL ')
+    ENDIF
+    IF(IUBOUND(2) /= IF_SC2_G) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:SEC. DIM. OF PGP2 INCONSISTENT ',IUBOUND(2),IF_SC2_G
+      CALL ABORT_TRANS('INV_TRANSAD:SEC. DIMENSION OF PGP2 INCONSISTENT')
+    ENDIF
+    IF(IUBOUND(3) < NGPBLKS) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:THIRD DIM. OF PGP2 TOO SMALL ',IUBOUND(3),NGPBLKS
+      CALL ABORT_TRANS('INV_TRANSAD:THIRD DIMENSION OF PGP2 TOO SMALL ')
+    ENDIF
+  ELSE
+    CALL ABORT_TRANS('INV_TRANSAD:PGP2 MISSING')
+  ENDIF
+ENDIF
+ 
+IF(PRESENT(PGP3A)) THEN
+  IF(.NOT.PRESENT(PSPSC3A)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PSPSC3A HAS TO BE PRESENT WHEN PGP3A IS')
+  ENDIF
+ENDIF
+IF(IF_SC3A_G3 > 0) THEN
+  IF(PRESENT(PGP3A)) THEN
+    IUBOUND=UBOUND(PGP3A)
+    IF(IUBOUND(1) < NPROMA) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:FIRST DIM. OF PGP3A TOO SMALL ',IUBOUND(1),NPROMA
+      CALL ABORT_TRANS('INV_TRANSAD:FIRST DIMENSION OF PGP3A TOO SMALL ')
+    ENDIF
+    IF(IUBOUND(2) /= IF_SC3A_G2) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:SEC DIM. OF PGP3A INCONSISTENT ',IUBOUND(2),IF_SC3A_G2
+      CALL ABORT_TRANS('INV_TRANSAD:SEC. DIMENSION OF PGP3A INCONSISTENT ')
+    ENDIF
+    IF(IUBOUND(3) /= IF_SC3A_G3 ) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:THIRD DIM. OF PGP3A INCONSISTENT ',&
+       & IUBOUND(3),IF_SC3A_G3
+      CALL ABORT_TRANS('INV_TRANSAD:THIRD DIMENSION OF PGP3A INCONSISTENT ')
+    ENDIF
+    IF(IUBOUND(4) < NGPBLKS) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:FOURTH DIM. OF PGP3A TOO SMALL ',IUBOUND(4),NGPBLKS
+      CALL ABORT_TRANS('INV_TRANSAD:FOURTH DIMENSION OF PGP3A TOO SMALL ')
+    ENDIF
+  ELSE
+    CALL ABORT_TRANS('INV_TRANSAD:PGP3A MISSING')
+  ENDIF
+ENDIF
+
+IF(PRESENT(PGP3B)) THEN
+  IF(.NOT.PRESENT(PSPSC3B)) THEN
+    CALL ABORT_TRANS('INV_TRANSAD:PSPSC3B HAS TO BE PRESENT WHEN PGP3B IS')
+  ENDIF
+ENDIF
+IF(IF_SC3B_G3 > 0) THEN
+  IF(PRESENT(PGP3B)) THEN
+    IUBOUND=UBOUND(PGP3B)
+    IF(IUBOUND(1) < NPROMA) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:FIRST DIM. OF PGP3B TOO SMALL ',IUBOUND(1),NPROMA
+      CALL ABORT_TRANS('INV_TRANSAD:FIRST DIMENSION OF PGP3B TOO SMALL ')
+    ENDIF
+    IF(IUBOUND(2) /= IF_SC3B_G2) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:SEC DIM. OF PGP3B INCONSISTENT ',IUBOUND(2),IF_SC3B_G2
+      CALL ABORT_TRANS('INV_TRANSAD:SEC. DIMENSION OF PGP3B INCONSISTENT ')
+    ENDIF
+    IF(IUBOUND(3) /= IF_SC3B_G3 ) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:THIRD DIM. OF PGP3B INCONSISTENT ',&
+       & IUBOUND(3),IF_SC3B_G3
+      CALL ABORT_TRANS('INV_TRANSAD:THIRD DIMENSION OF PGP3B INCONSISTENT ')
+    ENDIF
+    IF(IUBOUND(4) < NGPBLKS) THEN
+      WRITE(NOUT,*)'INV_TRANSAD:FOURTH DIM. OF PGP3B TOO SMALL ',IUBOUND(4),NGPBLKS
+      CALL ABORT_TRANS('INV_TRANSAD:FOURTH DIMENSION OF PGP3B TOO SMALL ')
+    ENDIF
+  ELSE
+    CALL ABORT_TRANS('INV_TRANSAD:PGP3B MISSING')
+  ENDIF
+ENDIF
+CALL GSTATS(1809,1)
+
+!     ------------------------------------------------------------------
+
+! Perform transform
+
+CALL INV_TRANS_CTLAD(IF_UV_G,IF_SCALARS_G,IF_GP,IF_FS,IF_OUT_LT,&
+ & IF_UV,IF_SCALARS,IF_SCDERS,&
+ & PSPVOR,PSPDIV,PSPSCALAR,KVSETUV,KVSETSC,PGP,&
+ & PSPSC3A,PSPSC3B,PSPSC2,KVSETSC3A,KVSETSC3B,KVSETSC2,PGPUV,PGP3A,PGP3B,PGP2)
+
+IF (LHOOK) CALL DR_HOOK('INV_TRANSAD',1,ZHOOK_HANDLE)
+
+!     ------------------------------------------------------------------
+
+!endif INTERFACE
+
+END SUBROUTINE INV_TRANSAD
+
