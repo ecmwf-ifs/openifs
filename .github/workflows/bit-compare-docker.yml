@@ -1,0 +1,104 @@
+name: bit-compare-docker
+
+on:
+  pull_request: ~
+  workflow_dispatch: ~
+  pull_request_target:
+    types: [labeled]
+
+concurrency:
+  group: bit-compare-docker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bit-compare:
+    name: gcc-${{ matrix.gcc }}
+    if: ${{ !github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        gcc: ['12', '13', '14']
+
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    env:
+      CI_DIR: ${{ github.workspace }}/scripts/ci/docker_ci
+      CONTROL_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
+      OIFS_VERSION: '48r1'
+      WORK_DIR: ${{ github.workspace }}/_oifs_docker_ci
+      NORMS_DIR: ${{ github.workspace }}/_oifs_docker_ci/control_saved_norms
+      REPORTS_DIR: ${{ github.workspace }}/_oifs_docker_ci/ci_reports
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Resolve control SHA
+        id: control
+        run: |
+          SHA=$(git ls-remote https://github.com/Adehill/openifs.git \
+                  "refs/heads/${CONTROL_BRANCH}" | cut -f1)
+          if [ -z "$SHA" ]; then
+            echo "Could not resolve refs/heads/${CONTROL_BRANCH}" >&2
+            exit 1
+          fi
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore control NORMS cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NORMS_DIR }}
+          key: control-norms-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ steps.control.outputs.sha }}
+
+      - name: Set up Python venv
+        run: |
+          set -eu
+          python3 -m venv "${WORK_DIR}/venv"
+          source "${WORK_DIR}/venv/bin/activate"
+          python3 -m pip install --upgrade pip
+          python3 -m pip install gitpython pyyaml
+
+      - name: Render CI config
+        run: |
+          set -eu
+          mkdir -p "${WORK_DIR}"
+          cat > "${WORK_DIR}/ci_test_docker.yml" <<EOF
+          openifs_version                      : "${OIFS_VERSION}"
+          openifs_repo_url                     : "https://github.com/Adehill/openifs.git"
+          control_branch                       : "${CONTROL_BRANCH}"
+          test_branch                          : "${{ github.workspace }}"
+          base_docker_image                    : "${{ matrix.gcc }}"
+          docker_template                      : "./Dockerfile.ci"
+          include_openifs_data_downloads       : False
+          openifs_build_docker_dir             : "${WORK_DIR}"
+          ci_reports                           : "${REPORTS_DIR}"
+          control_saved_norms_dir              : "${NORMS_DIR}"
+          clone_openifs_control                : True
+          force_reclone                        : True
+          force_rebuild                        : False
+          skip_url_validation                  : False
+          remove_existing_container_before_run : True
+          remove_test_container                : True
+          reuse_control_if_present             : True
+          openifs_test_extra_flags             : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
+          EOF
+
+      - name: Run docker CI
+        run: |
+          set -eu
+          cd "$CI_DIR"
+          source "${WORK_DIR}/venv/bin/activate"
+          echo "::group::ci-oifs-docker.py"
+          python3 ci-oifs-docker.py -c "${WORK_DIR}/ci_test_docker.yml"
+          echo "::endgroup::"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bit-compare-reports-gcc${{ matrix.gcc }}
+          path: ${{ env.REPORTS_DIR }}/
+          if-no-files-found: warn

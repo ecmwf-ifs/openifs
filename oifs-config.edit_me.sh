@@ -67,8 +67,6 @@ export OIFS_TEST="${OIFS_HOME}/scripts/build_test"
 export OIFS_LOGFILE="${OIFS_HOME}/openifs-test.log"
 #---Path to dir containing scripts to run OpenIFS experiment
 export OIFS_RUN_SCRIPT="${OIFS_HOME}/scripts/exp_3d"
-#---Path to OpenIFS docker scripts and yaml config for docker
-export OIFS_DOCKER="${OIFS_HOME}/scripts/docker"
 
 alias oenv="env -0 | sort -z | tr '\0' '\n' | grep -a OIFS_"
 
