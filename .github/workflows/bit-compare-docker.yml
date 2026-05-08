@@ -39,7 +39,7 @@ jobs:
       - name: Resolve control SHA
         id: control
         run: |
-          SHA=$(git ls-remote https://github.com/Adehill/openifs.git \
+          SHA=$(git ls-remote https://github.com/${{ github.repository }}.git \
                   "refs/heads/${CONTROL_BRANCH}" | cut -f1)
           if [ -z "$SHA" ]; then
             echo "Could not resolve refs/heads/${CONTROL_BRANCH}" >&2
@@ -67,7 +67,7 @@ jobs:
           mkdir -p "${WORK_DIR}"
           cat > "${WORK_DIR}/ci_test_docker.yml" <<EOF
           openifs_version                      : "${OIFS_VERSION}"
-          openifs_repo_url                     : "https://github.com/Adehill/openifs.git"
+          openifs_repo_url                     : "https://github.com/${{ github.repository }}.git"
           control_branch                       : "${CONTROL_BRANCH}"
           test_branch                          : "${{ github.workspace }}"
           base_docker_image                    : "${{ matrix.gcc }}"

@@ -22,7 +22,7 @@
 openifs_version : "48r1"
 
 # OpenIFS repository.
-openifs_repo_url : "https://github.com/Adehill/openifs.git"
+openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
 
 # Branches to compare. The control is the reference; the test is whatever
 # you are evaluating against it.

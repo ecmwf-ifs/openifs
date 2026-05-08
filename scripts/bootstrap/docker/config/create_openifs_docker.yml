@@ -17,7 +17,7 @@ openifs_version : "48r1"
 climate_version : "climate.v020"
 
 # OpenIFS repository (must be accessible from the machine running this script).
-openifs_repo_url : "https://github.com/Adehill/openifs.git"
+openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
 
 # Base URL for OpenIFS data files.  Per-version ifsdata, rtables and
 # climate tarballs are derived from this in docker_lib.modify_dockerfile().
