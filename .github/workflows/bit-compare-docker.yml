@@ -36,22 +36,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Resolve control SHA
-        id: control
-        run: |
-          SHA=$(git ls-remote https://github.com/${{ github.repository }}.git \
-                  "refs/heads/${CONTROL_BRANCH}" | cut -f1)
-          if [ -z "$SHA" ]; then
-            echo "Could not resolve refs/heads/${CONTROL_BRANCH}" >&2
-            exit 1
-          fi
-          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
-
       - name: Restore control NORMS cache
         uses: actions/cache@v4
         with:
           path: ${{ env.NORMS_DIR }}
-          key: control-norms-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ steps.control.outputs.sha }}
+          key: control-norms-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ github.event.pull_request.base.sha || github.sha }}
 
       - name: Set up Python venv
         run: |
@@ -66,24 +55,19 @@ jobs:
           set -eu
           mkdir -p "${WORK_DIR}"
           cat > "${WORK_DIR}/ci_test_docker.yml" <<EOF
-          openifs_version                      : "${OIFS_VERSION}"
-          openifs_repo_url                     : "https://github.com/${{ github.repository }}.git"
-          control_branch                       : "${CONTROL_BRANCH}"
-          test_branch                          : "${{ github.workspace }}"
-          base_docker_image                    : "${{ matrix.gcc }}"
-          docker_template                      : "./Dockerfile.ci"
-          include_openifs_data_downloads       : False
-          openifs_build_docker_dir             : "${WORK_DIR}"
-          ci_reports                           : "${REPORTS_DIR}"
-          control_saved_norms_dir              : "${NORMS_DIR}"
-          clone_openifs_control                : True
-          force_reclone                        : True
-          force_rebuild                        : False
-          skip_url_validation                  : False
-          remove_existing_container_before_run : True
-          remove_test_container                : True
-          reuse_control_if_present             : True
-          openifs_test_extra_flags             : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
+          openifs_version                : "${OIFS_VERSION}"
+          openifs_repo_url               : "https://github.com/${{ github.repository }}.git"
+          control_branch                 : "${CONTROL_BRANCH}"
+          test_branch                    : "${{ github.workspace }}"
+          base_docker_image              : "${{ matrix.gcc }}"
+          docker_template                : "./Dockerfile.ci"
+          include_openifs_data_downloads : False
+          openifs_build_docker_dir       : "${WORK_DIR}"
+          ci_reports                     : "${REPORTS_DIR}"
+          control_saved_norms_dir        : "${NORMS_DIR}"
+          force_reclone                  : True
+          reuse_control_if_present       : True
+          openifs_test_extra_flags       : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
           EOF
 
       - name: Run docker CI
