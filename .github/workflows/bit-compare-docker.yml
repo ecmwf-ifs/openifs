@@ -1,88 +1,113 @@
 name: bit-compare-docker
 
+# Controls when the action will run
 on:
+
+  # Trigger the workflow on all pushes, except on tag creation
+  push:
+    branches:
+    - '**'
+    tags-ignore:
+    - '**'
+
+  # Trigger the workflow on all pull requests
   pull_request: ~
+
+  # Allow workflow to be dispatched on demand
   workflow_dispatch: ~
-  pull_request_target:
-    types: [labeled]
 
 concurrency:
   group: bit-compare-docker-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  OIFS_VERSION: '48r1'
+  CACHE_SUFFIX: v1         # Increase to force new cache to be created
+
 jobs:
-  bit-compare:
-    name: gcc-${{ matrix.gcc }}
-    if: ${{ !github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci' }}
+  ci:
+    name: ci
 
     strategy:
-      fail-fast: false
-      matrix:
-        gcc: ['12', '13', '14']
+      fail-fast: false  # false: try to complete all jobs
 
-    runs-on: ubuntu-22.04
+      matrix:
+        name:
+          - linux gcc-12
+
+        include:
+
+          - name: linux gcc-12
+            os: ubuntu-22.04
+            gcc: '12'
+
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 180
 
-    env:
-      CI_DIR: ${{ github.workspace }}/scripts/ci/docker_ci
-      CONTROL_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
-      OIFS_VERSION: '48r1'
-      WORK_DIR: ${{ github.workspace }}/_oifs_docker_ci
-      NORMS_DIR: ${{ github.workspace }}/_oifs_docker_ci/control_saved_norms
-      REPORTS_DIR: ${{ github.workspace }}/_oifs_docker_ci/ci_reports
-
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Restore control NORMS cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.NORMS_DIR }}
-          key: control-norms-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ github.event.pull_request.base.sha || github.sha }}
+    - name: Environment
+      run: |
+        set -eu
+        WORK_DIR="${{ github.workspace }}/_oifs_docker_ci"
+        echo "CI_DIR=${{ github.workspace }}/scripts/ci/docker_ci" >> $GITHUB_ENV
+        echo "WORK_DIR=${WORK_DIR}"                                >> $GITHUB_ENV
+        echo "NORMS_DIR=${WORK_DIR}/control_saved_norms"           >> $GITHUB_ENV
+        echo "REPORTS_DIR=${WORK_DIR}/ci_reports"                  >> $GITHUB_ENV
+        echo "CONTROL_BRANCH=${{ github.event.pull_request.base.ref || 'main' }}" >> $GITHUB_ENV
 
-      - name: Set up Python venv
-        run: |
-          set -eu
-          python3 -m venv "${WORK_DIR}/venv"
-          source "${WORK_DIR}/venv/bin/activate"
-          python3 -m pip install --upgrade pip
-          python3 -m pip install gitpython pyyaml
+    - name: Cache control NORMs
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.NORMS_DIR }}
+        key: control-norms-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ github.event.pull_request.base.sha || github.sha }}-${{ env.CACHE_SUFFIX }}
 
-      - name: Render CI config
-        run: |
-          set -eu
-          mkdir -p "${WORK_DIR}"
-          cat > "${WORK_DIR}/ci_test_docker.yml" <<EOF
-          openifs_version                : "${OIFS_VERSION}"
-          openifs_repo_url               : "https://github.com/${{ github.repository }}.git"
-          control_branch                 : "${CONTROL_BRANCH}"
-          test_branch                    : "${{ github.workspace }}"
-          base_docker_image              : "${{ matrix.gcc }}"
-          docker_template                : "./Dockerfile.ci"
-          include_openifs_data_downloads : False
-          openifs_build_docker_dir       : "${WORK_DIR}"
-          ci_reports                     : "${REPORTS_DIR}"
-          control_saved_norms_dir        : "${NORMS_DIR}"
-          force_reclone                  : True
-          reuse_control_if_present       : True
-          openifs_test_extra_flags       : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
-          EOF
+    - name: Set up Python venv
+      run: |
+        set -eu
+        python3 -m venv "${WORK_DIR}/venv"
+        source "${WORK_DIR}/venv/bin/activate"
+        python3 -m pip install --upgrade pip
+        python3 -m pip install gitpython pyyaml
 
-      - name: Run docker CI
-        run: |
-          set -eu
-          cd "$CI_DIR"
-          source "${WORK_DIR}/venv/bin/activate"
-          echo "::group::ci-oifs-docker.py"
-          python3 ci-oifs-docker.py -c "${WORK_DIR}/ci_test_docker.yml"
-          echo "::endgroup::"
+    - name: Render CI config
+      run: |
+        set -eu
+        mkdir -p "${WORK_DIR}"
+        cat > "${WORK_DIR}/ci_test_docker.yml" <<EOF
+        openifs_version                : "${OIFS_VERSION}"
+        openifs_repo_url               : "https://github.com/${{ github.repository }}.git"
+        control_branch                 : "${CONTROL_BRANCH}"
+        test_branch                    : "${{ github.workspace }}"
+        base_docker_image              : "${{ matrix.gcc }}"
+        docker_template                : "./Dockerfile.ci"
+        include_openifs_data_downloads : False
+        openifs_build_docker_dir       : "${WORK_DIR}"
+        ci_reports                     : "${REPORTS_DIR}"
+        control_saved_norms_dir        : "${NORMS_DIR}"
+        force_reclone                  : True
+        reuse_control_if_present       : True
+        openifs_test_extra_flags       : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
+        EOF
 
-      - name: Upload reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bit-compare-reports-gcc${{ matrix.gcc }}
-          path: ${{ env.REPORTS_DIR }}/
-          if-no-files-found: warn
+    - name: Build & Test
+      id: build-test
+      run: |
+        set -eu
+        cd "$CI_DIR"
+        source "${WORK_DIR}/venv/bin/activate"
+        echo "::group::ci-oifs-docker.py"
+        python3 ci-oifs-docker.py -c "${WORK_DIR}/ci_test_docker.yml"
+        echo "::endgroup::"
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bit-compare-reports-gcc${{ matrix.gcc }}
+        path: ${{ env.REPORTS_DIR }}/
+        if-no-files-found: warn
