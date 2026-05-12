@@ -3,12 +3,12 @@ name: bit-compare-docker
 # Controls when the action will run
 on:
 
-  # Trigger the workflow on all pushes, except on tag creation
+  # Trigger on pushes to main only. Feature branches and cycle LTS branches
+  # are validated via their pull request — running on push as well would
+  # double-spend minutes for internal PRs, and LTS branches are protected.
   push:
     branches:
-    - '**'
-    tags-ignore:
-    - '**'
+    - main
 
   # Trigger the workflow on all pull requests
   pull_request: ~
@@ -26,10 +26,6 @@ env:
 jobs:
   ci:
     name: ci
-
-    # Skip direct pushes to cycle (LTS) branches: those are protected and
-    # changes land via PR, which is already verified before merge.
-    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/openifs-lts/')
 
     strategy:
       fail-fast: false  # false: try to complete all jobs
@@ -71,6 +67,8 @@ jobs:
         echo "CYCLE_BRANCH=${CYCLE_BRANCH}"  >> $GITHUB_ENV
 
     - name: Environment
+      env:
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
       run: |
         set -eu
         WORK_DIR="${{ github.workspace }}/_oifs_docker_ci"
@@ -78,7 +76,8 @@ jobs:
         echo "WORK_DIR=${WORK_DIR}"                                >> $GITHUB_ENV
         echo "NORMS_DIR=${WORK_DIR}/control_saved_norms"           >> $GITHUB_ENV
         echo "REPORTS_DIR=${WORK_DIR}/ci_reports"                  >> $GITHUB_ENV
-        echo "CONTROL_BRANCH=${{ github.event.pull_request.base.ref || env.CYCLE_BRANCH }}" >> $GITHUB_ENV
+        CONTROL_BRANCH="${PR_BASE_REF:-$CYCLE_BRANCH}"
+        echo "CONTROL_BRANCH=${CONTROL_BRANCH}"                    >> $GITHUB_ENV
 
     - name: Cache control NORMs
       uses: actions/cache@v4
