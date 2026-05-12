@@ -32,19 +32,9 @@ jobs:
 
       matrix:
         name:
-          - linux gcc-12
-          - linux gcc-13
           - linux gcc-14
 
         include:
-
-          - name: linux gcc-12
-            os: ubuntu-22.04
-            gcc: '12'
-
-          - name: linux gcc-13
-            os: ubuntu-22.04
-            gcc: '13'
 
           - name: linux gcc-14
             os: ubuntu-22.04
