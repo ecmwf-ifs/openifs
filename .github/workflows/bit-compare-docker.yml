@@ -71,7 +71,10 @@ jobs:
         PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
       run: |
         set -eu
-        WORK_DIR="${{ github.workspace }}/_oifs_docker_ci"
+        # WORK_DIR sits outside github.workspace because the test phase copies
+        # the workspace into WORK_DIR/build_dir_test/...; a destination inside
+        # the source would recurse into itself in shutil.copytree.
+        WORK_DIR="${{ runner.temp }}/_oifs_docker_ci"
         echo "CI_DIR=${{ github.workspace }}/scripts/ci/docker_ci" >> $GITHUB_ENV
         echo "WORK_DIR=${WORK_DIR}"                                >> $GITHUB_ENV
         echo "NORMS_DIR=${WORK_DIR}/control_saved_norms"           >> $GITHUB_ENV

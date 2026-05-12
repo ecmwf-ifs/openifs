@@ -185,13 +185,16 @@ def populate_from_local(local_src, dest_dir, label, force=False):
         return
 
     logger.info(f"Copying local {label} source {local_src} -> {dest_dir}")
+    # '_oifs_docker_ci' is the build/work dir name used by the GitHub Actions
+    # CI workflow, which lives inside github.workspace and would otherwise
+    # be recursed into as copytree writes into its own subtree.
     shutil.copytree(
         local_src, dest_dir,
         symlinks=True,
         ignore=shutil.ignore_patterns(
             '.git', 'build', '.cache', '.bootstrap',
             '__pycache__', '*.pyc', '*.pyo',
-            'openifs-env',
+            'openifs-env', '_oifs_docker_ci',
         ),
     )
 
