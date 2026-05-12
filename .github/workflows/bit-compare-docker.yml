@@ -21,12 +21,15 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OIFS_VERSION: '48r1'
   CACHE_SUFFIX: v1         # Increase to force new cache to be created
 
 jobs:
   ci:
     name: ci
+
+    # Skip direct pushes to cycle (LTS) branches: those are protected and
+    # changes land via PR, which is already verified before merge.
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/openifs-lts/')
 
     strategy:
       fail-fast: false  # false: try to complete all jobs
@@ -50,6 +53,23 @@ jobs:
       with:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+    - name: Derive cycle from bundle.yml
+      run: |
+        set -eu
+        version=$(awk '/^name[[:space:]]*:[[:space:]]*ifs-bundle/{found=1} found && /^version[[:space:]]*:/{print $NF; exit}' bundle.yml)
+        IFS=. read -r MAJ MIN PAT <<< "$version"
+        OIFS_VERSION="${MAJ}r${MIN}"
+        CYCLE_BRANCH="openifs-lts/CY${MAJ}R${MIN}.${PAT}"
+        # Fall back to main when the cycle LTS branch has not been cut yet
+        # (e.g. a new cycle has landed on main but its openifs-lts/CY* branch
+        # does not yet exist on the remote).
+        if [ -z "$(git ls-remote --heads origin "$CYCLE_BRANCH")" ]; then
+          echo "Cycle branch ${CYCLE_BRANCH} not found on remote — falling back to main"
+          CYCLE_BRANCH=main
+        fi
+        echo "OIFS_VERSION=${OIFS_VERSION}"  >> $GITHUB_ENV
+        echo "CYCLE_BRANCH=${CYCLE_BRANCH}"  >> $GITHUB_ENV
+
     - name: Environment
       run: |
         set -eu
@@ -58,7 +78,7 @@ jobs:
         echo "WORK_DIR=${WORK_DIR}"                                >> $GITHUB_ENV
         echo "NORMS_DIR=${WORK_DIR}/control_saved_norms"           >> $GITHUB_ENV
         echo "REPORTS_DIR=${WORK_DIR}/ci_reports"                  >> $GITHUB_ENV
-        echo "CONTROL_BRANCH=${{ github.event.pull_request.base.ref || 'main' }}" >> $GITHUB_ENV
+        echo "CONTROL_BRANCH=${{ github.event.pull_request.base.ref || env.CYCLE_BRANCH }}" >> $GITHUB_ENV
 
     - name: Cache control NORMs
       uses: actions/cache@v4
