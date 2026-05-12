@@ -86,10 +86,11 @@ INCONTAINER_CONTROL_DIR = "/tmp/control_saved_norms"
 INCONTAINER_BITCOMPARE = f"/tmp/{BITCOMPARE_SCRIPT}"
 INCONTAINER_REPORT = "/tmp/norms_report.txt"
 
-# Inside-container path that captures the ctest stage's stdout/stderr from
-# `openifs-test.sh -t`. Copied out per-branch by export_test_output() so the
-# host-side report can include it.
-INCONTAINER_TEST_OUTPUT = "/tmp/openifs_test_output.txt"
+# Inside-container paths that capture each stage's stdout/stderr. Copied
+# out per-branch by export_build_output() / export_test_output() so the
+# host-side report can include them — including when the stage failed.
+INCONTAINER_BUILD_OUTPUT = "/tmp/openifs_build_output.txt"
+INCONTAINER_TEST_OUTPUT  = "/tmp/openifs_test_output.txt"
 
 
 def _control_cache_key(config):
@@ -209,54 +210,72 @@ def start_container(label, image_tag, config):
     return container
 
 
-def run_openifs_tests(container, config):
+def run_openifs_tests(container, config, ci_reports, label):
     """Configure + build with ``openifs-test.sh -cb``, then run ctest with ``-t``.
 
-    Two docker exec calls so the ctest stage's stdout/stderr can be tee'd to
-    ``INCONTAINER_TEST_OUTPUT`` in isolation, without dragging in the
-    verbose configure/build output. Command strings are built by
-    ``ci_lib.build_test_commands`` — same source for the host CI driver.
+    Both stages are tee'd to per-stage files inside the container. The
+    finally block always copies those files out to ``ci_reports`` — even
+    when one of the stages exited non-zero — so the failure cause is
+    visible in the uploaded artifact and the appended bit-compare report.
     """
     logger = logging.getLogger(__name__)
 
     src = f"source ~/{config['openifs_version']}/oifs-config.edit_me.sh"
-    cb_cmd, t_cmd = ci_lib.build_test_commands(config, src, INCONTAINER_TEST_OUTPUT)
-
-    logger.info(f"Configure + build in '{container}': {cb_cmd}")
-    subprocess.run(
-        ["docker", "exec", container, "bash", "-lc", cb_cmd],
-        check=True,
+    cb_cmd, t_cmd = ci_lib.build_test_commands(
+        config, src, INCONTAINER_BUILD_OUTPUT, INCONTAINER_TEST_OUTPUT,
     )
 
-    logger.info(f"Running ctest in '{container}': {t_cmd}")
-    subprocess.run(
-        ["docker", "exec", container, "bash", "-lc", t_cmd],
-        check=True,
-    )
+    try:
+        logger.info(f"Configure + build in '{container}'")
+        subprocess.run(
+            ["docker", "exec", container, "bash", "-lc", cb_cmd],
+            check=True,
+        )
+
+        logger.info(f"Running ctest in '{container}'")
+        subprocess.run(
+            ["docker", "exec", container, "bash", "-lc", t_cmd],
+            check=True,
+        )
+    finally:
+        export_build_output(container, ci_reports, label)
+        export_test_output(container, ci_reports, label)
 
 
-def export_test_output(container, ci_reports, label):
-    """Copy ``INCONTAINER_TEST_OUTPUT`` from ``container`` into ``ci_reports``.
+def _export_stage_output(container, ci_reports, label, in_container_path, kind):
+    """Copy a per-stage output file from ``container`` into ``ci_reports``.
 
-    Saved on the host as ``openifs_test_output_<label>.txt`` so it survives
-    container removal. Returns the host-side path on success, or None if
-    the file wasn't written (e.g. ctest never ran because an earlier stage
-    failed).
+    ``kind`` is ``"build"`` or ``"test"``. The host-side filename is
+    ``openifs_<kind>_output_<label>.txt``. Returns the host path on
+    success, or None if the in-container file is missing (e.g. the stage
+    never ran because an earlier stage failed).
     """
     logger = logging.getLogger(__name__)
 
     os.makedirs(ci_reports, exist_ok=True)
-    host_path = os.path.join(ci_reports, f"openifs_test_output_{label}.txt")
+    host_path = os.path.join(ci_reports, f"openifs_{kind}_output_{label}.txt")
     try:
         subprocess.run(
-            ["docker", "cp", f"{container}:{INCONTAINER_TEST_OUTPUT}", host_path],
+            ["docker", "cp", f"{container}:{in_container_path}", host_path],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        logger.info(f"Captured {label} ctest output -> {host_path}")
+        logger.info(f"Captured {label} {kind} output -> {host_path}")
         return host_path
     except subprocess.CalledProcessError:
-        logger.warning(f"No ctest output captured for {label} (file missing in container)")
+        logger.warning(f"No {kind} output captured for {label} (file missing in container)")
         return None
+
+
+def export_build_output(container, ci_reports, label):
+    """Copy the captured configure+build output out of ``container``."""
+    return _export_stage_output(container, ci_reports, label,
+                                INCONTAINER_BUILD_OUTPUT, "build")
+
+
+def export_test_output(container, ci_reports, label):
+    """Copy the captured ctest output out of ``container``."""
+    return _export_stage_output(container, ci_reports, label,
+                                INCONTAINER_TEST_OUTPUT, "test")
 
 
 def find_saved_norms_root(container):
@@ -348,16 +367,14 @@ def run_control_phase(config, build_dir, control_tarball, ci_reports):
     try:
         image_tag = build_branch_image(config, "control", branch, build_dir)
         container = start_container("control", image_tag, config)
-        run_openifs_tests(container, config)
-        export_test_output(container, ci_reports, "control")
+        run_openifs_tests(container, config, ci_reports, "control")
         test_root = find_saved_norms_root(container)
         export_control_norms(container, test_root, control_tarball)
         return 'ok'
     except subprocess.CalledProcessError as e:
         logger.error(f"Control phase FAILED: {e}")
-        # Try to grab whatever ctest output exists (it may be partial or missing).
-        if container is not None:
-            export_test_output(container, ci_reports, "control")
+        # run_openifs_tests' finally block already exported whatever build /
+        # ctest output exists, even on failure. Nothing more to do here.
         return 'failed'
     finally:
         if container is not None:
@@ -379,8 +396,7 @@ def run_test_phase(config, build_dir, ci_reports):
     branch = config['test_branch']
     image_tag = build_branch_image(config, "test", branch, build_dir)
     container = start_container("test", image_tag, config)
-    run_openifs_tests(container, config)
-    export_test_output(container, ci_reports, "test")
+    run_openifs_tests(container, config, ci_reports, "test")
     test_root = find_saved_norms_root(container)
     return container, test_root
 
@@ -493,14 +509,34 @@ def main():
         control_status = run_control_phase(config, build_dir, control_tarball, ci_reports)
 
     # --- Test phase: always runs, even if the control phase failed ------------
-    # Test side is strict: a build/ctest failure here is a hard error.
+    # A build/ctest failure here is a real CI failure, but we catch it so
+    # the captured outputs still land in the bit-compare report (otherwise
+    # the artifact would contain stray output files with no top-level
+    # report tying them together).
     test_branch = config['test_branch']
     test_label = test_branch or "auto-resolved local source"
-    with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
-        test_container, test_root = run_test_phase(config, build_dir, ci_reports)
+    test_container = None
+    test_root = None
+    test_phase_failed = False
+    try:
+        with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
+            test_container, test_root = run_test_phase(config, build_dir, ci_reports)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Test phase FAILED: {e}")
+        test_phase_failed = True
 
-    # --- Bit-comparison: only if control produced a SAVED_NORMS tarball -------
-    if control_status == 'failed':
+    # --- Bit-comparison: only if both phases produced SAVED_NORMS -------------
+    if test_phase_failed:
+        ci_lib.write_synthetic_report(
+            report_path,
+            "Test phase FAILED during configure+build or ctest. "
+            "See the BUILD OUTPUT and CTEST OUTPUT sections below for the cause.",
+        )
+        bit_compare_status = 'TEST FAILED'
+        timings['norms_compare'] = 0
+        if test_container is not None:
+            remove_container_if_requested(test_container, config)
+    elif control_status == 'failed':
         logger.warning("Skipping bit-comparison — control phase did not produce SAVED_NORMS")
         ci_lib.write_synthetic_report(
             report_path,
@@ -531,9 +567,11 @@ def main():
 
     # Final result classification:
     #   PASS         control produced NORMS, test bit-matched control
-    #   FAIL         control produced NORMS, test bit-DIFFERED from control
+    #   FAIL         control produced NORMS, test bit-DIFFERED, OR test phase failed
     #   INCONCLUSIVE control failed; comparison skipped (test ran fine on its own)
-    if control_status == 'failed':
+    if test_phase_failed:
+        final_status, exit_code = 'FAIL', 1
+    elif control_status == 'failed':
         final_status, exit_code = 'INCONCLUSIVE', 2
     elif bit_compare_status == 'PASS':
         final_status, exit_code = 'PASS', 0

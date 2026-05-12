@@ -68,24 +68,23 @@ def control_tarball_name(config, cache_key):
     return f"control_saved_norms_{config['openifs_version']}_{cache_key}.tgz"
 
 
-def build_test_commands(config, source_cmd, output_path):
+def build_test_commands(config, source_cmd, build_output_path, test_output_path):
     """Build the two openifs-test.sh command strings (configure+build, then ctest).
 
-    Split into two stages so the ctest stdout/stderr can be tee'd to
-    ``output_path`` in isolation, without dragging in the much louder
-    configure/build output.
-
-    ``source_cmd`` is the ``source <oifs-config>`` clause that runs first.
-    ``output_path`` is the path that ``tee`` writes to.
+    Each stage is tee'd to its own file so the captured output survives in
+    the uploaded artifact even when one of the stages fails. ``pipefail`` is
+    enabled so a non-zero exit from openifs-test.sh propagates through
+    ``tee`` — otherwise the shell pipeline would report ``tee``'s exit
+    status (0) and silently mask build/test failures.
     """
     extra_flags = config.get('openifs_test_extra_flags', '').strip()
     cb_cmd = (
-        f"{source_cmd} && {TEST_ENV_PREFIX} "
-        f"$OIFS_TEST/openifs-test.sh -cb {extra_flags}"
+        f"set -o pipefail; {source_cmd} && {TEST_ENV_PREFIX} "
+        f"$OIFS_TEST/openifs-test.sh -cb {extra_flags} 2>&1 | tee {build_output_path}"
     )
     t_cmd = (
-        f"{source_cmd} && {TEST_ENV_PREFIX} "
-        f"$OIFS_TEST/openifs-test.sh -t 2>&1 | tee {output_path}"
+        f"set -o pipefail; {source_cmd} && {TEST_ENV_PREFIX} "
+        f"$OIFS_TEST/openifs-test.sh -t 2>&1 | tee {test_output_path}"
     )
     return cb_cmd, t_cmd
 
@@ -108,25 +107,30 @@ def write_synthetic_report(report_path, reason):
 
 
 def append_test_outputs_to_report(report_path, ci_reports, branches):
-    """Append captured ctest output for each (label, branch_name) pair to report_path.
+    """Append captured build + ctest output for each (label, branch_name) pair.
 
-    Each section gets a banner so the report is self-documenting. Missing
-    files (e.g. control failed before ctest ran) are silently skipped.
+    For each label, looks for ``openifs_build_output_<label>.txt`` and
+    ``openifs_test_output_<label>.txt`` in ``ci_reports``. Each section
+    gets a banner so the report is self-documenting. Missing files (e.g.
+    test failed before ctest ran, or build failed before any ctest output
+    existed) are silently skipped.
     """
+    kinds = [("build", "BUILD OUTPUT"), ("test", "CTEST OUTPUT")]
     for label, branch_name in branches:
-        src = os.path.join(ci_reports, f"openifs_test_output_{label}.txt")
-        if not os.path.exists(src):
-            continue
-        with open(src, encoding="utf-8") as f_in:
-            content = f_in.read()
-        with open(report_path, "a", encoding="utf-8") as f_out:
-            f_out.write("\n")
-            f_out.write("=" * 70 + "\n")
-            f_out.write(f"CTEST OUTPUT — {label} ({branch_name})\n")
-            f_out.write("=" * 70 + "\n")
-            f_out.write(content)
-            if not content.endswith("\n"):
+        for kind, banner in kinds:
+            src = os.path.join(ci_reports, f"openifs_{kind}_output_{label}.txt")
+            if not os.path.exists(src):
+                continue
+            with open(src, encoding="utf-8") as f_in:
+                content = f_in.read()
+            with open(report_path, "a", encoding="utf-8") as f_out:
                 f_out.write("\n")
+                f_out.write("=" * 70 + "\n")
+                f_out.write(f"{banner} — {label} ({branch_name})\n")
+                f_out.write("=" * 70 + "\n")
+                f_out.write(content)
+                if not content.endswith("\n"):
+                    f_out.write("\n")
 
 
 _CONTROL_ANNOTATION = {

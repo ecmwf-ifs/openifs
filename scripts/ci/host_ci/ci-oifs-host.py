@@ -98,19 +98,21 @@ def parse_arguments():
 def run_openifs_tests(staged_src, config, ci_reports, label):
     """Configure + build with ``openifs-test.sh -cb``, then ctest with ``-t``.
 
-    Two subprocess calls so the ctest stage's stdout/stderr can be tee'd to
-    ``openifs_test_output_<label>.txt`` in ``ci_reports`` in isolation,
-    matching what the docker driver captures.
+    Both stages are tee'd directly to host files in ``ci_reports``, so the
+    captured output is preserved even when one stage exits non-zero — the
+    bit-compare report can then include the BUILD OUTPUT / CTEST OUTPUT
+    sections regardless of where the failure was.
     """
     logger = logging.getLogger(__name__)
 
     shared_helpers.patch_oifs_home(staged_src)
 
     os.makedirs(ci_reports, exist_ok=True)
-    test_output = os.path.join(ci_reports, f"openifs_test_output_{label}.txt")
+    build_output = os.path.join(ci_reports, f"openifs_build_output_{label}.txt")
+    test_output  = os.path.join(ci_reports, f"openifs_test_output_{label}.txt")
 
     source_cmd = f"source {staged_src}/oifs-config.edit_me.sh"
-    cb_cmd, t_cmd = ci_lib.build_test_commands(config, source_cmd, test_output)
+    cb_cmd, t_cmd = ci_lib.build_test_commands(config, source_cmd, build_output, test_output)
 
     logger.info(f"Configure + build for {label} in {staged_src}")
     subprocess.run(["bash", "-lc", cb_cmd], cwd=staged_src, check=True)
@@ -258,13 +260,31 @@ def main():
         control_status = run_control_phase(config, build_dir, control_tarball, ci_reports)
 
     # --- Test phase: always runs, even if control failed -------------------
+    # A build/ctest failure here is a real CI failure, but we catch it so
+    # the captured outputs still land in the bit-compare report (otherwise
+    # the artifact would contain stray output files with no top-level
+    # report tying them together).
     test_branch = config['test_branch']
     test_label = test_branch or "auto-resolved local source"
-    with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
-        test_root = run_test_phase(config, build_dir, ci_reports)
+    test_root = None
+    test_phase_failed = False
+    try:
+        with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
+            test_root = run_test_phase(config, build_dir, ci_reports)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.error(f"Test phase FAILED: {e}")
+        test_phase_failed = True
 
-    # --- Bit-comparison: only if control produced a SAVED_NORMS tarball ----
-    if control_status == 'failed':
+    # --- Bit-comparison: only if both phases produced SAVED_NORMS ----------
+    if test_phase_failed:
+        ci_lib.write_synthetic_report(
+            report_path,
+            "Test phase FAILED during configure+build or ctest. "
+            "See the BUILD OUTPUT and CTEST OUTPUT sections below for the cause.",
+        )
+        bit_compare_status = 'TEST FAILED'
+        timings['norms_compare'] = 0
+    elif control_status == 'failed':
         logger.warning("Skipping bit-comparison — control phase did not produce SAVED_NORMS")
         ci_lib.write_synthetic_report(
             report_path,
@@ -288,9 +308,11 @@ def main():
 
     # Final result classification:
     #   PASS         control produced NORMS, test bit-matched control
-    #   FAIL         control produced NORMS, test bit-DIFFERED from control
+    #   FAIL         control produced NORMS, test bit-DIFFERED, OR test phase failed
     #   INCONCLUSIVE control failed; comparison skipped
-    if control_status == 'failed':
+    if test_phase_failed:
+        final_status, exit_code = 'FAIL', 1
+    elif control_status == 'failed':
         final_status, exit_code = 'INCONCLUSIVE', 2
     elif bit_compare_status == 'PASS':
         final_status, exit_code = 'PASS', 0
