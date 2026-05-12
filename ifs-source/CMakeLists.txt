@@ -171,12 +171,12 @@ endif()
 if(multio_FOUND)
   set(MULTIO_LIBRARIES)
   if(multio_HAVE_FDB5)
-    # Force the linkage of multio-fdb5 for static builds
-    if(NOT BUILD_SHARED_LIBS)
-      list(APPEND MULTIO_LIBRARIES -Wl,--push-state,--no-as-needed multio-fdb5 -Wl,--pop-state)
-    else()
-      list(APPEND MULTIO_LIBRARIES multio-fdb5)
-    endif()
+    # Force linkage of multio-fdb5 regardless of build type: the library
+    # registers the fdb5 DataSinkFactory via a static C++ initialiser only,
+    # so a --as-needed linker (default on Ubuntu 22.04 / GCC 13) would
+    # otherwise drop it as unreferenced from a shared build, causing
+    # "No DataSinkFactory for [fdb5]" at runtime.
+    list(APPEND MULTIO_LIBRARIES -Wl,--push-state,--no-as-needed multio-fdb5 -Wl,--pop-state)
   endif()
   if(multio_HAVE_FDB4)
     list(APPEND MULTIO_LIBRARIES multio-fdb4 ifsio)
