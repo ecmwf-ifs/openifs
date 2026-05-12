@@ -1,0 +1,328 @@
+#! /usr/bin/env python3
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+"""
+Host-based CI test for OpenIFS — control branch vs test branch.
+
+Mirrors ``ci-oifs-docker.py`` but runs everything directly on the host
+(no Docker). Per branch:
+  1. Stage the source into ``<openifs_build_host_dir>/build_dir_<label>/<ver>/``
+     (clone for remote refs, copy for local sources).
+  2. Patch the staged ``oifs-config.edit_me.sh`` so ``OIFS_HOME`` points at
+     the staged tree.
+  3. Source it and run ``openifs-test.sh -cb`` then ``-t`` with
+     ``IFS_TEST_BITIDENTICAL=init IFS_TEST_LEGACY=1`` so the framework
+     drops a SAVED_NORMS file in every test*/ subdir. The ctest stage's
+     stdout/stderr is tee'd to a file in ``ci_reports`` for inclusion in
+     the host-side report.
+
+The control branch is run first and its SAVED_NORMS tree is tarred into
+``<control_saved_norms_dir>/control_saved_norms_<openifs_version>_<key>.tgz``.
+When ``reuse_control_if_present`` is set and the matching tarball
+already exists, the entire control phase is skipped.
+
+Control failure is tolerated, same semantics as the docker driver: the
+test phase still runs, the bit-comparison is skipped, a synthetic report
+is written, and the script exits 2 (INCONCLUSIVE).
+
+Then the test branch is staged, built, and tested. If the control side
+succeeded, the control tarball is extracted to a sibling host directory
+and ``openifs_branch_bitcompare.py`` is invoked directly on the host
+with the two SAVED_NORMS trees.
+
+Usage:
+    python3 ci-oifs-host.py -c config/ci_test_host.yml
+"""
+
+import argparse
+import logging
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+
+# Reuse the shared helpers + CI library.
+_SHARED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "shared")
+if _SHARED_DIR not in sys.path:
+    sys.path.insert(0, _SHARED_DIR)
+
+import ci_lib
+import find_py_packages
+import read_yml_config
+import setup_logging
+import shared_helpers
+
+
+# The comparator lives in the sibling docker_ci/ directory; it's a pure
+# Python script that operates on two directories of NORMS files, so it
+# works equally well off-host without modification.
+BITCOMPARE_SCRIPT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "..", "docker_ci", "openifs_branch_bitcompare.py")
+)
+
+
+def _control_cache_key(config):
+    """Cache-key suffix for the control SAVED_NORMS tarball (e.g. ``gcc14``).
+
+    Encodes the compiler family + version so the host-side cache stays
+    disjoint from the docker-side cache and from other compiler builds.
+    """
+    return f"gcc{config['compiler_version']}"
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Host CI test for OpenIFS: stage control + test branches, "
+            "run openifs-test.sh -cbt in each, and bit-compare SAVED_NORMS "
+            "directly on the host."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--config", "-c", type=str, required=True,
+                        help="YAML configuration file (see config/ci_test_host.yml)")
+    return parser.parse_args()
+
+
+def run_openifs_tests(staged_src, config, ci_reports, label):
+    """Configure + build with ``openifs-test.sh -cb``, then ctest with ``-t``.
+
+    Two subprocess calls so the ctest stage's stdout/stderr can be tee'd to
+    ``openifs_test_output_<label>.txt`` in ``ci_reports`` in isolation,
+    matching what the docker driver captures.
+    """
+    logger = logging.getLogger(__name__)
+
+    shared_helpers.patch_oifs_home(staged_src)
+
+    os.makedirs(ci_reports, exist_ok=True)
+    test_output = os.path.join(ci_reports, f"openifs_test_output_{label}.txt")
+
+    source_cmd = f"source {staged_src}/oifs-config.edit_me.sh"
+    cb_cmd, t_cmd = ci_lib.build_test_commands(config, source_cmd, test_output)
+
+    logger.info(f"Configure + build for {label} in {staged_src}")
+    subprocess.run(["bash", "-lc", cb_cmd], cwd=staged_src, check=True)
+
+    logger.info(f"Running ctest for {label} in {staged_src}")
+    subprocess.run(["bash", "-lc", t_cmd], cwd=staged_src, check=True)
+
+
+def find_saved_norms_root(staged_src):
+    """Return the directory whose children are test*/ dirs.
+
+    Walks the staged build tree, finds any ``SAVED_NORMS`` file, and goes
+    up one level (the parent of the containing ``test_*`` directory).
+    Aborts if nothing is found — that means the bit-identical step never
+    wrote references.
+    """
+    logger = logging.getLogger(__name__)
+    for root, _dirs, files in os.walk(staged_src):
+        if "SAVED_NORMS" in files:
+            test_root = os.path.dirname(root)
+            logger.info(f"SAVED_NORMS root at {test_root}")
+            return test_root
+    raise FileNotFoundError(
+        f"No SAVED_NORMS found under {staged_src} - tests did not produce reference NORMS"
+    )
+
+
+def export_control_norms(test_root, control_tarball):
+    """Tar the control SAVED_NORMS tree at ``test_root`` into ``control_tarball``.
+
+    Counterpart to the docker driver's ``docker exec tar … && docker cp``
+    sequence: here both steps are local, so we just walk and pack directly.
+    """
+    logger = logging.getLogger(__name__)
+    os.makedirs(os.path.dirname(control_tarball), exist_ok=True)
+    logger.info(f"Bundling control SAVED_NORMS -> {control_tarball}")
+    with tarfile.open(control_tarball, "w:gz") as tar:
+        for name in sorted(os.listdir(test_root)):
+            tar.add(os.path.join(test_root, name), arcname=name)
+
+
+def run_control_phase(config, build_dir, control_tarball, ci_reports):
+    """Stage the control branch, build, run tests, export SAVED_NORMS tarball.
+
+    Tolerates failure: if any step raises (clone error or ctest failure),
+    we log it and return ``'failed'`` — the caller then skips the
+    bit-comparison and reports INCONCLUSIVE.
+    """
+    logger = logging.getLogger(__name__)
+
+    if config.get('reuse_control_if_present', False) and os.path.exists(control_tarball):
+        logger.info("=" * 70)
+        logger.info(f"Reusing existing control tarball: {control_tarball}")
+        logger.info("(reuse_control_if_present=True; delete the tarball or set the flag")
+        logger.info(" to False to force a fresh control run)")
+        logger.info("=" * 70)
+        return 'reused'
+
+    try:
+        clone_dir, _ = shared_helpers.stage_branch_source(
+            config, "control", build_dir, __file__,
+        )
+        run_openifs_tests(clone_dir, config, ci_reports, "control")
+        test_root = find_saved_norms_root(clone_dir)
+        export_control_norms(test_root, control_tarball)
+        return 'ok'
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.error(f"Control phase FAILED: {e}")
+        return 'failed'
+
+
+def run_test_phase(config, build_dir, ci_reports):
+    """Stage the test branch, build, run tests, locate SAVED_NORMS root.
+
+    Symmetric to ``run_control_phase`` but does NOT tolerate failures — a
+    test-side build/ctest failure is a hard error and aborts the script.
+    """
+    clone_dir, _ = shared_helpers.stage_branch_source(
+        config, "test", build_dir, __file__,
+    )
+    run_openifs_tests(clone_dir, config, ci_reports, "test")
+    test_root = find_saved_norms_root(clone_dir)
+    return test_root
+
+
+def compare_norms(test_root, control_tarball, report_path, build_dir):
+    """Extract the control tarball and run the comparator on host paths.
+
+    Returns True iff the comparator exited 0.
+    """
+    logger = logging.getLogger(__name__)
+
+    control_extract_dir = os.path.join(build_dir, "control_saved_norms_extracted")
+    if os.path.exists(control_extract_dir):
+        shutil.rmtree(control_extract_dir)
+    os.makedirs(control_extract_dir, exist_ok=True)
+    logger.info(f"Extracting {control_tarball} -> {control_extract_dir}")
+    with tarfile.open(control_tarball, "r:gz") as tar:
+        tar.extractall(control_extract_dir)
+
+    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+    logger.info(f"Running {BITCOMPARE_SCRIPT}")
+    # Non-zero exit means "tests disagree" — that's a normal CI outcome,
+    # so we do NOT pass check=True.
+    result = subprocess.run(
+        ["python3", BITCOMPARE_SCRIPT,
+         control_extract_dir, test_root,
+         "--report", report_path],
+    )
+    return result.returncode == 0
+
+
+def main():
+    script_start = time.time()
+    timings = {}
+
+    cli_args = parse_arguments()
+
+    find_py_packages.main(["yaml"])
+
+    config = read_yml_config.main(cli_args.config)
+
+    build_dir = config['openifs_build_host_dir']
+    os.makedirs(build_dir, exist_ok=True)
+
+    log_dir = os.path.join(build_dir, "host_ci_logfiles")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(
+        log_dir,
+        f"log_ci_{config['openifs_version']}_gcc{config['compiler_version']}.log",
+    )
+    setup_logging.main(log_path)
+    logger = logging.getLogger(__name__)
+
+    ci_reports = config['ci_reports']
+    control_dir = config['control_saved_norms_dir']
+    control_tarball = os.path.join(
+        control_dir,
+        ci_lib.control_tarball_name(config, _control_cache_key(config)),
+    )
+    report_path = os.path.join(ci_reports, ci_lib.report_filename(config, __file__))
+
+    # --- Control phase (skipped if tarball exists and reuse=True) ----------
+    with shared_helpers.timer(f"Control phase ({config['control_branch']})", timings, 'control-branch'):
+        control_status = run_control_phase(config, build_dir, control_tarball, ci_reports)
+
+    # --- Test phase: always runs, even if control failed -------------------
+    test_branch = config['test_branch']
+    test_label = test_branch or "auto-resolved local source"
+    with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
+        test_root = run_test_phase(config, build_dir, ci_reports)
+
+    # --- Bit-comparison: only if control produced a SAVED_NORMS tarball ----
+    if control_status == 'failed':
+        logger.warning("Skipping bit-comparison — control phase did not produce SAVED_NORMS")
+        ci_lib.write_synthetic_report(
+            report_path,
+            "Control phase FAILED — no SAVED_NORMS to compare against. "
+            "Test phase ran to completion; see the ctest output below.",
+        )
+        bit_compare_status = 'SKIPPED'
+        timings['norms_compare'] = 0
+    else:
+        with shared_helpers.timer("NORMS comparison (host)", timings, 'norms_compare'):
+            passed = compare_norms(test_root, control_tarball, report_path, build_dir)
+        bit_compare_status = 'PASS' if passed else 'FAIL'
+
+    ci_lib.append_test_outputs_to_report(
+        report_path, ci_reports,
+        [("control", config['control_branch']),
+         ("test", test_branch or "auto-resolved local source")],
+    )
+
+    total = time.time() - script_start
+
+    # Final result classification:
+    #   PASS         control produced NORMS, test bit-matched control
+    #   FAIL         control produced NORMS, test bit-DIFFERED from control
+    #   INCONCLUSIVE control failed; comparison skipped
+    if control_status == 'failed':
+        final_status, exit_code = 'INCONCLUSIVE', 2
+    elif bit_compare_status == 'PASS':
+        final_status, exit_code = 'PASS', 0
+    else:
+        final_status, exit_code = 'FAIL', 1
+
+    summary_lines = ci_lib.build_ci_summary(
+        control_branch=config['control_branch'],
+        test_branch=test_branch,
+        control_status=control_status,
+        control_tarball=control_tarball,
+        bit_compare_status=bit_compare_status,
+        final_status=final_status,
+        report_path=report_path,
+        timings=timings,
+        total=total,
+        timing_keys=('control-branch', 'test-branch', 'norms_compare'),
+    )
+
+    for line in summary_lines:
+        logger.info(line)
+
+    try:
+        with open(report_path, "a", encoding="utf-8") as f:
+            f.write("\n")
+            for line in summary_lines:
+                f.write(line + "\n")
+    except OSError as e:
+        logger.warning(f"Could not append CI summary to {report_path}: {e}")
+
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()
