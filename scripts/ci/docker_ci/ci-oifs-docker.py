@@ -240,6 +240,7 @@ def run_openifs_tests(container, config, ci_reports, label):
     finally:
         export_build_output(container, ci_reports, label)
         export_test_output(container, ci_reports, label)
+        export_lasttest_log(container, config, ci_reports, label)
 
 
 def _export_stage_output(container, ci_reports, label, in_container_path, kind):
@@ -276,6 +277,24 @@ def export_test_output(container, ci_reports, label):
     """Copy the captured ctest output out of ``container``."""
     return _export_stage_output(container, ci_reports, label,
                                 INCONTAINER_TEST_OUTPUT, "test")
+
+
+def export_lasttest_log(container, config, ci_reports, label):
+    """Copy ctest's per-test detail log out of ``container``.
+
+    Located at ``OIFS_HOME/build/Testing/Temporary/LastTest.log`` inside the
+    container, where ``OIFS_HOME = /home/openifs/<openifs_version>`` per
+    Dockerfile.ci. This file is ctest-generated and contains the full
+    stdout/stderr of every individual test — much richer than the
+    wrapper-level ctest output, and the right place to look when a test
+    fails.
+    """
+    in_container_path = (
+        f"/home/openifs/{config['openifs_version']}"
+        f"/build/Testing/Temporary/LastTest.log"
+    )
+    return _export_stage_output(container, ci_reports, label,
+                                in_container_path, "lasttest")
 
 
 def find_saved_norms_root(container):

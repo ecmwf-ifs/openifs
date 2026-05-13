@@ -95,13 +95,33 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def _export_lasttest_log(staged_src, ci_reports, label):
+    """Copy ctest's per-test detail log from the staged build dir to ``ci_reports``.
+
+    The file is written by ctest at ``<staged_src>/build/Testing/Temporary/
+    LastTest.log`` and contains the full stdout/stderr of every test —
+    much richer than the wrapper-level ctest output, and the right place
+    to look when a test fails.
+    """
+    logger = logging.getLogger(__name__)
+    src = os.path.join(staged_src, "build", "Testing", "Temporary", "LastTest.log")
+    dst = os.path.join(ci_reports, f"openifs_lasttest_output_{label}.txt")
+    if os.path.exists(src):
+        shutil.copyfile(src, dst)
+        logger.info(f"Captured {label} LastTest.log -> {dst}")
+    else:
+        logger.warning(f"No LastTest.log captured for {label} (file missing)")
+
+
 def run_openifs_tests(staged_src, config, ci_reports, label):
     """Configure + build with ``openifs-test.sh -cb``, then ctest with ``-t``.
 
     Both stages are tee'd directly to host files in ``ci_reports``, so the
     captured output is preserved even when one stage exits non-zero — the
     bit-compare report can then include the BUILD OUTPUT / CTEST OUTPUT
-    sections regardless of where the failure was.
+    sections regardless of where the failure was. The ctest LastTest.log
+    is copied in a finally so its detailed per-test output also survives
+    a ctest failure.
     """
     logger = logging.getLogger(__name__)
 
@@ -117,8 +137,11 @@ def run_openifs_tests(staged_src, config, ci_reports, label):
     logger.info(f"Configure + build for {label} in {staged_src}")
     subprocess.run(["bash", "-lc", cb_cmd], cwd=staged_src, check=True)
 
-    logger.info(f"Running ctest for {label} in {staged_src}")
-    subprocess.run(["bash", "-lc", t_cmd], cwd=staged_src, check=True)
+    try:
+        logger.info(f"Running ctest for {label} in {staged_src}")
+        subprocess.run(["bash", "-lc", t_cmd], cwd=staged_src, check=True)
+    finally:
+        _export_lasttest_log(staged_src, ci_reports, label)
 
 
 def find_saved_norms_root(staged_src):

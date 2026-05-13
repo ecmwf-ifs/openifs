@@ -36,9 +36,9 @@ jobs:
 
         include:
 
-          - name: linux gcc-14
+          - name: linux gcc-13
             os: ubuntu-22.04
-            gcc: '14'
+            gcc: '13'
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180

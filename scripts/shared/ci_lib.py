@@ -115,7 +115,11 @@ def append_test_outputs_to_report(report_path, ci_reports, branches):
     test failed before ctest ran, or build failed before any ctest output
     existed) are silently skipped.
     """
-    kinds = [("build", "BUILD OUTPUT"), ("test", "CTEST OUTPUT")]
+    kinds = [
+        ("build",    "BUILD OUTPUT"),
+        ("test",     "CTEST OUTPUT"),
+        ("lasttest", "CTEST LASTTEST.LOG"),
+    ]
     for label, branch_name in branches:
         for kind, banner in kinds:
             src = os.path.join(ci_reports, f"openifs_{kind}_output_{label}.txt")
