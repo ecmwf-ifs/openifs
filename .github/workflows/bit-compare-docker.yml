@@ -32,7 +32,7 @@ jobs:
 
       matrix:
         name:
-          - linux gcc-14
+          - linux gcc-13
 
         include:
 
