@@ -4,13 +4,13 @@ Builds two Docker images (one per branch). In each container, runs
 `openifs-test.sh -cb` (configure + build), then `openifs-test.sh -t`
 (ctest) with `IFS_TEST_BITIDENTICAL=init IFS_TEST_LEGACY=1` so the
 framework drops a `SAVED_NORMS` reference file in every `test*/` subdir.
-The two stages are run separately so the ctest output can be captured
-in isolation and included in the report.
+The two stages are run separately so build and ctest output can be captured
+in isolation as separate artifacts.
 
 The bit-comparison runs **inside** the test container — the host never
-reads NORMS data. The host receives a self-contained text report
-(`<control>-<sha7>__<test|dir>.txt`) plus the raw per-branch ctest
-output files. Three exit codes: **0** PASS, **1** FAIL, **2**
+reads NORMS data. The host receives a text report
+(`<control>-<sha7>__<test|dir>.txt`) plus raw per-branch build, ctest, and
+LastTest output files. Three exit codes: **0** PASS, **1** FAIL, **2**
 INCONCLUSIVE (control failed, bit-comparison skipped — see below).
 
 ## Prerequisites
@@ -59,20 +59,24 @@ ci-oifs-docker.py
   ├── docker exec ────────────────────────────────► python3 bitcompare --report
   │   ◄── docker cp ─────────────────────────────── <control>-<sha7>__<test|dir>.txt
   │
-  ├── append both ctest outputs + CI summary to the host-side report
+   ├── append CI summary to the host-side report
   │
   └── exit 0 (PASS) | 1 (FAIL) | 2 (INCONCLUSIVE — control failed)
 ```
 
 ## Output and exit codes
 
-After a run, three artefacts land in `<ci_reports>`:
+After a run, these artefacts land in `<ci_reports>` when available:
 
 | File | Contents |
 | ---- | -------- |
-| `<control>-<sha7>__<test\|dir>.txt` | Self-contained text report (see below) |
+| `<control>-<sha7>__<test\|dir>.txt` | Bit-comparison or skipped-comparison report plus CI summary |
+| `openifs_build_output_control.txt` | Raw configure/build stdout/stderr from the control container |
 | `openifs_test_output_control.txt` | Raw ctest stdout/stderr from the control container |
-| `openifs_test_output_test.txt`    | Raw ctest stdout/stderr from the test container |
+| `openifs_lasttest_output_control.txt` | CTest `LastTest.log` from the control container |
+| `openifs_build_output_test.txt` | Raw configure/build stdout/stderr from the test container |
+| `openifs_test_output_test.txt` | Raw ctest stdout/stderr from the test container |
+| `openifs_lasttest_output_test.txt` | CTest `LastTest.log` from the test container |
 
 The `<control>-<sha7>__…` file is the headline artefact. Its sections, in order:
 
@@ -80,14 +84,11 @@ The `<control>-<sha7>__…` file is the headline artefact. Its sections, in orde
    `openifs_branch_bitcompare.py`, ending with `RESULT: PASS|FAIL`.
    Replaced by a `BIT-COMPARISON SKIPPED` header + `RESULT: SKIPPED` when
    the control phase failed and there were no SAVED_NORMS to compare.
-2. **`CTEST OUTPUT — control (<branch>)`** — raw ctest output from the
-   control container (verbatim copy, never edited by the script).
-3. **`CTEST OUTPUT — test (<branch>)`** — same for the test container.
-4. **`CI SUMMARY`** — branches with annotation
+2. **`CI SUMMARY`** — branches with annotation
    (`built + tested` / `reused cached NORMS` / `FAILED — bit-comparison skipped`),
-   bit-comparison verdict (`PASS` / `FAIL` / `SKIPPED`), final result
-   (`PASS` / `FAIL` / `INCONCLUSIVE`), report path, control NORMS path,
-   per-phase timings, total wall-clock.
+   per-branch build and test status, bit-comparison verdict and skip reason,
+   final result (`PASS` / `FAIL` / `INCONCLUSIVE`), report path, control
+   NORMS path, per-phase timings, total wall-clock.
 
 ### Exit codes
 
@@ -95,7 +96,7 @@ The `<control>-<sha7>__…` file is the headline artefact. Its sections, in orde
 | ---- | ------- |
 | 0    | **PASS** — both branches built and ctest'd, all SAVED_NORMS bit-matched |
 | 1    | **FAIL** — both branches built and ctest'd, at least one test's SAVED_NORMS differed |
-| 2    | **INCONCLUSIVE** — control phase failed (build or ctest); bit-comparison skipped. Useful when the test branch is the fix for a broken main: the test side still builds and runs, you just can't bit-compare against a missing reference. The test branch's own ctest output is still in the report |
+| 2    | **INCONCLUSIVE** — control phase failed (build or ctest); bit-comparison skipped. Useful when the test branch is the fix for a broken main: the test side still builds and runs, you just can't bit-compare against a missing reference. The test branch's own output files are still uploaded as separate artifacts |
 
 The **test phase is strict**: a test-branch build/ctest failure is a hard
 error and aborts the script (no INCONCLUSIVE fallback for that side).

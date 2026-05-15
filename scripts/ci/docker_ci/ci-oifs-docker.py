@@ -18,8 +18,8 @@ Per branch:
   3. Configure + build with ``openifs-test.sh -cb``, then run ctest with
      ``-t``. Both calls set IFS_TEST_BITIDENTICAL=init IFS_TEST_LEGACY=1 so
      the framework drops a SAVED_NORMS file in every test*/ subdir. The
-     ctest stage's stdout/stderr is tee'd to a file inside the container
-     and ``docker cp``'d out for inclusion in the host-side report.
+    ctest stage's stdout/stderr is tee'd to a file inside the container
+    and ``docker cp``'d out as a separate uploaded artifact.
 
 The control branch is run first and its SAVED_NORMS tree is bundled out as
 ``<control_saved_norms_dir>/control_saved_norms_<openifs_version>_gcc<base_image>.tgz``
@@ -47,9 +47,9 @@ Then the test branch is built and run. If the control side succeeded:
   7. ``docker cp`` ONLY the report out to
      ``<ci_reports>/<control>-<sha7>__<test|dir>.txt``
 
-The host never reads NORMS data. The captured ctest outputs and a final
-CI summary are then appended to the report file so it's fully
-self-contained. The script's exit code drives PASS / FAIL / INCONCLUSIVE.
+The host never reads NORMS data. A final CI summary is appended to the report
+file. Captured build and ctest outputs remain separate files in the uploaded
+artifact. The script's exit code drives PASS / FAIL / INCONCLUSIVE.
 
 Usage:
     python3 ci-oifs-docker.py -c config/ci_test_docker.yml
@@ -88,9 +88,27 @@ INCONTAINER_REPORT = "/tmp/norms_report.txt"
 
 # Inside-container paths that capture each stage's stdout/stderr. Copied
 # out per-branch by export_build_output() / export_test_output() so the
-# host-side report can include them — including when the stage failed.
+# uploaded artifact includes them even when the stage failed.
 INCONTAINER_BUILD_OUTPUT = "/tmp/openifs_build_output.txt"
 INCONTAINER_TEST_OUTPUT  = "/tmp/openifs_test_output.txt"
+
+STATUS_PASS = "PASS - Complete and Successful"
+STATUS_BUILD_FAILED = "FAILED - Build did not complete"
+STATUS_TEST_FAILED = "FAILED - Test did not complete"
+STATUS_NO_NORMS = "FAILED - No NORMS produced"
+STATUS_NOT_RUN = "SKIPPED - Not run"
+STATUS_REUSED_NORMS = "SKIPPED - Reused cached NORMS"
+
+
+def _fresh_stage_statuses():
+    return {"build": STATUS_NOT_RUN, "test": STATUS_NOT_RUN}
+
+
+def _stages_passed(stage_statuses):
+    return (
+        stage_statuses["build"] == STATUS_PASS and
+        stage_statuses["test"] == STATUS_PASS
+    )
 
 
 def _control_cache_key(config):
@@ -216,9 +234,10 @@ def run_openifs_tests(container, config, ci_reports, label):
     Both stages are tee'd to per-stage files inside the container. The
     finally block always copies those files out to ``ci_reports`` — even
     when one of the stages exited non-zero — so the failure cause is
-    visible in the uploaded artifact and the appended bit-compare report.
+    visible in the uploaded artifact.
     """
     logger = logging.getLogger(__name__)
+    stage_statuses = _fresh_stage_statuses()
 
     src = f"source ~/{config['openifs_version']}/oifs-config.edit_me.sh"
     cb_cmd, t_cmd = ci_lib.build_test_commands(
@@ -227,20 +246,32 @@ def run_openifs_tests(container, config, ci_reports, label):
 
     try:
         logger.info(f"Configure + build in '{container}'")
-        subprocess.run(
-            ["docker", "exec", container, "bash", "-lc", cb_cmd],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["docker", "exec", container, "bash", "-lc", cb_cmd],
+                check=True,
+            )
+            stage_statuses["build"] = STATUS_PASS
+        except subprocess.CalledProcessError:
+            stage_statuses["build"] = STATUS_BUILD_FAILED
+            stage_statuses["test"] = "SKIPPED - Build failed"
+            return stage_statuses
 
         logger.info(f"Running ctest in '{container}'")
-        subprocess.run(
-            ["docker", "exec", container, "bash", "-lc", t_cmd],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["docker", "exec", container, "bash", "-lc", t_cmd],
+                check=True,
+            )
+            stage_statuses["test"] = STATUS_PASS
+        except subprocess.CalledProcessError:
+            stage_statuses["test"] = STATUS_TEST_FAILED
     finally:
         export_build_output(container, ci_reports, label)
         export_test_output(container, ci_reports, label)
         export_lasttest_log(container, config, ci_reports, label)
+
+    return stage_statuses
 
 
 def _export_stage_output(container, ci_reports, label, in_container_path, kind):
@@ -366,10 +397,9 @@ def run_control_phase(config, build_dir, control_tarball, ci_reports):
     in INCONCLUSIVE mode rather than aborting.
 
     Returns one of:
-      - ``'reused'`` — short-circuited via ``reuse_control_if_present``;
-                       tarball already on disk
-      - ``'ok'``     — built + tested + exported successfully
-      - ``'failed'`` — a step failed; ``control_tarball`` was NOT written
+            - ``('reused', statuses)`` — short-circuited via cache
+            - ``('ok', statuses)``     — built + tested + exported successfully
+            - ``('failed', statuses)`` — a step failed; tarball was NOT written
     """
     logger = logging.getLogger(__name__)
 
@@ -379,22 +409,29 @@ def run_control_phase(config, build_dir, control_tarball, ci_reports):
         logger.info("(reuse_control_if_present=True; delete the tarball or set the flag")
         logger.info(" to False to force a fresh control run)")
         logger.info("=" * 70)
-        return 'reused'
+        return 'reused', {"build": STATUS_REUSED_NORMS, "test": STATUS_REUSED_NORMS}
 
     branch = config['control_branch']
     container = None
+    stage_statuses = _fresh_stage_statuses()
     try:
         image_tag = build_branch_image(config, "control", branch, build_dir)
         container = start_container("control", image_tag, config)
-        run_openifs_tests(container, config, ci_reports, "control")
+        stage_statuses = run_openifs_tests(container, config, ci_reports, "control")
+        if not _stages_passed(stage_statuses):
+            return 'failed', stage_statuses
         test_root = find_saved_norms_root(container)
         export_control_norms(container, test_root, control_tarball)
-        return 'ok'
+        return 'ok', stage_statuses
     except subprocess.CalledProcessError as e:
         logger.error(f"Control phase FAILED: {e}")
         # run_openifs_tests' finally block already exported whatever build /
         # ctest output exists, even on failure. Nothing more to do here.
-        return 'failed'
+        if stage_statuses["build"] == STATUS_NOT_RUN:
+            stage_statuses["build"] = STATUS_BUILD_FAILED
+        if _stages_passed(stage_statuses):
+            stage_statuses["test"] = STATUS_NO_NORMS
+        return 'failed', stage_statuses
     finally:
         if container is not None:
             remove_container_if_requested(container, config)
@@ -410,14 +447,20 @@ def run_test_phase(config, build_dir, ci_reports):
     comparator script into it. The caller is responsible for removing the
     container afterwards.
 
-    Returns ``(container, test_root)``.
+    Returns ``(container, test_root, statuses)``.
     """
     branch = config['test_branch']
     image_tag = build_branch_image(config, "test", branch, build_dir)
     container = start_container("test", image_tag, config)
-    run_openifs_tests(container, config, ci_reports, "test")
-    test_root = find_saved_norms_root(container)
-    return container, test_root
+    stage_statuses = run_openifs_tests(container, config, ci_reports, "test")
+    if not _stages_passed(stage_statuses):
+        return container, None, stage_statuses
+    try:
+        test_root = find_saved_norms_root(container)
+    except subprocess.CalledProcessError:
+        stage_statuses["test"] = STATUS_NO_NORMS
+        return container, None, stage_statuses
+    return container, test_root, stage_statuses
 
 
 def compare_norms_in_container(test_container, test_root, control_tarball, report_path):
@@ -525,33 +568,39 @@ def main():
     # rest of the script run — we just skip the bit-comparison and report
     # INCONCLUSIVE. Useful when the test branch is the fix for a broken main.
     with shared_helpers.timer(f"Control phase ({config['control_branch']})", timings, 'control-branch'):
-        control_status = run_control_phase(config, build_dir, control_tarball, ci_reports)
+        control_status, control_stage_statuses = run_control_phase(
+            config, build_dir, control_tarball, ci_reports,
+        )
 
     # --- Test phase: always runs, even if the control phase failed ------------
     # A build/ctest failure here is a real CI failure, but we catch it so
-    # the captured outputs still land in the bit-compare report (otherwise
-    # the artifact would contain stray output files with no top-level
-    # report tying them together).
+    # the captured outputs still land in the uploaded artifact.
     test_branch = config['test_branch']
     test_label = test_branch or "auto-resolved local source"
     test_container = None
     test_root = None
+    test_stage_statuses = _fresh_stage_statuses()
     test_phase_failed = False
     try:
         with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
-            test_container, test_root = run_test_phase(config, build_dir, ci_reports)
+            test_container, test_root, test_stage_statuses = run_test_phase(
+                config, build_dir, ci_reports,
+            )
+            test_phase_failed = not _stages_passed(test_stage_statuses)
     except subprocess.CalledProcessError as e:
         logger.error(f"Test phase FAILED: {e}")
         test_phase_failed = True
+        test_stage_statuses["build"] = STATUS_BUILD_FAILED
 
     # --- Bit-comparison: only if both phases produced SAVED_NORMS -------------
     if test_phase_failed:
         ci_lib.write_synthetic_report(
             report_path,
             "Test phase FAILED during configure+build or ctest. "
-            "See the BUILD OUTPUT and CTEST OUTPUT sections below for the cause.",
+            "See the uploaded BUILD OUTPUT and CTEST OUTPUT artifacts for the cause.",
         )
-        bit_compare_status = 'TEST FAILED'
+        bit_compare_status = 'SKIPPED'
+        bit_compare_skip_reason = 'No test NORMS'
         timings['norms_compare'] = 0
         if test_container is not None:
             remove_container_if_requested(test_container, config)
@@ -560,9 +609,10 @@ def main():
         ci_lib.write_synthetic_report(
             report_path,
             "Control phase FAILED — no SAVED_NORMS to compare against. "
-            "Test phase ran to completion; see the ctest output below.",
+            "Test phase ran to completion; see uploaded artifacts for details.",
         )
         bit_compare_status = 'SKIPPED'
+        bit_compare_skip_reason = 'No control NORMS'
         timings['norms_compare'] = 0
         remove_container_if_requested(test_container, config)
     else:
@@ -572,15 +622,7 @@ def main():
             )
             remove_container_if_requested(test_container, config)
         bit_compare_status = 'PASS' if passed else 'FAIL'
-
-    # --- Append captured ctest outputs to the report --------------------------
-    # Each section gets a banner; missing files (e.g. control failed before
-    # ctest started) are silently skipped.
-    ci_lib.append_test_outputs_to_report(
-        report_path, ci_reports,
-        [("control", config['control_branch']),
-         ("test", test_branch or "auto-resolved local source")],
-    )
+        bit_compare_skip_reason = None
 
     total = time.time() - script_start
 
@@ -602,8 +644,13 @@ def main():
         control_branch=config['control_branch'],
         test_branch=test_branch,
         control_status=control_status,
+        control_build_status=control_stage_statuses["build"],
+        control_test_status=control_stage_statuses["test"],
+        test_build_status=test_stage_statuses["build"],
+        test_test_status=test_stage_statuses["test"],
         control_tarball=control_tarball,
         bit_compare_status=bit_compare_status,
+        bit_compare_skip_reason=bit_compare_skip_reason,
         final_status=final_status,
         report_path=report_path,
         timings=timings,
@@ -615,8 +662,7 @@ def main():
         logger.info(line)
 
     # Append the summary to the report so it is fully self-contained. Earlier
-    # content (bitcompare body or synthetic header, then the ctest outputs)
-    # is preserved.
+    # content (bitcompare body or synthetic header) is preserved.
     try:
         with open(report_path, "a", encoding="utf-8") as f:
             f.write("\n")

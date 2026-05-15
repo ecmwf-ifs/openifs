@@ -21,8 +21,7 @@ Mirrors ``ci-oifs-docker.py`` but runs everything directly on the host
   3. Source it and run ``openifs-test.sh -cb`` then ``-t`` with
      ``IFS_TEST_BITIDENTICAL=init IFS_TEST_LEGACY=1`` so the framework
      drops a SAVED_NORMS file in every test*/ subdir. The ctest stage's
-     stdout/stderr is tee'd to a file in ``ci_reports`` for inclusion in
-     the host-side report.
+    stdout/stderr is tee'd to a separate file in ``ci_reports``.
 
 The control branch is run first and its SAVED_NORMS tree is tarred into
 ``<control_saved_norms_dir>/control_saved_norms_<openifs_version>_<key>.tgz``.
@@ -71,6 +70,24 @@ BITCOMPARE_SCRIPT = os.path.normpath(
                  "..", "docker_ci", "openifs_branch_bitcompare.py")
 )
 
+STATUS_PASS = "PASS - Complete and Successful"
+STATUS_BUILD_FAILED = "FAILED - Build did not complete"
+STATUS_TEST_FAILED = "FAILED - Test did not complete"
+STATUS_NO_NORMS = "FAILED - No NORMS produced"
+STATUS_NOT_RUN = "SKIPPED - Not run"
+STATUS_REUSED_NORMS = "SKIPPED - Reused cached NORMS"
+
+
+def _fresh_stage_statuses():
+    return {"build": STATUS_NOT_RUN, "test": STATUS_NOT_RUN}
+
+
+def _stages_passed(stage_statuses):
+    return (
+        stage_statuses["build"] == STATUS_PASS and
+        stage_statuses["test"] == STATUS_PASS
+    )
+
 
 def _control_cache_key(config):
     """Cache-key suffix for the control SAVED_NORMS tarball (e.g. ``gcc14``).
@@ -117,13 +134,12 @@ def run_openifs_tests(staged_src, config, ci_reports, label):
     """Configure + build with ``openifs-test.sh -cb``, then ctest with ``-t``.
 
     Both stages are tee'd directly to host files in ``ci_reports``, so the
-    captured output is preserved even when one stage exits non-zero — the
-    bit-compare report can then include the BUILD OUTPUT / CTEST OUTPUT
-    sections regardless of where the failure was. The ctest LastTest.log
-    is copied in a finally so its detailed per-test output also survives
-    a ctest failure.
+    captured output is preserved even when one stage exits non-zero. The
+    ctest LastTest.log is copied in a finally so its detailed per-test
+    output also survives a ctest failure.
     """
     logger = logging.getLogger(__name__)
+    stage_statuses = _fresh_stage_statuses()
 
     shared_helpers.patch_oifs_home(staged_src)
 
@@ -134,14 +150,26 @@ def run_openifs_tests(staged_src, config, ci_reports, label):
     source_cmd = f"source {staged_src}/oifs-config.edit_me.sh"
     cb_cmd, t_cmd = ci_lib.build_test_commands(config, source_cmd, build_output, test_output)
 
-    logger.info(f"Configure + build for {label} in {staged_src}")
-    subprocess.run(["bash", "-lc", cb_cmd], cwd=staged_src, check=True)
-
     try:
+        logger.info(f"Configure + build for {label} in {staged_src}")
+        try:
+            subprocess.run(["bash", "-lc", cb_cmd], cwd=staged_src, check=True)
+            stage_statuses["build"] = STATUS_PASS
+        except subprocess.CalledProcessError:
+            stage_statuses["build"] = STATUS_BUILD_FAILED
+            stage_statuses["test"] = "SKIPPED - Build failed"
+            return stage_statuses
+
         logger.info(f"Running ctest for {label} in {staged_src}")
-        subprocess.run(["bash", "-lc", t_cmd], cwd=staged_src, check=True)
+        try:
+            subprocess.run(["bash", "-lc", t_cmd], cwd=staged_src, check=True)
+            stage_statuses["test"] = STATUS_PASS
+        except subprocess.CalledProcessError:
+            stage_statuses["test"] = STATUS_TEST_FAILED
     finally:
         _export_lasttest_log(staged_src, ci_reports, label)
+
+    return stage_statuses
 
 
 def find_saved_norms_root(staged_src):
@@ -192,19 +220,26 @@ def run_control_phase(config, build_dir, control_tarball, ci_reports):
         logger.info("(reuse_control_if_present=True; delete the tarball or set the flag")
         logger.info(" to False to force a fresh control run)")
         logger.info("=" * 70)
-        return 'reused'
+        return 'reused', {"build": STATUS_REUSED_NORMS, "test": STATUS_REUSED_NORMS}
 
+    stage_statuses = _fresh_stage_statuses()
     try:
         clone_dir, _ = shared_helpers.stage_branch_source(
             config, "control", build_dir, __file__,
         )
-        run_openifs_tests(clone_dir, config, ci_reports, "control")
+        stage_statuses = run_openifs_tests(clone_dir, config, ci_reports, "control")
+        if not _stages_passed(stage_statuses):
+            return 'failed', stage_statuses
         test_root = find_saved_norms_root(clone_dir)
         export_control_norms(test_root, control_tarball)
-        return 'ok'
+        return 'ok', stage_statuses
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.error(f"Control phase FAILED: {e}")
-        return 'failed'
+        if stage_statuses["build"] == STATUS_NOT_RUN:
+            stage_statuses["build"] = STATUS_BUILD_FAILED
+        if _stages_passed(stage_statuses):
+            stage_statuses["test"] = STATUS_NO_NORMS
+        return 'failed', stage_statuses
 
 
 def run_test_phase(config, build_dir, ci_reports):
@@ -216,9 +251,15 @@ def run_test_phase(config, build_dir, ci_reports):
     clone_dir, _ = shared_helpers.stage_branch_source(
         config, "test", build_dir, __file__,
     )
-    run_openifs_tests(clone_dir, config, ci_reports, "test")
-    test_root = find_saved_norms_root(clone_dir)
-    return test_root
+    stage_statuses = run_openifs_tests(clone_dir, config, ci_reports, "test")
+    if not _stages_passed(stage_statuses):
+        return None, stage_statuses
+    try:
+        test_root = find_saved_norms_root(clone_dir)
+    except FileNotFoundError:
+        stage_statuses["test"] = STATUS_NO_NORMS
+        return None, stage_statuses
+    return test_root, stage_statuses
 
 
 def compare_norms(test_root, control_tarball, report_path, build_dir):
@@ -280,52 +321,52 @@ def main():
 
     # --- Control phase (skipped if tarball exists and reuse=True) ----------
     with shared_helpers.timer(f"Control phase ({config['control_branch']})", timings, 'control-branch'):
-        control_status = run_control_phase(config, build_dir, control_tarball, ci_reports)
+        control_status, control_stage_statuses = run_control_phase(
+            config, build_dir, control_tarball, ci_reports,
+        )
 
     # --- Test phase: always runs, even if control failed -------------------
     # A build/ctest failure here is a real CI failure, but we catch it so
-    # the captured outputs still land in the bit-compare report (otherwise
-    # the artifact would contain stray output files with no top-level
-    # report tying them together).
+    # the captured outputs still land in the uploaded artifact.
     test_branch = config['test_branch']
     test_label = test_branch or "auto-resolved local source"
     test_root = None
+    test_stage_statuses = _fresh_stage_statuses()
     test_phase_failed = False
     try:
         with shared_helpers.timer(f"Test phase ({test_label})", timings, 'test-branch'):
-            test_root = run_test_phase(config, build_dir, ci_reports)
+            test_root, test_stage_statuses = run_test_phase(config, build_dir, ci_reports)
+            test_phase_failed = not _stages_passed(test_stage_statuses)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.error(f"Test phase FAILED: {e}")
         test_phase_failed = True
+        test_stage_statuses["build"] = STATUS_BUILD_FAILED
 
     # --- Bit-comparison: only if both phases produced SAVED_NORMS ----------
     if test_phase_failed:
         ci_lib.write_synthetic_report(
             report_path,
             "Test phase FAILED during configure+build or ctest. "
-            "See the BUILD OUTPUT and CTEST OUTPUT sections below for the cause.",
+            "See the uploaded BUILD OUTPUT and CTEST OUTPUT artifacts for the cause.",
         )
-        bit_compare_status = 'TEST FAILED'
+        bit_compare_status = 'SKIPPED'
+        bit_compare_skip_reason = 'No test NORMS'
         timings['norms_compare'] = 0
     elif control_status == 'failed':
         logger.warning("Skipping bit-comparison — control phase did not produce SAVED_NORMS")
         ci_lib.write_synthetic_report(
             report_path,
             "Control phase FAILED — no SAVED_NORMS to compare against. "
-            "Test phase ran to completion; see the ctest output below.",
+            "Test phase ran to completion; see uploaded artifacts for details.",
         )
         bit_compare_status = 'SKIPPED'
+        bit_compare_skip_reason = 'No control NORMS'
         timings['norms_compare'] = 0
     else:
         with shared_helpers.timer("NORMS comparison (host)", timings, 'norms_compare'):
             passed = compare_norms(test_root, control_tarball, report_path, build_dir)
         bit_compare_status = 'PASS' if passed else 'FAIL'
-
-    ci_lib.append_test_outputs_to_report(
-        report_path, ci_reports,
-        [("control", config['control_branch']),
-         ("test", test_branch or "auto-resolved local source")],
-    )
+        bit_compare_skip_reason = None
 
     total = time.time() - script_start
 
@@ -346,8 +387,13 @@ def main():
         control_branch=config['control_branch'],
         test_branch=test_branch,
         control_status=control_status,
+        control_build_status=control_stage_statuses["build"],
+        control_test_status=control_stage_statuses["test"],
+        test_build_status=test_stage_statuses["build"],
+        test_test_status=test_stage_statuses["test"],
         control_tarball=control_tarball,
         bit_compare_status=bit_compare_status,
+        bit_compare_skip_reason=bit_compare_skip_reason,
         final_status=final_status,
         report_path=report_path,
         timings=timings,

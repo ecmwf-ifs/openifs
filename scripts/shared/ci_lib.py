@@ -93,9 +93,8 @@ def write_synthetic_report(report_path, reason):
     """Write a placeholder report when bit-comparison was skipped.
 
     Used in the control-failure path: there is no bitcompare-generated
-    report to copy out, so we synthesise one ourselves so that the rest of
-    the report-assembly code (ctest output append, CI summary append) has a
-    file to work with.
+    report to copy out, so we synthesise one ourselves so the CI summary can
+    still be appended to a report file.
     """
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     with open(report_path, "w", encoding="utf-8") as f:
@@ -144,8 +143,15 @@ _CONTROL_ANNOTATION = {
 }
 
 
+def _summary_line(label, value, width=22):
+    return f"  {label:<{width}}: {value}"
+
+
 def build_ci_summary(*, control_branch, test_branch, control_status,
-                    control_tarball, bit_compare_status, final_status,
+                    control_build_status, control_test_status,
+                    test_build_status, test_test_status,
+                    control_tarball, bit_compare_status,
+                    bit_compare_skip_reason, final_status,
                     report_path, timings, total, timing_keys):
     """Build the CI summary lines.
 
@@ -154,25 +160,33 @@ def build_ci_summary(*, control_branch, test_branch, control_status,
     docker_ci adds ``base_image`` to the front. Missing keys are skipped.
     """
     annotation = _CONTROL_ANNOTATION[control_status]
-    control_norms_line = (
-        f"  control NORMS  : {control_tarball} (cached for reuse)"
+    bit_compare_value = bit_compare_status
+    if bit_compare_skip_reason:
+        bit_compare_value = f"{bit_compare_status} [{bit_compare_skip_reason}]"
+
+    control_norms = (
+        f"{control_tarball} (cached for reuse)"
         if control_status != 'failed'
-        else "  control NORMS  : (not produced — control failed)"
+        else "(not produced — control failed)"
     )
     lines = [
         "=" * 70,
         "CI SUMMARY",
         "=" * 70,
-        f"  control branch : {control_branch}  [{annotation}]",
-        f"  test branch    : {test_branch}",
-        f"  bit-comparison : {bit_compare_status}",
-        f"  result         : {final_status}",
-        f"  report         : {report_path}",
-        control_norms_line,
+        _summary_line("control branch", f"{control_branch}  [{annotation}]"),
+        _summary_line("control Build", control_build_status),
+        _summary_line("control Test", control_test_status),
+        _summary_line("test branch", test_branch),
+        _summary_line("test Build", test_build_status),
+        _summary_line("test Test", test_test_status),
+        _summary_line("bit-comparison", bit_compare_value),
+        _summary_line("bit-comparison result", final_status),
+        _summary_line("report", report_path),
+        _summary_line("control NORMS", control_norms),
     ]
     for k in timing_keys:
         if k in timings:
-            lines.append(f"  {k:<22}: {format_duration(timings[k])}")
-    lines.append(f"  total                 : {format_duration(total)}")
+            lines.append(_summary_line(k, format_duration(timings[k])))
+    lines.append(_summary_line("total", format_duration(total)))
     lines.append("=" * 70)
     return lines
