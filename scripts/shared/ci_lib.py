@@ -38,6 +38,53 @@ def _resolve_control_sha(config):
     return out.split()[0][:7]
 
 
+def resolve_test_branch_label(config, script_file):
+    """Return a human-readable label for the test branch in the CI summary.
+
+    For a remote test_branch, returns ``branch (sha7)`` when ``git ls-remote``
+    can resolve a SHA, else just the branch name. For a local checkout, queries
+    git in the working tree and returns ``branch (sha7)``. Falls back to the
+    ``GITHUB_HEAD_REF`` / ``GITHUB_REF_NAME`` env vars when HEAD is detached
+    (the usual state after ``actions/checkout``). If git cannot answer at all,
+    returns the raw path so the summary still has something to show.
+    """
+    kind, value = resolve_openifs_source(config.get('test_branch', ''), script_file)
+    if kind == 'remote':
+        try:
+            out = subprocess.check_output(
+                ["git", "ls-remote", config['openifs_repo_url'], value],
+                text=True, stderr=subprocess.DEVNULL,
+            ).strip()
+            if out:
+                return f"{value} ({out.split()[0][:7]})"
+        except subprocess.CalledProcessError:
+            pass
+        return value
+
+    try:
+        sha = subprocess.check_output(
+            ["git", "-C", value, "rev-parse", "--short", "HEAD"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return value
+
+    branch = None
+    try:
+        head = subprocess.check_output(
+            ["git", "-C", value, "rev-parse", "--abbrev-ref", "HEAD"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        if head and head != "HEAD":
+            branch = head
+    except subprocess.CalledProcessError:
+        pass
+    if not branch:
+        branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME")
+
+    return f"{branch} ({sha})" if branch else sha
+
+
 def report_filename(config, script_file):
     """Return the report filename, encoding the two compared branches.
 

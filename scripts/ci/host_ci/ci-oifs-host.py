@@ -385,7 +385,7 @@ def main():
 
     summary_lines = ci_lib.build_ci_summary(
         control_branch=config['control_branch'],
-        test_branch=test_branch,
+        test_branch=ci_lib.resolve_test_branch_label(config, __file__),
         control_status=control_status,
         control_build_status=control_stage_statuses["build"],
         control_test_status=control_stage_statuses["test"],
