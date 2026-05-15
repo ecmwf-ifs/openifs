@@ -1,0 +1,165 @@
+name: bit-compare-host
+
+# Controls when the action will run
+on:
+
+  # Trigger on pushes to main only. Feature branches and cycle LTS branches
+  # are validated via their pull request — running on push as well would
+  # double-spend minutes for internal PRs, and LTS branches are protected.
+  push:
+    branches:
+    - main
+
+  # Trigger the workflow on all pull requests
+  pull_request: ~
+
+  # Allow workflow to be dispatched on demand
+  workflow_dispatch: ~
+
+concurrency:
+  group: bit-compare-host-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CACHE_SUFFIX: v1         # Increase to force new cache to be created
+
+jobs:
+  ci:
+    name: ci
+
+    strategy:
+      fail-fast: false  # false: try to complete all jobs
+
+      matrix:
+        name:
+          - linux gcc-12
+          - linux gcc-13
+          - linux gcc-14
+
+        include:
+
+          - name: linux gcc-12
+            os: ubuntu-24.04
+            gcc: '12'
+
+          - name: linux gcc-13
+            os: ubuntu-24.04
+            gcc: '13'
+
+          - name: linux gcc-14
+            os: ubuntu-24.04
+            gcc: '14'
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    - name: Derive cycle from bundle.yml
+      run: |
+        set -eu
+        version=$(awk '/^name[[:space:]]*:[[:space:]]*ifs-bundle/{found=1} found && /^version[[:space:]]*:/{print $NF; exit}' bundle.yml)
+        IFS=. read -r MAJ MIN PAT <<< "$version"
+        OIFS_VERSION="${MAJ}r${MIN}"
+        CYCLE_BRANCH="openifs-lts/CY${MAJ}R${MIN}.${PAT}"
+        if [ -z "$(git ls-remote --heads origin "$CYCLE_BRANCH")" ]; then
+          echo "Cycle branch ${CYCLE_BRANCH} not found on remote — falling back to main"
+          CYCLE_BRANCH=main
+        fi
+        echo "OIFS_VERSION=${OIFS_VERSION}"  >> $GITHUB_ENV
+        echo "CYCLE_BRANCH=${CYCLE_BRANCH}"  >> $GITHUB_ENV
+
+    - name: Environment
+      env:
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+      run: |
+        set -eu
+        # WORK_DIR sits outside github.workspace because the test phase copies
+        # the workspace into WORK_DIR/build_dir_test/...; a destination inside
+        # the source would recurse into itself in shutil.copytree.
+        WORK_DIR="${{ runner.temp }}/_oifs_host_ci"
+        echo "CI_DIR=${{ github.workspace }}/scripts/ci/host_ci" >> $GITHUB_ENV
+        echo "WORK_DIR=${WORK_DIR}"                              >> $GITHUB_ENV
+        echo "NORMS_DIR=${WORK_DIR}/control_saved_norms"         >> $GITHUB_ENV
+        echo "REPORTS_DIR=${WORK_DIR}/ci_reports"                >> $GITHUB_ENV
+        CONTROL_BRANCH="${PR_BASE_REF:-$CYCLE_BRANCH}"
+        echo "CONTROL_BRANCH=${CONTROL_BRANCH}"                  >> $GITHUB_ENV
+
+    - name: Install build dependencies (apt)
+      run: |
+        set -eu
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} gfortran-${{ matrix.gcc }} \
+          cmake ninja-build make \
+          libopenmpi-dev openmpi-bin \
+          libnetcdf-dev libnetcdff-dev netcdf-bin \
+          libboost-dev libboost-date-time-dev libboost-filesystem-dev \
+          libboost-serialization-dev libboost-program-options-dev \
+          liblapack-dev libeigen3-dev libomp-dev \
+          python3-venv python3-yaml python3-ruamel.yaml \
+          git wget bc ca-certificates
+
+    - name: Select compiler
+      run: |
+        set -eu
+        echo "CC=gcc-${{ matrix.gcc }}"          >> $GITHUB_ENV
+        echo "CXX=g++-${{ matrix.gcc }}"         >> $GITHUB_ENV
+        echo "FC=gfortran-${{ matrix.gcc }}"     >> $GITHUB_ENV
+        echo "F77=gfortran-${{ matrix.gcc }}"    >> $GITHUB_ENV
+        echo "F90=gfortran-${{ matrix.gcc }}"    >> $GITHUB_ENV
+
+    - name: Cache control NORMs
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.NORMS_DIR }}
+        key: control-norms-host-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ github.event.pull_request.base.sha || github.sha }}-${{ env.CACHE_SUFFIX }}
+
+    - name: Set up Python venv
+      run: |
+        set -eu
+        python3 -m venv "${WORK_DIR}/venv"
+        source "${WORK_DIR}/venv/bin/activate"
+        python3 -m pip install --upgrade pip
+        python3 -m pip install gitpython pyyaml
+
+    - name: Render CI config
+      run: |
+        set -eu
+        mkdir -p "${WORK_DIR}"
+        cat > "${WORK_DIR}/ci_test_host.yml" <<EOF
+        openifs_version           : "${OIFS_VERSION}"
+        openifs_repo_url          : "https://github.com/${{ github.repository }}.git"
+        control_branch            : "${CONTROL_BRANCH}"
+        test_branch               : "${{ github.workspace }}"
+        compiler_version          : "${{ matrix.gcc }}"
+        openifs_build_host_dir    : "${WORK_DIR}"
+        ci_reports                : "${REPORTS_DIR}"
+        control_saved_norms_dir   : "${NORMS_DIR}"
+        clone_openifs_control     : True
+        force_reclone             : True
+        reuse_control_if_present  : True
+        openifs_test_extra_flags  : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
+        EOF
+
+    - name: Build & Test
+      id: build-test
+      run: |
+        set -eu
+        cd "$CI_DIR"
+        source "${WORK_DIR}/venv/bin/activate"
+        echo "::group::ci-oifs-host.py"
+        python3 ci-oifs-host.py -c "${WORK_DIR}/ci_test_host.yml"
+        echo "::endgroup::"
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bit-compare-host-reports-gcc${{ matrix.gcc }}
+        path: ${{ env.REPORTS_DIR }}/
+        if-no-files-found: warn

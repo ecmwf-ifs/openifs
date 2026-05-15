@@ -30,7 +30,7 @@ RUN apt update && \
     apt install -y git cmake python3 python3-ruamel.yaml python3-yaml python3-venv \
         libomp-dev libboost-dev libboost-date-time-dev libboost-filesystem-dev \
         libboost-serialization-dev libboost-program-options-dev netcdf-bin \
-        libnetcdf-dev libnetcdff-dev liblapack-dev libeigen3-dev vim emacs \
+        libnetcdf-dev libnetcdff-dev liblapack-dev libeigen3-dev vim less \
         wget bc ca-certificates && \
     update-ca-certificates && \
     cd /tmp && \
@@ -38,7 +38,7 @@ RUN apt update && \
     tar -xvf openmpi-5.0.10.tar.gz && \
     cd openmpi-5.0.10 && \
     ./configure --disable-libxml2 --prefix=/usr/local && \
-    make -j4 all && \
+    make -j"$(nproc)" all && \
     make install && \
     ldconfig && \
     cd / && \
@@ -46,7 +46,8 @@ RUN apt update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create user and directory structure
+# Create user and directory structure.
+# Container security: run as unprivileged uid-1000 'openifs' user.
 RUN groupadd --gid 1000 openifs && \
     useradd --uid 1000 --gid openifs --shell /bin/bash --create-home openifs && \
     mkdir -p /home/openifs/${OPENIFS_DIR} && \
@@ -76,7 +77,10 @@ RUN sed -i 's|export OIFS_HOME="${HOME}/.*"|export OIFS_HOME="${HOME}/'${OPENIFS
     cd $OIFS_EXPT/ab7z/2016092500 && \
     cp $OIFS_RUN_SCRIPT/oifs-run .
 
-# Download and extract all OpenIFS data files in one layer
+# Download and extract all OpenIFS data files in a separate RUN layer so that
+# the source-copy layer above can be cached and re-used across rebuilds. The
+# host bash installer fetches the same archives in a single shell function
+# since there is no layer cache to optimise for.
 WORKDIR /home/openifs/${OPENIFS_DIR}/openifs-data
 RUN mkdir -p ifsdata rtables ${CLIMATE_VERSION} && \
     cd rtables && \

@@ -1,0 +1,135 @@
+name: bit-compare-docker
+
+# Controls when the action will run
+on:
+
+  # Trigger on pushes to main only. Feature branches and cycle LTS branches
+  # are validated via their pull request — running on push as well would
+  # double-spend minutes for internal PRs, and LTS branches are protected.
+  push:
+    branches:
+    - main
+
+  # Trigger the workflow on all pull requests
+  pull_request: ~
+
+  # Allow workflow to be dispatched on demand
+  workflow_dispatch: ~
+
+concurrency:
+  group: bit-compare-docker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CACHE_SUFFIX: v1         # Increase to force new cache to be created
+
+jobs:
+  ci:
+    name: ci
+
+    strategy:
+      fail-fast: false  # false: try to complete all jobs
+
+      matrix:
+        name:
+          - linux gcc-13
+
+        include:
+
+          - name: linux gcc-13
+            os: ubuntu-22.04
+            gcc: '13'
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    - name: Derive cycle from bundle.yml
+      run: |
+        set -eu
+        version=$(awk '/^name[[:space:]]*:[[:space:]]*ifs-bundle/{found=1} found && /^version[[:space:]]*:/{print $NF; exit}' bundle.yml)
+        IFS=. read -r MAJ MIN PAT <<< "$version"
+        OIFS_VERSION="${MAJ}r${MIN}"
+        CYCLE_BRANCH="openifs-lts/CY${MAJ}R${MIN}.${PAT}"
+        # Fall back to main when the cycle LTS branch has not been cut yet
+        # (e.g. a new cycle has landed on main but its openifs-lts/CY* branch
+        # does not yet exist on the remote).
+        if [ -z "$(git ls-remote --heads origin "$CYCLE_BRANCH")" ]; then
+          echo "Cycle branch ${CYCLE_BRANCH} not found on remote — falling back to main"
+          CYCLE_BRANCH=main
+        fi
+        echo "OIFS_VERSION=${OIFS_VERSION}"  >> $GITHUB_ENV
+        echo "CYCLE_BRANCH=${CYCLE_BRANCH}"  >> $GITHUB_ENV
+
+    - name: Environment
+      env:
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+      run: |
+        set -eu
+        # WORK_DIR sits outside github.workspace because the test phase copies
+        # the workspace into WORK_DIR/build_dir_test/...; a destination inside
+        # the source would recurse into itself in shutil.copytree.
+        WORK_DIR="${{ runner.temp }}/_oifs_docker_ci"
+        echo "CI_DIR=${{ github.workspace }}/scripts/ci/docker_ci" >> $GITHUB_ENV
+        echo "WORK_DIR=${WORK_DIR}"                                >> $GITHUB_ENV
+        echo "NORMS_DIR=${WORK_DIR}/control_saved_norms"           >> $GITHUB_ENV
+        echo "REPORTS_DIR=${WORK_DIR}/ci_reports"                  >> $GITHUB_ENV
+        CONTROL_BRANCH="${PR_BASE_REF:-$CYCLE_BRANCH}"
+        echo "CONTROL_BRANCH=${CONTROL_BRANCH}"                    >> $GITHUB_ENV
+
+    - name: Cache control NORMs
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.NORMS_DIR }}
+        key: control-norms-gcc${{ matrix.gcc }}-${{ env.OIFS_VERSION }}-${{ github.event.pull_request.base.sha || github.sha }}-${{ env.CACHE_SUFFIX }}
+
+    - name: Set up Python venv
+      run: |
+        set -eu
+        python3 -m venv "${WORK_DIR}/venv"
+        source "${WORK_DIR}/venv/bin/activate"
+        python3 -m pip install --upgrade pip
+        python3 -m pip install gitpython pyyaml
+
+    - name: Render CI config
+      run: |
+        set -eu
+        mkdir -p "${WORK_DIR}"
+        cat > "${WORK_DIR}/ci_test_docker.yml" <<EOF
+        openifs_version                : "${OIFS_VERSION}"
+        openifs_repo_url               : "https://github.com/${{ github.repository }}.git"
+        control_branch                 : "${CONTROL_BRANCH}"
+        test_branch                    : "${{ github.workspace }}"
+        base_docker_image              : "${{ matrix.gcc }}"
+        docker_template                : "./Dockerfile.ci"
+        include_openifs_data_downloads : False
+        openifs_build_docker_dir       : "${WORK_DIR}"
+        ci_reports                     : "${REPORTS_DIR}"
+        control_saved_norms_dir        : "${NORMS_DIR}"
+        force_reclone                  : True
+        reuse_control_if_present       : True
+        openifs_test_extra_flags       : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"
+        EOF
+
+    - name: Build & Test
+      id: build-test
+      run: |
+        set -eu
+        cd "$CI_DIR"
+        source "${WORK_DIR}/venv/bin/activate"
+        echo "::group::ci-oifs-docker.py"
+        python3 ci-oifs-docker.py -c "${WORK_DIR}/ci_test_docker.yml"
+        echo "::endgroup::"
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bit-compare-reports-gcc${{ matrix.gcc }}
+        path: ${{ env.REPORTS_DIR }}/
+        if-no-files-found: warn
