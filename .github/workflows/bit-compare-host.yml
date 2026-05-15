@@ -11,7 +11,7 @@ on:
     - main
 
   # Trigger the workflow on all pull requests
-  pull_request: ~
+  # pull_request: ~
 
   # Allow workflow to be dispatched on demand
   workflow_dispatch: ~
