@@ -35,6 +35,12 @@ def _resolve_control_sha(config):
         ["git", "ls-remote", config['openifs_repo_url'], config['control_branch']],
         text=True,
     ).strip()
+    if not out:
+        raise ValueError(
+            f"Unable to resolve control branch/ref "
+            f"'{config['control_branch']}' from remote "
+            f"'{config['openifs_repo_url']}': git ls-remote returned no output"
+        )
     return out.split()[0][:7]
 
 
