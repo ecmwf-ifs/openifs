@@ -1,0 +1,71 @@
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+# CI-only minimal Dockerfile.
+#
+# Differences vs. ../docker/Dockerfile:
+#   - No SCM data (SCM_URL) download
+#   - No 3D experiment data (OPENIFS_EXPT_URL) download
+#   - No oifs-run preparation (no $OIFS_EXPT/ab7z layout)
+#   - No ifsdata / rtables / climate.v0xx download — `openifs-test.sh -cbt`
+#     drives ctest, which fetches its own test inputs from ECPDS via
+#     ifs-test/bin/storage.py into <build_dir>/.cache. The OIFS data files
+#     are only needed for `oifs-run`-style experiments, which CI does not run.
+#
+# This image is used by scripts/ci/docker_ci/ci-oifs-docker.py to build the
+# control and the test branch and run `openifs-test.sh -cbt` for NORMS
+# comparison only — no experiment runs, no SCM runs.
+
+FROM docker.io/library/gcc:13.2.0-bookworm
+
+## Force container shell to be bash
+SHELL ["/bin/bash", "-l", "-c"]
+
+ARG OPENIFS_DIR=
+ARG OPENIFS_REPO_URL=
+ARG OPENIFS_BRANCH=
+
+## Install required compilers and libraries, build OpenMPI, and cleanup in one layer
+RUN apt update && \
+    apt install -y git cmake python3 python3-ruamel.yaml python3-yaml python3-venv \
+        libomp-dev libboost-dev libboost-date-time-dev libboost-filesystem-dev \
+        libboost-serialization-dev libboost-program-options-dev netcdf-bin \
+        libnetcdf-dev libnetcdff-dev liblapack-dev libeigen3-dev vim emacs \
+        wget bc ca-certificates && \
+    update-ca-certificates && \
+    cd /tmp && \
+    wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.10.tar.gz && \
+    tar -xvf openmpi-5.0.10.tar.gz && \
+    cd openmpi-5.0.10 && \
+    ./configure --disable-libxml2 --prefix=/usr/local && \
+    make -j4 all && \
+    make install && \
+    ldconfig && \
+    cd / && \
+    rm -rf /tmp/openmpi-5.0.10* && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user (uid 1000) and the OpenIFS source dir.
+# No expt directory — CI does not run experiments.
+RUN groupadd --gid 1000 openifs && \
+    useradd --uid 1000 --gid openifs --shell /bin/bash --create-home openifs && \
+    mkdir -p /home/openifs/${OPENIFS_DIR} && \
+    chown -R openifs:openifs /home/openifs
+
+USER openifs
+
+# Copy the OpenIFS source tree (cloned by ci-oifs-docker.py into the build context)
+WORKDIR /home/openifs/${OPENIFS_DIR}
+COPY --chown=openifs:openifs ${OPENIFS_DIR} /home/openifs/${OPENIFS_DIR}
+
+# Patch oifs-config.edit_me.sh so OIFS_HOME points at the copied source dir
+# and source it on every shell login (matches the full Dockerfile).
+RUN sed -i 's|export OIFS_HOME="${HOME}/.*"|export OIFS_HOME="${HOME}/'${OPENIFS_DIR}'"|g' oifs-config.edit_me.sh && \
+    echo "source /home/openifs/${OPENIFS_DIR}/oifs-config.edit_me.sh" >> /home/openifs/.bashrc

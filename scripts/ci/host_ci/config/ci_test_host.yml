@@ -1,0 +1,72 @@
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+
+# CI config for ci-oifs-host.py.
+#
+# Stages two OpenIFS source trees (control branch + test branch), runs
+# `openifs-test.sh -cbt` with IFS_TEST_BITIDENTICAL=init IFS_TEST_LEGACY=1
+# in each, and diffs the SAVED_NORMS trees with openifs_branch_bitcompare.py.
+# Everything runs directly on the host — no Docker.
+
+# OpenIFS version (used for image tagging and the SAVED_NORMS cache key).
+openifs_version : "48r1"
+
+# OpenIFS repository.
+openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
+
+# Branches to compare. The control is the reference; the test is whatever
+# you are evaluating against it. control_branch is always a remote branch
+# name (the one to clone). test_branch accepts a path to a local checkout
+# or a remote branch name; see the docker config for the full rules.
+control_branch : "openifs-lts/CY48R1.1"
+test_branch    : ""
+
+# Compiler version. Used only to key the control SAVED_NORMS cache so that
+# different compilers don't silently share a previous run's NORMS. The
+# actual compiler binaries (CC, CXX, FC) must be present on PATH or
+# selected by the caller before invoking this driver.
+compiler_version : "14"
+
+# Host-side build/work directory. Each branch is staged into a sibling
+# subdir (build_dir_control, build_dir_test) and the extracted control
+# NORMS tree is dropped here too. Pick a path OUTSIDE your OpenIFS source
+# checkout — otherwise the local-source copy would recurse into itself.
+openifs_build_host_dir : "~/oifs_host_ci_dir"
+
+# Where the bit-comparison reports (<control>-<sha7>__<test|dir>.txt)
+# are dropped on the host.
+ci_reports : "~/oifs_host_ci_dir/ci_reports"
+
+# Where the cached control SAVED_NORMS tarballs are stored. Filename:
+# control_saved_norms_<openifs_version>_gcc<compiler_version>.tgz
+control_saved_norms_dir : "~/oifs_host_ci_dir/control_saved_norms"
+
+# Whether to clone the control branch from the remote (True), or use an
+# existing pre-populated source tree at
+#   <openifs_build_host_dir>/build_dir_control/<openifs_version>/
+# (False). Leave True for a known reference unless you know what you are
+# doing.
+clone_openifs_control : True
+
+# Force removal of an existing per-branch clone directory without prompting.
+force_reclone : True
+
+# Reuse the control SAVED_NORMS tarball from a previous run if it already
+# exists. The cached filename is keyed on openifs_version + compiler_version
+# so different (version, compiler) combinations cache independently.
+# When True and the matching tarball exists, the entire control phase
+# (stage, build, test) is skipped — handy when iterating on the test branch
+# against a stable control. Delete the tarball (or set this to False) to
+# force a fresh control run.
+reuse_control_if_present : True
+
+# Extra flags forwarded to openifs-test.sh -cbt.
+openifs_test_extra_flags : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"

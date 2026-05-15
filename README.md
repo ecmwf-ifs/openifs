@@ -148,11 +148,11 @@ END ifstest on OpenIFS build
 
 The previous section, [Installing and Building OpenIFS](#installing-and-building-openifs), describes the pre-requisites and build process for OpenIFS on a generic Linux based system.
 
-[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and associated scripts and configuration automates the process described in section [Installing and Building OpenIFS](#installing-and-building-openifs), by creating a Docker container, installing OpenIFS and dependencies and then building OpenIFS and running the test.
+[create-oifs-docker.py](scripts/bootstrap/docker/create-oifs-docker.py) and associated scripts and configuration automates the process described in section [Installing and Building OpenIFS](#installing-and-building-openifs), by creating a Docker container, installing OpenIFS and dependencies and then building OpenIFS and running the test.
 
-* Please go to [OpenIFS Docker Builder](scripts/docker/README.md) for details about the Docker install.
+* Please go to [OpenIFS Docker Builder](scripts/bootstrap/docker/README.md) for details about the Docker install.
 
-[create-oifs-docker.py](scripts/docker/create-oifs-docker.py) and the resulting Docker development has been tested on macOS but it can be applied to other systems, as long as Docker is installed and the appropriate python dependencies are available.
+[create-oifs-docker.py](scripts/bootstrap/docker/create-oifs-docker.py) and the resulting Docker development has been tested on macOS but it can be applied to other systems, as long as Docker is installed and the appropriate python dependencies are available.
 
 ## Install the static input data files for OpenIFS
 

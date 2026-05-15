@@ -15,7 +15,7 @@ Automated Docker container creation for the stand-alone OpenIFS model.
 It's recommended to use a virtual environment to install the required Python packages:
 
 ```bash
-cd scripts/docker
+cd scripts/bootstrap/docker
 
 # Create a virtual environment
 python3 -m venv openifs-env
@@ -75,19 +75,19 @@ The configuration file, `config/create_openifs_docker.yml`, controls the build o
 # OpenIFS version (used for directory naming and image tagging)
 openifs_version: "48r1"
 
-# Git branch to extract from repository
-openifs_branch: "main"
+# Where to get the OpenIFS source tree. Three modes:
+#   a branch name    -> clone that branch from openifs_repo_url (default)
+#   a directory path -> copy that local checkout into the Docker build directory
+#   empty / not set  -> auto-detect the checkout containing this script
+openifs_source: "main"
 
-# Repository URL (requires SSH access)
-openifs_repo_url: "git@github.com:ecmwf-ifs/openifs.git"
+# Repository URL
+openifs_repo_url: "https://github.com/ecmwf-ifs/openifs.git"
 
 # SCM experiment data URL (tar.gz or tar file)
 scm_url: https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz
 
-# Clone repository (True) or use existing directory (False)
-clone_openifs: True
-
-# Force removal of existing clone without prompting
+# Force removal of existing source directory before re-staging
 force_reclone: False
 
 # Run openifs build command after building image
@@ -159,11 +159,15 @@ This is a clean container in which `source oifs-config.edit_me.sh` is run upon s
 - Validates base Docker image is from official sources (security)
 - Checks if base image exists locally, pulls if needed
 
-### Step 2: Repository Setup
+### Step 2: Source Setup
 
-- Shallow clones OpenIFS from specified branch (if `clone_openifs: True`)
-- Copies SCM experiment data to build directory
-- Updates configuration files with correct paths
+Resolves `openifs_source` using the same three-mode convention as the CI driver:
+
+- **Branch name** (default, e.g. `"main"`) — shallow-clones from `openifs_repo_url` into the build directory
+- **Directory path** (e.g. `"~/src/openifs"`) — copies that local checkout into the build directory, skipping transient artefacts (`.git`, `build/`, `__pycache__`, etc.)
+- **Empty** — auto-detects the OpenIFS checkout that contains this script (useful when running from inside the repository)
+
+`force_reclone: True` removes and re-stages the source regardless of mode.
 
 ### Step 3: Docker Build
 
@@ -185,10 +189,10 @@ This is a clean container in which `source oifs-config.edit_me.sh` is run upon s
 - Set `force_rebuild: True` to rebuild
 - Or manually remove the image
 
-### Clone Directory Exists
+### Source Directory Exists
 
-- Set `force_reclone: True` to remove and re-clone
-- Or set `clone_openifs: False` to use existing directory
+- Set `force_reclone: True` to remove and re-stage the source
+- Or change `openifs_source` to a different branch or path
 
 ### Base Image Not Found
 
