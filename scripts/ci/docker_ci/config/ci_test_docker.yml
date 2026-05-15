@@ -1,0 +1,108 @@
+#
+# (C) Copyright 2011- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+#
+
+# CI config for ci-oifs-docker.py.
+#
+# Builds two Docker images (control branch + test branch), runs
+# `openifs-test.sh -cbt` with IFS_TEST_BITIDENTICAL=init IFS_TEST_LEGACY=1
+# in each, copies the SAVED_NORMS tree out of each container, and diffs them
+# with openifs_branch_bitcompare.py.
+#
+# No 3D experiment data, no SCM data — Dockerfile.ci omits those downloads.
+
+# OpenIFS version (used for image tagging and the SAVED_NORMS cache key).
+openifs_version : "48r1"
+
+# OpenIFS repository.
+openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
+
+# Branches to compare. The control is the reference; the test is whatever
+# you are evaluating against it.
+#
+# control_branch is always a remote branch name (the one to clone), unless
+# clone_openifs_control: False below and you have manually pre-populated
+# the control build directory.
+control_branch : "openifs-lts/CY48R1.1"
+
+# test_branch accepts:
+#   - empty            -> auto-resolves to <ci-oifs-docker.py>/../../..
+#                         (the OpenIFS tree this CI script lives inside)
+#   - a directory path -> used as a local source (~ and env vars expanded)
+#   - anything else    -> treated as a remote branch name to clone
+# Local sources are copied into the build directory, ignoring transient
+# artefacts (.git, build/, .cache, .bootstrap, __pycache__, openifs-env).
+test_branch    : ""
+
+# GCC base image tag from docker.io/library/gcc (security-gated by docker_lib)
+base_docker_image : "12"
+
+# Path to the CI Dockerfile (relative to scripts/ci/docker_ci/)
+docker_template : "./Dockerfile.ci"
+
+# CI Docker image does not need runtime ifsdata/climate/rtables downloads.
+# The CI driver also forces this off when rendering branch Dockerfiles.
+include_openifs_data_downloads : False
+
+# Host-side build/work directory. Each branch is cloned into a sibling subdir
+# (build_dir_control, build_dir_test) and the per-build Dockerfile is
+# written here too.
+openifs_build_docker_dir : "~/oifs_docker_ci_dir"
+
+# Where the bit-comparison reports (<control>-<sha7>__<test|dir>.txt)
+# are dropped on the host
+ci_reports : "~/oifs_docker_ci_dir/ci_reports"
+
+# Where the cached control SAVED_NORMS tarballs are stored. Kept separate
+# from the report so it can be reused across many test-branch iterations
+# and so different (version, gcc) caches can sit alongside each other.
+# Filename inside: control_saved_norms_<openifs_version>_gcc<image>.tgz
+control_saved_norms_dir : "~/oifs_docker_ci_dir/control_saved_norms"
+
+# Whether to clone the control branch from the remote (True), or use an
+# existing pre-populated source tree at
+#   <openifs_build_docker_dir>/build_dir_control/<openifs_version>/
+# (False). Leave True for a known reference unless you know what you are
+# doing. The test side has no equivalent flag — it is auto-detected from
+# the test_branch value above.
+clone_openifs_control : True
+
+# Force removal of an existing per-branch clone directory without prompting
+force_reclone : True
+
+# Force rebuild of each image even if it already exists locally
+force_rebuild : False
+
+# Skip URL HEAD validation (set True for offline / firewalled builds)
+skip_url_validation : False
+
+# Remove any existing oifs-ci-control/oifs-ci-test container before starting
+# a new one (default True, so reruns do not need manual docker stop/rm).
+# Set False only if you explicitly want a run to fail when the name exists.
+remove_existing_container_before_run : True
+
+# Remove containers after extracting NORMS (CI default = clean up).
+# Set False to keep them around for debugging.
+remove_test_container : False
+
+# Reuse the control SAVED_NORMS tarball from a previous run if it already
+# exists. The cached filename is keyed on openifs_version + base_docker_image
+# so different (version, compiler) combinations cache independently:
+#   <control_saved_norms_dir>/control_saved_norms_<openifs_version>_gcc<image>.tgz
+# e.g. control_saved_norms_48r1_gcc14.tgz
+# When True and the matching tarball exists, the entire control phase
+# (clone, build, test) is skipped — handy when iterating on the test branch
+# against a stable control. Delete the tarball (or set this to False) to
+# force a fresh control run.
+reuse_control_if_present : True
+
+# Extra flags forwarded to openifs-test.sh -cbt inside the container.
+## gcc 14, single precision fails for a strange problem in susrtab.F90
+openifs_test_extra_flags : "--without-single-precision --cmake=BUILD_ifsbench=OFF --clean"

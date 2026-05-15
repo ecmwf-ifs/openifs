@@ -9,27 +9,38 @@
 # nor does it submit to any jurisdiction.
 #
 
-# Openifs version
+# OpenIFS version (used for directory naming, image tagging, and as a
+# component of every data-archive URL below).
 openifs_version : "48r1"
 
-# The OpenIFS branch to extract from repo
-openifs_branch : "main"
-
-# Climate data version
+# Climate data version (embedded in the climate tarball filename).
 climate_version : "climate.v020"
 
-# Base URL for OpenIFS data files
+# OpenIFS repository (must be accessible from the machine running this script).
+openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
+
+# Base URL for OpenIFS data files.  Per-version ifsdata, rtables and
+# climate tarballs are derived from this in docker_lib.modify_dockerfile().
 openifs_data_base_url : "https://sites.ecmwf.int/openifs/openifs-download/ifsdata"
 
-# SCM experiment data URL (tar.gz or tar file)
+# SCM experiment data archive.
 scm_url : "https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz"
 
-# OpenIFS experiment package (low res)
+# Low-resolution 3-D experiment package.
 openifs_expt_url : "https://sites.ecmwf.int/openifs/openifs-download/experiments/48r1/2016-09-25_Karl/ab7z.tar.gz"
+
+# The OpenIFS branch to build inside the Docker image.
+# openifs_source controls where the OpenIFS tree comes from.
+# Three modes — same convention as the CI test_branch key:
+#   empty / not set  -> auto-detect the OpenIFS checkout containing this script
+#   a directory path -> copy that local checkout into the Docker build directory
+#                       (transient artefacts .git, build/, __pycache__ are skipped)
+#   a branch name    -> clone that branch from openifs_repo_url
+openifs_source : ""
 
 # Docker image - the following images are known to work.
 #base_docker_image : "12.3.0-bullseye"
-base_docker_image : "13"
+base_docker_image : "14"
 
 # Path for the Docker file template
 docker_template : "./Dockerfile"
@@ -37,17 +48,11 @@ docker_template : "./Dockerfile"
 # Directory to store the OpenIFS Dockerfile and base OpenIFS version and files
 openifs_build_docker_dir : "~/oifs_docker_create_dir"
 
-# The URL for the OpenIFS repository, where the branch will be extracted
-openifs_repo_url : "git@github.com:ecmwf-ifs/openifs.git" 
-
-# True to clone OpenIFS repository, False to use existing
-clone_openifs : True
-
-# Force removal of existing clone directory without prompting
+# Force removal of existing clone/staged directory before re-staging
 force_reclone : True
 
 # Force rebuild of Docker image even if it exists
-force_rebuild : False
+force_rebuild : True
 
 # Run tests after building image
 run_tests : True
@@ -60,4 +65,3 @@ remove_test_container : False
 
 # Skip URL validation (useful if behind firewall or for offline builds)
 skip_url_validation : False
-

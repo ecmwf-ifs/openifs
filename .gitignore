@@ -21,4 +21,4 @@ __pycache__/
 .DS_Store
 
 # User-specific Docker config
-scripts/docker/config/my_config.yml
+scripts/bootstrap/docker/config/my_config.yml
