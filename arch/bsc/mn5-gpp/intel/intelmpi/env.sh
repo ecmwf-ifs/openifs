@@ -31,13 +31,6 @@ module_load python/3.12.1
 
 export TBBMALLOC_DIR="/apps/GPP/ONEAPI/2023.2.0/tbb/2021.10.0/lib/intel64/gcc4.8"
 export TBBROOT="/apps/GPP/ONEAPI/2023.2.0/tbb/2021.10.0"
-export TBB_MALLOC_USE_HUGE_PAGES=1
-export TBB_MALLOC_SET_HUGE_SIZE_THRESHOLD=0
-export I_MPI_FABRICS="shm:ofi"
-export I_MPI_OFI_PROVIDER="verbs"
-export FI_PROVIDER="verbs"
-export I_MPI_PLATFORM="spr"
-export UCX_TLS="rc,sm,self"   # or rc,self if no shared memory
 
 # Setting required for bit reproducibility with Intel MKL:
 export MKL_CBWR=AUTO,STRICT

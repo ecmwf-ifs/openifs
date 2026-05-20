@@ -12,13 +12,13 @@ if [[ "${ECPLATFORM:-"unset"}" == "hpc2020" ]] ; then
     LAUNCHER_OTHER_FLAGS="--gres=ssdtmp:0"
     export OMP_PROC_BIND=true
     export OMP_PLACES=threads
-elif [[ "${ECPLATFORM:-"unset"}" == "puhti" ]]
+elif [[ "${ECPLATFORM:-"unset"}" == "puhti" ]] ; then
     LAUNCHER="srun"
     LAUNCHER_NPROC_FLAG="-n"
     LAUNCHER_NTHREAD_FLAG="--cpus-per-task"
     export OMP_PROC_BIND=true
     export OMP_PLACES=threads
-elif [[ "${ECPLATFORM:-"unset"}" == "mn5-gpp" ]]
+elif [[ "${ECPLATFORM:-"unset"}" == "mn5-gpp" ]] ; then
     LAUNCHER="srun"
     LAUNCHER_NPROC_FLAG="-n"
     LAUNCHER_NTHREAD_FLAG="--cpus-per-task"
