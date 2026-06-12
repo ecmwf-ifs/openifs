@@ -1,10 +1,3 @@
-! (C) Copyright 2003- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE NITRO_DECLINE_MOD
 CONTAINS
 SUBROUTINE NITRO_DECLINE(KIDIA,KFDIA,KVT,KLON,KSTEP, PTSPHY,&
@@ -15,6 +8,13 @@ SUBROUTINE NITRO_DECLINE(KIDIA,KFDIA,KVT,KLON,KSTEP, PTSPHY,&
  & PBIOMASS_LAST,PBIOMASSTR_LAST,PBIOMASSTR2_LAST,&
  & PBIOMASS,PBLOSS)
 
+! (C) Copyright 2003- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !**  *NITRO_DECLINE* 
 
 !     PURPOSE

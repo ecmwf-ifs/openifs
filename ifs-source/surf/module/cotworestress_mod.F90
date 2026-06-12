@@ -1,10 +1,3 @@
-! (C) Copyright 1997- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE COTWORESTRESS_MOD
 CONTAINS
 SUBROUTINE COTWORESTRESS(KIDIA,KFDIA,KLON,KVTYPE,KCO2TYP,PFRTI,&
@@ -17,6 +10,13 @@ SUBROUTINE COTWORESTRESS(KIDIA,KFDIA,KLON,KVTYPE,KCO2TYP,PFRTI,&
      & PAN, PAG,PRD, &
      & PWET,PDSP,PDMAXT)
 
+! (C) Copyright 1997- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
   !**   *COTWORESTRESS* - CALCULATES NET ASSIMILATION OF CO2 AND CANOPY CONDUCTANCE  
 
   !     A. Boone       * Meteo-France *     27/10/97 

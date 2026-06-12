@@ -1,16 +1,17 @@
-! (C) Copyright 2000- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SRFROOTFR_MOD
 CONTAINS
 SUBROUTINE SRFROOTFR(KLEVS,KVTYPES,PSDEPTH,PROOTF)
  
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+
+! (C) Copyright 2000- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**** *SRFROOTFR* - Initializing root fraction
 

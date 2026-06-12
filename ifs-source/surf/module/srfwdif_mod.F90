@@ -1,10 +1,3 @@
-! (C) Copyright 1993- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SRFWDIF_MOD
 CONTAINS
 SUBROUTINE SRFWDIF(KIDIA,KFDIA,KLON,KLEVS,&
@@ -15,6 +8,14 @@ SUBROUTINE SRFWDIF(KIDIA,KFDIA,KLON,KLEVS,&
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_SOIL , ONLY : TSOIL
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**** *SRFWDIF* -  DOES THE IMPLICIT CALCULATION FOR SOIL MOISTURE
 

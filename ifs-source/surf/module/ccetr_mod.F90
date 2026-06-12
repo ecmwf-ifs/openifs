@@ -1,13 +1,14 @@
-! (C) Copyright 1998- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE CCETR_MOD
 CONTAINS
 SUBROUTINE CCETR(KIDIA,KFDIA,KLON,KVTYPE,LDLAND,PIA,PMU0,PABC,PLAI,YDAGS,PXIA)
+
+! (C) Copyright 1998- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**  *CCETR* 
 

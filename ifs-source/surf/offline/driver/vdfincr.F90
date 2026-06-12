@@ -1,15 +1,16 @@
-! (C) Copyright 1990- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE VDFINCR(KIDIA  , KFDIA  , KLON   , KLEV   , KTOP   , PTMST  , &
  & PUM1   , PVM1   , PSLGM1 , PTM1   , PQTM1  , PAPHM1 , PGEOM1 , &
  & PCFM   , PUDIF  , PVDIF  , PSLGDIF, PQTDIF , &
  & PVOM   , PVOL   , PSLGE  , PQTE   , PSLGEWODIS, &
  & PVDIS  , PSTRTU , PSTRTV)  
+! (C) Copyright 1990- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
 !     ------------------------------------------------------------------
 
 !**   *VDFINCR* - INCREMENTS U,V,T AND Q-TENDENCIES; COMPUTE MULTILEVEL

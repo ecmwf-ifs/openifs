@@ -1,10 +1,3 @@
-! (C) Copyright 1999- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SURFBC_CTL_MOD
 CONTAINS
 SUBROUTINE SURFBC_CTL(KIDIA, KFDIA, KLON, KTILES,KLEVSN, &
@@ -22,6 +15,14 @@ USE YOS_VEG,      ONLY : TVEG
 USE YOS_FLAKE,    ONLY : TFLAKE
 USE YOS_OCEAN_ML, ONLY : TOCEAN_ML
 USE ABORT_SURF_MOD  
+
+! (C) Copyright 1999- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 !**   *SURFBC* - CREATES BOUNDARY CONDITIONS CHARACTERIZING THE SURFACE

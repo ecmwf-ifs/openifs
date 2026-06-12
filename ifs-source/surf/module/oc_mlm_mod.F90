@@ -1,10 +1,3 @@
-! (C) Copyright 2005- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE OC_MLM_MOD
 
 CONTAINS
@@ -14,6 +7,14 @@ SUBROUTINE OC_MLM(KIDIA,KFDIA,KLON,KLEVO,DELT,NSTEP,RT,Q_0,FC,&
  &                PUSTOKES ,PVSTOKES ,&
  &                XKS,U_S,V_S,T_S,&
  &                POTKE,U,V,T,YDMLM,YDCST)
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 !***  DETERMINES EVOLUTION OF U, V AND T USING A MIXED LAYER MODEL 
 !     FOR THE UPPER OCEAN

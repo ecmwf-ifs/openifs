@@ -1,10 +1,3 @@
-! (C) Copyright 1989- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE VDFDIFH1S(&
  & KIDIA  , KFDIA  , KLON   , KLEV   , KTOP   , KTILES , KTVL   , KTVH , KLEVSN,&
  & PTMST  , PFSH1D , PFLH1D , LDFLUX1D, &
@@ -18,6 +11,13 @@ SUBROUTINE VDFDIFH1S(&
  & PTSNOW , PTICE  , PSST, &
  & PTSKTIP1, PSLGE  , PTE    , PQTE, &
  & PJQ,PSSH,PSLH,PSTR,PG0,PJQU)  
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !     ------------------------------------------------------------------
 
 !**   *VDFDIFH* - DOES THE IMPLICIT CALCULATION FOR DIFFUSION OF S. L.

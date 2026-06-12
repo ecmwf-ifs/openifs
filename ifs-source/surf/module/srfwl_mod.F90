@@ -1,10 +1,3 @@
-! (C) Copyright 1989- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SRFWL_MOD
 CONTAINS
 SUBROUTINE SRFWL(KIDIA,KFDIA,KTILES,&
@@ -21,6 +14,14 @@ USE YOS_THF   , ONLY : RHOH2O
 USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_VEG   , ONLY : TVEG
      
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
 !**** *SRFWL* - COMPUTES CHANGES IN THE SKIN RESERVOIR.
 !     PURPOSE.
 !     --------
