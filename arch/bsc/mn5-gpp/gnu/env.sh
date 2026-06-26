@@ -35,6 +35,14 @@ export MKL_CBWR=AUTO,STRICT
 # Record the RPATH in the executable
 export LD_RUN_PATH=$LD_LIBRARY_PATH
 
+# Prevent pip from trying to access the Internet during the ifs-test
+# configuration and use local repo instead.  Create repo using
+#
+# pip -r requirements.txt -d /path/to/repo
+#
+export PIP_NO_INDEX=1
+export PIP_FIND_LINKS=/gpfs/projects/bsc32/models/openifs/python/repo
+
 # Undo stack size limitation enforced by Python module (prevent segfault during
 # runtime)
 ulimit -s unlimited
