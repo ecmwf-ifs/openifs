@@ -21,7 +21,6 @@ USE NETCDF
 USE NETCDF_UTILS, ONLY: NCERROR
 USE MPL_MODULE
 #ifdef DOC
-
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
