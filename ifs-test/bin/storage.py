@@ -2,6 +2,7 @@
 
 import logging
 import pathlib
+import os
 import re
 import shutil
 import urllib.error
@@ -28,6 +29,8 @@ class DataSource:
     :param source_path:     The relative path to the source file.
     :param target_path:     The absolute path where the targe file should be
                             placed.
+    
+    :raises:                RuntimeError, if the operation failed.
     """
     return NotImplemented
 
@@ -48,6 +51,9 @@ class FileSource(DataSource):
 
     if not source_path.exists():
       raise RuntimeError("The source file %s does not exist!" % source_path)
+
+    if not os.access(source_path, os.R_OK):
+      raise RuntimeError("The source file %s lacks the necessary read permissions." % source_path)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.unlink(missing_ok=True)
@@ -129,6 +135,38 @@ def _get_data_sources(config):
 
   return sources
 
+def _fetch_sequential(sources, source_path, target_path):
+  """
+  Fetch a file from the first available source in a source list.
+
+  :param sources:     List of data sources.
+  :param source_path: Relative path of the file with respect to the data
+                      sources. 
+  :param target_path: Path where the fetched file will be placed. The file
+                      must not exist yet.
+  :raises:            RuntimeError
+                      If fetching the file failed for all data sources.
+  """
+
+  success = True
+
+  for source in sources:
+    success = False
+    try:
+      source.fetch(source_path, target_path)
+      success = True
+      break
+    except RuntimeError as re:
+      logging.debug(f"Fetching {source_path} from {source} failed ({str(re)}).")
+    except Exception as ex:
+      # source.fetch should raise a RuntimeError if fetching wasn't succesful.
+      # To be safe, catch other exceptions here, too.
+      logging.critical(f"Unexpected failure when fetching {source_path} from {source}: {str(ex)}!")
+
+  if not success:
+    raise RuntimeError(f"Fetching {source_path} failed!")
+
+
 @click.group()
 @click.option('-v', 'verbosity', count=True)
 def cli(verbosity):
@@ -205,17 +243,7 @@ def fetch(config_file, output_dir, force, custom_path):
     if target_path.exists():
       logging.debug(f"Skip file {target_path} (file exists).")
     else:
-      for source in sources:
-        success = False
-        try:
-          source.fetch(source_path, target_path)
-          success = True
-          break
-        except RuntimeError as re:
-          logging.debug(f"Fetching {source_path} from {source} failed.")
-
-      if not success:
-        raise RuntimeError(f"Fetching {source_path} failed!")
+      _fetch_sequential(sources, source_path, target_path)
 
     if extract_path is not None:
       extract_path = output_dir/extract_path
@@ -291,17 +319,7 @@ def cache(config_file, output_dir, force, custom_path):
     if target_path.exists():
       logging.debug(f"Skip file {target_path} (file exists).")
     else:
-      for source in sources:
-        success = False
-        try:
-          source.fetch(source_path, target_path)
-          success = True
-          break
-        except RuntimeError as re:
-          logging.debug(f"Fetching {source_path} from {source} failed.")
-
-      if not success:
-        raise RuntimeError(f"Fetching {source_path} failed!")
+      _fetch_sequential(sources, source_path, target_path)
 
   logging.info("Caching data finished. Data has been placed in %s." % output_dir)
 
