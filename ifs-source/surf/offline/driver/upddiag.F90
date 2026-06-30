@@ -1,10 +1,3 @@
-! (C) Copyright 2010- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE UPDDIAG( &
  & KIDIA,KFDIA,KLON,KLEV,KLEVS,KLEVSN,KTILES,KVTYPES, &
  & KDHVTLS,KDHFTLS,KDHVTSS,KDHFTSS, &
@@ -24,6 +17,13 @@ SUBROUTINE UPDDIAG( &
  & PDHTLS,PDHTSS,PDHTTS,PDHSSS,PDHIIS,PDHWLS,PDHRESS,&
  & PT2M,PD2M,PDHCO2S,PDHBIOS,PDHVEGS)
 
+! (C) Copyright 2010- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 !**** UPDDIAG - INTERFACE ROUTINE TO COPY IFS VARIABLES TO
 !		OFFLINE CODE DIAGNOSTICS BUFFERS

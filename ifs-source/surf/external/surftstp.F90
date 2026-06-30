@@ -1,10 +1,3 @@
-! (C) Copyright 1993- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE SURFTSTP    (YDSURF, KIDIA , KFDIA , KLON  , KLEVS , KTILES,&
  & KLEVSN, KLEVO , KLEVI ,  KSTART , KSTEP,&
  & KDHVTSS , KDHFTSS,&
@@ -69,6 +62,14 @@ USE YOS_SURF, ONLY : TSURF, GET_SURF
 USE ABORT_SURF_MOD
 USE SURFTSTP_CTL_MOD
 !endif INTERFACE
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 !**** *SURFTSTP* - UPDATES LAND VALUES OF TEMPERATURE, MOISTURE AND SNOW.

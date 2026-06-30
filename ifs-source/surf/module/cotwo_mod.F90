@@ -1,10 +1,3 @@
-! (C) Copyright 1997- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE COTWO_MOD
 
 CONTAINS
@@ -13,6 +6,13 @@ SUBROUTINE COTWO(KIDIA,KFDIA,KLON,LDLAND, PAN, PAG, PRD, PGS, PGC, PCSP, &
  & PFZERO, PGMEST, PEPSO, PAMMAX  )
 
 !***
+! (C) Copyright 1997- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**   *COTWO* - CALCULATES NET ASSIMILATION OF CO2 AND LEAF CONDUCTANCE
 

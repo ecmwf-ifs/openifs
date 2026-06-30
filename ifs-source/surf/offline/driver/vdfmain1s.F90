@@ -1,10 +1,3 @@
-! (C) Copyright 1982- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 !OPTIONS XOPT(HSFUN)
 SUBROUTINE VDFMAIN1S  ( CDCONF, &
  & KIDIA  , KFDIA  , KLON   , KLEV   , KLEVS  , KSTEP  , KTILES , KVTYPES, KDIAG, &
@@ -39,6 +32,13 @@ SUBROUTINE VDFMAIN1S  ( CDCONF, &
  ! DDH OUTPUTS
  & PDHTLS , PDHTSS , PDHTTS , PDHTIS, PDHCO2S,PDHVEGS )
 
+! (C) Copyright 1982- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !***
 
 !**   *VDFMAIN1S* - DOES THE VERTICAL EXCHANGE OF U,V,SLG,QT BY TURBULENCE.

@@ -1,10 +1,3 @@
-! (C) Copyright 1988- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SURWN_MOD
 CONTAINS
 SUBROUTINE SURWN (KSIL,PTSTAND,PXP,PRSUN,YDDIM,YDRAD,YDLW,YDSW)
@@ -16,6 +9,14 @@ USE YOS_RAD   , ONLY : TRAD
 USE YOS_LW    , ONLY : TLW
 USE YOS_SW    , ONLY : TSW
 USE ABORT_SURF_MOD
+! (C) Copyright 1988- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
 !**** *SURWN*   - INITIALIZE COMMON YOESW
 
 !     PURPOSE.

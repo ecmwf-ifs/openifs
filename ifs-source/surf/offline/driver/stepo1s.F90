@@ -1,10 +1,3 @@
-! (C) Copyright 1995- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE STEPO1S
 USE PARKIND1  ,ONLY : JPIM     ,JPRB      ,JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -17,6 +10,13 @@ USE YOMGDI1S , ONLY : GDI1S    ,N2DDI    ,GDIAUX1S ,N2DDIAUX ,D1SWAFR
 USE YOMDPHY  , ONLY : NPOI     ,NGPP     ,NGPA
 
 #ifdef DOC
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**** *STEPO1S*  - Controls integration job at lowest level
 
