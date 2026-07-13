@@ -1,10 +1,3 @@
-! (C) Copyright 2011- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE OCEAN_ML_DRIVER_V2_MOD
 
 CONTAINS
@@ -18,6 +11,13 @@ SUBROUTINE OCEAN_ML_DRIVER_V2 &
  &   YDCST    ,YDEXC    ,YDMLM    ,&
  &   POTKE    ,PUOE1    ,PVOE1    ,PTOE1    ,PSOE1    )
 !
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 ! -------
 !   THIS ROUTINE IS THE MAIN DRIVER FOR THE OCEAN MIXED LAYER MODEL.
 

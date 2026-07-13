@@ -1,10 +1,3 @@
-! (C) Copyright 1994- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE KPP_TRIDMAT_MOD
 CONTAINS
 SUBROUTINE KPP_TRIDMAT &
@@ -13,6 +6,13 @@ SUBROUTINE KPP_TRIDMAT &
   &   PYO      ,YDOCEAN_ML,&
   &   PYN )
 
+! (C) Copyright 1994- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 ! Purpose :
 ! -------
 !   This routine solves tridiagonal matrix with Thomas algorithm.

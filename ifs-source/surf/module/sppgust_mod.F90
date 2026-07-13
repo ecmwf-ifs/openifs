@@ -1,10 +1,3 @@
-! (C) Copyright 2000- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SPPGUST_MOD
 CONTAINS
 SUBROUTINE SPPGUST(KIDIA, KFDIA, KLON &
@@ -19,6 +12,14 @@ USE YOS_EXCS , ONLY : RCHBCD, RCHBBCD, RCHBB, RCHBD, RCHBA, RCHBHDL, &
  & RCDHALF, RCHETB, RCHB23A, RCHETA, RCDHPI2
 USE YOS_CST  , ONLY : TCST
 USE YOS_EXC  , ONLY : TEXC
+
+! (C) Copyright 2000- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 

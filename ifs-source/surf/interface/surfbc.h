@@ -1,10 +1,3 @@
-! (C) Copyright 1999- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 INTERFACE
 SUBROUTINE SURFBC    (YDSURF,KIDIA,KFDIA,KLON,KTILES,KLEVSN,&
  & PTVL   , PCO2TYP,PTVH   ,PSOTY  ,PSDOR,PCVLC  ,PCVHC, PCURC, &
@@ -15,6 +8,13 @@ SUBROUTINE SURFBC    (YDSURF,KIDIA,KFDIA,KLON,KTILES,KLEVSN,&
  & KTVL   ,KCO2TYP, KTVH   ,KSOTY,&
  & PCVL   ,PCVH, PCUR,PLAIL, PLAIH,  PWLMX  ,PFRTI)
 
+! (C) Copyright 1999- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !     ------------------------------------------------------------------
 !**   *SURFBC* - CREATES BOUNDARY CONDITIONS CHARACTERIZING THE SURFACE
 

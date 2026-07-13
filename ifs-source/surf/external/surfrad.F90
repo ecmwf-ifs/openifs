@@ -1,10 +1,3 @@
-! (C) Copyright 1991- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE SURFRAD(YDSURF,KDD,KMM,KMON,KSECO,&
  & KIDIA,KFDIA,KLON,KTILES,KSW,KLW,&
  & LDNH,&
@@ -29,6 +22,14 @@ USE ABORT_SURF_MOD
 USE SURFRAD_CTL_MOD
 
 !endif INTERFACE
+
+! (C) Copyright 1991- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**** *SURFRAD - COMPUTES RADIATIVE PROPERTIES OF SURFACE
 

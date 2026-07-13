@@ -1,10 +1,3 @@
-! (C) Copyright 1995- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE CALLPAR1S (CDCONF &
      & , KIDIA,KFDIA,KLON,KLEVS,KTILES,KVTYPES &
      & , KLEV   ,KSTART ,KSTEP  ,KTRAC   &
@@ -73,6 +66,14 @@ SUBROUTINE CALLPAR1S (CDCONF &
      & , PUOE1   ,PVOE1    ,PTOE1    ,PSOE1 &             !KPP
      & , PLAIE1, PBSTRE1, PBSTR2E1 &
      & , PDHTLS,PDHTSS,PDHTTS,PDHTIS,PDHIIS,PDHSSS,PDHWLS,PDHRESS,PDHCO2S,PDHBIOS,PDHVEGS)
+
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**** *CALLPAR1S * - CALL PHYSICS
 

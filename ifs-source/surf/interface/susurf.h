@@ -1,10 +1,3 @@
-! (C) Copyright 2002- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 INTERFACE
 SUBROUTINE SUSURF(KSW,KCSS,KCSNEC,KSIL,KCOM,KTILES,KTSW,KLWEMISS,&
  & LD_LEFLAKE,LD_LEOCML,LD_LOCMLTKE,&       
@@ -22,6 +15,13 @@ SUBROUTINE SUSURF(KSW,KCSS,KCSNEC,KSIL,KCOM,KTILES,KTSW,KLWEMISS,&
 USE PARKIND1, ONLY : JPIM, JPRB
 USE, INTRINSIC :: ISO_C_BINDING
 
+! (C) Copyright 2002- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**   *SUSURF* IS THE SET-UP ROUTINE FOR surface modules contain constants
 

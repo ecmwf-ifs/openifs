@@ -1,10 +1,3 @@
-! (C) Copyright 2016- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE VLAMSK_MOD
 CONTAINS
 SUBROUTINE VLAMSK(KIDIA,KFDIA,KLON,KTILES,KTVL,KTVH,&
@@ -20,6 +13,14 @@ USE YOS_CST   , ONLY : TCST
 USE YOS_VEG   , ONLY : TVEG
 USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_URB   , ONLY : TURB
+! (C) Copyright 2016- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
 !     ------------------------------------------------------------------
 
 !**   *VLAMSK* - COMPUTE Skin layer conductivity 

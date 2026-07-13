@@ -1,14 +1,14 @@
-! (C) Copyright 2021- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 MODULE SUFARQUHAR_MOD
 CONTAINS
 SUBROUTINE SUFARQUHAR(PRVCMAX25,PRHUMREL,PRA1,PRB1,PRG0,PRGM25,PRE_VCMAX,PRE_JMAX,YDVEG,YDAGS,YDAGF)
 !***
+! (C) Copyright 2021- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**   *SUFARQUHAR* - DOES THE INITIALISATION OF AGS PARAMETERS
  

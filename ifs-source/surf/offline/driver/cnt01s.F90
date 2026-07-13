@@ -1,10 +1,3 @@
-! (C) Copyright 1995- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE CNT01S
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
 USE YOMHOOK   ,ONLY : LHOOK   , DR_HOOK, JPHOOK
@@ -14,6 +7,14 @@ USE MPL_MODULE
 USE CMF_DRV_CONTROL_MOD,  ONLY: CMF_DRV_INIT, CMF_DRV_INPUT
 
 #ifdef DOC
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
 
 !**** *CNT01S*  - Routine which controls the job at level 0.
 

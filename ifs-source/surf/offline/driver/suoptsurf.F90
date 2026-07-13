@@ -1,10 +1,3 @@
-! (C) Copyright 2021- ECMWF.
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
 SUBROUTINE SUOPTSURF(KULOUT)
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -19,6 +12,13 @@ USE YOEOPTSURF   , ONLY : RVR0VT, RVCMAX25,RHUMREL,RA1,RB1,RG0,RGM25,RE_VCMAX,RE
 
 
 #ifdef DOC
+! (C) Copyright 2021- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 
 !**** *SUOPTSURF*   - Initialize common YOEOPTSURF optimised parameters in land surface model
 
