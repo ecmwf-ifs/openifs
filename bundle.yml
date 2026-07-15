@@ -83,13 +83,14 @@ projects :
 
     - atlas :
         git     : https://github.com/ecmwf/atlas
-        version : 0.39.0
+        version : 0.44.0
         require : eckit fckit
         cmake   : >
             ATLAS_ENABLE_TESSELATION=OFF
             ATLAS_ENABLE_TRANS=OFF
             ATLAS_ENABLE_CLANG_TIDY=OFF
             ATLAS_ENABLE_GRIDTOOLS_STORAGE=OFF
+            ATLAS_ENABLE_CUDA=OFF
 
     - multio :
         git     : https://github.com/ecmwf/multio/
@@ -138,9 +139,19 @@ options :
 
     - without-ifs-test :
         help  : Disable ifs-test compilation
-        cmake : >
-            BUILD_ifs-test=OFF
-            BUILD_ifsbench=OFF
+        cmake : BUILD_ifs-test=OFF
+
+    - with-test-force-fetch:
+        help  : Force fetch ifs-test data even if data already exists.
+        cmake : IFS_TEST_FORCE_FETCH=ON
+
+    - without-test-force-fetch:
+        help  : Don't force fetch ifs-test data if data already exists.
+        cmake : IFS_TEST_FORCE_FETCH=OFF
+
+    - test-data-path:
+        help  : Custom path to the ifs-test input data.
+        cmake : IFS_TEST_CUSTOM_DATA_SOURCE={{value}}
 
     - with-scmec :
         help  : Enable SCM compilation
@@ -204,4 +215,3 @@ options :
             BUILD_cope=OFF
             BUILD_odb-tools=OFF
             ENABLE_NEMO=OFF
-
