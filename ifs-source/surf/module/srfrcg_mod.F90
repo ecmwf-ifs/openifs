@@ -1,17 +1,3 @@
-MODULE SRFRCG_MOD
-CONTAINS
-SUBROUTINE SRFRCG(KIDIA  , KFDIA  , KLON , KTILES, KLEVS ,&
- & LDLAND , LDSICE ,&
- & PTSAM1M, KSOTY  , PCVL   , PCVH  , PCUR,&
- & YDCST, YDSOIL   , YDURB  ,&
- & PCTSA)  
- 
-USE PARKIND1  , ONLY : JPIM, JPRB
-USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_THF   , ONLY : RHOH2O
-USE YOS_CST   , ONLY : TCST
-USE YOS_SOIL  , ONLY : TSOIL
-USE YOS_URB   , ONLY : TURB
 
 ! (C) Copyright 1993- ECMWF.
 !
@@ -72,6 +58,79 @@ USE YOS_URB   , ONLY : TURB
 !     Modified    P. Viterbo   24/05/2004   Change surface units
 !     Modified    G. Balsamo   10/01/2006   Include Van Genuchten Hydro.
 !     Modified    G. Balsamo   03/07/2006   Add soil type
+!     Modified    M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                            use of parameter values defined in namelist
+!     Modified    J. McNorton  24/08/2022   urban tile
+!     Modified    I. Ayan-Miguez (BSC)  Sep 2023  Added PSSDP3 object for spatially distributed parameters
+!     ------------------------------------------------------------------
+
+MODULE SRFRCG_MOD
+CONTAINS
+SUBROUTINE SRFRCG(KIDIA  , KFDIA  , KLON , KTILES, KLEVS ,&
+ & LDLAND , LDSICE ,&
+ & PTSAM1M, KSOTY  , PCVL   , PCVH  , PCUR,&
+ & YDCST, YDSOIL   , YDURB  ,&
+ & PCTSA)  
+ 
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF   , ONLY : RHOH2O
+USE YOS_CST   , ONLY : TCST
+USE YOS_SOIL  , ONLY : TSOIL
+USE YOS_URB   , ONLY : TURB
+
+!**** *SRFT* - COMPUTES SOIL VOLUMETRIC HEAT CAPACITY.
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES THE APARENT VOLUMETRIC HEAT CAPACITY
+!          IN THE SOIL, TAKING INTO ACCOUNT SNOW. APPARENT STANDS FOR
+!          THE FACT THAT THE EFFECTS OF FREEZING AND MELTING OF WATER
+!          IN THE SOIL ARE TAKEN INTO ACCOUNT.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFRCG* IS CALLED FROM *SRFT* AND DIAGNOSTIC (DDH) ROUTINES.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KTILES*     NUMBER OF TILES
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LDSICE*     SEA ICE MASK (.T. OVER SEA ICE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PCVL*       LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!    *PCVH*       HIGH VEGETATION COVER (CORRECTED)              (0-1)
+!    *PCUR*       URBAN COVER                                    (0-1)
+
+!     OUTPUT PARAMETERS:
+!    *PCTSA*      VOLUMETRIC HEAT CAPACITY                      J/K/M**3
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!     Original    P.VITERBO      E.C.M.W.F.     14/10/93
+!     Modified    P.VITERBO  99-03-26   Tiling of the land surface
+!     Modified    J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     Modified    P. Viterbo   24/05/2004   Change surface units
+!     Modified    G. Balsamo   10/01/2006   Include Van Genuchten Hydro.
+!     Modified    G. Balsamo   03/07/2006   Add soil type
+!     Modified    J. McNorton  24/08/2022   urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -113,7 +172,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !                -------- ----------
 
 IF (LHOOK) CALL DR_HOOK('SRFRCG_MOD:SRFRCG',0,ZHOOK_HANDLE)
-ASSOCIATE(RLMLT=>YDCST%RLMLT, &
+ASSOCIATE(RLMLT=>YDCST%RLMLT, LEURBAN=>YDURB%LEURBAN,&
  & LEVGEN=>YDSOIL%LEVGEN, RDAT=>YDSOIL%RDAT, RGH2O=>YDSOIL%RGH2O, &
  & RRCSICE=>YDSOIL%RRCSICE, RRCSOIL=>YDSOIL%RRCSOIL, RRCSOILM=>YDSOIL%RRCSOILM, &
  & RTF1=>YDSOIL%RTF1, RTF2=>YDSOIL%RTF2, RTF3=>YDSOIL%RTF3, RTF4=>YDSOIL%RTF4, &
@@ -169,7 +228,7 @@ DO JL=KIDIA,KFDIA
     ENDDO
 
 !          URBAN TOP-LAYER
-    IF (KTILES .GT. 9) THEN
+    IF(LEURBAN)THEN
      IF(LEVGEN)THEN
        ZRCSOIL=RRCSOILM(JS)*(1-PCUR(JL))+RURBVHC*PCUR(JL)
      ELSE

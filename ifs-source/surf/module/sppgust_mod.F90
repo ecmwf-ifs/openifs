@@ -1,3 +1,69 @@
+
+! (C) Copyright 2000- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *SPPGUST* - COMPUTES THE area averaged 10 m wind and the gust
+
+!     Author.
+!     -------
+!     A. Beljaars       E.C.M.W.F.    24/02/2000
+!     A. Beljaars       E.C.M.W.F.    15/11/2001 Fix orography problem
+
+!     Modifications.
+!     --------------
+!     M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     P. Viterbo  ECMWF  12/05/2005 Externalize SURF (based on vdfppgust)
+!     A. Beljaars ECMWF  18/02/2006 Revised gust to accomodate stochastic physics
+!     N.Semane+P.Bechtold 04-10-2012 Add RPARZI
+!     M. Kelbling and S. Thober (UFZ) 25/3/2020 use of parameter values defined in namelist
+
+!     PURPOSE
+!     -------
+
+!     Compute wind gusts
+
+!     INTERFACE
+!     ---------
+
+!     *SPPGUST* IS CALLED BY *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PZ0MM*        AERODYNAMIC ROUGHNESS LENGTH
+!     *PBUOM*        BUOYANCY FLUX
+!     *PUSTAR*       FRICTION VELOCITY
+!      PU10M         U-COMPONENT WIND AT 10 M                         m/s
+!      PV10M         V-COMPONENT WIND AT 10 M                         m/s
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PGUST*        WIND GUST AT 10 M
+
+!     METHOD
+!     ------
+
+!     MO scaling is used to estimate turbulence intensity               
+
+!     MODIFICATIONS
+!     -------------
+
+!     18/12/2020 P. Bechtold+A. Beljaars Change gust cefficient ZUGN from 7.72 to 7.2
+
+!     --------------------------------------------------------------------------------
+
 MODULE SPPGUST_MOD
 CONTAINS
 SUBROUTINE SPPGUST(KIDIA, KFDIA, KLON &
@@ -12,14 +78,6 @@ USE YOS_EXCS , ONLY : RCHBCD, RCHBBCD, RCHBB, RCHBD, RCHBA, RCHBHDL, &
  & RCDHALF, RCHETB, RCHB23A, RCHETA, RCDHPI2
 USE YOS_CST  , ONLY : TCST
 USE YOS_EXC  , ONLY : TEXC
-
-! (C) Copyright 2000- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 

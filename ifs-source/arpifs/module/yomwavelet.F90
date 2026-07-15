@@ -37,6 +37,7 @@ MODULE YOMWAVELET
 !                           matrices, rather than reading them. 
 !         LHYBRID_JB: .T. => hybrid computation of B from a pre-existing wavelet file and a set of 
 !                        new ensemble background forecasts. Relative weight of the two is controlled by ALPHA_HYBRID_JB
+!         ALPHAMAX_HYBRID_JB : max value of ALPHA_HYBRID_JB (default value=1)
 !         ALPHA_HYBRID_JB: Relative weight of new ensemble perturbations to input wavelet B in the
 !                         computation of a new B [0.,1.]
 !         L_TAPER_ALPHA_HYBRID_JB: Reduce relative weight gradually towards zero between 1hPa and 0.2hPa
@@ -159,6 +160,7 @@ TYPE TYPE_WAVELETJB_CONFIG
   INTEGER(KIND=JPIM)   :: JB_WAVELET_SCALES(JPNSCALES)
   REAL(KIND=JPRB)      :: SKYLINE_TOL
   REAL(KIND=JPRB)      :: ALPHA_HYBRID_JB
+  REAL(KIND=JPRB)      :: ALPHAMAX_HYBRID_JB
   CHARACTER (LEN = 16) ::  CINBGSTATES
 END TYPE TYPE_WAVELETJB_CONFIG
 

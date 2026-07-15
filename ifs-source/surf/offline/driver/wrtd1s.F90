@@ -1,4 +1,3 @@
-      SUBROUTINE WRTD1S
 ! (C) Copyright 1995- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,49 @@
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *WRTP1S*  - Writing diagnostic variables of the one-column
+!                 surface model
+
+!     Purpose.
+!     --------
+!     Write out diagnostic variables
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTD1S
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one-column surface model
+
+!     Author.
+!     -------
+!        Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-04-05
+
+!     ------------------------------------------------------------------
+
+      SUBROUTINE WRTD1S
 
 !**** *WRTP1S*  - Writing diagnostic variables of the one-column
 !                 surface model

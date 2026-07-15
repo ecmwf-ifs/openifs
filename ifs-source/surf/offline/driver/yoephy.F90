@@ -56,6 +56,7 @@ LOGICAL :: LEOCLA
 REAL(KIND=JPRB) :: RTHRFRTI
 INTEGER(KIND=JPIM) :: NPHYINT
 INTEGER(KIND=JPIM) :: NPHPROMA
+LOGICAL :: LBLEND
 
 LOGICAL :: LEFLAKE  ! FLake model
 LOGICAL :: LWCOU
@@ -154,6 +155,7 @@ INTEGER(KIND=JPIM) :: LECMF2LAKEC ! 2 way coupling with cama-flood updated lake 
 ! LEAIRCO2COUP  : LOGICAL  : IF TRUE USE CTESSEL for CO2 and Evap components
 ! RLAIINT : REAL: Relaxation factor between interactive LAI and climatological LAI (1:fully interactive, 0:climatological LAI is used, )
 ! LECLIM10D: Logical: IF TRUE interpolate between 10-day climate values (for albedo and LAI) 
+! LBLEND: LOGICAL: OPTION TO MAKE BLENDING HEIGHT A FUNCTION OF Z0M
 
 !     -----------------------------------------------------------------
 END MODULE YOEPHY

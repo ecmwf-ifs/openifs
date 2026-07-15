@@ -136,10 +136,10 @@ ASY_SS(:,:,:) =0._JPRB
 OMG_SS(:,:,:) =1._JPRB
 RALI_SS(:,:,:)=0._JPRB
 
-ALF_DD(:,:) =0._JPRB
-ASY_DD(:,:) =0._JPRB
-OMG_DD(:,:) =1._JPRB
-RALI_DD(:,:)=0._JPRB
+ALF_DD(:,:,:) =0._JPRB
+ASY_DD(:,:,:) =0._JPRB
+OMG_DD(:,:,:) =1._JPRB
+RALI_DD(:,:,:)=0._JPRB
 
 ALF_OM(:,:) =0._JPRB
 ASY_OM(:,:) =0._JPRB

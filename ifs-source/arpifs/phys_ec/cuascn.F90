@@ -1,16 +1,17 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 1986- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 !OPTIONS XOPT(HSFUN)
 
 SUBROUTINE CUASCN &
- & (YDEPHLI, YDECLDP,  YDECUMF, YDSPP_CONFIG, YGFL,&
- & KIDIA,    KFDIA,    KLON,    KLEV, &
+ & (YDTHF, YDCST, YDEPHLI, YDECLDP,  YDECUMF, YDSPP_CONFIG, YGFL,&
+ & KIDIA,    KFDIA,    KLON,    KLEV, LDTDKMF, &
  & PTSPHY,&
  & PTENH,    PQENH,    PUEN,     PVEN,&
  & PTEN,     PQEN,     PQSEN,    PLITOT,&
@@ -87,6 +88,7 @@ SUBROUTINE CUASCN &
 
 !    *LDLAND*       LAND SEA MASK (.TRUE. FOR LAND)
 !    *LDCUM*        FLAG: .TRUE. FOR CONVECTIVE POINTS 
+!    *LDTDKMF*      Arpege tuning (if TRUE)
 
 !    UPDATED PARAMETERS (INTEGER):
 
@@ -149,14 +151,15 @@ SUBROUTINE CUASCN &
 !      16-01-27 : Introduced SPP scheme (LSPP)   M. Leutbecher & S.-J. Lock 
 !      30-Jan-20: Single precision fix    F. Vana
 !      20-10-12 : SPP abstraction                M. Leutbecher
+!      21-09-13 : Introduced LDTDKMF for Arpege
+!    2021-09-24 : Fix bug on PKINEU, this bug is active only in simple precision mode.
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCST   , ONLY : RG, RCPD, RETV, RLVTT, RLSTT, RTT    
-USE YOETHF   , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, R5ALVCP, &
- &                    R5ALSCP, RALVDCP, RALSDCP, RALFDCP, RTWAT, RTBERCU, RTICE, RTICECU, &
- &                    RTWAT_RTICECU_R, RTWAT_RTICE_R  
+USE YOMCST   , ONLY : TCST 
+USE YOETHF   , ONLY : TTHF  
 USE YOECUMF  , ONLY : TECUMF
 USE YOEPHLI  , ONLY : TEPHLI
 USE YOECLDP  , ONLY : TECLDP
@@ -166,11 +169,13 @@ USE SPP_GEN_MOD , ONLY : SPP_PERT
 
 IMPLICIT NONE
 
-TYPE(TECLDP)      ,INTENT(INOUT) :: YDECLDP
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
-TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
-TYPE(TYPE_GFLD)   ,INTENT(INOUT) :: YGFL
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TECLDP)      ,INTENT(IN)    :: YDECLDP
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
+TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 TYPE(TSPP_CONFIG) ,INTENT(IN)    :: YDSPP_CONFIG
+TYPE(TYPE_GFLD)   ,INTENT(IN)    :: YGFL
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -194,6 +199,7 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PWUBASE(KLON)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGP2DSPP(KLON,YDSPP_CONFIG%SM%NRFTOTAL)
 LOGICAL           ,INTENT(IN)    :: LDLAND(KLON) 
 LOGICAL           ,INTENT(INOUT) :: LDCUM(KLON) 
+LOGICAL           ,INTENT(IN)    :: LDTDKMF
 LOGICAL           ,INTENT(OUT)   :: LSCVFLAG(KLON) 
 INTEGER(KIND=JPIM),INTENT(INOUT) :: KTYPE(KLON) 
 INTEGER(KIND=JPIM),INTENT(INOUT) :: KLAB(KLON,KLEV) 
@@ -224,9 +230,9 @@ REAL(KIND=JPRB) ::     ZDMFEN(KLON), ZDMFDE(KLON),&
  & ZBUO(KLON,KLEV),    ZLUOLD(KLON)
 REAL(KIND=JPRB) ::     ZDPMEAN(KLON)
 REAL(KIND=JPRB) ::     ZOENTR(KLON), ZPH(KLON)
-LOGICAL ::  LLFLAG(KLON), LLFLAGUV(KLON), LLO1(KLON), LLO3
+LOGICAL ::  LLFLAG(KLON), LLO1(KLON), LLO3
 
-INTEGER(KIND=JPIM) :: ICALL, IK, IS, JK, JL, IKB
+INTEGER(KIND=JPIM) :: IK, IS, JK, JL, IKB
 INTEGER(KIND=JPIM) :: JLL, JLM, JLX(KLON)
 
 REAL(KIND=JPRB) :: Z_CLDMAX, Z_CPRC2, Z_CWDRAG, Z_CWIFRAC, ZALFAW,&
@@ -264,8 +270,9 @@ LOGICAL :: LLKLAB(KLON)
 IF (LHOOK) CALL DR_HOOK('CUASCN',0,ZHOOK_HANDLE)
 ASSOCIATE(NACTAERO=>YGFL%NACTAERO, &
  & LAERLIQAUTOCP=>YDECLDP%LAERLIQAUTOCP, LAERLIQAUTOCPB=>YDECLDP%LAERLIQAUTOCPB, &
- & RLMIN=>YDECLDP%RLMIN, &
- & ENTRORG=>YDECUMF%ENTRORG, ENTSHALP=>YDECUMF%ENTSHALP, RMFCFL=>YDECUMF%RMFCFL, &
+ & RLMIN=>YDECLDP%RLMIN, RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RG=>YDCST%RG, RTT=>YDCST%RTT, &
+ & RALFDCP=>YDTHF%RALFDCP, RTBERCU=>YDTHF%RTBERCU, RTICECU=>YDTHF%RTICECU, &
+ & ENTRORG=>YDECUMF%ENTRORG, ENTR_RH=>YDECUMF%ENTR_RH, ENTSHALP=>YDECUMF%ENTSHALP, RMFCFL=>YDECUMF%RMFCFL, &
  & RMFCMIN=>YDECUMF%RMFCMIN, RPRCON=>YDECUMF%RPRCON, LMFGLAC=>YDECUMF%LMFGLAC, &
  & LSCVLIQ=>YDECUMF%LSCVLIQ, LPHYLIN=>YDEPHLI%LPHYLIN, RLPTRC=>YDEPHLI%RLPTRC)
 
@@ -415,7 +422,7 @@ DO JK=KLEV-1,3,-1
 
   IK=JK
   CALL CUBASMCN &
-   & ( YDECUMF, KIDIA,    KFDIA,    KLON,    KLEV,&
+   & (YDCST, YDECUMF, KIDIA,    KFDIA,    KLON,    KLEV,&
    & IK,&
    & PTEN,     PQEN,     PQSEN,&
    & PVERVEL,  PGEO,     PGEOH,    LDCUM,    KTYPE,    KLAB,&
@@ -427,7 +434,9 @@ DO JK=KLEV-1,3,-1
   JLM=0
   DO JL=KIDIA,KFDIA
  ! also liquid only for ktype=3
-  ! IF(KTYPE(JL)>1.AND.LSCVLIQ) LSCVFLAG(JL)=.TRUE.
+    IF(KTYPE(JL)==3.AND.LSCVLIQ) THEN
+      IF(PTEN(JL,KCBOT(JL))>RTT-20.0_JPRB) LSCVFLAG(JL)=.TRUE.
+    ENDIF
     LLFLAG(JL)=.FALSE.
     ZPRECIP(JL)=0.0_JPRB
     LLO1(JL)=.FALSE.
@@ -438,11 +447,6 @@ DO JK=KLEV-1,3,-1
       LLFLAG(JL)=.TRUE.
       JLM=JLM+1
       JLX(JLM)=JL
-    ENDIF
-    IF(KLAB(JL,JK+1) > 0) THEN
-      LLFLAGUV(JL)=.TRUE.
-    ELSE
-      LLFLAGUV(JL)=.FALSE.
     ENDIF
     ZPH(JL)=PAPH(JL,JK)
     IF(KTYPE(JL) == 3.AND.JK == KCBOT(JL)) THEN
@@ -464,7 +468,7 @@ DO JK=KLEV-1,3,-1
 
   IK=JK
   CALL CUENTR &
-   & ( YDECUMF, YDSPP_CONFIG, KIDIA,    KFDIA,    KLON,     KLEV, &
+   & (YDCST, YDECUMF, YDSPP_CONFIG, KIDIA,    KFDIA,    KLON,     KLEV, &
    & IK,       KCBOT,         KTYPE,&
    & LDCUM,    LLO3,&
    & PQSEN,    PAPH,          PGEOH,&
@@ -487,7 +491,7 @@ DO JK=KLEV-1,3,-1
           ELSE
             ZXENTRORG=ENTRORG
           ENDIF
-          ZOENTR(JL)=-ZXENTRORG*(MIN(1.0_JPRB,PQEN(JL,JK)/PQSEN(JL,JK))-1.0_JPRB)*&
+          ZOENTR(JL)=-ZXENTRORG*(MIN(1.0_JPRB,PQEN(JL,JK)/PQSEN(JL,JK))-ENTR_RH)*&
           &(PGEOH(JL,JK)-PGEOH(JL,JK+1))*ZRG
           ZOENTR(JL)=MIN(0.4_JPRB,ZOENTR(JL))*PMFU(JL,JK+1)
         ENDIF
@@ -557,12 +561,16 @@ DO JK=KLEV-1,3,-1
 !                  -----------------------------------
 
     IK=JK
-    ICALL=1
-    IF(LSCVLIQ) ICALL=6
     IF(JLM > 0) THEN
+      IF (LSCVLIQ) THEN
       CALL CUADJTQ &
-       & ( YDEPHLI, KIDIA,    KFDIA,    KLON,     KLEV,    IK,&
-       &   ZPH,      PTU,      PQU,      LLFLAG,  ICALL,  LSCVFLAG )  
+       & ( YDTHF, YDCST, YDEPHLI, KIDIA,    KFDIA,    KLON,     KLEV,    IK,&
+       &   ZPH,      PTU,      PQU,      LLFLAG,  6,  LSCVFLAG )  
+      ELSE
+      CALL CUADJTQ &
+       & ( YDTHF, YDCST, YDEPHLI, KIDIA,    KFDIA,    KLON,     KLEV,    IK,&
+       &   ZPH,      PTU,      PQU,      LLFLAG,  1,  LSCVFLAG )  
+      ENDIF
     ENDIF
 
     IF (LPHYLIN) THEN
@@ -622,6 +630,7 @@ DO JK=KLEV-1,3,-1
           ELSE
             KLAB(JL,JK)=0
             PMFU(JL,JK)=0.0_JPRB
+            PMFU(JL,JK+1)=0.0_JPRB
             PLUDE(JL,JK)=0.0_JPRB
             PLU(JL,JK)=0.0_JPRB
           ENDIF
@@ -651,8 +660,12 @@ DO JK=KLEV-1,3,-1
              & ZDMFDE(JL)/MAX(RMFCMIN,PMFU(JL,JK+1)))  
           ENDIF
           
-          PKINEU(JL,JK)=MAX(-1.E3_JPRB,(PKINEU(JL,JK+1)*(1-ZDKEN)+ZDKBUO)/(1+ZDKEN))
-        ! IF(ZBUO(JL,JK) < 0.0_JPRB) THEN
+          IF (LDTDKMF) THEN
+             PKINEU(JL,JK)=(PKINEU(JL,JK+1)*(1-ZDKEN)+ZDKBUO)/(1+ZDKEN)
+             ZBUOC = ZBUO(JL,JK)
+          ELSE
+             PKINEU(JL,JK)=MAX(-1.E3_JPRB,(PKINEU(JL,JK+1)*(1-ZDKEN)+ZDKBUO)/(1+ZDKEN))
+          ENDIF    
           IF(ZBUOC < 0.0_JPRB) THEN
             ZKEDKE=PKINEU(JL,JK)/MAX(1.E-3_JPRB,PKINEU(JL,JK+1))
             ZKEDKE=MAX(0.0_JPRB,MIN(1.0_JPRB,ZKEDKE))
@@ -670,7 +683,7 @@ DO JK=KLEV-1,3,-1
             ELSE
               ZXENTRORG=ENTRORG
             ENDIF
-            ZOENTR(JL)=ZXENTRORG*(0.3_JPRB-(MIN(1.0_JPRB,PQEN(JL,JK-1)/PQSEN(JL,JK-1))-1.0_JPRB))*&
+            ZOENTR(JL)=ZXENTRORG*(0.3_JPRB-(MIN(1.0_JPRB,PQEN(JL,JK-1)/PQSEN(JL,JK-1))-ENTR_RH))*&
               &(PGEOH(JL,JK-1)-PGEOH(JL,JK))*ZRG*MIN(1.0_JPRB,PQSEN(JL,JK)/PQSEN(JL,IKB))**3
             ZOENTR(JL)=MIN(0.4_JPRB,ZOENTR(JL))*PMFU(JL,JK)
           ELSE
@@ -704,15 +717,16 @@ DO JK=KLEV-1,3,-1
           
         ENDIF
 
-!     ELSEIF(LLFLAG(JL).AND.KTYPE(JL)==2.AND.PQU(JL,JK) == ZQOLD(JL)) THEN
-      ELSEIF(KTYPE(JL)==2.AND.PQU(JL,JK) == ZQOLD(JL)) THEN
+      ELSEIF(KTYPE(JL)<=2.AND.PQU(JL,JK) == ZQOLD(JL)) THEN
         KLAB(JL,JK)=0
         PMFU(JL,JK)=0.0_JPRB
         PKINEU(JL,JK)=0.0_JPRB
         ZDMFDE(JL)=PMFU(JL,JK+1)
         PLUDE(JL,JK)=PLU(JL,JK+1)*ZDMFDE(JL)
         PMFUDE_RATE(JL,JK)=ZDMFDE(JL)
-
+      ELSEIF(KTYPE(JL)==3) THEN
+        IF(KLAB(JL,JK+1)==1) PMFU(JL,JK+1)=0.0_JPRB
+        PMFU(JL,JK)=0.0_JPRB
       ENDIF
     ENDDO
 
@@ -724,7 +738,11 @@ DO JK=KLEV-1,3,-1
         IF(PLU(JL,JK) > ZDNOPRC) THEN
           ZWU=MIN(15._JPRB,SQRT(2.0_JPRB*MAX(0.5_JPRB,PKINEU(JL,JK+1))))
 !       increase conversion for liquid phase only
-          ZZCO=1.0_JPRB+0.3_JPRB*FOEALFCU(PTU(JL,JK))
+          IF (LDTDKMF) THEN
+             ZZCO=FOEALFCU(PTU(JL,JK))*1.3_JPRB+(1.0_JPRB-FOEALFCU(PTU(JL,JK)))
+          ELSE
+             ZZCO=1.0_JPRB+0.3_JPRB*FOEALFCU(PTU(JL,JK))
+          ENDIF   
         ! IF(LSCVFLAG(JL)) ZZCO=1.3_JPRB
 
           IF (LLPERT_RPRCON) THEN

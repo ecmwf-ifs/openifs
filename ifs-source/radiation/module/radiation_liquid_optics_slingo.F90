@@ -1,15 +1,22 @@
-! radiation_liquid_optics_slingo.F90 - Slingo SW & Lindner-Li LW parameterization of liquid droplet optics
+! (C) Copyright 2016- ECMWF.
 !
-! Copyright (C) 2016 ECMWF
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+! radiation_liquid_optics_slingo.F90 - Slingo SW & Lindner-Li LW parameterization of liquid droplet optics
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 
 module radiation_liquid_optics_slingo
 
   implicit none
+  public
 
   integer, parameter :: NLiqOpticsCoeffsSlingoSW = 6
   integer, parameter :: NLiqOpticsCoeffsLindnerLiLW = 13

@@ -1,0 +1,235 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE FIELD_${RANK}$${SUFF}$_GATHSCAT_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList (ranks=[RANK], kinds=['JP' + SUFF])
+
+USE FIELD_MODULE
+USE FIELD_ACCESS_MODULE
+USE FIELD_FACTORY_MODULE
+${fieldType.useParkind1 ()}$
+
+IMPLICIT NONE
+
+PRIVATE
+
+#:for what in ['DEVICE', 'HOST']
+#:for mode in ['RDONLY', 'RDWR']
+
+INTERFACE PAIR_GATHER_${what}$_DATA_${mode}$
+#:for ft in fieldTypeList
+  MODULE PROCEDURE :: PAIR_${ft.name}$_GATHER_${what}$_DATA_${mode}$
+#:endfor
+END INTERFACE PAIR_GATHER_${what}$_DATA_${mode}$
+
+PUBLIC :: PAIR_GATHER_${what}$_DATA_${mode}$
+
+#:endfor
+#:endfor
+
+INTERFACE PAIR_SCATTER_DATA
+#:for ft in fieldTypeList
+  MODULE PROCEDURE :: PAIR_${ft.name}$_SCATTER_DATA
+#:endfor
+END INTERFACE PAIR_SCATTER_DATA
+
+PUBLIC :: PAIR_SCATTER_DATA
+
+#:for ft in fieldTypeList
+TYPE ${ft.name}$_GATHSCAT_PAIR
+  INTEGER (KIND=JPIM) :: IMODE = -1
+  INTEGER (KIND=JPIM) :: IWHAT = -1
+  CLASS (${ft.name}$), POINTER :: YLSCAT => NULL ()
+  CLASS (${ft.name}$), POINTER :: YLGATH => NULL ()
+  TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER :: NEXT => NULL ()
+END TYPE ${ft.name}$_GATHSCAT_PAIR
+
+PUBLIC :: ${ft.name}$_GATHSCAT_PAIR
+
+#:endfor
+
+INTEGER (KIND=JPIM), PARAMETER :: NRDWR = 0, NRDONLY = 1, NHOST = 2, NDEVICE = 3
+INTEGER (KIND=JPIM), PARAMETER :: NLONDIM = 1, NBLKDIM = 2
+
+CONTAINS
+
+#:for ft in fieldTypeList
+
+#:for what in ['DEVICE', 'HOST']
+#:for mode in ['RDONLY', 'RDWR']
+
+FUNCTION PAIR_${ft.name}$_GATHER_${what}$_DATA_${mode}$ (YDPAIR, LDNULL, LDFULL, KGPBLKS, YDFINDS, YLF) RESULT (PTR)
+TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER              :: YDPAIR
+LOGICAL,                                   INTENT (IN) :: LDNULL, LDFULL
+INTEGER (KIND=JPIM),                       INTENT (IN) :: KGPBLKS
+CLASS (FIELD_3IM),                POINTER              :: YDFINDS 
+CLASS (${ft.name}$),              POINTER, INTENT (IN) :: YLF
+
+${ft.type}$, POINTER :: PTR(${ft.shape}$), ZTRG(${ft.shape}$), ZTRS(${ft.shape}$)
+${ft.type}$, POINTER :: PTR1(${ft.shape}$)
+TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER :: YLPAIR
+CLASS (${ft.name}$), POINTER :: YLGATH_DUMM
+INTEGER (KIND=JPIM) :: ILBOUNDS (${ft.rank}$), IUBOUNDS (${ft.rank}$)
+INTEGER (KIND=JPIM), POINTER :: INDS (:,:,:)
+
+IF (LDNULL) THEN
+
+  ! Return dummy pointer
+  YLGATH_DUMM => NULL ()
+  PTR => GET_${what}$_DATA_${mode}$ (YLGATH_DUMM)
+
+ELSEIF (LDFULL) THEN
+
+  ! Return pointer on packed array
+  PTR => GET_${what}$_DATA_${mode}$ (YLF)
+
+ELSE
+
+  PTR => GET_${what}$_DATA_RDONLY (YLF)
+
+  ALLOCATE (YLPAIR)
+  YLPAIR%IMODE = N${mode}$
+  YLPAIR%IWHAT = N${what}$
+  YLPAIR%NEXT => YDPAIR
+  YDPAIR => YLPAIR
+  YLPAIR%YLSCAT => YLF
+
+  ILBOUNDS = LBOUND (PTR)
+  IUBOUNDS = UBOUND (PTR)
+  IUBOUNDS (${ft.rank}$) = KGPBLKS
+  CALL FIELD_NEW (YLPAIR%YLGATH, LBOUNDS=ILBOUNDS, UBOUNDS=IUBOUNDS, PERSISTENT=.TRUE.)
+
+  INDS => GET_${what}$_DATA_RDONLY (YDFINDS)
+  ZTRS => GET_${what}$_DATA_RDONLY (YLPAIR%YLSCAT)
+  ZTRG => GET_${what}$_DATA_RDWR   (YLPAIR%YLGATH)
+
+  CALL PAIR_${ft.name}$_${what}$_${mode}$ (INDS, ZTRG, ZTRS)
+
+  ! Return pointer on packed array
+  PTR => GET_${what}$_DATA_${mode}$ (YLPAIR%YLGATH)
+
+ENDIF
+
+
+CONTAINS
+
+SUBROUTINE PAIR_${ft.name}$_${what}$_${mode}$ (KNDS, PTRG, PTRS)
+
+${ft.type}$, INTENT (OUT) :: PTRG(${ft.shape}$)
+${ft.type}$, INTENT (IN)  :: PTRS(${ft.shape}$)
+INTEGER (KIND=JPIM), INTENT (IN)  :: KNDS (:,:,:)
+INTEGER (KIND=JPIM) :: JLONS, JBLKS, JLONG, JBLKG
+
+#:set dc = ', ' + (':, ' * (ft.rank-2))
+
+#:if what == 'DEVICE'
+!$acc parallel loop gang present (PTRG, PTRS, KNDS)
+#:elif what == 'HOST'
+!$OMP PARALLEL DO PRIVATE (JBLKG, JLONG, JBLKS, JLONS)
+#:endif
+DO JBLKG = 1, SIZE (KNDS, 3)
+#:if what == 'DEVICE'
+!$acc loop vector private (JLONG, JBLKS, JLONS) 
+#:endif
+  DO JLONG = 1, SIZE (KNDS, 2)
+    JLONS = KNDS (NLONDIM, JLONG, JBLKG)
+    JBLKS = KNDS (NBLKDIM, JLONG, JBLKG)
+    IF (JLONS > 0) THEN
+      PTRG (JLONG${dc}$JBLKG) = PTRS (JLONS${dc}$JBLKS)
+    ENDIF
+  ENDDO
+ENDDO
+
+END SUBROUTINE
+
+END FUNCTION PAIR_${ft.name}$_GATHER_${what}$_DATA_${mode}$
+
+#:endfor
+#:endfor
+#:endfor
+
+#:for ft in fieldTypeList
+
+SUBROUTINE PAIR_${ft.name}$_SCATTER_DATA (YDPAIR, YDFINDS)
+TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER              :: YDPAIR
+CLASS (FIELD_3IM),                POINTER              :: YDFINDS 
+
+TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER :: YLPAIR
+${ft.type}$, POINTER :: PTRG(${ft.shape}$), PTRS(${ft.shape}$)
+INTEGER (KIND=JPIM), POINTER :: INDS (:,:,:)
+
+DO WHILE (ASSOCIATED (YDPAIR))
+
+  YLPAIR => YDPAIR%NEXT
+
+  ! Scatter back results
+  IF (YDPAIR%IMODE == NRDWR) THEN
+    IF (YDPAIR%IWHAT == NDEVICE) THEN
+
+      INDS => GET_DEVICE_DATA_RDONLY (YDFINDS)
+      PTRG => GET_DEVICE_DATA_RDONLY (YDPAIR%YLGATH)
+      PTRS => GET_DEVICE_DATA_RDWR   (YDPAIR%YLSCAT)
+      CALL ${ft.name}$_SCATTER_DEVICE_KERNEL (INDS, PTRG, PTRS)
+
+    ELSEIF (YDPAIR%IWHAT == NHOST) THEN
+
+      INDS => GET_HOST_DATA_RDONLY (YDFINDS)
+      PTRG => GET_HOST_DATA_RDONLY (YDPAIR%YLGATH)
+      PTRS => GET_HOST_DATA_RDWR   (YDPAIR%YLSCAT)
+      CALL ${ft.name}$_SCATTER_HOST_KERNEL (INDS, PTRG, PTRS)
+
+    ENDIF
+  ENDIF
+
+  CALL FIELD_DELETE (YDPAIR%YLGATH)
+  DEALLOCATE (YDPAIR)
+  NULLIFY (YDPAIR)
+
+  YDPAIR => YLPAIR
+ENDDO
+
+CONTAINS
+
+#:for what in ['DEVICE', 'HOST']
+SUBROUTINE ${ft.name}$_SCATTER_${what}$_KERNEL (KNDS, PTRG, PTRS)
+
+${ft.type}$, INTENT (IN)  :: PTRG(${ft.shape}$)
+${ft.type}$, INTENT (OUT) :: PTRS(${ft.shape}$)
+INTEGER (KIND=JPIM), INTENT (IN) :: KNDS (:,:,:)
+INTEGER (KIND=JPIM) :: JLONS, JBLKS, JLONG, JBLKG
+
+#:set dc = ', ' + (':, ' * (ft.rank-2))
+
+#:if what == 'DEVICE'
+!$acc parallel loop gang present (PTRG, PTRS, KNDS)
+#:elif what == 'HOST'
+!$OMP PARALLEL DO PRIVATE (JBLKG, JLONG, JBLKS, JLONS)
+#:endif
+DO JBLKG = 1, SIZE (KNDS, 3)
+#:if what == 'DEVICE'
+!$acc loop vector private (JLONG, JBLKS, JLONS) 
+#:endif
+  DO JLONG = 1, SIZE (KNDS, 2)
+    JLONS = KNDS (NLONDIM, JLONG, JBLKG)
+    JBLKS = KNDS (NBLKDIM, JLONG, JBLKG)
+    IF (JLONS > 0) THEN
+      PTRS (JLONS${dc}$JBLKS) = PTRG (JLONG${dc}$JBLKG) 
+    ENDIF
+  ENDDO
+ENDDO
+
+END SUBROUTINE
+
+#:endfor
+END SUBROUTINE PAIR_${ft.name}$_SCATTER_DATA
+
+#:endfor
+
+END MODULE FIELD_${RANK}$${SUFF}$_GATHSCAT_MODULE

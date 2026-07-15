@@ -1,13 +1,14 @@
 ! (C) Copyright 1989- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUENTR &
- & ( YDECUMF, YDSPP_CONFIG,&
+ & ( YDCST, YDECUMF, YDSPP_CONFIG,&
  & KIDIA,     KFDIA,    KLON,     KLEV,&
  & KK,        KCBOT,    KTYPE,&
  & LDCUM,     LDWORK,&
@@ -74,19 +75,21 @@ SUBROUTINE CUENTR &
 !
 !    M. Leutbecher & S.-J. Lock (Jan 2016) Introduced SPP scheme (LSPP)
 !    M. Leutbecher (Oct 2020) SPP abstraction
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG
+USE YOMCST   , ONLY : TCST
 USE YOECUMF  , ONLY : TECUMF
 USE SPP_MOD     , ONLY : TSPP_CONFIG
 USE SPP_GEN_MOD , ONLY : SPP_PERT
 
 IMPLICIT NONE
 
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
 TYPE(TSPP_CONFIG) ,INTENT(IN)    :: YDSPP_CONFIG
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
@@ -124,7 +127,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !                  -------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('CUENTR',0,ZHOOK_HANDLE)
-ASSOCIATE(DETRPEN=>YDECUMF%DETRPEN)
+ASSOCIATE(DETRPEN=>YDECUMF%DETRPEN, RG=>YDCST%RG)
 IF(LDWORK) THEN
 
   ZRG=1.0_JPRB/RG

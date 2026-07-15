@@ -1,14 +1,12 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
-
+! nor does it submit to any jurisdiction.
+!
 MODULE YOEAERATM
 
 USE PARKIND1,     ONLY : JPIM, JPRB
@@ -47,6 +45,7 @@ END TYPE TYPE_AERO_DESC
 
 TYPE :: TEAERATM
 INTEGER(KIND=JPIM) :: NAERCONF
+INTEGER(KIND=JPIM) :: NAERAGING
 INTEGER(KIND=JPIM) :: NINIDAY   
 INTEGER(KIND=JPIM) :: NXT3DAER
 INTEGER(KIND=JPIM) :: NDD1, NSS1
@@ -64,7 +63,7 @@ REAL(KIND=JPRB) :: REPSCAER
 LOGICAL :: LAERCLIMG, LAERCLIMZ, LAERCLIST, LAERDRYDP, LAERHYGRO, LAERLISI 
 LOGICAL :: LAERNGAT , LAERSEDIM, LAERSURF , LAERELVS , LAER6SDIA,LAERSEDIMSS
 LOGICAL :: LAERGTOP , LAERRAD  , LAERCCN  , LAEROPT(9),LAERINIT , LAERVOL
-LOGICAL :: LAERCSTR , LAERDIAG1, LAERDIAG2, LAERRRTM , LAERUVP
+LOGICAL :: LAERCSTR , LAERDIAG1, LAERDIAG2, LAERRRTM , LAERFILLCLIM, LAERUVP, LPROGAERVIS
 LOGICAL :: LAEREXTR , LAERGBUD , LAERPRNT
 LOGICAL :: LAERNITRATE
 LOGICAL :: LSEASALT_RH80
@@ -113,18 +112,31 @@ TYPE(TEAERATM), POINTER :: YREAERATM => NULL()
 ! LAERNGAT   : .T. prevents negative aerosol concentrations
 ! NAERSCAV   : aerosol scanvenging scheme: 1=historical, 2=from CB05, 3=Luo et al. 2019
 ! LAERSEDIM  : .T. sedimentation is active
-! LAERSEDIMSS  : .T. special sedimentation for sea-salt is active
+! LAERSEDIMSS: .T. special sedimentation for sea-salt is active
 ! LAERSURF   : .T. if surface emissions
 ! LAERELVS   : .T. if "elevated" source
 ! LAER6SDIA  : .T. if radiance diagnostics with 6S
 ! LAERGTOP   : .T. if gas-to-particle conversion for SO2/SO4
-! LAERRAD    : .T. if there is any prognostic aerosols used for RT
+! LAERRAD    : .T. if monochromatic aerosol optical properties from the radiation scheme are to be used for diagnostics and DA
 ! LAEROPT(.) : .T. if a given aerosol type is radiatively interactive
 ! LAERCCN    : .T. if prognostic aerosols are used to define the Re of liq.wat.clds
 ! LAERUVP    : .T. if prognostic aerosols are used in UV-processor
 ! LAERCSTR   : .T. if climatological stratospheric aerosols are used in radiation 
 !                  schemes with the prognostic tropospheric aerosols.
-! LAERRRTM   : .T. if RRTM schemes get the information from the prognostic aerosols
+!
+! LAERRRTM   : .T. if radiation scheme is fed with prognostic aerosols (rather than climatological).
+!    Note: this must be true also in data assimilation minimization
+!    with prognostic aerosols, because even though the radiation
+!    scheme (in fact it is the Morcrette 1991 scheme in the
+!    minimization) is using the Tegen climatology, the monochromatic
+!    optical properties for the prognostic aerosols for the
+!    assimilation need to be set up correctly. This is done in the
+!    setup to ecRad if LAERRRTM=.TRUE. (even though ecRad is not used
+!    in the minimization).
+!
+! LAERFILLCLIM:.T. if we fill "missing" prognostics species with the equivalent climatological in radiation
+! LPROGAERVIS: .T. if visibility is fed with only prognostic aerosols, or
+!              .F. if visibility fed with whatever aerosols the radiation scheme saw (determined by LAERRRTM)
 ! LAERINIT   : .T. if analysed prognostic aerosols are ONLY used as "climatological" aerosols
 ! LAERVOL    : .T. if volcanic aerosol is considered
 
@@ -199,6 +211,8 @@ WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERCSTR = ', SELF%LAERCSTR
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERDIAG1 = ', SELF%LAERDIAG1
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERDIAG2 = ', SELF%LAERDIAG2
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERRRTM = ', SELF%LAERRRTM
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERFILLCLIM = ', SELF%LAERFILLCLIM
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LPROGAERVIS = ', SELF%LPROGAERVIS
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERUVP = ', SELF%LAERUVP
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAEREXTR = ', SELF%LAEREXTR
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LAERGBUD = ', SELF%LAERGBUD

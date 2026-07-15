@@ -69,8 +69,6 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 #include "sufprfpbuf_clim.intfb.h"
 #include "sufpsuw.intfb.h"
 
-#include "gridfpossfx_init.h"
-
 !      -----------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('SUFPDATA',0,ZHOOK_HANDLE)

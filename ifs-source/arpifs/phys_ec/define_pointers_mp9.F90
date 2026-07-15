@@ -6,7 +6,7 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE DEFINE_POINTERS_MP9(YGFL,YDDYN, YDVARS)
+SUBROUTINE DEFINE_POINTERS_MP9(YGFL,YDDYN,YDVARS)
 
 !**** *DEFINE_POINTERS_MP9* - ECMWF PHYSICS
 

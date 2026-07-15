@@ -1,0 +1,130 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#:set config_file = os.path.dirname(_THIS_FILE_) + '/surface_fields_config.yaml'
+#:set config = field_config.VariableConfiguration(config_file)
+#:set prognostic = [field_config.VariableGroup(**group) for group in config.schema['prognostic']]
+#:set diagnostic = [field_config.VariableGroup(**group) for group in config.schema['diagnostic']]
+#:set variable_groups = prognostic + diagnostic
+
+MODULE MF_PHYS_SURFACE_TYPE_MOD
+
+USE PARKIND1, ONLY : JPIM, JPRB
+USE SURFACE_VARIABLES_MOD, ONLY: SURFACE_VARIABLES
+USE SURFACE_VIEWS_MODULE
+USE YOMDYN, ONLY : TDYN
+
+IMPLICIT NONE
+
+TYPE MF_PHYS_SURF_TYPE
+  ! --------------------------------------
+  ! ----  Surface field group views  -----
+#:for group in prognostic
+  TYPE(SURFACE_VIEW_GROUP_${group.name}$) :: GSP_${group.short}$
+#:endfor
+#:for group in diagnostic
+  TYPE(SURFACE_VIEW_GROUP_${group.name}$) :: GSD_${group.short}$
+#:endfor
+
+CONTAINS
+  PROCEDURE :: INIT => MF_PHYS_SURF_TYPE_INIT
+  PROCEDURE :: UPDATE_VIEW => MF_PHYS_SURF_TYPE_UPDATE_VIEW
+  PROCEDURE :: SET9TO0 => MF_PHYS_SURF_TYPE_SET9TO0
+  PROCEDURE :: SET1TO9 => MF_PHYS_SURF_TYPE_SET1TO9
+  PROCEDURE :: SET1TO0 => MF_PHYS_SURF_TYPE_SET1TO0
+  PROCEDURE :: SET0TO1 => MF_PHYS_SURF_TYPE_SET0TO1
+  PROCEDURE :: PHTFILT => MF_PHYS_SURF_TYPE_PHTFILT
+  PROCEDURE :: FINAL => MF_PHYS_SURF_TYPE_FINAL
+END TYPE MF_PHYS_SURF_TYPE
+
+
+CONTAINS
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_INIT(SELF, SURFVARS)
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+    TYPE(SURFACE_VARIABLES), TARGET, INTENT(INOUT) :: SURFVARS
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%INIT(SURFVARS%GSP_${group.short}$)
+#:endfor
+#:for group in diagnostic
+    CALL SELF%GSD_${group.short}$%INIT(SURFVARS%GSD_${group.short}$)
+#:endfor
+
+  END SUBROUTINE MF_PHYS_SURF_TYPE_INIT
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    ! Extract local array views from field objects
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%UPDATE_VIEW(BLOCK_INDEX)
+#:endfor
+#:for group in diagnostic
+    CALL SELF%GSD_${group.short}$%UPDATE_VIEW(BLOCK_INDEX)
+#:endfor
+
+  END SUBROUTINE MF_PHYS_SURF_TYPE_UPDATE_VIEW
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_SET9TO0(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%SET9TO0()
+#:endfor
+  END SUBROUTINE MF_PHYS_SURF_TYPE_SET9TO0
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_SET1TO9(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%SET1TO9()
+#:endfor
+  END SUBROUTINE MF_PHYS_SURF_TYPE_SET1TO9
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_SET1TO0(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%SET1TO0()
+#:endfor
+  END SUBROUTINE MF_PHYS_SURF_TYPE_SET1TO0
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_SET0TO1(SELF)
+    ! Field update operation for timestepping schemes
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%SET0TO1()
+#:endfor
+  END SUBROUTINE MF_PHYS_SURF_TYPE_SET0TO1
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_PHTFILT(SELF, YDDYN)
+    ! Field update operation for timestepping schemes
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+    TYPE(TDYN), INTENT(IN) :: YDDYN
+
+#:for group in prognostic
+    CALL SELF%GSP_${group.short}$%PHTFILT(YDDYN)
+#:endfor
+  END SUBROUTINE MF_PHYS_SURF_TYPE_PHTFILT
+
+  SUBROUTINE MF_PHYS_SURF_TYPE_FINAL(SELF)
+    ! Finalize underlying field storage
+    CLASS(MF_PHYS_SURF_TYPE) :: SELF
+
+  END SUBROUTINE MF_PHYS_SURF_TYPE_FINAL
+
+END MODULE MF_PHYS_SURFACE_TYPE_MOD

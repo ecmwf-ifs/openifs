@@ -19,6 +19,8 @@
 !     With important contributions from:
 !        M. Damian, Villanova University, USA
 !        R. Sander, Max-Planck Institute for Chemistry, Mainz, Germany
+!     Variable naming changed to ECMWF conventions by V. Huijnen
+! 
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -35,7 +37,7 @@
 
 SUBROUTINE BASCOE_KPP_FUN ( PV, PF, PRCT, PVdot )
 
-  USE PARKIND1, ONLY : JPIM, JPRB, JPRD
+  USE PARKIND1, ONLY : JPIM, JPRB
   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
 
   USE BASCOE_KPP_PARAMETERS,  ONLY : NVAR, NREACT, NFIX
@@ -43,18 +45,18 @@ SUBROUTINE BASCOE_KPP_FUN ( PV, PF, PRCT, PVdot )
   IMPLICIT NONE
 
 ! PV - Concentrations of variable species (local)
-  REAL(KIND=JPRD), INTENT(IN) :: PV(NVAR)
+  REAL(KIND=JPRB), INTENT(IN) :: PV(NVAR)
 ! PF - Concentrations of fixed species (local)
-  REAL(KIND=JPRD), INTENT(IN) :: PF(NFIX)
+  REAL(KIND=JPRB), INTENT(IN) :: PF(NFIX)
 ! PRCT - Rate constants (local)
-  REAL(KIND=JPRD), INTENT(IN) :: PRCT(NREACT)
+  REAL(KIND=JPRB), INTENT(IN) :: PRCT(NREACT)
 ! PVdot - Time derivative of variable species concentrations
-  REAL(KIND=JPRD), INTENT(OUT) :: PVdot(NVAR)
+  REAL(KIND=JPRB), INTENT(OUT) :: PVdot(NVAR)
 
 
 ! Local variables
 ! ZA - Rate for each equation
-  REAL(KIND=JPRD)    :: ZA(NREACT)
+  REAL(KIND=JPRB)    :: ZA(NREACT)
 #ifdef WITH_COMPO_DR_HOOK
   REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE 
 

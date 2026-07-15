@@ -51,6 +51,8 @@ INTERFACE DIWRGRID_RECV
   MODULE PROCEDURE DIWRGRID_RECV1, DIWRGRID_RECV2, DIWRGRID_RECVX, DIWRGRID_RECVY
 END INTERFACE 
 
+#include "abor1.intfb.h"
+
 CONTAINS
 !=============================================================
 SUBROUTINE DIWRGRID_SEND(YDGEM,KIOPROC,KNUM,PREAL,KCH,LD_GATHERV)
@@ -424,8 +426,6 @@ INTEGER (KIND=JPIM), INTENT(IN)    :: KGLOFF,KGL1,KGL2,KB,KOFF,KNUM,KGPTOT
 REAL (KIND=JPRB)   , INTENT(IN)    :: PREAL(KGPTOT,KNUM)
 TYPE (IOMULTIBUF)  , INTENT(INOUT) :: YDGPL (:)
 INTEGER (KIND=JPIM), INTENT (IN)   :: KIY (:), KJY (:)
-
-#include "abor1.intfb.h"
 
 !     ------------------------------------------------------------------
 

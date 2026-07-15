@@ -2,6 +2,7 @@
 
 This is the IFS QA Test Suite.
 
+
 # Usage
 
 To run all available tests, use `ctest` in the `ifs-test` build folder to 
@@ -28,6 +29,8 @@ A couple of environment variables can be used to control the test procedure:
 * `IFS_TEST_LEGACY`: If set to any other value than 0, this activates the 
   legacy mode where results are compared using the old ifs-grep-norms.pl
   script when checking for bit-identicality.
+* `IFS_TEST_ARCH`: Set the architecture that is used in the ifsbench-based
+  tests. Examples: lumi_g, atos_aa, atos_ac.
   Not compatible with IFS_TEST_RUN_LARGE=1 or IFS_TEST_TOLERANCE!=0.
 * Aditional options can be passed to the ifsbench-based tests by specifying the
   `IFSBENCH_<PARAM_NAME>` variable, e.g. `IFSBENCH_ARCH=lumi_g`.

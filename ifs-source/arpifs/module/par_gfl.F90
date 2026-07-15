@@ -21,6 +21,7 @@ IMPLICIT NONE
 ! JPGHG : Number of greenhouse gas fields
 ! JPCHEM : Number of chemical species
 ! JPAERO : Number of active aerosol fields
+! JPAEROCV : Number of active aerosol fields in control vector
 ! JPAEROUT: Number of output aerosol fields
 ! JPAEROCLIM: Number of 3D climatological aerosol fields
 ! JPUVP : Number of output from UV processor
@@ -41,6 +42,7 @@ INTEGER(KIND=JPIM), PARAMETER :: JPCHEM=220
 INTEGER(KIND=JPIM), PARAMETER :: JPGHG_ASSIM=2
 INTEGER(KIND=JPIM), PARAMETER :: JPCHEM_ASSIM=6
 INTEGER(KIND=JPIM), PARAMETER :: JPAERO=42
+INTEGER(KIND=JPIM), PARAMETER :: JPAEROCV=2
 INTEGER(KIND=JPIM), PARAMETER :: JPFORC=1100
 INTEGER(KIND=JPIM), PARAMETER :: JPERA40=14
 INTEGER(KIND=JPIM), PARAMETER :: JPSLDIA=7

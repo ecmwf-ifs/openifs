@@ -1,3 +1,64 @@
+! (C) Copyright 2016- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VLAMSK* - COMPUTE Skin layer conductivity 
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE SKIN LAYER CONDUCTIVITY
+
+!     INTERFACE
+!     ---------
+
+!     *VLAMSK* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILES*       NUMBER OF TILES 
+!     KTVL    :    Dominant low vegetation type 
+!     KTVH    :    Dominant high vegetation type  
+
+!     Real (in) 
+!     PTSTEP     : Time step    (s)
+
+!     Reals with tile index (in) 
+!     PTSKM1M :    Skin temperature at T-1                    (K)
+!     PTSRF   :    Surface temperature at T-1 unde each tile  (K) 
+
+!     Reals (in)
+!     PSNTICE :    Snow temperature on top of the sea-ice     (K) 
+!     PWSAM1M : Soil moisture 
+
+!     Integers(in)
+
+!     Real with tile index (out) 
+!     PLAMSK :        Tiled Skin layer conductivity 
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     E. Dutra , ECMWF, 04/04/2016 
+
+!     MODIFED
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+!     J. McNorton           24/08/2022  urban tile
+!     I. Ayan-Miguez (BSC), July 2023 Refactorization of calibrated surface spatially distributed parameters
+
+!     ------------------------------------------------------------------
+
 MODULE VLAMSK_MOD
 CONTAINS
 SUBROUTINE VLAMSK(KIDIA,KFDIA,KLON,KTILES,KTVL,KTVH,&
@@ -13,14 +74,6 @@ USE YOS_CST   , ONLY : TCST
 USE YOS_VEG   , ONLY : TVEG
 USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_URB   , ONLY : TURB
-! (C) Copyright 2016- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !     ------------------------------------------------------------------
 
 !**   *VLAMSK* - COMPUTE Skin layer conductivity 
@@ -67,6 +120,9 @@ USE YOS_URB   , ONLY : TURB
 !     SEE DOCUMENTATION
 
 !     E. Dutra , ECMWF, 04/04/2016 
+
+!     MODIFED
+!     J. McNorton           24/08/2022  urban tile
 
 !     ------------------------------------------------------------------
 

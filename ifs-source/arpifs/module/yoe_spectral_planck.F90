@@ -72,6 +72,8 @@ CONTAINS
 
 END TYPE TSPECTRALPLANCK
 
+#include "abor1.intfb.h"
+
 CONTAINS
 
 !-----------------------------------------------------------------------
@@ -115,8 +117,6 @@ SUBROUTINE INIT(SELF, KINTERVALS, PWAVLEN_BOUND, KINTERVAL_MAP)
   INTEGER(KIND=JPIM) :: JT, JI, JW, JR
 
   REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-#include "abor1.intfb.h"
 
   IF (LHOOK) CALL DR_HOOK('YOE_SPECTRAL_PLANCK:INIT',0,ZHOOK_HANDLE)
 

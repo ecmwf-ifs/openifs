@@ -1,3 +1,64 @@
+
+! (C) Copyright 2017- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFWS_INIT_ML* - Snow warm start multi-layer 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE CONTROLS THE WARM START OF MULTI-LAYER SCHEME IN
+!          FC MODE
+
+!**   INTERFACE.
+!     ----------
+!          *SURFWS_CTL* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PWLM1M*     SKIN RESERVOIR WATER CONTENT                   kg/m**2
+
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PWL*        SKIN RESERVOIR WATER CONTENT                   kg/m**2
+
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+
+!    *PDHIIS*     Diagnostic array for interception layer (see module yomcdh)
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   G. Arduini      ECMWF     28/07/2017
+
+!     ------------------------------------------------------------------
+
 MODULE SURFWS_INIT_ML_MOD
 CONTAINS
 
@@ -20,14 +81,6 @@ USE YOS_CST  , ONLY : TCST
 USE YOS_SOIL , ONLY : TSOIL
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2017- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SURFWS_INIT_ML* - Snow warm start multi-layer 
 !     PURPOSE.

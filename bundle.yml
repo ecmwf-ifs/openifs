@@ -10,10 +10,8 @@
 ### Bundle
 
 name    : ifs-bundle
-version : 48.1.1
+version : 49.1
 cmake   : >
-    ECBUILD_2_COMPAT=ON
-    ECBUILD_2_COMPAT_DEPRECATE=OFF
     INSTALL_LIB_DIR=lib
     ECBUILD_INSTALL_LIBRARY_HEADERS=OFF
     ECBUILD_INSTALL_FORTRAN_MODULES=OFF
@@ -24,18 +22,17 @@ cmake   : >
     ENABLE_SINGLE_PRECISION=ON
     FFTW_ENABLE_MKL=OFF
     ENABLE_SCMEC=OFF
-    IFS_TEST_FORCE_FETCH=ON
 
 projects :
 
     - ecbuild :
         git     : https://github.com/ecmwf/ecbuild
-        version : 3.7.2
+        version : 3.8.5
         bundle  : false
 
     - eccodes :
         git     : https://github.com/ecmwf/eccodes
-        version : 2.28.1
+        version : 2.38.3
         cmake   : >
             ENABLE_ECCODES_THREADS=ON
             ECCODES_ENABLE_NETCDF=OFF
@@ -47,7 +44,7 @@ projects :
 
     - eckit :
         git     : https://github.com/ecmwf/eckit
-        version : 1.18.8
+        version : 1.28.0
         cmake   : >
             ECKIT_ENABLE_XXHASH=OFF
             ECKIT_ENABLE_VIENNACL=OFF
@@ -61,18 +58,24 @@ projects :
 
     - fckit :
         git     : https://github.com/ecmwf/fckit
-        version : 0.10.0
+        version : 0.13.1
         require : eckit
         cmake   : FCKIT_ENABLE_FINAL=OFF
 
+    - ecflow-light :
+        git     : https://github.com/ecmwf/ecflow-light
+        version : 1.0.2
+        require : eckit
+
     - metkit :
         git     : https://github.com/ecmwf/metkit
-        version : 1.9.0
+        version : 1.11.19
         require : eckit
+        cmake   : METKIT_ENABLE_BUILD_TOOLS=OFF
 
     - fdb5 :
         git     : https://github.com/ecmwf/fdb
-        version : 5.10.6
+        version : 5.13.0
         require : eckit metkit
         cmake   : >
             ENABLE_FDB_REMOTE=OFF
@@ -80,18 +83,17 @@ projects :
 
     - atlas :
         git     : https://github.com/ecmwf/atlas
-        version : 0.44.0
+        version : 0.39.0
         require : eckit fckit
         cmake   : >
             ATLAS_ENABLE_TESSELATION=OFF
             ATLAS_ENABLE_TRANS=OFF
             ATLAS_ENABLE_CLANG_TIDY=OFF
             ATLAS_ENABLE_GRIDTOOLS_STORAGE=OFF
-            ATLAS_ENABLE_CUDA=OFF
 
     - multio :
         git     : https://github.com/ecmwf/multio/
-        version : 1.5.1
+        version : 2.2.2
 
     - fcm :
         git     : https://github.com/metomi/fcm
@@ -100,7 +102,7 @@ projects :
 
     - ifs-source :
         dir     : $PWD/ifs-source
-        version : 48.1.1
+        version : 49.1
         bundle  : false
 
     - ifs_dp :
@@ -115,39 +117,35 @@ projects :
         cmake   : >
             ENABLE_IFS_NETCDF=ON
             FCM_EXECUTABLE=${SOURCE_DIR}/fcm/bin/fcm
+            ENABLE_ACC=OFF
 
 
+
+
+    - ifsbench  :
+        git     : https://github.com/ecmwf-ifs/ifsbench
+        version : 0.1.0
 
     - ifs-test :
         dir     : $PWD/ifs-test
-        version : 48.1.1
+        version : 49.1
+        require : ifsbench
         cmake   : IFS_TEST_ENABLE_TESTS=ON
+
+
 
 options :
 
     - without-ifs-test :
         help  : Disable ifs-test compilation
-        cmake : BUILD_ifs-test=OFF
-
-    - with-test-force-fetch:
-        help  : Force fetch ifs-test data even if data already exists.
-        cmake : IFS_TEST_FORCE_FETCH=ON
-
-    - without-test-force-fetch:
-        help  : Don't force fetch ifs-test data if data already exists.
-        cmake : IFS_TEST_FORCE_FETCH=OFF
-
-    - test-data-path:
-        help  : Custom path to the ifs-test input data.
-        cmake : IFS_TEST_CUSTOM_DATA_SOURCE={{value}}
+        cmake : >
+            BUILD_ifs-test=OFF
+            BUILD_ifsbench=OFF
 
     - with-scmec :
         help  : Enable SCM compilation
         cmake : ENABLE_SCMEC=ON
 
-    - with-magics :
-        help  : Enable Magics compilation
-        cmake : BUILD_magics=ON
 
     - with-static-linking :
         help  : Link with static IFS libraries
@@ -206,3 +204,4 @@ options :
             BUILD_cope=OFF
             BUILD_odb-tools=OFF
             ENABLE_NEMO=OFF
+

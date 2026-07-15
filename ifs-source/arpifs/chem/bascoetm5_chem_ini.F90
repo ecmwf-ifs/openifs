@@ -59,7 +59,7 @@ USE YOMCHEM  , ONLY : TCHEM
 USE YOMCOMPO , ONLY : TCOMPO
 USE PARKIND1  ,ONLY : JPIM, JPRM, JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-USE BASCOETM5_MODULE, ONLY : NBC, BASCOE_BCVAL, BASCOE_BCNAME
+USE BASCOETM5_TRACERS, ONLY : NBC, BASCOE_BCVAL, BASCOE_BCNAME
 
 
 
@@ -89,67 +89,61 @@ REAL(KIND=JPHOOK)                 :: ZHOOK_HANDLE
 #include "bascoe_sage_init.intfb.h"
 #include "bascoe_tropopause_init.intfb.h"
 #include "bascoe_climSAD_ini.intfb.h"
+#include "bascoe_j_tables_init.intfb.h"
 
 ! chemistry scheme name - this will later also come from external input
 
 IF (LHOOK) CALL DR_HOOK('BASCOETM5_CHEM_INI',0,ZHOOK_HANDLE)
 
-! Some checking
- CALL TRACER_IDX_CHECK_BASCOETM5(YGFL,YDCOMPO)
+  ! Some checking
+  CALL TRACER_IDX_CHECK_BASCOETM5(YGFL,YDCOMPO)
  
   ! ----------------------------------------------------
   ! Tropospheric chemistry
   ! ----------------------------------------------------
 
- !Check on settings for chemistry solver:
- ! Combination of KPP-chemistry together with 
- ! 'revised' chemistry version 'tc02b' is so far not supported
- IF (YDCHEM%LCHEM_REVCHEM) THEN
-   CALL ABOR1('bascoetm5_chem_ini: LCHEM_REVCHEM=.true. not supported in combination with BASCOE')
- ENDIF
- 
   ! Prepare / read in tropo photolysis data
- CALL PHOTOLYSIS_INI
+  CALL PHOTOLYSIS_INI
 
- ! initialize table needed for budget evaluation
- CALL BASCOETM5_INI_BUDGET(YGFL,YDCHEM)
+  ! initialize table needed for budget evaluation
+  CALL BASCOETM5_INI_BUDGET(YGFL,YDCHEM)
 
- ! Calculate look up tables rate constants/henry coefficients:
- CALL BASCOETM5_RATES
+  ! Calculate look up tables rate constants/henry coefficients:
+  CALL BASCOETM5_RATES
 
- ! climatological stratospheric boundary conditions for HNO3 and CH4
- ! No longer needed ! 
- ! CALL BOUNDARY_HNO3
- ! CALL BOUNDARY_CH4STRAT
+  ! climatological stratospheric boundary conditions for HNO3 and CH4
+  ! No longer needed ! 
+  ! CALL BOUNDARY_HNO3
+  ! CALL BOUNDARY_CH4STRAT
 
   ! ----------------------------------------------------
   ! Stratospheric chemistry
   ! ----------------------------------------------------
  
- ! Prepare / read in photolysis table
- IF (YDCHEM%LCHEM_BASCOE_JON) THEN
-   ! Online J-rate computation
-   ! Prepare data to compute photolysis rates
-   CALL BASCOE_J_INI
- ELSE
-   ! Initialize J-lookup tables
-   CALL BASCOE_J_TABLES_INIT
- ENDIF
+  ! Prepare / read in photolysis table
+  IF (YDCHEM%LCHEM_BASCOE_JON) THEN
+    ! Online J-rate computation
+    ! Prepare data to compute photolysis rates
+    CALL BASCOE_J_INI
+  ELSE
+    ! Initialize J-lookup tables
+    CALL BASCOE_J_TABLES_INIT
+  ENDIF
 
   ! Prepare data with surface boundary conditions
- CALL BASCOE_LBC_INI(NBC, BASCOE_BCVAL, BASCOE_BCNAME)
+  CALL BASCOE_LBC_INI(NBC, BASCOE_BCVAL, BASCOE_BCNAME)
 
   ! Prepare strat. aerosol particle size distribution 
- CALL BASCOE_SETBIN
+  CALL BASCOE_SETBIN
  
- ! SAGE initialization
- CALL BASCOE_SAGE_INIT
+  ! SAGE initialization
+  CALL BASCOE_SAGE_INIT
 
- ! Tropopause pressure level initialization
- CALL BASCOE_TROPOPAUSE_INIT
+  ! Tropopause pressure level initialization
+  CALL BASCOE_TROPOPAUSE_INIT
 
- ! JD: Aerosol SAD climatology initialization
- CALL BASCOE_CLIMSAD_INI
+  ! JD: Aerosol SAD climatology initialization
+  CALL BASCOE_CLIMSAD_INI
 
 
 IF (LHOOK) CALL DR_HOOK('BASCOETM5_CHEM_INI',1,ZHOOK_HANDLE)
@@ -161,7 +155,7 @@ CONTAINS
 SUBROUTINE TRACER_IDX_CHECK_BASCOETM5(YGFL,YDCOMPO)
 
 
-USE BASCOETM5_MODULE    , ONLY : & 
+USE BASCOETM5_TRACERS    , ONLY : & 
  &  IO3,     IH2O2,   ICH4,      ICO,       INO3_A,   IPSC,     IPB210,   IHNO3,     &
  &  ICH3O2H, ICH2O,   IPAR,      IETH,      IOLE,     IALD2,    IPAN,     IROOH,     &
  &  IORGNTR, IISOP,   ISO2,      IDMS,      INH3,     ISO4,     INH4,     IMSA,      &
@@ -176,7 +170,8 @@ USE BASCOETM5_MODULE    , ONLY : &
  &  ICFC114, ICFC115, ICCL4,     ICLNO2,    ICH3CCL3, ICH3CL,   IHCFC22,  ICH3BR,    &
  &  IHF,     IHA1301, IHA1211,   ICHBR3,    ICLOO,    IO,       IO1D,     IN,        &
  &  ICLO,    ICL,     IBR,       IBRO,      IH,       IH2,      ICO2,     IBR2,      &
- &  ICH2BR2, ISTRATAER, ISO3,    IOCS,      IH2SO4,   ISOG1,    ISOG2A,   ISOG2B
+ &  ICH2BR2, ISTRATAER, ISO3,    IOCS,      IH2SO4,   ISOG1,    ISOG2A,   ISOG2B,    &
+ &  IVSO2
 
   
  
@@ -331,7 +326,9 @@ ASSOCIATE(NCHEM=>YGFL%NCHEM, YCHEM=>YGFL%YCHEM)
        CASE ('CO_A_25')  ; LLFOUND = .TRUE. 
        CASE ('PM10')     ; LLFOUND = .TRUE. 
        CASE ('PM25')     ; LLFOUND = .TRUE. 
-       CASE ('VSO2')     ; LLFOUND = .TRUE.
+       CASE ('VSO2') 
+         LLFOUND = .TRUE.
+         IVSO2 = JL
        CASE DEFAULT
          WRITE(NULOUT,*) 'ERROR bascoetm5_chem_ini: no matching tracer name for '//TRIM(YCHEM(JL)%CNAME)
          CALL ABOR1('bascoetm5_chem_ini: No matching tracer name available')
@@ -377,7 +374,7 @@ ASSOCIATE(NCHEM=>YGFL%NCHEM, YCHEM=>YGFL%YCHEM)
   ENDDO
   
   IF (.NOT. LLFOUND .OR. .NOT. LLFOUND_B) THEN
-     CALL ABOR1('ERROR tm5_chem_ini: XYL and/or TOL not defined in table-file')
+     CALL ABOR1('ERROR bascoetm5_chem_ini: XYL and/or TOL not defined in table-file')
   ENDIF   
 IF (YDCOMPO%LAERSOA .AND. YDCOMPO%LAERSOA_COUPLED) THEN
   LLFOUND   = .FALSE.
@@ -390,13 +387,21 @@ IF (YDCOMPO%LAERSOA .AND. YDCOMPO%LAERSOA_COUPLED) THEN
   ENDDO
   
   IF (.NOT. LLFOUND .OR. .NOT. LLFOUND_B) THEN
-     CALL ABOR1('ERROR tm5_chem_ini: SOG1 and/or SOG2A not defined in table-file, while LAERSOA=true')
+     CALL ABOR1('ERROR bascoetm5_chem_ini: SOG1 and/or SOG2A not defined in table-file, while LAERSOA=true')
   ENDIF   
   IF (.NOT. LLFOUND_C ) THEN
-     CALL ABOR1('ERROR tm5_chem_ini: SOG2B not defined in table-file, while LAERSOA=true')
+     CALL ABOR1('ERROR bascoetm5_chem_ini: SOG2B not defined in table-file, while LAERSOA=true')
   ENDIF   
 ENDIF
 
+! VSO2 tracer checking: Make sure to set the efold-time to zero, if running with CB05-chemistry
+  IF (YDCHEM%LCHEM_VSO2_COUPLE ) THEN
+    IF (IVSO2 > 0) THEN
+      YCHEM(IVSO2)%REFOLD=0.0_JPRB
+    ELSE
+      CALL ABOR1('ERROR bascoetm5_chem_ini: VSO2 coupling activated but no VSO2 tracer defined')
+    ENDIF   
+  ENDIF
 
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('BASCOETM5_CHEM_INI:TRACER_IDX_CHECK_BASCOETM5',1,ZHOOK_HANDLE)
@@ -677,7 +682,7 @@ SUBROUTINE BASCOETM5_INI_BUDGET(YGFL,YDCHEM)
 USE TM5_CHEM_MODULE    , ONLY : NRR, NRJ, NREAC
 
 
-USE BASCOETM5_MODULE    , ONLY : &
+USE BASCOETM5_TRACERS    , ONLY : &
  &  IACID,   IAIR,    IH2O,      IO3,       IH2O2,    ICH4,     ICO,     &
  &  IHNO3,   ICH3O2H, ICH2O,     IPAR,      IETH,     IOLE,     IALD2,   &
  &  IPAN,    IROOH,   ICH3O2NO2, IORGNTR,   IISOP,    ISO2,     IDMS,    &
@@ -798,7 +803,7 @@ USE TM5_CHEM_MODULE, ONLY : &
   &  KAROO2HO2,  KAROO2XO2, KISOPBO2A,   KISOPBO2B,    KISOPDO2A,  KISOPDO2B,  KISOPBO2HO2,KISOPBO2NO, KISOPDO2HO2,KISOPDO2NO,&
   &  KHPALD1OH, KHPALD2OH,   KGLYOH,       KGLYALDOH,  KHYACOH,    KISOPOOHOH, RATES_LUT,  NTEMP,      NTLOW, &
   &  KNO3HO2,KOHHONO,KHONOA, KHONOB, KMENO2A,KMENO2B, KMENO2M
-USE BASCOETM5_MODULE, ONLY :   IH2O2,    IHNO3,  ICH3O2H, ICH2O,   IROOH,  IORGNTR, &
+USE BASCOETM5_TRACERS, ONLY :   IH2O2,    IHNO3,  ICH3O2H, ICH2O,   IROOH,  IORGNTR, &
   &  ISO4,   INH4, IMSA,  ISO2, INH3,    IO3,    IMGLY,   IALD2,   IHCOOH, ICH3OH,  &
   &  IMCOOH, IETHOH, IO3S, IACET, IHCN,  ICH3CN, IHPALD1, IHPALD2, IHYAC,  IGLY,  HENRY
   

@@ -1,17 +1,17 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2003- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
 MODULE YOERAD
 
 USE PARKIND1,            ONLY : JPIM, JPRB
 USE YOE_SPECTRAL_PLANCK, ONLY : TSPECTRALPLANCK
+USE YOEAERRADDESC,       ONLY : TAER_RAD_DESC
 USE YOMHOOK, ONLY : LHOOK, DR_HOOK, JPHOOK
 
 IMPLICIT NONE
@@ -67,10 +67,11 @@ INTEGER(KIND=JPIM) :: NMINICE
 INTEGER(KIND=JPIM) :: NVOLCVERT
 INTEGER(KIND=JPIM) :: NREDGLW
 INTEGER(KIND=JPIM) :: NREDGSW
-INTEGER(KIND=JPIM) :: NAERMACC, NMCLAT, NMCLON, NMCLEV, NMCVAR
+INTEGER(KIND=JPIM) :: NAERMACC
 INTEGER(KIND=JPIM) :: NSPMAPL(16), NSPMAPS(14)
 INTEGER(KIND=JPIM) :: NLWSCATTERING
 INTEGER(KIND=JPIM) :: NSWSOLVER, NLWSOLVER
+INTEGER(KIND=JPIM) :: NSWGASOPTICS, NLWGASOPTICS
 INTEGER(KIND=JPIM) :: KMODTS
 INTEGER(KIND=JPIM) :: NSOLARSPECTRUM
 INTEGER(KIND=JPIM) :: NSWWVCONTINUUM
@@ -90,7 +91,6 @@ LOGICAL :: LRRTM
 LOGICAL :: LSRTM
 LOGICAL :: LDIFFC
 LOGICAL :: LHVOLCA
-LOGICAL :: LNEWAER
 LOGICAL :: LNOTROAER
 LOGICAL :: LRAYL
 LOGICAL :: LOPTRPROMA
@@ -112,7 +112,7 @@ LOGICAL :: LAVERAGESZA
 LOGICAL :: LECOMPGRID
 LOGICAL :: LUSEPRE2017RAD
 LOGICAL :: LDUSEASON
-
+LOGICAL :: LSPECTRALSOLARCYCLE
 LOGICAL :: LCCNL
 LOGICAL :: LCCNO
 LOGICAL :: LPERPET
@@ -132,6 +132,16 @@ REAL(KIND=JPRB) :: STBKG
 CHARACTER(LEN=256) :: CGHGCLIMFILE = ' '
 CHARACTER(LEN=256) :: CGHGTIMESERIESFILE = ' '
 CHARACTER(LEN=256) :: CSOLARIRRADIANCEFILE = ' '
+CHARACTER(LEN=256) :: CAERCLIMFILE = ' '
+CHARACTER(LEN=256) :: CAEROPTICSMODEL_DD = ' '
+CHARACTER(LEN=256) :: CAEROPTICSMODEL_SU = ' '
+CHARACTER(LEN=256) :: CAEROPTICSMODEL_OM = ' '
+CHARACTER(LEN=256) :: CAEROPTICSMODEL_BC = ' '
+
+
+REAL(KIND=JPRB) :: RRATSEA, RRATLAND,RRATDRI
+REAL(KIND=JPRB) :: RCADECOR,RCBDECOR
+REAL(KIND=JPRB) :: RFACDICE
 
 REAL(KIND=JPRB),ALLOCATABLE:: CVDAESS(:)
 REAL(KIND=JPRB),ALLOCATABLE:: CVDAEDU(:)
@@ -141,9 +151,13 @@ REAL(KIND=JPRB),ALLOCATABLE:: CVDAESU(:)
 
 ! Look-up table for Planck function in emissivity intervals
 TYPE(TSPECTRALPLANCK) :: YSPECTPLANCK
+
+! Description of aerosols used by radiation scheme
+TYPE(TAER_RAD_DESC) :: YAER_RAD_DESC
+
 !----------------------------------------------------------------------------
 CONTAINS
-  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION 
+  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION
 
 END TYPE TERAD
 !============================================================================
@@ -168,6 +182,8 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 !    R J Hogan 4  Feb  2019: Added NLWOUT
 !    R J Hogan 5  Feb  2019: Added YSPECTPLANCK
 !    R J Hogan 11 Mar  2019: Added CGHG*FILE, CSOLARIRRADIANCEFILE
+!    R J Hogan 24 Jun  2021: Added NSWGASOPTICS, NLWGASOPTICS
+!    R J Hogan 16 Apr  2022: Added CAERCLIMFILE
 
 !  NAME     TYPE     PURPOSE
 !  ----  :  ----   : ---------------------------------------------------
@@ -202,8 +218,8 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 ! NSW    : INTEGER : NUMBER OF SHORTWAVE SPECTRAL INTERVALS
 ! NSWNL  : INTEGER : NUMBER OF SHORTWAVE SPECTRAL INTERVALS IN NL MODEL
 ! NSWTL  : INTEGER : NUMBER OF SHORTWAVE SPECTRAL INTERVALS IN TL MODEL
-! NTSW   : INTEGER : MAXIMUM POSSIBLE NUMBER OF SW SPECTRAL INTERVALS 
-! NUV    : INTEGER : NUMBER OF UV SPECTRAL INTERVALS FOR THE UV PROCESSOR   
+! NTSW   : INTEGER : MAXIMUM POSSIBLE NUMBER OF SW SPECTRAL INTERVALS
+! NUV    : INTEGER : NUMBER OF UV SPECTRAL INTERVALS FOR THE UV PROCESSOR
 ! LOPTRPROMA:LOGICAL: .T. NRPROMA will be optimised
 !                   : .F. NRPROMA will not be optimised (forced
 !                   :         by negative NRPROMA in namelist)
@@ -219,14 +235,18 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 !          2 = Martin_et_al (1994) in terms of land-sea number conc
 !          3 = Linked to prognostic aerosols
 ! NICEOPT: INTEGER : INDEX FOR ICE CLOUD OPTICAL PROPERTIES
-!          0 = SW Ebert-Curry, LW Smith & Shi (1992)
-!          1 = SW Ebert-Curry, LW Ebert-Curry (1992)
-!          2 = SW & LW Fu-Liou (1993)
-!          3 = SW Fu (1996) LW Fu et al. (1998) + Chou et al. (1999) LW scatt approx
-!   the following only available in newer modular radiation scheme:
-!          4 = SW/LW Baran data fitted versus ice mixing ratio
+! [Please note there are three radiation configurations to consider:
+!  McRad, ecRad-RRTMG and ecRad-generalized]
+!          0 = SW Ebert-Curry, LW Smith & Shi (1992) [unavailable in ecRad]
+!          1 = SW Ebert-Curry, LW Ebert-Curry (1992) [unavailable in ecRad]
+!          2 = SW & LW Fu-Liou (1993)                [unavailable in ecRad]
+!          3 = SW Fu (1996) LW Fu et al. (1998) [McRad: + Chou et al. (1999) LW scatt approx]
+!                                               [ecRad-generalized: Fu-Muskatel]
+!          4 = SW/LW Baran data fitted versus ice mixing ratio [ecRad-RRTMG only]
+!          5 = ecRad-RRTMG: Yi et al.; ecRad-generalized: Baum general habit mixture
+!          6 = Fu-Muskatel rough [ecRad-generalized only]
 ! NLIQOPT: INTEGER : INDEX FOR LIQUID WATER CLOUD OPTICAL PROPERTIES
-!          0 = SW Fouquart (1991) LW Smith-Shi (1992) YF/SmSh 
+!          0 = SW Fouquart (1991) LW Smith-Shi (1992) YF/SmSh
 !          1 = SW Slingo (1989) LW Savijarvi (1997)
 !          2 = SW Slingo (1989) LW Lindner-Li (2000)
 !   the following only available in RADLSW, not RADLSWR:
@@ -239,16 +259,15 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 ! NCSRADF: INTEGER : 1 IF ACCUMULATED, 2 IF INSTANTANEOUS
 ! LRRTM  : LOGICAL : .T. IF RRTM140MR IS USED FOR LW RADIATION TRANSFER
 
-! LHVOLCA: LOGICAL : .T. IF USING HISTORICAL VOLCANIC AEROSOLS 
-! LNEWAER: LOGICAL : .T. IF AEROSOL MONTHLY DISTRIBUTIONS ARE USED
+! LHVOLCA: LOGICAL : .T. IF USING HISTORICAL VOLCANIC AEROSOLS
 ! LNOTROAER:LOGICAL: .T. IF NO TROPOSPHERIC AEROSOLS
 ! CRTABLEDIR: CHAR : IF NRADINT > 0 SPECIFIES DIRECTORY PATH FOR RADIATION
 !                  : GRID RTABLE NAMELIST
-! CRTABLEFIL: CHAR : IF NRADINT > 0 SPECIFIES FILE NAME OF RADIATION 
+! CRTABLEFIL: CHAR : IF NRADINT > 0 SPECIFIES FILE NAME OF RADIATION
 !                  : GRID RTABLE NAMELIST
 ! LRAYL  : LOGICAL : .T. NEW RAYLEIGH FOR SW-6 VERSION
 
-! RAOVLP : REAL    : COEFFICIENTS FOR ALPHA1 FACTOR IN HOGAN & 
+! RAOVLP : REAL    : COEFFICIENTS FOR ALPHA1 FACTOR IN HOGAN &
 ! RBOVLP : REAL    : ILLINGWORTH's PARAMETRIZATION
 
 ! LCCNL  : LOGICAL : .T. IF CCN CONCENTRATION OVER LAND IS DIAGNOSED
@@ -258,14 +277,14 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 
 ! LDIFFC : LOGICAL : .T. IF SAVIJARVI'S DIFFUSIVITY CORRECTION IS ON
 
-! NINHOM : INTEGER : 0 IF NO INHOMOGENEITY SCALING EFFECT 
+! NINHOM : INTEGER : 0 IF NO INHOMOGENEITY SCALING EFFECT
 !                    1 IF SIMPLE 0.7 SCALING
 !                    2 IF BARKER, 3 IF CAIRNS ET AL.
 ! RLWINHF: REAL    : INHOMOG. SCALING FACTOR FOR CLOUD LW OPTICAL THICKNESS
 ! RSWINHF: REAL    : INHOMOG. SCALING FACTOR FOR CLOUD SW OPTICAL THICKNESS
 
-! NPERTAER : INTERGER : PERCENTAGE OF PERTURBATION FOR AEROSOL   
-! NPERTOZONE : INTEGER : PERCENTAGE OF PERTURBATION FOR OZONE 
+! NPERTAER : INTERGER : PERCENTAGE OF PERTURBATION FOR AEROSOL
+! NPERTOZONE : INTEGER : PERCENTAGE OF PERTURBATION FOR OZONE
 ! NHINCSOL : INTEGER :  0: Total Solar Irradiance (TSI) fixed at 1366.0 W m-2
 !                       1: Deprecated - use default
 !                       2: Deprecated - use default
@@ -281,7 +300,7 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 ! RMINICE: REAL    : MINIMUM SIZE FOR ICE PARTICLES (um)
 !                    FOR ICE
 ! NMINICE: INTEGER : 1-6 MINIMUM ICE PARTICLE SIZE DEPENDS ON LATITUDE, 0=INDEPENDENT OF LATITUDE
-! NDECOLAT:INTEGER : DECORRELATION LENGTH FOR CF AND CW 
+! NDECOLAT:INTEGER : DECORRELATION LENGTH FOR CF AND CW
 !                     0: SPECIFIED INDEPENDENT OF LATITUDE, 1: SHONK-HOGAN, 2: IMPROVED
 ! NMCICA : INTEGER :  0: NO McICA
 !                     1: McICA w maximum-random in cloud generator
@@ -290,7 +309,7 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 ! NGHGRAD: INTEGER : configuration of 3D GHG climatologies accounted for in radiation
 !                     0: global values
 !                     1: CO2       2: CH4    3: N2O    4: NO2    5:CFC11   6:CFC12
-!                    12: CO2+CH4  13: CO2+CH4+N2O     
+!                    12: CO2+CH4  13: CO2+CH4+N2O
 !                    16: CO2+CH4+N2O+CFC11+CFC12
 ! LETRACGMS: LOGICAL : F=Cariolle climatol. T=GEMS-derived clim for CO2, CH4, O3
 ! LAERCLIM : LOGICAL : .T. for output of the climatological aerosol optical depth at 550 nm
@@ -310,9 +329,9 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 ! NREDGLW  : INTEGER : 0 full resolution for RRTM_LW (256)
 !                      1 ECMWF High resolution model configuration (_LW: 140)
 !                      2 ECMWF EPS configuration (_LW: 70)
-! LDIAGFORCING : LOGICAL : T Write input ozone, ghg and aerosol forcing to 3D fields 
+! LDIAGFORCING : LOGICAL : T Write input ozone, ghg and aerosol forcing to 3D fields
 !                            To be used for diagnostics only; do not use in production runs
-! NAERMACC : INTEGER : MACC-derived aerosol climatology on a NMCLAT x NMCLON grid
+! NAERMACC : INTEGER : MACC-derived aerosol climatology 
 ! RAESHxx  : REAL    : parameters related to scale height of MACC-derived aerosol climatology
 ! CVDAExx  : REAL    : scale heights of MACC-derived aerosol climatology
 ! LAERADJDU: LOGICAL : T adjust MACC-derived DU climatology
@@ -335,9 +354,9 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 ! LAverageSZA     : LOGICAL : Compute an averaged solar zenith angle
 !                             across the time interval required
 !                             (either a model timestep or a radiation
-!                             timestep). Should be used with 
+!                             timestep). Should be used with
 !                             LCentredTimeSZA=TRUE.
-! LUsePre2017Rad  : LOGICAL : Use the pre-2017 radiation scheme, rather 
+! LUsePre2017Rad  : LOGICAL : Use the pre-2017 radiation scheme, rather
 !                             than the modular scheme contained in the
 !                             separate "radiation" library.  Note that
 !                             the radiation library may make use of the
@@ -365,12 +384,19 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 !                             used. If it starts with "." or "/" then
 !                             a relative path is assumed, otherwise
 !                             the default directory.
-! NLWEMISS      : INTEGER :   Number of emissivity spectral intervals, set 
+! CAERCLIMFILE : STRING     : Location of aerosol climatology file, or empty to
+!                             use the default. If it starts with "/" then an absolute
+!                             path is assumed, otherwise the default data directory.
+! CAEROPTICSMODEL_DD :STRING: Specify preferred optics models for Desert Dust (as specified in aerosol optics file)
+! CAEROPTICSMODEL_SU :STRING: ...Sulfate
+! CAEROPTICSMODEL_OM :STRING: ...Organic Matter
+! CAEROPTICSMODEL_BC :STRING: ...Black Carbon
+! NLWEMISS      : INTEGER :   Number of emissivity spectral intervals, set
 !                             according to the value of NEMISSSCHEME; traditionally
 !                             this has always been 2: outside the IR window and within
 ! NLWOUT        : INTEGER :   Number of spectral intervals to pass LW downwelling flux
 !                             to RADHEATN; traditionally this was 1, but this led
-!                             to errors with LAPPROXLWUPDATE=TRUE, which updated 
+!                             to errors with LAPPROXLWUPDATE=TRUE, which updated
 !                             fluxes using a single broadband emissivity. Now we can
 !                             do approximate updates using full spectral emissivity.
 ! ------------------------------------------------------------------
@@ -383,12 +409,16 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 !                             1: SPARTACUS 1D
 !                             2: SPARTACUS 3D
 !                             3: TripleClouds
+! NSwGasOptics    : INTEGER :
+! NLwGasOptics    : INTEGER : 0: RRTMG
+!                             else: number of g-points of ecCKD gas optics scheme
 ! LFU_LW_ICE_OPTICS_BUG : LOGICAL : Continue to use bug in Fu LW ice
 !                             optics whereby single scattering albedo is
 !                             one minus what it should be
 ! NSOLARSPECTRUM : INTEGER :  0: Kurucz
 !                             1: WHI reference solar minimum spectrum
 !                             2: Mean of Coddington et al. (BAMS 2016) spectrum
+! LSPECTRALSOLARCYCLE : LOGICAL : Solar spectrum varies with solar cycle? Only with ecCKD gas optics
 ! NDUMPBADINPUTS : INTEGER :  0: Warn only if fluxes out of physical bounds
 !                             n: Write netcdf file of bad inputs up to n times per task
 !                            -n: Abort if fluxes ever out of physical bounds
@@ -403,7 +433,7 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 !                 compute rate of horizontal exchange of radiation
 !                 between clouds and clear skies in SPARTACUS solver
 ! ------------------------------------------------------------------
-! KMODTS : INTEGER   : (A Bozzo) switch for different radiative transfer schemes for UV 
+! KMODTS : INTEGER   : (A Bozzo) switch for different radiative transfer schemes for UV
 !                       = 0 Fouquart&Bonnel adapted by Morcrette and Arola
 !                       = 1 eddington (joseph et al., 1976)
 !                       = 2 pifm (zdunkowski et al., 1980)
@@ -413,10 +443,15 @@ TYPE(TERAD), POINTER :: YRERAD => NULL()
 !                  default for Tegen climatology was 0.03
 ! STBKG : REAL stratospheric background OD@550nm for aerosol climatology.
 !     ------------------------------------------------------------------
-! LDUSEASON : LOGICAL enables a monthly-varying scale height for the 
+! LDUSEASON : LOGICAL enables a monthly-varying scale height for the
 !                     dust aerosol climatology
 ! LAER3D : LOGICAL : to enable aerosol climatology in 3D
-
+!  --------------------------------------------------------------------
+! RRATSEA : constant relating rvol to reff for cloud droplets over sea
+! RRATLAND : constant relating rvol to reff for cloud droplets over land
+! RRATDRI : constant relating rvol to reff for drizzle/rain droplets
+! RCADECOR : if NDECOLAT=2, first coeff in the equation of the Decorrelation as a function of latitude (see radlswr.F90)
+! RCBDECOR : if NDECOLAT=2 second coeff in the equation of Decorrelation as a function of latitude (see radlswr.F90)
 
 CONTAINS
 
@@ -480,15 +515,13 @@ WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NVOLCVERT = ', SELF%NVOLCVERT
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NREDGLW = ', SELF%NREDGLW
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NREDGSW = ', SELF%NREDGSW
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NAERMACC = ', SELF%NAERMACC
-WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NMCLAT = ', SELF%NMCLAT
-WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NMCLON = ', SELF%NMCLON
-WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NMCLEV = ', SELF%NMCLEV
-WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NMCVAR = ', SELF%NMCVAR
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NSPMAPL sum = ',SUM(SELF%NSPMAPL)
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NSPMAPS sum =', SUM(SELF%NSPMAPS)
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NLWSCATTERING = ', SELF%NLWSCATTERING
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NSWSOLVER = ', SELF%NSWSOLVER
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NLWSOLVER = ', SELF%NLWSOLVER
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NSWGASOPTICS = ', SELF%NSWGASOPTICS
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NLWGASOPTICS = ', SELF%NLWGASOPTICS
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'KMODTS = ', SELF%KMODTS
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RCLOUD_FRAC_STD = ', SELF%RCLOUD_FRAC_STD
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LFU_LW_ICE_OPTICS_BUG = ', SELF%LFU_LW_ICE_OPTICS_BUG
@@ -500,7 +533,6 @@ WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LRRTM = ', SELF%LRRTM
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LSRTM = ', SELF%LSRTM
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LDIFFC = ', SELF%LDIFFC
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LHVOLCA = ', SELF%LHVOLCA
-WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LNEWAER = ', SELF%LNEWAER
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LNOTROAER = ', SELF%LNOTROAER
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LRAYL = ', SELF%LRAYL
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LOPTRPROMA = ', SELF%LOPTRPROMA
@@ -556,6 +588,8 @@ IF (ALLOCATED(SELF%CVDAEBC)) WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'CVDAEBC A
 IF (ALLOCATED(SELF%CVDAESU)) WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'CVDAESU ALLOCATED OF SHAPE ', &
  &        SHAPE(SELF%CVDAESU), ' SUM ',SUM(SELF%CVDAESU)
 IF (LHOOK) CALL DR_HOOK('YOERAD:PRINT_CONFIGURATION',1,ZHOOK_HANDLE)
+
+CALL SELF%YAER_RAD_DESC%PRINT(KOUTNO)
 
 END SUBROUTINE PRINT_CONFIGURATION
 

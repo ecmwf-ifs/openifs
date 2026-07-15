@@ -37,6 +37,13 @@ TYPE TPHYDS
 !    N.....GB  - GRIB code for .....
 !    .....DF   - default value for .....
 
+! NPPVCLIX : indicator to describe which extra model climatology fields should be set in the fields object
+!            (Meteo-France and partners only)
+!            0 : no extra fields
+!            3 : surface geopotential, surface temperature ; and also all the fields needed to compute 
+!                anomalies against climatology in the context of ISBA.
+!            4 : same as (3) but with additional ISBA fields in order to enable the computation of soil wetness index.
+
 INTEGER(KIND=JPIM) :: JPVXP=JPVXPL
 INTEGER(KIND=JPIM) :: JPVXP2=JPVXP2L
 INTEGER(KIND=JPIM) :: JPCXP=JPCXPL
@@ -65,6 +72,7 @@ INTEGER(KIND=JPIM) :: NVPRECIPGB(JPVPRECIPL)
 INTEGER(KIND=JPIM) :: NVPRECIPGB2(JPVPRECIPL2)
 INTEGER(KIND=JPIM) :: NSFLUX
 INTEGER(KIND=JPIM) :: NSFORC
+INTEGER(KIND=JPIM) :: NPPVCLIX = 0
 
 REAL(KIND=JPRB) :: EXTRPDF(JPCXPL,JPVXPL)
 REAL(KIND=JPRB) :: XTRP2DF(JPVXP2L)

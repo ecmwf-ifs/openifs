@@ -1,9 +1,3 @@
-MODULE KPP_ABK80_MOD
-CONTAINS
-SUBROUTINE KPP_ABK80 &
-  & ( KIDIA    ,KFDIA    ,KLON     ,KLEV     ,LDKPPCAL ,&
-  &   PSAL     ,PTEMP    ,PRES     ,PALPHA   ,PBETA    ,&
-  &   PSIG0    ,PSIG     ,PRHO0    ,LDALPHA  ,LDBETA   ) 
 
 ! (C) Copyright 1987- ECMWF.
 !
@@ -12,6 +6,56 @@ SUBROUTINE KPP_ABK80 &
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+! Purpose :
+! -------
+! Subroutine to coordinate computation of the expansion coefficients  
+! of seawater with respect to temperature (alpha), salinity (beta) 
+! using the 1980 equation of state for seawater. 
+
+! Interface :
+! ---------
+!   Call *ABK80* with PSAL(practical salinity)
+!                     PTEMP(temperature (degC))
+!                     PRES(pressure (dbar))
+
+! Method :
+! ------
+! Analytic calculation of expansion coefficients with the polynomial 
+! structure of the 1980 equation of state. 
+
+! Externals :
+! ---------
+
+! Reference :
+! ---------
+!             UNESCO(1981): Background papers and supporting data on
+!                           the international equation of state of
+!                           seawater, 1980. UNESCO Tech. Pap. in Mar.
+!                           Sci., No. 38, 192 pp.
+!
+!             FOFONOFF, N. P., and R. C. Millard, Jr. (1983): 
+!                           Algorithms for computation of fundamental 
+!                           properties of seawater.  UNESCO Tech. Pap. 
+!                           in Mar. Sci., No. 44, 53 pp.
+!
+!             Lillibridge, J.L. (1988): Computing the seawater expansion
+!                           coefficients directly from the 1980 equation
+!                           of state.  J. Atm. Ocean. Tech., 59-66.
+
+! Modifications :
+! -------------
+!     25-Mar-1987  John L. Lillibridge, URI/GSO   Original codes
+!     07-Oct-2008  Yuhei Takaya,    E.C.M.W.F.    Implemented to IFS.
+! End Modifications :
+!---------------------------------------------------------------------
+
+MODULE KPP_ABK80_MOD
+CONTAINS
+SUBROUTINE KPP_ABK80 &
+  & ( KIDIA    ,KFDIA    ,KLON     ,KLEV     ,LDKPPCAL ,&
+  &   PSAL     ,PTEMP    ,PRES     ,PALPHA   ,PBETA    ,&
+  &   PSIG0    ,PSIG     ,PRHO0    ,LDALPHA  ,LDBETA   ) 
+
 ! Purpose :
 ! -------
 ! Subroutine to coordinate computation of the expansion coefficients  

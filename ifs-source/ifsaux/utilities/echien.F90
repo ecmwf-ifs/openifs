@@ -121,6 +121,9 @@ SUBROUTINE ECHIEN(CDNAMC,KTYPTR,LDMAP,&
 !        radians and degrees for an easier debugging of namelists
 !      R. El Khatib 24-Mar-2017 Moved the KINF==1 case to a new routine (ERIEN) 
 !                                and changed argument intents to IN wherever possible
+!      R. El Khatib 21-Sep-2020 Enhance accuracy of check for VALH : normalize
+!      by geometric mean of reference pressure
+!      A. Mary 25-Oct-2021 : Ignore check 3.5: subtruncation not meaningful anymore
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -540,7 +543,7 @@ IF((KINF == 0).OR.(KINF == -1).OR.(KINF == -2).OR.(KINF == -3)) THEN
     ELSE
       IERRA=0
       DO JFLEV = 0,KFLEV
-        IF(ABS(ZVALH(JFLEV)*ZREF-PVALH(JFLEV)*PREF) > PEPS) THEN
+        IF(ABS(ZVALH(JFLEV)*ZREF-PVALH(JFLEV)*PREF)/SQRT(ZREF*PREF) > PEPS) THEN
           WRITE(KULOUT,*) ' VERTICAL FUNCTION *A* MISMATCH ON ',&
            & 'LEVEL ',JFLEV,' : ',&
            & 'FILE = ',ZVALH(JFLEV), ' ; ARGUMENT = ',PVALH(JFLEV)  
@@ -566,7 +569,8 @@ IF((KINF == 0).OR.(KINF == -1).OR.(KINF == -2).OR.(KINF == -3)) THEN
   IF(INLOPA(1) /= KNLOPA(1) .AND. (LLMAP .OR. LDMAP) ) THEN
     WRITE(KULOUT,*) ' PACKING PARAMETER MISMATCH : '&
      & ,'FILE = ',INLOPA(1), ' ; ARGUMENT = ',KNLOPA(1)  
-    IERR=1
+    WRITE(KULOUT,*) 'ECHIEN: CHECK 3.5 ignored'
+    !IERR=1
   ENDIF
 
   IF(IERR /= 0) THEN

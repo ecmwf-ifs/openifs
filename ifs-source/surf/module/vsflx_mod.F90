@@ -1,3 +1,76 @@
+
+! (C) Copyright 1991- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VSFLX* - COMPUTES SURFACE FLUXES
+
+!     Original   A.C.M. BELJAARS       E.C.M.W.F.    24-02-91
+!     Modified   A.C.M. BELJAARS  26-03-99  Tiling of the land surface
+!     Modified   P. Viterbo       15-05-2005  move to SURF library
+!                                               (based on VDFSFLX)
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE SURFACE FLUXES FOR LATER USE IN SIMILARITY FUNCTIONS
+
+!     INTERFACE
+!     ---------
+
+!     *VSFLX* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF POINTS IN PACKET
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        TIME STEP
+!     *PRVDIFTS*     Semi-implicit factor for vertical diffusion discretization
+!     *PUMLEV*       X-VELOCITY COMPONENT AT T-1, lowest model level
+!     *PVMLEV*       Y-VELOCITY COMPONENT AT T-1, lowest model level
+!     *PTMLEV*       TEMPERATURE AT T-1, lowest model level
+!     *PQMLEV*       SPECIFIC HUMIDITY AT T-1, lowest model level
+!     *PAPHMS*       PRESSURE AT T-1
+!     *PCPTGZLEV*    DRY STATIC ENERGY AT T-1, lowest model level
+!     *PCPTS*        DRY STATIC ENERGY AT SURFACE
+!     *PQS*          SPECIFIC HUMIDITY AT SURFACE
+!     *PCFM*         PROP. TO EXCH. COEFF. FOR MOMENTUM (C-STAR IN DOC.)
+!                    (SURFACE LAYER ONLY)
+!     *PCFH*         PROP. TO EXCH. COEFF. FOR HEAT     (C-STAR IN DOC.)
+!                    (SURFACE LAYER ONLY)
+!     *PCFQ*         PROP. TO EXCH. COEFF. FOR MOISTURE (C-STAR IN DOC.)
+!                    (SURFACE LAYER ONLY)
+!     *PCAIR*        MULTIPLICATION FACTOR FOR Q AT LOWEST MODEL LEVEL
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCSAT*        MULTIPLICATION FACTOR FOR QS AT SURFACE
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PUCURR*       OCEAN CURRENT X-COMPONENT
+!     *PVCURR*       OCEAN CURRENT Y-COMPONENT
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PKMFL*        KINEMATIC MOMENTUM FLUX (DOWN=POS.)
+!     *PKHFL*        KINEMATIC HEAT FLUX     (DOWN=POS.)
+!     *PKQFL*        KINEMATIC MOISTURE FLUX (DOWN=POS.)
+
+!     METHOD
+!     ------
+
+!     MULTIPLY DIFFERENCES BETWEEN SURFACE AND MODEL VARIABLES AT
+!     THE LOWEST MODEL LEVEL WITH THE RESPECTIVE EXCHANGE COEFFICIENTS.
+
+!     ------------------------------------------------------------------
+
 MODULE VSFLX_MOD
 CONTAINS
 SUBROUTINE VSFLX(KIDIA,KFDIA,KLON,PTMST,PRVDIFTS,&
@@ -11,14 +84,6 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_THF  , ONLY : RVTMP2
 USE YOS_CST  , ONLY : TCST
-
-! (C) Copyright 1991- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 

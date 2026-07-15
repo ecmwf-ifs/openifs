@@ -138,6 +138,7 @@ LOGICAL,DIMENSION(:),ALLOCATABLE:: LMASKDDHSURF ! mask for operations in ddh ope
 CHARACTER(LEN=13)::CNAMESURFINI ! name of first surface field
 LOGICAL:: LALLOCSURF=.FALSE.  !if TRUE allocation of arrrays completed
 
+#include "abor1.intfb.h"
 
 CONTAINS
 
@@ -172,8 +173,6 @@ INTEGER(KIND=JPIM)::IDIM1,IDIM2,IDIM3,ITEST
 TYPE(DDHFLEX),ALLOCATABLE,DIMENSION(:):: YLDDH_DESCR_BKP
 LOGICAL::LLSLFD
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-#include "abor1.intfb.h"
 
 IF (LHOOK) CALL DR_HOOK('DDH_MIX:ADD_FIELD_3D',0,ZHOOK_HANDLE)
 
@@ -324,8 +323,6 @@ REAL(KIND=JPRB),DIMENSION(:,:,:),ALLOCATABLE::ZSDDH_FIELD_BKP
 INTEGER(KIND=JPIM)::IDIM1,IDIM2,IDIM3,ITEST
 TYPE(DDHFLEX),ALLOCATABLE,DIMENSION(:):: YSLDDH_DESCR_BKP
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-#include "abor1.intfb.h"
 
 IF (LHOOK) CALL DR_HOOK('DDH_MIX:ADD_FIELD_2D',0,ZHOOK_HANDLE)
 
@@ -625,13 +622,12 @@ USE YOMMDDH , ONLY : TMDDH
   REAL(KIND=JPRB) , INTENT(IN)    :: PVAL(:)            ! numerical values
   CHARACTER(LEN=*), INTENT(IN)    :: CDNAME             ! name of the field
   TYPE(TYP_DDH)   , INTENT(INOUT) :: YDDDH              ! DDH superstructure
-  CHARACTER(LEN=1), OPTIONAL, INTENT(IN)  :: CDTYPE    ! type of the field (flux, tendency or variable)
-  TYPE(TYP_FIELD2D), ALLOCATABLE   :: YLFIELDS_BKP(:)  ! array of fields, necessary for reallocation
-  TYPE(TYP_FIELD2D), POINTER       :: YLFIELD          ! pointer to the added field
+  CHARACTER(LEN=1), INTENT(IN)    :: CDTYPE    ! type of the field (flux, tendency or variable)
+  TYPE(TYP_FIELD2D), ALLOCATABLE  :: YLFIELDS_BKP(:)  ! array of fields, necessary for reallocation
+  TYPE(TYP_FIELD2D), POINTER      :: YLFIELD          ! pointer to the added field
 
   INTEGER(KIND=JPIM) :: JROF, JFLD
 
-  CHARACTER(LEN=1) :: CLTYPE
   REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
   IF (LHOOK) CALL DR_HOOK('DDH_MIX:NEW_ADD_FIELD_2D',0,ZHOOK_HANDLE)
@@ -662,15 +658,9 @@ USE YOMMDDH , ONLY : TMDDH
      & +PVAL(JROF)*YDDDH%WEIGHT(JROF)
   ENDDO
 
-  IF (PRESENT(CDTYPE)) THEN
-    CLTYPE=CDTYPE
-  ELSE
-    CLTYPE=CDNAME(1:1)
-  ENDIF
-
   ! set metadata
   YLFIELD%CNAME=CDNAME
-  YLFIELD%CTYPE=CLTYPE
+  YLFIELD%CTYPE=CDTYPE
 
   IF (LHOOK) CALL DR_HOOK('DDH_MIX:NEW_ADD_FIELD_2D',1,ZHOOK_HANDLE)
 

@@ -1,3 +1,69 @@
+
+! (C) Copyright 2017- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+                   !**** *SURFWS_CTL* - Snow warm start multi-layer 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE CONTROLS THE WARM START OF MULTI-LAYER SCHEME IN
+!          FC MODE. 
+!          It initialises/allocate basic fields needed by the parametrizations,
+!          and calls routines to setup the profiles (surfws_fgprof) and adjust
+!          the mass in the snow layer (surfws_massadj).
+
+!**   INTERFACE.
+!     ----------
+!          *SURFWS_CTL* IS CALLED FROM *SURFWS* (external).
+
+!     PARAMETER   DESCRIPTION               UNITS
+!     ---------   -----------               -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       Length of arrays
+!    *KLEVSN*     Snow vertical levels
+
+!     INPUT PARAMETERS (REAL):
+!     *PCIL*         LAND-ICE FRACTION                                  (0-1)
+!    *PSDOR*      sub grid scale orography   (m)
+!    *PFRTI*      tile fractions             (-)
+!    *PMU0*       cos solar zenith angle     (-)
+!    *LSMASK*     LAND/SEA MASK              (-)
+
+!     INPUT PARAMETERS AT T-1  (REAL):
+!    *PTSA*       soil temperature t-1       (K)
+!    *PTSKIN*     skin temperature t-1       (K)
+!    *PALBSN*     albedo of snow   t-1       (0-1)
+
+
+!     INPUT/OUTPUT PARAMETERS  (REAL):
+!    *PTSN*       snow temperature t-1       (K)
+!    *PSSN*       snow mass        t-1       (kg m-2)
+!    *PRSN*       snow density     t-1       (kg m-3)
+!    *PWSN*       snow liq water   t-1       (kg m-2)
+
+!     METHOD.
+!     -------
+!     NSNMLWS=1_JPIM ! start from multi-layer top value for temp, avg density
+!     NSNMLWS=2_JPIM ! start from single-layer values (e.g. ERA5)
+!     NSNMLWS=3_JPIM ! start from multi-layer offline average temperature values
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   G. Arduini      ECMWF     28/07/2017
+
 MODULE SURFWS_CTL_MOD
 CONTAINS
 SUBROUTINE SURFWS_CTL( KIDIA, KFDIA, KLON, KLEVSN,  &
@@ -24,13 +90,6 @@ USE SURFWS_TSNADJ_MOD
 
 USE ABORT_SURF_MOD
 
-! (C) Copyright 2017- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
                    !**** *SURFWS_CTL* - Snow warm start multi-layer 
 !     PURPOSE.

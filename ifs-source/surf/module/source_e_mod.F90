@@ -1,3 +1,94 @@
+!
+! (C) Copyright 2010- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!***  DETERMINES TKE SOURCE FUNCTION AND DIFFUSION COEFFICIENTS
+!
+!
+!
+!
+!     TREATMENT OF BUOYANCY EFFECT BY FOLLOWING A
+!     FORMULATION  FROM NOH AND KIM (1999) AND SUKORIANSKY ET AL (2005). 
+!     THIS IS BASED ON THE TURBULENT RICHARDSON NUMBER RIT=N^2/Q^2, 
+!     WITH N THE BRUNT-VAISALA FREQUENCY AND Q THE TURBULENT VELOCITY
+!
+!
+!     AUTHOR: PETER A.E.M. JANSSEN, FEBRUARY 2010
+!     ------
+!
+!
+!     PURPOSE.
+!     --------
+!
+!         THE TURBULENT KINETIC ENERGY EQUATION IS SOLVED WITH AN IMPLICIT
+!         INTEGRATION IN TIME IN SUB OC_MLM. HERE THE SOURCE FUNCTION 
+!         IS DETERMINED, WHERE THE BALANCE INVOLVES TURBULENT DISSIPATION, 
+!         SHEAR PRODUCTION, BUOYANCY, LANGMUIR TURBULENT PRODUCTION AND 
+!         WAVE BREAKING.   
+!
+!**   INTERFACE.
+!     ----------
+!
+!         CALL SOURCE_E(KIDIA,KFDIA,KLON,Z,T,PPHIOC,Z0,
+!    V                  WSTAR,XKS,DUDZ,SDS,DTDZ,Q,FST,STOT,DSDE,D_M,
+!    V                  D_H,D_E,YDMLM)
+!         
+!         INPUT:
+!         -----
+!
+!         *KIDIA*    INTEGER       FIRST INDEX
+!         *KFDIA*    INTEGER       LAST INDEX
+!         *KLON*     INTEGER       NUMBER OF GRID POINTS PER PACKET
+!         *Z*        REAL          DEPTH
+!         *T*        REAL          TEMPERATURE AT DEPTH Z  !!!! in degree C !!!!!
+!         *PPHIOC*   REAL          ENERGY FLUX DUE TO OCEAN WAVE DISSIPATION  
+!         *Z0*       REAL          ROUGHNESS LENGTH
+!         *WSTAR*    REAL          WATER FRICTION VELOCITY
+!         *XKS*      REAL          PEAK WAVE NUMBER
+!         *DUDZ*     REAL          GRADIENT IN CURRENT
+!         *SDS*      REAL          DUDZ . U_STOKES  
+!         *DTDZ*     REAL          GRADIENT IN TEMPERATURE
+!         *Q*        REAL          VALUE OF TURBULENT VELOCITY
+!         
+!         OUTPUT:
+!         ------
+!
+!         *FST*      REAL          STOKES-DEPTH PROFILE  
+!         *STOT*     REAL          TOTAL SOURCE FUNCTION
+!         *DSDE*     REAL          DERIVATIVE OF SOURCE FUNCTION
+!         *D_M*      REAL          MOMENTUM DIFFUSION COEFFICIENT
+!         *D_H*      REAL          HEAT DIFFUSION COEFFICIENT
+!         *D_E*      REAL          TKE DIFFUSION COEFFICIENT
+!
+!     METHOD.
+!     -------
+!
+!
+!     EXTERNALS.
+!     ----------
+!
+!         NO EXTERNALS.
+!
+!     REFERENCE.
+!     ----------
+!      
+!         OCEAN WAVE EFFECTS ON THE DAILY CYCLE IN SST  BY P.A.E.M. 
+!         JANSSEN, 12 OCTOBER 2010.
+!
+!
+!     HEALTH WARNING
+!     --------------
+!
+!         CODE IS WRITTEN ASSUMING DEPTH Z IS POSITIVE (Z => -Z)		
+!
+!----------------------------------------------------------------------
+!
+!
+
 MODULE SOURCE_E_MOD
 
 CONTAINS
@@ -8,13 +99,6 @@ SUBROUTINE SOURCE_E(KIDIA,KFDIA,KLON,Z,T,&
  &                  D_H,D_E,&
  &                  YDMLM, YDCST)
 !
-! (C) Copyright 2010- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !***  DETERMINES TKE SOURCE FUNCTION AND DIFFUSION COEFFICIENTS
 !
 !

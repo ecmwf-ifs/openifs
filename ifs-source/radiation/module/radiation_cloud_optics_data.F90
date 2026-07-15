@@ -1,10 +1,16 @@
-! radiation_cloud_optics_data.f90 - Type to store cloud optical properties
+! radiation_cloud_optics_data.F90 - Type to store cloud optical properties
 !
-! Copyright (C) 2014-2017 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 
 module radiation_cloud_optics_data
@@ -12,6 +18,7 @@ module radiation_cloud_optics_data
   use parkind1, only : jprb
 
   implicit none
+  public
 
   !---------------------------------------------------------------------
   ! This type holds the configuration information to compute

@@ -7,6 +7,8 @@
 ! nor does it submit to any jurisdiction.
 
 !*    -----------------------------------------------------------------
+
+!*    -----------------------------------------------------------------
 NAMELIST/NAM1S/ LDBGS1 , LACCUMW , LSEMISS , CFFORC , CMODID , &
                &CVERID , LRESET  , NACCUR  , NDIMCDF,&
                &LWREFL , LWRWAT  , LWRSUS  , LWRSUB , LWREVA ,&

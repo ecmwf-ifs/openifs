@@ -1,10 +1,81 @@
 ! (C) Copyright 1990- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VDFINCR* - INCREMENTS U,V,T AND Q-TENDENCIES; COMPUTE MULTILEVEL
+!                 FLUXES AND DISSIPATION.
+
+!     A.C.M. BELJAARS  18/01/90   DERIVED FROM VDIFF (CY34)
+!     A.C.M. BELJAARS  26/03/90   OBUKHOV-L UPDATE
+!     M. Ko"hler        3/12/2004 Conserved variables (qt and slg)
+!     P. Lopez         02/06/2005 Removed option for linearized
+!                                 physics (now called separately)
+!     PURPOSE
+!     -------
+
+!     INCREMENT U,V,T AND Q; COMPUTE MULTILEVEL FLUXES AND DISSIPATION
+
+!     INTERFACE
+!     ---------
+
+!     *VDFINCR* IS CALLED BY *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLEV*         NUMBER OF LEVELS
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+
+!     OUTPUT PARAMETER (INTEGER):
+
+!     *KTOP*         FIRST LEVEL INDEX WITHOUT ZERO-DIFFUSION
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        DOUBLE TIME STEP (SINGLE AT 1TH STEP)
+!     *PUM1*         X-VELOCITY COMPONENT AT T-1
+!     *PVM1*         Y-VELOCITY COMPONENT AT T-1
+!     *PSLGM1*       GENERALIZED LIQUID WATER STATIC ENERGY (SLG) AT T-1
+!     *PTM1*         TEMPERATURE AT T-1
+!     *PQTM1*        TOTAL WATER AT T-1
+!     *PAPHM1*       PRESSURE AT T-1
+!     *PGEOM1*       GEOPOTENTIAL AT T-1
+!     *PCFM*         PROP. TO EXCH. COEFF. FOR MOMENTUM (C-STAR IN DOC.)
+!     *PUDIF*        U-DOUBLE TILDE DEVIDED BY ALFA
+!     *PVDIF*        V-DOUBLE TILDE DEVIDED BY ALFA
+
+!     UPDATED PARAMETERS (REAL):
+
+!     *PSLGDIF*      SLG-DOUBLE TILDE DEVIDED BY ALFA (ON ENTRY)
+!                    SLG-SINGLE TILDE                 (ON EXIT)
+!     *PQTDIF*       QT-DOUBLE TILDE DEVIDED BY ALFA  (ON ENTRY)
+!                    QT-SINGLE TILDE                  (ON EXIT)
+!     *PVOM*         U-TENDENCY
+!     *PVOL*         V-TENDENCY
+!     *PSLGE*        SLG-TENDENCY
+!     *PQTE*         QT-TENDENCY
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PVDIS*        DISSIPATION
+!     *PSTRTU*       TURBULENT FLUX OF U-MOMEMTUM         KG*(M/S)/(M2*S)
+!     *PSTRTV*       TURBULENT FLUX OF V-MOMEMTUM         KG*(M/S)/(M2*S)
+!     *PSLGEWODIS*   SLG-TENDENCY MINUS DISSIPATION
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
 #ifdef RS6K
 @PROCESS HOT(NOVECTOR) 
 #endif

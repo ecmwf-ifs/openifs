@@ -1,3 +1,54 @@
+
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUINIF1S*  - Initialize the fields of the one column surface model.
+
+!     Purpose.
+!     --------
+!           Initialize the fields of the one column surface model.
+
+!***  Interface.
+!     ----------
+!        *CALL* *SUINIF1S*
+
+!        Explicit arguments :
+!        --------------------
+!         LOPLEFT: FLAG INDICATING WHETHER MORE POINTS NEED TO BE DONE
+
+!        Implicit arguments :
+!        --------------------
+!         NONE
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by CNT31S
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the one column model
+
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo   *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-21
+!        Bart vd HURK (KNMI) Multi-column use of netCDF and restart utility
+!        Anna Agusti-Panareda 2020-11-17 Atmospheric CO2 forcing
+!        Iria Ayan-Miguez June 2023 Initialization of spatially distributed parameters
+
 SUBROUTINE SUINIF1S(LOPLEFT)
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -14,14 +65,6 @@ USE YOMGF1S  , ONLY : UNLEV0   ,VNLEV0   ,TNLEV0   ,QNLEV0   ,CNLEV0 ,&
                       &QNLEV1   ,CNLEV1   ,FSSRD    ,FSTRD    ,FLSRF    ,&
                       &FCRF     ,FLSSF    ,FCSF , PNLP1
 USE MPL_MODULE
-
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUINIF1S*  - Initialize the fields of the one column surface model.
 

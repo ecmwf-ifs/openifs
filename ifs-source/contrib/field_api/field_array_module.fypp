@@ -1,0 +1,71 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE FIELD_ARRAY_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList ()
+
+USE FIELD_MODULE
+USE FIELD_FACTORY_MODULE
+${fieldType.useParkind1 ()}$
+
+IMPLICIT NONE
+
+PRIVATE
+
+#:for ft in fieldTypeList
+TYPE ${ft.name}$_ARRAY
+  CLASS (${ft.name}$), POINTER :: F_P => NULL ()
+  ${ft.type}$, POINTER :: P (${ft.viewShape}$) => NULL()
+CONTAINS
+  PROCEDURE :: INIT => INIT_${ft.name}$_ARRAY
+  PROCEDURE :: FINAL => FINAL_${ft.name}$_ARRAY
+  PROCEDURE :: UPDATE_VIEW => UPDATE_VIEW_${ft.name}$_ARRAY
+END TYPE
+
+PUBLIC :: ${ft.name}$_ARRAY
+
+#:endfor
+
+CONTAINS
+
+#:for ft in fieldTypeList
+SUBROUTINE INIT_${ft.name}$_ARRAY (SELF, P, LBOUNDS)
+
+CLASS (${ft.name}$_ARRAY) :: SELF
+${ft.type}$, INTENT (IN), TARGET :: P (${ft.shape}$)
+INTEGER (KIND=JPIM), INTENT (IN), OPTIONAL :: LBOUNDS (${ft.rank}$)
+
+CALL FIELD_NEW (SELF%F_P, DATA=P, PERSISTENT=.TRUE., LBOUNDS=LBOUNDS)
+
+END SUBROUTINE
+
+SUBROUTINE UPDATE_VIEW_${ft.name}$_ARRAY (SELF, BLOCK_INDEX)
+CLASS (${ft.name}$_ARRAY) :: SELF
+INTEGER (KIND=JPIM), INTENT (IN) :: BLOCK_INDEX
+
+IF (ASSOCIATED (SELF%F_P)) THEN
+  SELF%P => SELF%F_P%GET_VIEW (BLOCK_INDEX)
+ENDIF
+
+END SUBROUTINE
+
+SUBROUTINE FINAL_${ft.name}$_ARRAY (SELF)
+CLASS (${ft.name}$_ARRAY) :: SELF
+
+IF (ASSOCIATED (SELF%F_P)) THEN
+  CALL FIELD_DELETE (SELF%F_P)
+  SELF%P => NULL ()
+ENDIF
+
+END SUBROUTINE
+
+#:endfor
+
+END MODULE

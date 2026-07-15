@@ -73,7 +73,6 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 #include "suphec.intfb.h"
 #include "suphmf.intfb.h"
-#include "sumts.intfb.h"
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SUPHY',0,ZHOOK_HANDLE)
@@ -93,13 +92,6 @@ CALL SUPHMF(YDGEOMETRY,YDMODEL,KULOUT)
 IF (.NOT.LR2D) THEN
   CALL SUPHEC(YDGEOMETRY,YDMODEL,KULOUT)
 ENDIF
-
-!     ------------------------------------------------------------------
-
-!*       3.    Initialize "model to satellite" RTTOV parameters.
-!              ------------------------------------------------
-
-CALL SUMTS(YDMODEL%YRML_GCONF)
 
 !     ------------------------------------------------------------------
 

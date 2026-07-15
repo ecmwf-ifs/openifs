@@ -1,3 +1,123 @@
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFWEXC_VG* -  COMPUTES THE FLUXES BETWEEN THE SOIL LAYERS AND
+!                  THE RIGHT-HAND SIDE OF THE SOIL WATER EQUATIONS.
+!
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES THE DIFFERENT COEFFICIENTS IN THE
+!     SOIL MOISTURE EQUATIONS (BEFORE SNOW MELTS). THE AIM IS TO COMPUTE
+!     THE MODIFIED DIFFUSIVITIES AND THE RIGHT-HAND SIDE OF THE EQUATIONS.
+!     IT SHOULD BE FOLLOWED BY A CALL TO *SRFWDIF* AND *SRFWINC*.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFWEXC_VG* IS CALLED FROM *SURFTSTP*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SURFACE LAYERS
+!    *KCWS        Number of layers to merge at the end for the soil water profile (for > 4layers)
+!    *KTILES*     NUMBER OF TILES (I.E. SUBGRID AREAS WITH DIFFERENT 
+!                 OF SURFACE BOUNDARY CONDITION)
+!    *KDHVWLS*    Number of variables for soil water budget
+!    *KDHFWLS*    Number of fluxes for soil water budget
+
+!    *KTVL*       VEGETATION TYPE FOR LOW VEGETATION FRACTION
+!    *KTVH*       VEGETATION TYPE FOR HIGH VEGETATION FRACTION
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+!    *PSDOR*      OROGRAPHIC PARAMETER                           m
+!    *PFRTI*      TILE FRACTIONS                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10: URBAN
+!    *PEVAPTI*      SURFACE MOISTURE FLUX                      KG/M**2/S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PWSAM1M*    MULTI-LAYER SOIL MOISTURE                    M**3/M**3
+!    *PTSAM1M*    SOIL TEMPERATURE ALL LAYERS                    K
+!    *PCUR*       URBAN COVER                                   (0-1)
+!    *PTSFC*      CONVECTIVE THROUGHFALL                       KG/M**2/S
+!    *PTSFL*      LARGE SCALE THROUGHFALL                      KG/M**2/S
+!    *PMSN*       SNOW MELTING                                 KG/M**2/S
+!    *PEMSSN*     EVAPORATIVE MISMATCH RESULTING FROM
+!                  CLIPPING THE SNOW TO ZERO (AFTER P-E)       KG/M**2/S
+!    *PEINTTI*    TILE EVAPORATION SEEN BY THE INTERCEPTION
+!                 LAYER (INCLUDES NUMERICAL EVAPORATION
+!                 MISMATCHES, FOR TILE 3, AND DEW DEPOSITION
+!                 FOR TILES 3,4,6,7,8)                         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M**2/S
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PCFW*       MODIFIED DIFFUSIVITIES                         M
+!    *PRHSW*      RIGHT-HAND SIDE OF SOIL MOISTURE EQUATIONS   m**3/m**3
+!    *PROS*       RUN-OFF FOR THE SURFACE LAYER                kg/m**2
+!    *PFWEL1*     BARE GROUND AND TOP LAYER EXTRACTION
+!                 CONTRIBUTION TO EVAPORATION FROM
+!                 THE SKIN AND TOP LAYER                       KG/M**2/S
+!    *PFWE234*    ROOT EXTRACTION FROM LAYERS 2+3+4            KG/M**2/S
+
+!     INSTANTANEOUS DIAGNOSTIC OUTPUT PARAMETERS (REAL):
+!    *PSAWGFL*    GRAVITY PART OF WATER FLUX                   KG/M**2/S
+!                   (positive downwards, at layer bottom)
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHWLS*     Diagnostic array for soil water (see module yomcdh)
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     ORIGINAL :
+!     P.VITERBO      E.C.M.W.F.      9/02/93
+!     P.VITERBO      E.C.M.W.F.      26-3-99
+!        (Interface to tiling)
+!     D.SALMOND      E.C.M.W.F.      000515
+!     P.VITERBO      E.C.M.W.F.      17-05-2000
+!        (Surface DDH for TILES)
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo    ECMWF    24-05-2004      Change surface units
+!     G. Balsamo    ECMWF    08-01-2006      Include Van Genuchten Hydro.
+!     G. Balsamo    ECMWF    11-01-2006      Include sub-grid surface runoff
+!     G. Balsamo    ECMWF    03-07-2006      Add soil type
+!     E. Dutra               07-07-2008      clean number of tiles dependence 
+!     G. Balsamo    ECMWF    15-09-2009      protect surf-runoff for occasional overshooting
+!     G. Balsamo    ECMWF    12-05-2010      cleaning and unit fix in VIC
+!     F. Vana                05-Mar-2015     Support for single precision
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     I. Ayan-Miguez (BSC) July 2023         Add PSSDP3 object for spatially distributed parameters
+!     J. McNorton            24/08/2022      urban tile
+!     ------------------------------------------------------------------
+
 MODULE SRFWEXC_VG_MOD
 CONTAINS
 SUBROUTINE SRFWEXC_VG(KIDIA,KFDIA,KLON,KLEVS,KTILES,&
@@ -15,15 +135,6 @@ USE YOS_THF   , ONLY : RHOH2O
 USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_VEG   , ONLY : TVEG
 USE YOS_URB   , ONLY : TURB
-
-! (C) Copyright 1993- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 
 !**** *SRFWEXC_VG* -  COMPUTES THE FLUXES BETWEEN THE SOIL LAYERS AND
 !                  THE RIGHT-HAND SIDE OF THE SOIL WATER EQUATIONS.
@@ -130,6 +241,7 @@ USE YOS_URB   , ONLY : TURB
 !     G. Balsamo    ECMWF    15-09-2009      protect surf-runoff for occasional overshooting
 !     G. Balsamo    ECMWF    12-05-2010      cleaning and unit fix in VIC
 !     F. Vana                05-Mar-2015     Support for single precision
+!     J. McNorton            24/08/2022      urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -210,8 +322,9 @@ ASSOCIATE(LESSRO=>YDSOIL%LESSRO, RDAW=>YDSOIL%RDAW, RDMAXM=>YDSOIL%RDMAXM, &
  & RTF2=>YDSOIL%RTF2, RTF3=>YDSOIL%RTF3, RTF4=>YDSOIL%RTF4, &
  & RWCAPM=>YDSOIL%RWCAPM, RWCONSM=>YDSOIL%RWCONSM, RWPWPM=>YDSOIL%RWPWPM, &
  & RWRESTM=>YDSOIL%RWRESTM, RWSATM=>YDSOIL%RWSATM, &
- & RVROOTSA=>YDVEG%RVROOTSA, RURBALP=>YDURB%RURBALP, RURBCON=>YDURB%RURBCON,&
- & RURBLAM=>YDURB%RURBLAM, RURBSAT=>YDURB%RURBSAT, RURBSRES=>YDURB%RURBSRES)
+ & RVROOTSA=>YDVEG%RVROOTSA, LEURBAN=>YDURB%LEURBAN, RURBALP=>YDURB%RURBALP, &
+ & RURBCON=>YDURB%RURBCON,RURBLAM=>YDURB%RURBLAM, RURBSAT=>YDURB%RURBSAT, &
+ & RURBSRES=>YDURB%RURBSRES)
 
 ZEPSILON=100._JPRB*EPSILON(ZEPSILON)
 
@@ -372,7 +485,7 @@ DO JL=KIDIA,KFDIA
         ZW=SUM(ZFRK(:)*ZWK(:)*RDAW(:))                              !Units m
 
         ZWMK(:)=((RWSATM(JS)-RWPWPM(JS))*(1.-ZF(JL,:))+RWPWPM(JS))
-        IF ( KTILES .GT. 9 ) THEN
+        IF ( LEURBAN ) THEN
          ZWMK(:)=(((1.0_JPRB-PCUR(JL))*RWSATM(JS) + PCUR(JL)*RURBSAT &
            & -RWPWPM(JS))*(1.-ZF(JL,:))+RWPWPM(JS))
         ENDIF
@@ -412,7 +525,7 @@ DO JL=KIDIA,KFDIA
         ZKSURF=ZFF*0.+(1.-ZFF)*RWCONSM(JS)
       ENDIF
       ZINFMAX=(ZDSURF*(RWSATM(JS)-PWSAM1M(JL,1))/(0.5_JPRB*RDAW(1))+ZKSURF)*RHOH2O
-      IF ( KTILES .GT. 9 ) THEN
+      IF ( LEURBAN ) THEN
          ZINFMAX=(ZDSURF*(((1.0_JPRB-PCUR(JL))*RWSATM(JS) + PCUR(JL)*RURBSAT)-PWSAM1M(JL,1))&
           & /(0.5_JPRB*RDAW(1))+ZKSURF)*RHOH2O
       ENDIF
@@ -453,7 +566,7 @@ DO JL=KIDIA,KFDIA
     ZCONDS(JL)=ZCONDS(JL)+MAX((PFRTI(JL,8)*PEVAPTI(JL,8)+PEMSSN(JL)-PEINTTI(JL,8)),0.0_JPRB)
     ZWSFL=ZWSFL+ZEXTK
 !  Tile 10
-    IF ( KTILES .GT. 9 ) THEN
+    IF ( LEURBAN ) THEN
      ZEXTK=PFRTI(JL,10)*PEVAPTI(JL,10)+PEMSSN(JL)-PEINTTI(JL,10)
      ZCONDS(JL)=ZCONDS(JL)+MAX((PFRTI(JL,10)*PEVAPTI(JL,10)+PEMSSN(JL)-PEINTTI(JL,10)),0.0_JPRB)
      ZWSFL=ZWSFL+ZEXTK
@@ -471,7 +584,7 @@ DO JL=KIDIA,KFDIA
     PFWEL1(JL)=PFWEL1(JL)+&
      & (PFRTI(JL,3)*PEVAPTI(JL,3)-PEINTTI(JL,3)+ZSAWEXT(JL,1)+&
      & PFRTI(JL,8)*PEVAPTI(JL,8)-PEINTTI(JL,8))
-    IF ( KTILES .GT. 9 ) THEN
+    IF ( LEURBAN ) THEN
      PFWEL1(JL)=PFWEL1(JL)+(PFRTI(JL,10)*PEVAPTI(JL,10)-PEINTTI(JL,10))
     ENDIF
   ELSE
@@ -511,7 +624,7 @@ DO JK=2,KLEVS
       ZALPHA=RMVGALPHA(JS)
       IF (ZW.LE.(1.001*RWRESTM(JS))) THEN
       ZD=ZDMIN
-      IF ( KTILES .GT. 9 ) THEN
+      IF ( LEURBAN ) THEN
        ZD=ZDMIN    * (1.0_JPRB-PCUR(JL))  + (PCUR(JL)*1.e-4_JPRD) !Test value for Urban
       ENDIF
         ZK=0.0_JPRB

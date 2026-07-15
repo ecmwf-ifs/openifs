@@ -130,6 +130,8 @@ type odb_varno
    integer(kind=jpim) :: lidar_cloud_backscatter              = 237 !  lidar cloud backscatter
    integer(kind=jpim) :: lidar_cloud_extinction               = 238 !  lidar cloud extinction
    integer(kind=jpim) :: cloud_radar_reflectivity             = 239 !  cloud radar reflectivity
+   integer(kind=jpim) :: lidar_rayleigh_backscatter           = 252 !  lidar cloud extinction
+   integer(kind=jpim) :: cloud_doppler_velocity               = 251 !  cloud radar reflectivity
    integer(kind=jpim) :: pmsl                                 = 108 !  Mean sea-level pressure (Pa)
    integer(kind=jpim) :: liatbk                               = 280 !    lidar attenuated backscatter
 end type

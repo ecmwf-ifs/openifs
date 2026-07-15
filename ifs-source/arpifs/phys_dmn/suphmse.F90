@@ -60,6 +60,7 @@ SUBROUTINE SUPHMSE(YDGEOMETRY,YDMODEL,KULOUT)
 !        K. Yessad (July 2014): Move some variables.
 !        2016-09, M. Mokhtari & A. Ambar: call for the routine
 !                                         aroini_wet_dep.F90
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 USE GEOMETRY_MOD , ONLY : GEOMETRY
@@ -67,9 +68,9 @@ USE TYPE_MODEL, ONLY : MODEL
 USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST    ,ONLY : RDAY,REA,REPSM
+USE YOMCST    ,ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMRIP0   ,ONLY : NINDAT
-USE YOMCT0    ,ONLY : LELAM
+USE YOMCT0    ,ONLY : LELAM, L_OOPS
 USE YOMNSV    ,ONLY : NSV_CHEMBEG, NSV_CHEMEND, NSV_DSTBEG, NSV_DSTEND,&
  &                    NSV_AERBEG, NSV_AEREND, NSV_CO2,NSV_DSTDEPBEG,&
  &                    NSV_DSTDEPEND
@@ -114,6 +115,7 @@ ASSOCIATE(LRDUST=>YDARPHY%LRDUST, LINITDUST=>YDARPHY%LINITDUST, &
  & LINITCHEM=>YDARPHY%LINITCHEM, LORILAM=>YDARPHY%LORILAM, LMPA=>YDARPHY%LMPA, &
  & NPROMA=>YDDIM%NPROMA, &
  & NGFL_EXT=>YGFL%NGFL_EXT, &
+ & RDAY=>YDCST%RDAY, REA=>YDCST%REA, REPSM=>YDCST%REPSM, &
  & LRAYFM15=>YDMODEL%YRML_PHY_MF%YRPHY%LRAYFM15, NLIMA=>YGFL%NLIMA)
 !     ------------------------------------------------------------------
 
@@ -160,16 +162,18 @@ ENDIF
    &             NSV_CO2)
    WRITE(UNIT=KULOUT,FMT='('' NSV = '',I3,'' NSV_CHEMBEG = '',I3,&
  & '' NSV_CHEMEND = '',I3,'' NSV_AERBEG = '',I3,'' NSV_AEREND = '',I3,&
- & ''NSV_DSTBEG = '',I3,''NSV_DSTEND = '',I3,&
- & ''NSV_DSTDEPBEG = '',I3,''NSV_DSTDEPEND = '',I3,''NSV_CO2 = '',I3)')&
+ & '' NSV_DSTBEG = '',I3,'' NSV_DSTEND = '',I3,&
+ & '' NSV_DSTDEPBEG = '',I3,'' NSV_DSTDEPEND = '',I3,'' NSV_CO2 = '',I3)')&
  & NLIMA,NSV_CHEMBEG,NSV_CHEMEND,NSV_AERBEG,NSV_AEREND,NSV_DSTBEG,NSV_DSTEND,&
  & NSV_DSTDEPBEG,NSV_DSTDEPEND,NSV_CO2
 
 !     Initialisation of variables from modd_frommpa.F90
 CALL AROINI_FROMMPA
 
-!     Surface
-CALL SUPHMSE_SURFACE(YDGEOMETRY,YDMODEL,KULOUT, 'C', NPROMA)
+!     Surface setup ( Moved into MODEL_INIT in the OOPS case )
+IF (.NOT.L_OOPS) THEN
+  CALL SUPHMSE_SURFACE(YDGEOMETRY,YDMODEL,KULOUT, 'C', NPROMA)
+ENDIF
 
 
 ! -----------------------------------------------------------------------

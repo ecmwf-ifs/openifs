@@ -1,18 +1,3 @@
-SUBROUTINE SU0PHY1S(KULOUT)
-
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-USE YOMLUN1S , ONLY : NULNAM
-USE YOEPHY   , ONLY : LERADS   ,LESICE   ,LESURF   ,LEVDIF ,RTHRFRTI,&
-     &                LEVGEN   ,LESSRO   ,LESN09,&
-     &                NALBEDOSCHEME,NEMISSSCHEME,LEOCWA   ,LEOCCO  ,LEOCSA ,LEOCLA, &
-     &                LEFLAKE  ,LEOCML   ,LELAIV  ,LECTESSEL, LEAGS, RLAIINT, &
-     &                LWCOU    ,LWCOU2W  ,LWCOUHMF, &
-     &                LEFARQUHAR, LEC4MAP, LEAIRCO2COUP, LEOPTSURF, &
-     &                LECLIM10D,LESNML   ,LEURBAN ,LEINTWIND, NSNMLWS, LECMF1WAY,LECMF2LAKEC
-USE YOMLOG1S , ONLY : LWRLKE
-
-#ifdef DOC
 ! (C) Copyright 1991- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -80,9 +65,92 @@ USE YOMLOG1S , ONLY : LWRLKE
 !        S. Boussetta/G.Balsamo May 2010  Include CTESSEL switch LECTESSEL
 !        G.Balsamo/S. Boussetta June 2011 Include switch LEAGS (for modularity CO2&Evap)
 !        R. Hogan             14-01-2019  Changed LE4ALB to NALBEDOSCHEME
+!        A. Agusti-Panareda 18-11-2020    Include LEAIRCO2COUP to use variable air CO2 in photosynthesis
+!        A. Agusti-Panareda 06-07-2021    Include LEFARQUHAR switch for Farquhar photosynthesis model
+!        A. Agusti-Panareda (Jul 2021):   Add LEC4MAP flag for C4 photosynthesis
+!        J. McNorton        24-08-2022    Urban tile
+!        I. Ayan-Miguez June 2023: Add LESSDP_CALIB switch to activate calibration of surface spatially distributed parameters
+!     ------------------------------------------------------------------
+
+SUBROUTINE SU0PHY1S(KULOUT)
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+USE YOMLUN1S , ONLY : NULNAM
+USE YOEPHY   , ONLY : LERADS   ,LESICE   ,LESURF   ,LEVDIF ,RTHRFRTI,&
+     &                LEVGEN   ,LESSRO   ,LESN09,&
+     &                NALBEDOSCHEME,NEMISSSCHEME,LEOCWA   ,LEOCCO  ,LEOCSA ,LEOCLA, &
+     &                LEFLAKE  ,LEOCML   ,LELAIV  ,LECTESSEL, LEAGS, RLAIINT, &
+     &                LWCOU    ,LWCOU2W  ,LWCOUHMF, &
+     &                LEFARQUHAR, LEC4MAP, LEAIRCO2COUP, LEOPTSURF, &
+     &                LECLIM10D,LESNML   ,LEURBAN ,LEINTWIND, NSNMLWS, LECMF1WAY,LECMF2LAKEC
+USE YOMLOG1S , ONLY : LWRLKE
+
+#ifdef DOC
+
+!**** *SU0PHY*   - Initialize common YOxPHY controlling physics
+
+!     Purpose.
+!     --------
+!           Initialize YOxPHY, the common that includes the
+!           basic switches for the physics of the model.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SU0PHY(KULOUT) from SU0YOM1S
+
+!        Explicit arguments :
+!        --------------------
+!        KULOUT : Logical unit for the output
+
+!        Implicit arguments :
+!        --------------------
+!        COMMON YOMPHY, YOEPHY
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!        or
+
+!        Documentation ARPEGE (depending on which physics will be used)
+
+!     Author.
+!     -------
+!        J.-J. Morcrette                    *ECMWF*
+!        J.-F. Geleyn for the ARPEGE rewriting.
+
+!     Modifications.
+!     --------------
+!        Original : 91-11-12
+!        Modified 92-02-22 by M. Deque (tests of consistency with *YOMDPHY*)
+!        Modified by R. EL Khatib : 93-04-02 Set-up defaults controled by LECMWF
+!        Modified 94-02-28 by M.  Deque  : Shallow convection clouds
+!        Modified 93-10-28 by Ph. Dandin : FMR scheme with MF physics
+!        Modified 93-08-24 by D. Giard (test of consistency with digital filter)
+!        Modified by M. Hamrud    : 93-06-05 Make use of LECMWF for ECMWF
+!        Modified 95-06-24 by Jean-Francois Mahfouf for 1D surface scheme only
+!        Modified 95-03-30 by D. Giard (test of consistency NDPSFI,LTWOTL)
+!        Modified 95-11-27 by M. Deque (2nd call to APLPAR)
+!        Modified by F. Rabier    : 96-09-25 Full physics set-up for 801 job
+
+!        P. Viterbo   ECMWF   03-12-2004  Include user-defined RTHRFRTI
+!        Y. Takaya    ECMWF   07-10-2008  Implement ocean mixed layer model
+!        E. Dutra             16-11-2009  snow 2009 cleaning
+!        S. Boussetta/G.Balsamo May 2010  Include CTESSEL switch LECTESSEL
+!        G.Balsamo/S. Boussetta June 2011 Include switch LEAGS (for modularity CO2&Evap)
+!        R. Hogan             14-01-2019  Changed LE4ALB to NALBEDOSCHEME
 !        A. Agusti-Panareda 18-11-2020 Include LEAIRCO2COUP to use variable air CO2 in photosynthesis
 !        A. Agusti-Panareda 06-07-2021 Include LEFARQUHAR switch for Farquhar photosynthesis model
 !        A. Agusti-Panareda (Jul 2021):Add LEC4MAP flag for C4 photosynthesis
+!        J. McNorton          24-08-2022  Urban tile
 !     ------------------------------------------------------------------
 #endif
 
@@ -127,7 +195,7 @@ LEC4MAP=.FALSE.
 LEAIRCO2COUP=.FALSE.
 LECLIM10D=.FALSE.
 LESNML=.FALSE.
-LEURBAN=.FALSE.
+LEURBAN=.TRUE.
 RLAIINT=0.0_JPRB
 RTHRFRTI=0.0_JPRB
 LEINTWIND=.FALSE.

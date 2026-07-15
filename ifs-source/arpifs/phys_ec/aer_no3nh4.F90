@@ -149,12 +149,9 @@ LOGICAL                    :: LEQSKIP
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
-#include "aer_eqsam4clim.intfb.h"
-
 !-----------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('AER_NO3NH4',0,ZHOOK_HANDLE)
-ASSOCIATE(LAEREQSAM4CLIM => YDCOMPO%LAEREQSAM4CLIM, &
-         & RMMD_DD=>YDEAERSNK%RMMD_DD, RRHO_DD=>YDEAERSNK%RRHO_DD, &
+ASSOCIATE (RMMD_DD=>YDEAERSNK%RMMD_DD, RRHO_DD=>YDEAERSNK%RRHO_DD, &
          & RMMD_SS=>YDEAERSNK%RMMD_SS, RRHO_SS=>YDEAERSNK%RRHO_SS, &
          & RRHTAB=>YDEAERSNK%RRHTAB, &
          & LSEASALT_RH80=> YDEAERATM%LSEASALT_RH80, &
@@ -253,51 +250,6 @@ DO JL=KIDIA,KFDIA
     ENDIF
 
     ZAIRDM(JL,JK) = (7.24291E16_JPRB*PRSF1(JL,JK)/PT(JL,JK)) * RMD /6.02E23_JPRB * 1E6_JPRB
-    LEQSKIP=.FALSE.
-    IF (LAEREQSAM4CLIM) THEN
-      ZXWH2O=0.0_JPRB
-      ZXPMT=0.0_JPRB
-      ZXPMS=0.0_JPRB
-      ZXSPM=0.0_JPRB
-      ZXAPM=0.0_JPRB
-      ZXHP=0.0_JPRB
-      ZXRHO=0.0_JPRB
-      ZXVOL=0.0_JPRB
-   ! gases (mol/m^3 air)
-      ZXYG(1)= 0._JPRB
-      ZXYG(2)= 0._JPRB                    ! HCL
-      ZXYG(3)= 0._JPRB
-      ZXYG(4)= 0._JPRB                    ! H2SO4
-   ! Anions (mol/m^3 air)
-      ZXYMA(1)=  PSO4(JL,JK)*ZAIRDM(JL,JK)/ZMWSO4
-      IF (ZXYMA(1) < 1.E-15_JPRB) ZXYMA(1)=0._JPRB
-      ZXYMA(2)=  0._JPRB                    ! HSO4-
-      ZXYMA(3)=  (PNO3_1(JL,JK))*ZAIRDM(JL,JK)/ZMWNO3 + PHNO3(JL,JK)*ZAIRDM(JL,JK)/ZMWHNO3
-      IF (ZXYMA(3) < 1.E-15_JPRB) ZXYMA(3)=0._JPRB
-      ZXYMA(4)=  0._JPRB                     ! Cl-
-      ! cations (mol/m^3 air)
-      ZXYPA(1)= PNH4OK(JL,JK)*ZAIRDM(JL,JK)/ZMWNH4+PNH3(JL,JK)*ZAIRDM(JL,JK)/ZMWNH3
-      IF (ZXYPA(1) < 1.E-15_JPRB) ZXYPA(1)=0._JPRB
-      ZXYPA(2)= 0._JPRB                      ! Na+
-      ZXYPA(3)= 0._JPRB                      ! Kµ
-      ZXYPA(4)= 0._JPRB                      ! Ca++
-      ZXYPA(5)= 0._JPRB                      ! Ng++
-      ZTENDHNO3=0._JPRB
-
-      CALL AER_EQSAM4CLIM(PRSF1(JL,JK),PT(JL,JK),ZRHLOC(JL,JK),ZXSPM,ZXAPM,ZXPMS,ZXPMT,ZXRHO,ZXVOL,ZXPH,ZXHP,&
-      &                  ZXGF,ZXWH2O,ZXYPA,ZXYPS,ZXYMA,ZXYMS,ZXYG, &
-      &                  LMASK,ZDD,LEQSKIP)
-
-      IF (.NOT. LEQSKIP) THEN
-        PTHNO3(JL,JK)=(ZXYG(1)*ZMWHNO3/ZAIRDM(JL,JK)-PHNO3(JL,JK))/PTSPHY
-        PTNO3_1(JL,JK)=-1._JPRB*PTHNO3(JL,JK)*ZMWNO3/ZMWHNO3
-        !PTNO3_1(JL,JK)=((ZXYMA(3)-ZXYG(1))*ZMWNO3/ZAIRDM - PNO3_1(JL,JK))/PTSPHY
-        ZTENDHNO3=PTHNO3(JL,JK)
-        PTNH3(JL,JK)=(ZXYG(3)*ZMWNH3/ZAIRDM(JL,JK) - PNH3(JL,JK))/PTSPHY
-        PTNH4(JL,JK)=-1._JPRB*PTNH3(JL,JK)*ZMWNH3/ZMWNH4
-      ENDIF
-    ENDIF
-    IF (.NOT. LAEREQSAM4CLIM .OR. LEQSKIP) THEN
       !Equilibrium constant based on Mozurkewich, 1993
       ZDRH  = EXP(723.7_JPRB*ZTINV(JL,JK)+1.6954_JPRB) * 1.E-2_JPRB
       ZKPL1 = EXP(-135.94_JPRB+8763._JPRB*ZTINV(JL,JK)+19.12_JPRB*LOG(PT(JL,JK)))
@@ -386,7 +338,6 @@ DO JL=KIDIA,KFDIA
       ! PTNH4(JL,JK)=PTNH4(JL,JK)+(ZNH4PINI(JL,JK)/ZAIRDM(JL,JK)*ZMWNH4)/PTSPHY
       PTHNO3(JL,JK)=-1._JPRB*PTNO3_1(JL,JK)*ZMWHNO3/ZMWNO3
       PTNH3(JL,JK)=-1._JPRB*PTNH4(JL,JK)*ZMWNH3/ZMWNH4
-    ENDIF ! NOT LAEREQSAM4CLIM or LEQSKIP
 
     ! Check negatives..
 

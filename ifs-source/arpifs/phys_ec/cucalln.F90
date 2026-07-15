@@ -7,15 +7,16 @@
 ! nor does it submit to any jurisdiction
 
 SUBROUTINE CUCALLN &
- & (YDERAD,  YDML_PHY_SLIN,      YDML_PHY_EC,  YGFL,  YDCHEM, YDSPP_CONFIG, &
+ & (PPLDARE, PPLRG,    YDTHF,    YDCST,   YDMODEL, &
  & KIDIA,    KFDIA,    KLON,     KSMAX,   KLEV, &
  & LDLAND, LDSLPHY,&
  & PTSPHY,PVDIFTS,&
  & PTM1,     PQM1,     PUM1,     PVM1,    PLITOT,&
  & PVERVEL,  PQHFL,    PAHFS,   PAPHM1,&
- & PAP,      PAPH,     PGEO,     PGEOH, PGAW,&
+ & PAP,      PAPH,     PGEO,     PGEOH, PGAW,& 
  & PCUCONVCA,PGP2DSPP, &
  & TENDENCY_CML,TENDENCY_LOC, TENDENCY_DYN,&
+ & PTENDENCY_VD9,&
  & PARPRC,&
  & KTOPC,    KBASEC,   KTYPE,&
  & KCBOT,    KCTOP,    KBOTSC,   LDCUM,   LDSC,&
@@ -90,6 +91,7 @@ SUBROUTINE CUCALLN &
 !     tendency_cml    cumulative tendency used for final output
 !     tendency_loc    local tendency from convection
 !     tendency_dyn    tendency from dynamics
+!     ptendency_vd9   tendency from vertical diffusion stored from previous timestep
 
 !    *PTENC*        TENDENCY OF CHEMICAL TRACERS                 1/S
 !    *PARPRC*       ACCUMULATED PRECIPITATION AMMOUNT           KG/(M2*S)
@@ -166,36 +168,27 @@ SUBROUTINE CUCALLN &
 !      D.Salmond     22-Nov-2005 Mods for coarser/finer physics
 !      F.Vana        18-May-2012 cleaning
 !      P.Lopez       08-Dec-2020 Added separate fields for lightning parameterization.
+!      R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
+!      F.Vana&P.Bechtold (Jan 2023): new seq. physics order
 !----------------------------------------------------------------------
 
-USE MODEL_PHYSICS_ECMWF_MOD      , ONLY : MODEL_PHYSICS_ECMWF_TYPE
-USE MODEL_PHYSICS_SIMPLINEAR_MOD , ONLY : MODEL_PHYSICS_SIMPLINEAR_TYPE
-USE YOERAD                       , ONLY : TERAD
-USE YOM_YGFL                     , ONLY : TYPE_GFLD
-USE YOMCHEM                      , ONLY : TCHEM
-USE SPP_MOD                      , ONLY : TSPP_CONFIG
+USE TYPE_MODEL                   , ONLY : MODEL
 USE PARKIND1                     , ONLY : JPIM     ,JPRB
 USE YOMHOOK                      , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST                       , ONLY : RG       ,RV       ,RCPD     ,RCPV     ,&
- &                                        RETV     ,RCW      ,RCS      ,RLVTT    ,RLSTT    ,&
- &                                        RTT      ,RALPW    ,RBETW    ,RGAMW    ,RALPS    ,&
- &                                        RBETS    ,RGAMS    ,RALPD    ,RBETD    ,RGAMD  
-USE YOETHF                       , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                                        R4IES    ,R5LES    ,R5IES    ,RVTMP2   ,R5ALVCP  ,&
- &                                        R5ALSCP  ,RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,&
- &                                        RTICECU, RTWAT_RTICECU_R, RTWAT_RTICE_R  
+USE YOMCST                       , ONLY : TCST  
+USE YOETHF                       , ONLY : TTHF  
 USE YOMCT3                       , ONLY : NSTEP
+USE YOMCAPE                      , ONLY : LMCAPEA
 USE YOMPHYDER                    , ONLY : STATE_TYPE
 
 IMPLICIT NONE
 
-TYPE(TERAD)                        ,INTENT(INOUT) :: YDERAD
-TYPE(MODEL_PHYSICS_ECMWF_TYPE)     ,INTENT(INOUT) :: YDML_PHY_EC
-TYPE(MODEL_PHYSICS_SIMPLINEAR_TYPE),INTENT(INOUT) :: YDML_PHY_SLIN
-TYPE(TYPE_GFLD)   ,INTENT(INOUT) :: YGFL
-TYPE(TCHEM)       ,INTENT(INOUT) :: YDCHEM
-TYPE(TSPP_CONFIG) ,INTENT(IN)    :: YDSPP_CONFIG
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLDARE
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLRG
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(MODEL)       ,INTENT(INOUT) :: YDMODEL
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KSMAX 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
@@ -223,11 +216,12 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEO(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOH(KLON,KLEV+1) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAW(KLON)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCUCONVCA(KLON)
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PGP2DSPP(KLON,YDSPP_CONFIG%SM%NRFTOTAL)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGP2DSPP(KLON,YDMODEL%YRML_GCONF%YRSPP_CONFIG%SM%NRFTOTAL)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PSCAV(KTRAC) 
 TYPE (STATE_TYPE) ,INTENT(IN)    :: TENDENCY_CML   ! cumulative tendency used for final output
 TYPE (STATE_TYPE) ,INTENT(INOUT) :: TENDENCY_LOC   ! local tendency from convection
 TYPE (STATE_TYPE) ,INTENT(IN)    :: TENDENCY_DYN   ! dynamics tendency
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENDENCY_VD9(KLON,KLEV,YDMODEL%YRML_PHY_G%YRSLPHY%NVTEND_VD)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENC(KLON,KLEV,KTRAC) 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PARPRC(KLON) 
 INTEGER(KIND=JPIM),INTENT(OUT)   :: KTOPC(KLON) 
@@ -276,14 +270,14 @@ REAL(KIND=JPRB) :: ZCP1(KLON,KLEV,KTRAC)
 
 !-----------------------------------------------------------------------
 
-REAL(KIND=JPRB) :: ZENTHD(KLON,KLEV),ZENTHS(KLON,KLEV)  
+REAL(KIND=JPRB) :: ZENTHD(KLON,KLEV),ZENTHS(KLON,KLEV),ZDX(KLON)  
 REAL(KIND=JPRB) :: ZCONDFLL(KLON),ZCONDFLN(KLON)
 
 INTEGER(KIND=JPIM) :: IFLAG, JK, JL, JN
 
-REAL(KIND=JPRB) :: ZCP, ZGDPH
+REAL(KIND=JPRB) :: ZCP, ZGDPH, ZEPS
 
-LOGICAL :: LLTEST
+LOGICAL :: LLTEST, LLTDKMF
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 #include "cuccdia.intfb.h"
@@ -301,18 +295,27 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !*                 ----------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('CUCALLN',0,ZHOOK_HANDLE)
+ASSOCIATE(YDERAD=>YDMODEL%YRML_PHY_RAD%YRERAD,YDML_PHY_SLIN=>YDMODEL%YRML_PHY_SLIN,&
+ & YDEPHLI=>YDMODEL%YRML_PHY_SLIN%YREPHLI,YDML_PHY_EC=>YDMODEL%YRML_PHY_EC,&
+ & YDEPHY=>YDMODEL%YRML_PHY_EC%YREPHY,YGFL=>YDMODEL%YRML_GCONF%YGFL,YDCHEM=>YDMODEL%YRML_CHEM%YRCHEM,&
+ & YDSLPHY=>YDMODEL%YRML_PHY_G%YRSLPHY,YDSPP_CONFIG=>YDMODEL%YRML_GCONF%YRSPP_CONFIG)
 ASSOCIATE(NJKT2=>YDML_PHY_EC%YRECUMF%NJKT2, &
  & LPHYLIN=>YDML_PHY_SLIN%YREPHLI%LPHYLIN, RLPTRC=>YDML_PHY_SLIN%YREPHLI%RLPTRC, &
+ & RCPD=>YDCST%RCPD, RG=>YDCST%RG, RLSTT=>YDCST%RLSTT, RLVTT=>YDCST%RLVTT, &
+ & RVTMP2=>YDTHF%RVTMP2, &
  & LEPCLD=>YDML_PHY_EC%YREPHY%LEPCLD, LMFTRAC=>YDML_PHY_EC%YREPHY%LMFTRAC, &
  & LENCLD2=>YDML_PHY_SLIN%YRPHNC%LENCLD2,LEPCLD2=>YDML_PHY_SLIN%YRPHNC%LEPCLD2, &
+ & MT_SAVTEND=>YDSLPHY%MT_SAVTEND, MU_SAVTEND=>YDSLPHY%MU_SAVTEND, &
+ & MV_SAVTEND=>YDSLPHY%MV_SAVTEND, MQ_SAVTEND=>YDSLPHY%MQ_SAVTEND, &
  & REPQMI=>YDML_PHY_EC%YRECND%REPQMI)
+
 ! Setup of tendencies
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
-    TENDENCY_LOC%Q(JL,JK)=TENDENCY_CML%Q(JL,JK)
-    TENDENCY_LOC%T(JL,JK)=TENDENCY_CML%T(JL,JK)
-    TENDENCY_LOC%V(JL,JK)=TENDENCY_CML%V(JL,JK)
-    TENDENCY_LOC%U(JL,JK)=TENDENCY_CML%U(JL,JK)
+    TENDENCY_LOC%Q(JL,JK)=TENDENCY_CML%Q(JL,JK)+PTENDENCY_VD9(JL,JK,MQ_SAVTEND)
+    TENDENCY_LOC%T(JL,JK)=TENDENCY_CML%T(JL,JK)+PTENDENCY_VD9(JL,JK,MT_SAVTEND)
+    TENDENCY_LOC%V(JL,JK)=TENDENCY_CML%V(JL,JK)+PTENDENCY_VD9(JL,JK,MV_SAVTEND)
+    TENDENCY_LOC%U(JL,JK)=TENDENCY_CML%U(JL,JK)+PTENDENCY_VD9(JL,JK,MU_SAVTEND)
     ZENTHD(JL,JK)=0.0_JPRB
     ZENTHS(JL,JK)=0.0_JPRB
   ENDDO
@@ -323,7 +326,14 @@ ENDDO
 !*    1.           UPDATE PROGN. VALUES DEPENDING ON 
 !                  TIME INTEGRATION AND CALCULATE QS
 !*                 ---------------------------------
-
+!-------------------------------------------------
+! Protection in division. ZEPS is choosen as 1000 times lower
+! than the actual values of qv (1.e-7 kg/kg) met in the high atmosphere.
+! This ZEPS value, used in multiplication only, is relevant for both simple and
+! double precision purpose.
+!-------------------------------------------------
+ZEPS=1.0E-10_JPRB
+!
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
     ZUP1(JL,JK)=PUM1(JL,JK)+TENDENCY_CML%U(JL,JK)*PTSPHY
@@ -331,6 +341,7 @@ DO JK=1,KLEV
     ZTP1(JL,JK)=PTM1(JL,JK)+TENDENCY_CML%T(JL,JK)*PTSPHY
     ZQP1(JL,JK)=MAX(REPQMI,PQM1(JL,JK)+TENDENCY_CML%Q(JL,JK)*PTSPHY)
     ZQSAT(JL,JK)=ZQP1(JL,JK)
+    IF(ZQSAT(JL,JK)<=0.0_JPRB) ZQSAT(JL,JK)=ZEPS
   ENDDO
 ENDDO
 
@@ -364,8 +375,8 @@ ELSE
 ENDIF
 
 IFLAG=1
-CALL SATUR (KIDIA , KFDIA , KLON  , NJKT2 , KLEV,&
- & YDML_PHY_SLIN%YREPHLI%LPHYLIN, &
+CALL SATUR (YDTHF, YDCST, KIDIA , KFDIA , KLON  , NJKT2 , KLEV,&
+ & LPHYLIN, &
  & PAP   , ZTP1  , ZQSAT , IFLAG  )  
 
 !-----------------------------------------------------------------------
@@ -373,13 +384,15 @@ CALL SATUR (KIDIA , KFDIA , KLON  , NJKT2 , KLEV,&
 !*    2.     CALL 'CUMASTR'(MASTER-ROUTINE FOR CUMULUS PARAMETERIZATION) 
 !*           ----------------------------------------------------------- 
 
+
+LLTDKMF = .FALSE.
 CALL CUMASTRN &
- & (  YDML_PHY_SLIN,   YDML_PHY_EC,   YGFL,  YDCHEM, YDSPP_CONFIG, &
- & KIDIA,    KFDIA,    KLON,    KLEV, &
- & LDLAND,   PTSPHY,&
+ & (PPLDARE, PPLRG,    YDTHF,   YDCST,    YDML_PHY_SLIN,   YDML_PHY_EC,   YGFL, YDCHEM, YDSPP_CONFIG, &
+ & KIDIA,    KFDIA,    KLON,    KLEV, ZDX, LLTDKMF, &
+ & LMCAPEA,  LDLAND,   PTSPHY,&
  & ZTP1,     ZQP1,     ZUP1,     ZVP1,     PLITOT,&
  & PVERVEL,  ZQSAT,    PQHFL,    PAHFS,&
- & PAP,      PAPH,     PGEO,     PGEOH, PGAW,&
+ & PAP,      PAPH,     PGEO,     PGEOH,  PGAW,&
  & PCUCONVCA,PGP2DSPP, &
  & TENDENCY_LOC%T,    TENDENCY_LOC%Q,    TENDENCY_LOC%U,    TENDENCY_LOC%V,&
  & TENDENCY_DYN%T,    TENDENCY_DYN%Q, &
@@ -400,7 +413,7 @@ CALL CUMASTRN &
 !               -------------------------------------------------------
 
 CALL CUCCDIA &
- & (YDERAD,  YDML_PHY_SLIN%YREPHLI,  YDML_PHY_EC%YREPHY,&
+ & (YDERAD,  YDEPHLI,  YDEPHY,&
  & KIDIA,    KFDIA,    KLON,   KLEV,&
  & NSTEP,    KCBOT,    KCTOP,&
  & LDCUM,    ZQU,      PLU,      PMFU,    ZRAIN,&
@@ -420,7 +433,7 @@ IF (LLTEST) THEN
 !                  -------------------------------------------------
 
   CALL CUSTRAT &
-   & (  YDML_PHY_SLIN%YREPHLI,&
+   & (  YDEPHLI,&
    & KIDIA,    KFDIA,    KLON,   KLEV,&
    & LDCUM,    PTSPHY,   PVDIFTS,&
    & PAP,      PAPH,     PGEO,&
@@ -453,6 +466,11 @@ ENDDO
 
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
+
+    TENDENCY_LOC%Q(JL,JK)=TENDENCY_LOC%Q(JL,JK)-PTENDENCY_VD9(JL,JK,MQ_SAVTEND)
+    TENDENCY_LOC%T(JL,JK)=TENDENCY_LOC%T(JL,JK)-PTENDENCY_VD9(JL,JK,MT_SAVTEND)
+    TENDENCY_LOC%V(JL,JK)=TENDENCY_LOC%V(JL,JK)-PTENDENCY_VD9(JL,JK,MV_SAVTEND)
+    TENDENCY_LOC%U(JL,JK)=TENDENCY_LOC%U(JL,JK)-PTENDENCY_VD9(JL,JK,MU_SAVTEND)
 
     ZGDPH   = -RG/(      PAPHM1(JL,JK+1)-PAPHM1(JL,JK) )
 !...increment in dry static energy is converted to flux of d.s.e.
@@ -499,6 +517,7 @@ DO JK=1,KLEV
 ENDDO
 !---------------------------------------------------------------------
 
+END ASSOCIATE
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('CUCALLN',1,ZHOOK_HANDLE)
 END SUBROUTINE CUCALLN

@@ -53,6 +53,7 @@ LOGICAL :: LSLAG
 ! NVDVAR : switch for type of variable used for pseudo vertical divergence
 !         3: d3 = -g (p/(m.Rd.T)) d_parc w/d_parc eta
 !         4: d4 = d3 + X = d3 + (p/m.R.T) nabla_phi d_parc V/d_parc eta
+!         5: d5 = d4, with use of W, where W = w -(1/g) S(eta) V grad(Phi_s), and W_s=0
 
 ! ND4SYS : switch for the way of treatment of term NHX in the NH d4 equation.
 !          ND4SYS=1: all contributions of D(NHX)/Dt are treated at the level
@@ -81,6 +82,9 @@ LOGICAL :: LSLAG
 
 ! LRDBBC: .T. if S.-L. diagnostic BBC active for NH (if LSLAG=.T. only)
 !         .F. if eulerian development of NH  BBC in LSLAG.
+!         Remark for NVDVAR=5: in this case LRDBBC acts on terms
+!         containing 0, so LRDBBC=T and F must give identical results.
+
 
 ! LSI_NHEE : Helmholtz eqn with DIV as unknown in the NHEE model.
 
@@ -166,10 +170,13 @@ REAL(KIND=JPRB) :: P_SLVF_TR
 ! LGRADSP    : special switch for de-aliasing the pressure gradient term
 ! LPGFSF     : use de-aliasing filter on the pressure gradient term by spectral fit
 ! LPGREUSE   : re-use precomputed PG quantities when LPGFSF=true
+! LPGFTEST   : activated test to check the externalised dataflow results
+!              in the same way as LPGFSF were false.
 
 LOGICAL :: LGRADSP
 LOGICAL :: LPGFSF
 LOGICAL :: LPGREUSE
+LOGICAL :: LPGFTEST
 
 ! ------ 3D turbulence ------------------------------------------------------
 
@@ -249,6 +256,11 @@ LOGICAL :: LSLTVWENO
 
 LOGICAL :: LRUBC
 
+LOGICAL :: LNHEE_REFINE_SILAPL
+LOGICAL :: LNHEE_REFINE_GRP
+LOGICAL :: LNHEE_REFINE_PREH_BBC
+LOGICAL :: LVEREGINT
+
 ! ------ PC (ICI) schemes ---------------------------------------------------
 
 ! LPC_FULL  : full PC scheme switch (with reiterations of trajectories)
@@ -259,6 +271,7 @@ LOGICAL :: LRUBC
 !             - for GMV and 3D interpolations (LAITRE_GMV), linear interpolations if ncurrent_iter < nsiter
 !             - for GMV and 3D interpolations (LAITRE_GMV), high-order interpolations only for ncurrent_iter = nsiter
 !             - high order interpolations are kept for any "ncurrent_iter" for GFL and calls to LAIDDI.
+! LPC_SPHY    - 1st order phys-dyn interface in all NCURRENT_ITER < NSITER (only usefull with LSLPHY=true)
 ! LMIXETTLS : MIXed Extrapolation for Two Time Level Scheme,
 !             for the mixed NESC/SETTLS scheme depending on the weights calc.in LATTE_NL.
 ! LMIXETTLS_PRINT : print mixed NESC/SETTLS statistics in all levels to listing
@@ -267,6 +280,7 @@ LOGICAL :: LRUBC
 LOGICAL :: LPC_FULL
 LOGICAL :: LPC_CHEAP
 LOGICAL :: LPC_CHEAP2
+LOGICAL :: LPC_SPHY
 LOGICAL :: LMIXETTLS
 LOGICAL :: LMIXETTLS_PRINT
 REAL(KIND=JPRB) :: RMIXNL_TRH

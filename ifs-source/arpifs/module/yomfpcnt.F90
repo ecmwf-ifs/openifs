@@ -30,6 +30,8 @@ SAVE
 ! CFPNCF : control filename used to monitor output files achievement
 ! CNAM   : namelist filename attached to this object
 
+! NPDIRL : logical unit number of the directory listing file
+
 ! NFRFPOS    : frequency of post-processing events
 ! NFPOSTS    : array containing postprocessing events
 ! NFPOSTSMIN : array containing postprocessing events in minutes for sub-hour outputs
@@ -44,6 +46,7 @@ LOGICAL :: LFPNAMELIST
 CHARACTER(LEN=180) :: CFPNCF='monitor'
 CHARACTER(LEN=180) :: CNAM=' '
 
+INTEGER(KIND=JPIM) :: NPDIRL
 INTEGER(KIND=JPIM) :: NFRFPOS = 0
 INTEGER(KIND=JPIM), ALLOCATABLE :: NFPOSTS(:)
 INTEGER(KIND=JPIM), ALLOCATABLE :: NFPOSTSMIN(:)

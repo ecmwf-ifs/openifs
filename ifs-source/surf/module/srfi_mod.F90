@@ -1,3 +1,78 @@
+
+! (C) Copyright 1999- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFI* - Computes temperature changes in soil.
+
+!     PURPOSE.
+!     --------
+!**   Computes temperature evolution of sea ice  
+!**   INTERFACE.
+!     ----------
+!          *SRFI* IS CALLED FROM *SURF*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF SURFACE TILES
+!    *KLEVI*      Number of sea ice layers (diagnostics)
+!    *KDHVTIS*    Number of variables for sea ice energy budget
+!    *KDHFTIS*    Number of fluxes for sea ice energy budget
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND INDICATOR (True for land point)
+!    *LDICE*      ICE MASK (TRUE for sea ice)
+!    *LDNH*       TRUE FOR NORTHERN HEMISPHERE
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTIAM1M*    SEA ICE TEMPERATURE                            K
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE        W/M**2
+!    *PFRTI*      TILE FRACTIONS                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!    *PAHFSTI*    TILE SURFACE SENSIBLE HEAT FLUX                 W/M2
+!    *PEVAPTI*    TILE SURFACE MOISTURE FLUX                     KG/M2/S
+!    *PSSRFLTI*   TILE NET SHORTWAVE RADIATION FLUX AT SURFACE    W/M2
+
+!     UPDATED PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PTIA*       SOIL TEMPERATURE                               K
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHTIS*     Diagnostic array for ice T (see module yomcdh)
+
+!     METHOD.
+!     -------
+!          Parameters are set and the tridiagonal solver is called.
+
+!     EXTERNALS.
+!     ----------
+!     *SRFWDIF*
+
+!     REFERENCE.
+!     ----------
+!          See documentation.
+!     P.VITERBO/A.BELJAARS      E.C.M.W.F.     15/03/1999
+!     Modified P. Viterbo       17-05-2000  Surface DDH for TILES
+!     Modified J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!              G. Arduini       Jan 2024     Variable ice thickness
+!              G. Arduini       Sept 2024 Land-ice fraction 
+!     ------------------------------------------------------------------
+
 MODULE SRFI_MOD
 CONTAINS
 SUBROUTINE SRFI(KIDIA  , KFDIA  , KLON , KLEVS  , KLEVI  , &
@@ -12,14 +87,6 @@ USE YOS_CST  , ONLY : TCST
 USE YOS_SOIL , ONLY : TSOIL
 
 USE SRFWDIF_MOD
-
-! (C) Copyright 1999- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFI* - Computes temperature changes in soil.
 

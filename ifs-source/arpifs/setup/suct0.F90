@@ -88,7 +88,11 @@ SUBROUTINE SUCT0(KULOUT)
 !   P. Lopez     : 21-May-2018  Version for running multiple adjoint tests in one go.
 !   R. El Khatib  03-Sep-2018 new configuration 904 which is a test program for change of resolution of an object FIELDS
 !   H. Petithomme Sept 2019: add nml key lcorwat for water conservation
+!   P. Smolikova (Sep 2020): rm LVFE_REGETA
+!   R. El Khatib  01-Feb-2021 CSCRIPT_PPSERVER blank string by default in anycase
 !   I. Polichtchouk (Jul 2021): Introduce LSACC model.
+!   R. El Khatib  22-Jun-2022 partial pruning of conf. 901
+!   R. El Khatib  17-Mar-2023 LOPDIS in namelist and disabled if .not.LECMWF
 ! End Modifications
 !      ----------------------------------------------------------------
 
@@ -97,7 +101,7 @@ USE YOMHOOK  , ONLY : LHOOK    ,DR_HOOK, JPHOOK
 
 USE YOMARG   , ONLY : NUCONF=>NCONF      ,NUECMWF=>NECMWF, &
  &                    CUNMEXP=>CNMEXP    ,LUELAM=>LELAM  , &
- &                    UGEMU              ,NSUPERSEDE, NGRIBFILE, NFPSERVER
+ &                    UGEMU              ,NSUPERSEDE, NGRIBFILE
 USE YOMCT0   , ONLY : JPNPST   ,NPOSTS   ,NHISTS   ,NGDITS   , &
  &                    NSDITS   ,NDHFGTS  ,NDHFZTS  ,NDHFDTS  ,NDHPTS   , &
  &                    NMASSCONS,CNMEXP   ,CFPNCF      , &
@@ -109,7 +113,7 @@ USE YOMCT0   , ONLY : JPNPST   ,NPOSTS   ,NHISTS   ,NGDITS   , &
  &                    NFRDHFD  ,NFRDHP   ,NFRCO    , &
  &                    NFRMASSCON,N6BINS  ,LNF      ,LFDBOP   , &
  &                    LARPEGEF ,LSMSSIG  ,CMETER   ,CEVENT   , &
- &                    LARPEGEF_TRAJHR    ,LARPEGEF_TRAJBG,&
+ &                    LARPEGEF_TRAJHR    ,LARPEGEF_TRAJBG, &
  &                    NFPOS    ,LOPDIS   , &
  &                    LCANARI  ,LOLDPP   ,LGUESS   ,LOBS     , &
  &                    LOBSC1   ,LOBSREF  ,LSIMOB   ,LELAM    ,LRPLANE  , &
@@ -126,7 +130,7 @@ USE YOMCT0   , ONLY : JPNPST   ,NPOSTS   ,NHISTS   ,NGDITS   , &
  &                    LCALLSFX,LSFXLSM,LR3D,LR2D,LRSHW,LRVEQ,LIOLEVG,LECMWF,&
  &                    LWRSPECA_GP,LSUSPECA_GP,LWRSPECA_GP_UV,LSUSPECA_GP_UV,&
  &                    NHISTSMIN, NSFXHISTSMIN, NPOSTSMIN, LGRIB_API,&
- &                    NUNDEFLD, LCOUPLO4, L4DVAR, L_OOPS, &
+ &                    NUNDEFLD, LCOUPLO4, L4DVAR, L_OOPS, L_OOPS_VERBOSE_NORMS,&
  &                    NITER_ADTEST,LCONSERV,LCORWAT
 USE YOMIOPNH , ONLY : LTRAJNH
 USE YOMLUN   , ONLY : NULNAM   
@@ -192,6 +196,9 @@ ELSEIF (NUECMWF == 2) THEN
 ENDIF
 CNMEXP=CUNMEXP
 
+! By default, switch expensive OOPS-related logging on *for ECMWF only*
+L_OOPS_VERBOSE_NORMS=LECMWF
+
 ! AROME key
 LAROME=.FALSE.
 
@@ -246,8 +253,7 @@ LMONITORING=.FALSE.
 LREFOUT =.FALSE.
 LREFGEN =.FALSE.
 LSPBSBAL=.FALSE.
-LOLDPP  =.FALSE.
-LOPDIS=.TRUE.
+LOPDIS=LECMWF
 NTASKS_CANARI= 1
 #ifdef __INTEL_COMPILER
 NOPT_MEMORY=2
@@ -261,14 +267,15 @@ LINFLP9=.FALSE.
 LINFLF1=.FALSE.
 LIOLEVG=.TRUE.
 
-NHISTSMIN=0
-NSFXHISTSMIN=0
-NPOSTSMIN=0
+NHISTSMIN(:)=0
+NSFXHISTSMIN(:)=0
+NPOSTSMIN(:)=0
 
 NITER_ADTEST=1
 
+LOLDPP = LECMWF
+
 IF (LECMWF) THEN
-  LOLDPP  =.TRUE.
   LTRAJNH=.FALSE.
   LOBSC1=.FALSE.
   LOBS  =.FALSE.
@@ -506,25 +513,14 @@ NUNDEFLD=-99999999
 
 !     1.2 File kind or content
 
-IF (LECMWF) THEN
-  LFDBOP=.TRUE.
-  LFBDAP=.FALSE.
-  LARPEGEF=.FALSE.
-  LARPEGEF_TRAJHR=.FALSE.
-  LARPEGEF_TRAJBG=.FALSE.
-  LARPEGEF_RDGP_INIT=.FALSE.
-  LARPEGEF_RDGP_TRAJHR=.FALSE.
-  LARPEGEF_RDGP_TRAJBG=.FALSE.
-ELSE
-  LFDBOP=.FALSE.
-  LFBDAP=.TRUE.
-  LARPEGEF=.TRUE.
-  LARPEGEF_TRAJHR=.TRUE.
-  LARPEGEF_TRAJBG=.TRUE.
-  LARPEGEF_RDGP_INIT=.FALSE.
-  LARPEGEF_RDGP_TRAJHR=.FALSE.
-  LARPEGEF_RDGP_TRAJBG=.FALSE.
-ENDIF
+LFDBOP=LECMWF
+LFBDAP=.NOT.LECMWF
+LARPEGEF=.NOT.LECMWF
+LARPEGEF_TRAJHR=LARPEGEF
+LARPEGEF_TRAJBG=LARPEGEF
+LARPEGEF_RDGP_INIT=.FALSE.
+LARPEGEF_RDGP_TRAJHR=.FALSE.
+LARPEGEF_RDGP_TRAJBG=.FALSE.
 CNDISPP=' '
 LWRSPECA_GP=.FALSE.
 LSUSPECA_GP=.FALSE.
@@ -540,11 +536,7 @@ CNPPATH=' '
 
 !     1.4 Script files
 
-IF (NFPSERVER == 0) THEN
-  CSCRIPT_PPSERVER='cnt3_wait'
-ELSE
-  CSCRIPT_PPSERVER=' '
-ENDIF
+CSCRIPT_PPSERVER=' '
 CSCRIPT_LAMRTC='atcp'
 
 !      ----------------------------------------------------------------
@@ -591,7 +583,7 @@ IF (NCONF /= 1 .AND. NCONF /= 302) LOBSC1=.FALSE.
 IF (LOBSC1) LSIMOB=.FALSE.
 IF (LSIMOB) NCNTVAR=1
 IF (NCONF == 801 .AND. LBACKG) NCNTVAR=2
-IF (NPRINTLEV > 0) LOPDIS = .TRUE.
+IF (NPRINTLEV > 0 .AND. LECMWF) LOPDIS = .TRUE.
 
 IF (NCONF == 131) THEN
   LOBSREF = .TRUE.
@@ -611,7 +603,7 @@ ELSEIF (NCONF == 202.OR.NCONF == 422.OR.NCONF == 522) THEN
   LRSHW=.FALSE.
   LRVEQ=.TRUE.
   LR3D=.FALSE.
-ELSEIF (NCONF==701 .OR. NCONF==901 .OR. NCONF==923 .OR. NCONF==931 .OR. NCONF==932 .OR. NCONF==933) THEN
+ELSEIF (NCONF==701 .OR. NCONF==923 .OR. NCONF==931 .OR. NCONF==932 .OR. NCONF==933) THEN
   LRSHW=.FALSE.
   LRVEQ=.FALSE.
   LR3D=.FALSE.
@@ -631,7 +623,6 @@ LL_CONF_EXISTS=(NCONF == 1) &
  & .OR.(NCONF == 601) &
  & .OR.(NCONF == 701) &
  & .OR.(NCONF == 801) &
- & .OR.(NCONF == 901) &
  & .OR.(NCONF == 903) &
  & .OR.(NCONF == 904) &
  & .OR.(NCONF == 923) &
@@ -646,7 +637,7 @@ ENDIF
 
 ! * Ask for several processors for configurations coded for one processor only?
 !   (quid about conf 931,932,933 ??)
-LL_CONF_ONEPROCONLY=(NCONF == 901).OR.(NCONF == 923)
+LL_CONF_ONEPROCONLY=(NCONF == 923)
 IF (NPROC /= 1 .AND. (LL_CONF_ONEPROCONLY)) THEN
   IERR=IERR+1
   WRITE(KULOUT,'(1X,A,I3,A)') ' ! SUCT0: ERROR NR ',IERR,' !!!'

@@ -1,4 +1,3 @@
-SUBROUTINE SUPHEC(KULOUT)
 
 ! (C) Copyright 1995- ECMWF.
 !
@@ -59,8 +58,70 @@ SUBROUTINE SUPHEC(KULOUT)
 !        S. Boussetta/G.Balsamo May 2010  Include CTESSEL switch LECTESSEL
 !        G.Balsamo/S. Boussetta June 2011 Include switch LEAGS (for modularity CO2&Evap)
 !        R. Hogan             14-01-2019  Changed LE4ALB to NALBEDOSCHEME
+!        A. Agusti-Panareda   Nov 2020    Include variable air CO2 switch LEAIRCO2COUP in photosynthesis
+!        A. Agusti-Panareda   Jul 2021    Include LEFARQUHAR switch fro photosynthesis
+!        J. McNorton          24-08-2022  Urban tile
+!        V. Huijnen           31-10-2023  Support for online BVOC emissions
+!        I. Ayan-Miguez       Oct 2023    Include reading of surface global parameters
+!     ----------------------------------------------------------------
+
+SUBROUTINE SUPHEC(KULOUT)
+
+
+!**** *SUPHEC - INITIALISES PHYSICAL CONSTANTS OF UNCERTAIN VALUE.
+!               WITHIN THE E.C.M.W.F. PHYSICS PACKAGE
+
+!     PURPOSE.
+!     --------
+
+!          THIS ROUTINE SETS THE VALUES FOR THE PHYSICAL CONSTANTS USED
+!     IN THE PARAMETERIZATION ROUTINES WHENEVER THESE VALUES ARE NOT
+!     KNOWN WELL ENOUGH TO FORBID ANY TUNING OR WHENEVER THEY ARE
+!     SUBJECT TO AN ARBITRARY CHOICE OF THE MODELLER. THESE CONSTANTS
+!     ARE DISTRIBUTED IN COMMON DECKS *YOEXXXX* WHERE XXXX CORRESPONDS
+!     TO THE INDIVIDUAL PHYSICAL PARAMETRIZATION
+
+!**   INTERFACE.
+!     ----------
+
+!          *SUPHEC* IS CALLED FROM *SUPHY*
+
+!     METHOD.
+!     -------
+
+!          NONE.
+
+!     EXTERNALS.
+!     ----------
+
+!          *SUVDFS*, *SUVDF*, *SUVEG*, *SUSOIL*, *SURDI*
+
+
+!     REFERENCE.
+!     ----------
+
+!          SEE PHYSICAL ROUTINES FOR AN EXACT DEFINITION OF THE
+!     CONSTANTS.
+
+!     AUTHOR.
+!     -------
+!          J.-J. MORCRETTE  E.C.M.W.F.    91/06/15  ADAPTATION TO I.F.S.
+
+!     MODIFICATIONS
+!     -------------
+!          J.-F. Mahfouf E.C.M.W.F.       95/03/01 (For 1D surface scheme)
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        P.Viterbo     24-May-2004 surf library
+!        P. Viterbo   ECMWF   03-12-2004  Include user-defined RTHRFRTI
+!        Y. Takaya    ECMWF   07-10-2008  Include flag for ocean ML
+!        S. Boussetta/G.Balsamo May 2009  Add switch for variable LAI: LELAIV
+!        E. Dutra             16-11-2009  snow 2009 cleaning
+!        S. Boussetta/G.Balsamo May 2010  Include CTESSEL switch LECTESSEL
+!        G.Balsamo/S. Boussetta June 2011 Include switch LEAGS (for modularity CO2&Evap)
+!        R. Hogan             14-01-2019  Changed LE4ALB to NALBEDOSCHEME
 !        A. Agusti-Panareda Nov 2020 Include variable air CO2 switch LEAIRCO2COUP in photosynthesis
 !        A. Agusti-Panareda Jul 2021 Include LEFARQUHAR switch fro photosynthesis
+!        J. McNorton          24-08-2022  Urban tile
 !     ----------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
@@ -210,7 +271,7 @@ LEOCMTKE =.FALSE.
 RCIMIN=0.005_JPRB
 
 CALL SUSURF(KSW=NSW,KCSS=NCSS,KCSNEC=NCSNEC,KSIL=NSIL,KCOM=NCOM,KTILES=NTILES,KTSW=NTSW,KLWEMISS=NLWEMISS,&
-    & LD_LEFLAKE=LEFLAKE, LD_LEOCML=LEOCML, LD_LOCMLTKE=LEOCMTKE,&
+    & LD_LEFLAKE=LEFLAKE,LD_LEURBAN=LEURBAN, LD_LEOCML=LEOCML, LD_LOCMLTKE=LEOCMTKE,&
     & LD_LWCOU=LWCOU,LD_LWCOU2W=LWCOU2W,LD_LWCOUHMF=LWCOUHMF, &
     & LD_LLCCNL=LCCNL,LD_LLCCNO=LCCNO,LD_LEVGEN=LEVGEN,LD_LESSRO=LESSRO,&
     & LD_LELAIV=LELAIV,LD_LECTESSEL=LECTESSEL,LD_LEAGS=LEAGS,&

@@ -1,13 +1,14 @@
 ! (C) Copyright 1989- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUBASMCN &
- & (YDECUMF,KIDIA,    KFDIA,    KLON,    KLEV,&
+ & (YDCST, YDECUMF,KIDIA,    KFDIA,    KLON,    KLEV,&
  & KK,&
  & PTEN,     PQEN,     PQSEN,&
  & PVERVEL,  PGEO,     PGEOH,    LDCUM,    KTYPE,    KLAB,&
@@ -83,17 +84,19 @@ SUBROUTINE CUBASMCN &
 !          ---------
 !          NONE
 
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG       ,RCPD
+USE YOMCST   , ONLY : TCST
 USE YOECUMF  , ONLY : TECUMF
 
 IMPLICIT NONE
 
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -134,7 +137,8 @@ IF (LHOOK) CALL DR_HOOK('CUBASMCN',0,ZHOOK_HANDLE)
 !DIR$ IVDEP
 !OCL NOVREC
 ASSOCIATE(LMFMID=>YDECUMF%LMFMID, NJKT7=>YDECUMF%NJKT7, &
- & RMFLIA=>YDECUMF%RMFLIA, RMFCMIN=>YDECUMF%RMFCMIN)
+ & RMFLIA=>YDECUMF%RMFLIA, RMFCMIN=>YDECUMF%RMFCMIN, &
+ & RCPD=>YDCST%RCPD, RG=>YDCST%RG)
 
 ZRG=1.0_JPRB/RG
 ZORCPD=1.0_JPRB/RCPD

@@ -1,10 +1,16 @@
 ! radiation_cloud_optics.F90 - Computing cloud optical properties
 !
-! Copyright (C) 2014-2017 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-07-22  R. Hogan  Added Yi et al. ice optics model
@@ -12,6 +18,8 @@
 module radiation_cloud_optics
 
   implicit none
+
+  public
 
 contains
 
@@ -25,7 +33,8 @@ contains
   subroutine setup_cloud_optics(config)
 
     use parkind1,         only : jprb
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,          only : lhook, dr_hook, jphook
+
     use radiation_io,     only : nulerr, radiation_abort
     use radiation_config, only : config_type, IIceModelFu, IIceModelBaran, &
          &                       IIceModelBaran2016, IIceModelBaran2017, &
@@ -196,6 +205,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     use radiation_io,     only : nulout, nulerr, radiation_abort
     use radiation_config, only : config_type, IIceModelFu, IIceModelBaran, &
          &                       IIceModelBaran2016, IIceModelBaran2017, &
@@ -261,7 +271,7 @@ contains
     ! access
     type(cloud_optics_type), pointer :: ho
 
-    integer    :: jcol, jlev
+    integer    :: jcol, jlev, jb
 
     real(jphook) :: hook_handle
 
@@ -335,10 +345,12 @@ contains
               call radiation_abort()
             end if
 
+            ! Delta-Eddington scaling in the shortwave only
             if (.not. config%do_sw_delta_scaling_with_gases) then
-              ! Delta-Eddington scaling in the shortwave only
               call delta_eddington_scat_od(od_sw_liq, scat_od_sw_liq, g_sw_liq)
             end if
+            !call delta_eddington_scat_od(od_lw_liq, scat_od_lw_liq, g_lw_liq)
+
           else
             ! Liquid not present: set properties to zero
             od_lw_liq = 0.0_jprb
@@ -427,14 +439,14 @@ contains
               call radiation_abort()
             end if
 
+            ! Delta-Eddington scaling in both longwave and shortwave
+            ! (assume that particles are larger than wavelength even
+            ! in longwave)
             if (.not. config%do_sw_delta_scaling_with_gases) then
-              ! Delta-Eddington scaling in both longwave and shortwave
-              ! (assume that particles are larger than wavelength even
-              ! in longwave)
               call delta_eddington_scat_od(od_sw_ice, scat_od_sw_ice, g_sw_ice)
             end if
-
             call delta_eddington_scat_od(od_lw_ice, scat_od_lw_ice, g_lw_ice)
+
           else
             ! Ice not present: set properties to zero
             od_lw_ice = 0.0_jprb
@@ -448,29 +460,41 @@ contains
 
           ! Combine liquid and ice 
           if (config%do_lw_cloud_scattering) then
-            od_lw_cloud(:,jlev,jcol) = od_lw_liq + od_lw_ice
-            where (scat_od_lw_liq+scat_od_lw_ice > 0.0_jprb)
-              g_lw_cloud(:,jlev,jcol) = (g_lw_liq * scat_od_lw_liq &
-                   &  + g_lw_ice * scat_od_lw_ice) &
-                   &  / (scat_od_lw_liq+scat_od_lw_ice)
-            elsewhere
-              g_lw_cloud(:,jlev,jcol) = 0.0_jprb
-            end where
-            ssa_lw_cloud(:,jlev,jcol) = (scat_od_lw_liq + scat_od_lw_ice) &
-                 &                    / (od_lw_liq + od_lw_ice)
+! Added for DWD (2020)
+!NEC$ shortloop
+            do jb = 1, config%n_bands_lw
+              od_lw_cloud(jb,jlev,jcol) = od_lw_liq(jb) + od_lw_ice(jb)
+              if (scat_od_lw_liq(jb)+scat_od_lw_ice(jb) > 0.0_jprb) then
+                g_lw_cloud(jb,jlev,jcol) = (g_lw_liq(jb) * scat_od_lw_liq(jb) &
+                   &  + g_lw_ice(jb) * scat_od_lw_ice(jb)) &
+                   &  / (scat_od_lw_liq(jb)+scat_od_lw_ice(jb))
+              else
+                g_lw_cloud(jb,jlev,jcol) = 0.0_jprb
+              end if
+              ssa_lw_cloud(jb,jlev,jcol) = (scat_od_lw_liq(jb) + scat_od_lw_ice(jb)) &
+                 &                    / (od_lw_liq(jb) + od_lw_ice(jb))
+            end do
           else
             ! If longwave scattering is to be neglected then the
             ! best approximation is to set the optical depth equal
             ! to the absorption optical depth
-            od_lw_cloud(:,jlev,jcol) = od_lw_liq - scat_od_lw_liq &
-                 &                   + od_lw_ice - scat_od_lw_ice
+! Added for DWD (2020)
+!NEC$ shortloop
+            do jb = 1, config%n_bands_lw
+              od_lw_cloud(jb,jlev,jcol) = od_lw_liq(jb) - scat_od_lw_liq(jb) &
+                    &                   + od_lw_ice(jb) - scat_od_lw_ice(jb)
+            end do
           end if
-          od_sw_cloud(:,jlev,jcol) = od_sw_liq + od_sw_ice
-          g_sw_cloud(:,jlev,jcol) = (g_sw_liq * scat_od_sw_liq &
-               &  + g_sw_ice * scat_od_sw_ice) &
-               &  / (scat_od_sw_liq + scat_od_sw_ice)
-          ssa_sw_cloud(:,jlev,jcol) &
-               &  = (scat_od_sw_liq + scat_od_sw_ice) / (od_sw_liq + od_sw_ice)
+! Added for DWD (2020)
+!NEC$ shortloop
+          do jb = 1, config%n_bands_sw
+            od_sw_cloud(jb,jlev,jcol) = od_sw_liq(jb) + od_sw_ice(jb)
+            g_sw_cloud(jb,jlev,jcol) = (g_sw_liq(jb) * scat_od_sw_liq(jb) &
+               &  + g_sw_ice(jb) * scat_od_sw_ice(jb)) &
+               &  / (scat_od_sw_liq(jb) + scat_od_sw_ice(jb))
+            ssa_sw_cloud(jb,jlev,jcol) &
+               &  = (scat_od_sw_liq(jb) + scat_od_sw_ice(jb)) / (od_sw_liq(jb) + od_sw_ice(jb))
+          end do
         end if ! Cloud present
       end do ! Loop over column
     end do ! Loop over level

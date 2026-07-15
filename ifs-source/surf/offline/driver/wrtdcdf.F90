@@ -1,6 +1,3 @@
-SUBROUTINE WRTDCDF
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,JPRM,JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -9,6 +6,48 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+!**** *WRTDCDF*  - writes diagnostics to NetCDF files
+
+!     Purpose.
+!     --------
+!        writes out diagnostic variables
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTDCDF
+
+!     Explicit arguments :
+!     --------------------
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk (KNMI)
+
+!     Modifications.
+!     --------------
+!        original: 14/7/2000
+!        E. Dutra - NEW OUTPUT FILE FOR LAKES : 04/07/2008
+!        Y. Takaya - Add ocean mixed layer output : 07/10/2008
+!        A. Agusti-Panareda - Atmospheric CO2 forcing: 17/11/2020
+!        I. Ayan-Miguez - Added spatially distributed parameters: Oct 2023
+
+SUBROUTINE WRTDCDF
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,JPRM,JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 !**** *WRTDCDF*  - writes diagnostics to NetCDF files
 
 !     Purpose.

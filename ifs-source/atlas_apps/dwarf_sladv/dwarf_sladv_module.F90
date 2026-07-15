@@ -85,8 +85,12 @@ subroutine dwarf_sladv_setup( this, config, functionspace, nabla )
   call this%geometry%setup( config, functionspace )
 
   if( this%needs_nabla(config) ) then
-    if( present(nabla) .and. .not. nabla%is_null() ) then
-       this%nabla = nabla
+    if( present(nabla) ) then
+      if( nabla%is_null() ) then
+        call ABORT("optional nabla argument exists but is null")
+      else
+        this%nabla = nabla
+      endif
     else
        call ABORT("optional nabla argument required for given configuration")
     endif

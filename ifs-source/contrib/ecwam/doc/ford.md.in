@@ -1,0 +1,29 @@
+project: ecWAM
+project_website: https://ecmwf.int
+project_github: https://github.com/ecmwf-ifs/ecwam
+version: @ecwam_VERSION@
+summary: WAM wave model
+author: ECMWF
+author_website: www.ecmwf.int
+src_dir: @CMAKE_CURRENT_SOURCE_DIR@/../src/ecwam
+output_dir: @CMAKE_CURRENT_BINARY_DIR@/ford
+predocmark: >
+docmark_alt: #
+predocmark_alt: <
+display: public
+         protected
+source: true
+graph: true
+search: false
+macro: FORD
+extra_filetypes: sh #
+include: @CMAKE_CURRENT_SOURCE_DIR@/../src/ecwam
+         @CMAKE_CURRENT_SOURCE_DIR@/../src/programs
+extensions: F90
+            fypp
+fpp_extensions: F90
+                fypp
+
+## Capabilities:
+
+---------------------------------------------------------------------

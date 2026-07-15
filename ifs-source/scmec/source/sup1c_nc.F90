@@ -178,6 +178,8 @@ CALL VARSETUP1C_NC (INCID, IACCUR, 2, IDIMID2, &
 CALL VARSETUP1C_NC (INCID, IACCUR, 2, IDIMID2, &
    'q',                 'Water Vapor Mixing Ratio',       'kg/kg')
 CALL VARSETUP1C_NC (INCID, IACCUR, 2, IDIMID2, &
+   'TKE',                 'TKE',       'm2/s2')
+CALL VARSETUP1C_NC (INCID, IACCUR, 2, IDIMID2, &
    'ql',                'Liquid Water Mixing Ratio',      'kg/kg')
 CALL VARSETUP1C_NC (INCID, IACCUR, 2, IDIMID2, &
    'qi',                'Ice Water Mixing Ratio',         'kg/kg')

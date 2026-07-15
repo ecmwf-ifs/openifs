@@ -41,6 +41,7 @@ SUBROUTINE SUDPRECIPS(YDPHY,YDRIP,KULOUT)
 !     Modifications.
 !     --------------
 !      Y. Seity : 2018-07-17 add RDHAIL* 
+!      ? : move NDTPRECCUR/NDTPRECCUR2 to YRCPG_OPTS
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
@@ -77,8 +78,6 @@ REAL(KIND=JPRB), POINTER ::  RAWARM
 REAL(KIND=JPRB), POINTER ::  RACOLD
 INTEGER(KIND=JPIM), POINTER ::  NDTPREC
 INTEGER(KIND=JPIM), POINTER ::  NDTPREC2
-INTEGER(KIND=JPIM), POINTER ::  NDTPRECCUR
-INTEGER(KIND=JPIM), POINTER ::  NDTPRECCUR2
 
 #include "posnam.intfb.h"
 #include "namdprecips.nam.h"
@@ -108,8 +107,6 @@ RAWARM     => YDPRECIPS%RAWARM
 RACOLD     => YDPRECIPS%RACOLD
 NDTPREC    => YDPRECIPS%NDTPREC
 NDTPREC2   => YDPRECIPS%NDTPREC2
-NDTPRECCUR => YDPRECIPS%NDTPRECCUR
-NDTPRECCUR2=> YDPRECIPS%NDTPRECCUR2
 
 !*       1.    Set default values.
 !              -------------------
@@ -124,7 +121,8 @@ RDSEUIL1=0.001_JPRB
 RDSEUIL2=0.2_JPRB
 RDSEUIL3=0.6_JPRB
 RDSEUIL4=0.8_JPRB
-RDSEUIL5=0.0003_JPRB !in mm/s = 1mm/h rain/drizzle
+!RDSEUIL5=0.0003_JPRB !in mm/s = 1mm/h rain/drizzle
+RDSEUIL5=0.00015_JPRB !in mm/s = 0.5 mm/h rain/drizzle
 RDCLWC=0.00035_JPRB
 RPRECSEUIL=0.00003_JPRB !in mm/s = 0.1mm/h
 RHTOP=4000._JPRB
@@ -133,8 +131,6 @@ RACOLD=4500._JPRB
 RAWARM=400._JPRB
 NDTPREC=INT(NDPRECPERIOD/TSTEP)
 NDTPREC2=INT(NDPRECPERIOD2/TSTEP)
-NDTPRECCUR=1_JPIM
-NDTPRECCUR2=1_JPIM
 
 !*       2.    Modify default values.
 !              ----------------------
@@ -156,10 +152,9 @@ WRITE(UNIT=KULOUT,FMT='('' HDPRECIPS = '',E10.4,'' HDCLWC = '',E10.4 &
  & ,'' RDCLWC = '',E10.4,'' RPRECSEUIL = '',E10.4&
  & ,'' RHTOP = '',E10.4,'' RTPW = '',E10.4&
  & ,'' RAWARM = '',E10.4,'' RACOLD = '',E10.4&
- & ,'' NDTPREC = '',I8,'' NDTPRECCUR  = '',I8&
- & )')&
+ & ,'' NDTPREC = '',I8)')&
  & HDPRECIPS,HDCLWC,RDHAIL1,RDHAIL2,RDSEUIL1,RDSEUIL2,RDSEUIL3,RDSEUIL4,&
- & RDSEUIL5,RDCLWC,RPRECSEUIL,RHTOP,RTPW,RAWARM,RACOLD,NDTPREC,NDTPRECCUR
+ & RDSEUIL5,RDCLWC,RPRECSEUIL,RHTOP,RTPW,RAWARM,RACOLD,NDTPREC
 
 !     ------------------------------------------------------------------
 

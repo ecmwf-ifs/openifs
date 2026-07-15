@@ -67,6 +67,7 @@ TYPE :: TCHEM
      LOGICAL    :: LCHEM_BASCOE_HETCHEM
 !  switch to use JNO2 from tropo (CBO5) in strato (BASCOE)
      LOGICAL    :: LCHEM_EXTENDJNO2
+
 !  MOZART: use a dummy RSF table for testing without huge lookup table
      LOGICAL    :: LMOZART_RSF_DUMMY
 !  output of photolysis rates in extra ) 
@@ -83,17 +84,11 @@ TYPE :: TCHEM
      INTEGER(KIND=JPIM)   :: KCHEM_WETDEP
 ! Dry deposition option switch
     INTEGER(KIND=JPIM)   :: KCHEM_DRYDEP
-!    apply both O3 CBM4 and Cariolle in Stratopshere
-     LOGICAL    :: LCHEM_REVCHEM
-!    apply revised (updated) CB05 chemistry
-     LOGICAL    :: LCHEM_STMA
 !    use analysed ozone of ic in startosphere 
      LOGICAL    :: LCHEM_ANAO3
 !   mass change in SL pressure fixer
     ! 1: after MF 2: before MF 3: troposphere after 4: troposphere before MF        
     REAL(KIND=JPRB)        :: SMASSCOR (300,4)  
-!  surpress NOx in Stratopshere by setting it to zero  
-    LOGICAL     :: LCHEM_0NOX
 !  use CH4 analysis as IC for methane   
     LOGICAL     :: LCHEM_ANACH4
 !  use weak relaxation for CH4 (set true when emissions present in CB05)
@@ -104,8 +99,8 @@ TYPE :: TCHEM
     LOGICAL     :: LCHEM_CSHAPE 
 !  apply grid scaling in wet deposition   
     LOGICAL     :: LCHEM_WDFR 
-!  apply htap setting   
-    LOGICAL     :: LCHEM_HTAP 
+!  apply fixed CH4 concentrations for chemistry   
+    LOGICAL     :: LCHEM_FIX_CH4 
 !  year if pre-historic application (pre 2000)    
     INTEGER(KIND=JPIM) :: KCHEM_YEARPI 
 ! fixed CH4 value 
@@ -116,6 +111,8 @@ TYPE :: TCHEM
     LOGICAL :: LCHEM_O3RAD
 !  Chemistry TL/AD
    LOGICAL  :: LCHEM_TL 
+!  Couple atmospheric loss of Volcanic SO2 (VSO2) tracer to sulfate production
+   LOGICAL  :: LCHEM_VSO2_COUPLE 
 ! variable use prognostic aersol for photolysis and heterogenous uptake
     LOGICAL :: LCHEM_AEROI
 !   arrays with of unused fields in extra arrays for IEXTR_EM, IEXTR_DD and IEXTR_WD 

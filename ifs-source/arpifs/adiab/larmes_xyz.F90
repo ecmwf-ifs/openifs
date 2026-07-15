@@ -16,7 +16,7 @@
 SUBROUTINE LARMES_XYZ(YDGEOMETRY,YDRIP,YDML_DYN,KST,KPROF,&
  & YDSL,KSTABUF,PB1,PB2,PWRL9,&
  & PLSDEPI,KIBL,KVSEPC,KVSEPL,&
- & PSAVEDP,PSCO,PLEV,PCCO,PUF,PVF,PWF,&
+ & PSAVEDP,PLEV,PCCO,PUF,PVF,PWF,&
  & KL0,KLH0,KLEV)  
 
 !----compiled for Cray with -hcontiguous----
@@ -60,8 +60,6 @@ SUBROUTINE LARMES_XYZ(YDGEOMETRY,YDRIP,YDML_DYN,KST,KPROF,&
 !          KVSEPL   - vertical separation (used in S/L adjoint, linear interp.)
 !          PSAVEDP  - departure point coordinates (lon,lat,eta) from previous timestep
 !
-!          PSCO     - information about geographic position of interpol. point. (not used
-!                     here but provided for compatibility with larcina)
 !          PLEV     - vertical coordinate of the interpolation point.
 !          PCCO     - information about comput. space position of interpol. point.
 !          PUF      - U-comp of wind necessary to
@@ -77,15 +75,6 @@ SUBROUTINE LARMES_XYZ(YDGEOMETRY,YDRIP,YDML_DYN,KST,KPROF,&
 !                     of the 16 points interpolation grid if needed.
 !          KLEV     - lower level of the vertical interpolation
 !                     grid needed for vertical interpolations.
-
-
-!        Implicit arguments :
-!        --------------------
-
-!     Method.
-!     -------
-!        See tech memo XXX.
-
 !     Externals.
 !     ----------
 !        Calls  LARCINA.
@@ -93,6 +82,9 @@ SUBROUTINE LARMES_XYZ(YDGEOMETRY,YDRIP,YDML_DYN,KST,KPROF,&
 
 !     Reference.
 !     ----------
+!     M. Diamantakis, F. Vana: A fast converging and concise algorithm for computing the departure points 
+!     in semi-Lagrangian weather and climate models
+!     QJRMS  https://doi.org/10.1002/qj.4224
 
 !     Author.
 !     -------
@@ -100,6 +92,8 @@ SUBROUTINE LARMES_XYZ(YDGEOMETRY,YDRIP,YDML_DYN,KST,KPROF,&
 
 !     Modifications.
 !     --------------
+!   F. Vana 11-Jan-2023: Use pointer function SC2PRG
+
 ! End Modifications
 !     ------------------------------------------------------------------
 
@@ -112,6 +106,7 @@ USE YOMLUN             , ONLY : NULERR
 USE YOMRIP             , ONLY : TRIP
 USE YOMCT3             , ONLY : NSTEP
 USE EINT_MOD           , ONLY : SL_STRUCT
+USE SC2PRG_MOD         , ONLY : SC2PRG
 
 !     ------------------------------------------------------------------
 
@@ -132,7 +127,6 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KIBL
 INTEGER(KIND=JPIM),INTENT(INOUT) :: KVSEPC
 INTEGER(KIND=JPIM),INTENT(INOUT) :: KVSEPL
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSAVEDP(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,3)
-REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSCO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTSCO%NDIM)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PLEV(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCCO(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTCCO%NDIM)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PUF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
@@ -162,12 +156,15 @@ REAL(KIND=JPRD) :: ZRDP, ZXDP, ZYDP, ZZDP
 REAL(KIND=JPRB) :: ZLON2, ZPI2
 REAL(KIND=JPRB) :: ZSINLAT0, ZCOSLAT0, ZSINDLON, ZCOSDLON
 REAL(KIND=JPRB) :: ZQ11, ZQ12, ZQ21, ZQ22, ZQ33
-REAL(KIND=JPRB) :: ZUN_KAPPA(1),ZUN_KAPPAT(1),ZUN_KAPPAM(1),ZUN_KAPPAH(1),ZWFSM(1)
+REAL(KIND=JPRB) :: ZUN_KAPPA(1),ZUN_KAPPAT(1),ZUN_KAPPAM(1),ZUN_KAPPAH(1),ZWFSM(1),ZUN_PSCO(1)
 
 REAL(KIND=JPRB) :: ZWF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
 REAL(KIND=JPRB) :: ZZF(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG)
 REAL(KIND=JPRB) :: ZLSCAW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTLSCAW%NDIM)
 REAL(KIND=JPRB) :: ZRSCAW(YDGEOMETRY%YRDIM%NPROMA,YDGEOMETRY%YRDIMV%NFLEVG,YDML_DYN%YYTRSCAW%NDIM)
+
+REAL(KIND=JPRB), POINTER :: ZSLB2STDDISU(:), ZSLB2STDDISV(:), ZSLB2STDDISW(:)
+REAL(KIND=JPRB), POINTER :: ZSLB1UR0(:), ZSLB1VR0(:), ZSLB1WR0(:), ZSLB1ZR0(:)
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -200,6 +197,15 @@ ASSOCIATE(NPROMA=>YDDIM%NPROMA, &
  & MSLB2VRL=>YDPTRSLB2%MSLB2VRL, MSLB2WRL=>YDPTRSLB2%MSLB2WRL,         & 
  & MSLB2ZRL=>YDPTRSLB2%MSLB2ZRL, NFLDSLB2=>YDPTRSLB2%NFLDSLB2,         &
  & RTDT=>YDRIP%RTDT)
+
+CALL SC2PRG(MSLB2STDDISU,PB2    ,ZSLB2STDDISU)
+CALL SC2PRG(MSLB2STDDISV,PB2    ,ZSLB2STDDISV)
+CALL SC2PRG(MSLB2STDDISW,PB2    ,ZSLB2STDDISW)
+CALL SC2PRG(MSLB1UR0  ,PB1      ,ZSLB1UR0)
+CALL SC2PRG(MSLB1VR0  ,PB1      ,ZSLB1VR0)
+CALL SC2PRG(MSLB1WR0  ,PB1      ,ZSLB1WR0)
+CALL SC2PRG(MSLB1ZR0  ,PB1      ,ZSLB1ZR0)
+
 !------------------------------------------------------------------
 !             PRELIMINARY INITIALISATIONS AND TESTS.
 !------------------------------------------------------------------
@@ -322,10 +328,10 @@ ENDIF
 DO JITER=2, NITMP
   CALL LARCINA(YDGEOMETRY,YDML_DYN,KST,KPROF,YDSL,IHVI,KSTABUF,LFINDVSEP,LLSLHD,LLSLHDQUAD,LLINTV,&
     & ITIP,IROT,.FALSE.,PLSDEPI,&
-    & KIBL,PSCO,PLEV,&
+    & KIBL,ZUN_PSCO,PLEV,&
     & ZUN_KAPPA,ZUN_KAPPAT,ZUN_KAPPAM,ZUN_KAPPAH,&
-    & PB2(1,MSLB2STDDISU),PB2(1,MSLB2STDDISV),PB2(1,MSLB2STDDISW),&
-    & PB1(1,MSLB1UR0),PB1(1,MSLB1VR0),PB1(1,MSLB1ZR0),PB1(1,MSLB1WR0),&
+    & ZSLB2STDDISU,ZSLB2STDDISV,ZSLB2STDDISW,&
+    & ZSLB1UR0,ZSLB1VR0,ZSLB1ZR0,ZSLB1WR0,&
     & KVSEPC,KVSEPL,PCCO,&
     & PUF,PVF,ZZF,ZWF,ZWFSM,&
     & KL0,KLH0,KLEV,ZLSCAW,ZRSCAW,IDEP,INOWENO)

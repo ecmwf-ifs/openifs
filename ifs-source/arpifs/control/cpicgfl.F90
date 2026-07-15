@@ -38,6 +38,7 @@ SUBROUTINE CPICGFL(YDGEOMETRY,YDGMV,YDML_CHEM,YGFL,PGMV,PGMVS,PGFLT1)
 !:
 !     Modifications.
 !     --------------
+!    F. Vana (Jan 2023) Better GMV pointers
 !     ------------------------------------------------------------------
 
 USE MODEL_CHEM_MOD , ONLY : MODEL_CHEM_TYPE
@@ -114,14 +115,14 @@ DO JSTGLO=1,NGPTOT,NPROMA
   IBL=(JSTGLO-1)/NPROMA+1
   ISTC=1
   DO J=ISTC,ICEND
-    ZPRESH(J,NFLEVG) = EXP(PGMVS(J,YDGMV%YT0%MSP,IBL))
+    ZPRESH(J,NFLEVG) = EXP(PGMVS(J,YDGMV%YPH9%MSP,IBL))
   ENDDO
   CALL GPHPRE(NPROMA,NFLEVG,ISTC,ICEND,YDVAB,YDCVER,ZPRESH,PRESF=ZPRESF )
   IF (LCHEM_TROPO ) THEN
     DO JLEV=1,NFLEVG
        DO J=ISTC,ICEND 
          ZQ(J,JLEV) = PGFLT1(J,JLEV,YCOMP(IQ)%MP,IBL)  
-         ZT(J,JLEV) = PGMV(J,JLEV,YDGMV%YT0%MT,IBL) 
+         ZT(J,JLEV) = PGMV(J,JLEV,YDGMV%YPH9%MT,IBL) 
        ENDDO
     ENDDO   
 ! humidity tropopause  true, temperature tropopause = false

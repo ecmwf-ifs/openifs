@@ -19,13 +19,14 @@
 !     With important contributions from:
 !        M. Damian, Villanova University, USA
 !        R. Sander, Max-Planck Institute for Chemistry, Mainz, Germany
+! 
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 SUBROUTINE BASCOE_V0_KPP_UPDATE_CIFS_CONC(YGFL,PVAR,PCVM)
 
    USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+   USE PARKIND1  , ONLY : JPIM     ,JPRB
    USE BASCOE_KPP_PARAMETERS, ONLY:  NVAR,&
 &   IND_CO2,   IND_HF,    IND_N2O,   IND_CCL4,&
 &   IND_CFC11, IND_CFC12, IND_CFC113,IND_CFC114,&
@@ -46,7 +47,7 @@ SUBROUTINE BASCOE_V0_KPP_UPDATE_CIFS_CONC(YGFL,PVAR,PCVM)
 
    
    USE YOM_YGFL , ONLY : TYPE_GFLD
-   USE BASCOE_MODULE, ONLY :   IO3,  IH2O2,&
+   USE BASCOE_TRACERS, ONLY :   IO3,  IH2O2,&
 & ICH4,    ICO,     IHNO3,   ICH3OOH,&
 & ICH2O,   INO ,    IHO2 ,   ICH3 ,&
 & ICH3O ,  IHCO ,   ICH3O2 , IOH ,&
@@ -67,7 +68,7 @@ SUBROUTINE BASCOE_V0_KPP_UPDATE_CIFS_CONC(YGFL,PVAR,PCVM)
    IMPLICIT NONE
 
 TYPE(TYPE_GFLD)   ,INTENT(INOUT)  :: YGFL
-   REAL(KIND=JPRD),INTENT(IN)     :: PVAR(NVAR)
+   REAL(KIND=JPRB),INTENT(IN)     :: PVAR(NVAR)
    REAL(KIND=JPRB),INTENT(OUT)    :: PCVM(YGFL%NCHEM)
 
 !*       0.5   LOCAL PVARIABLES

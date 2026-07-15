@@ -8,7 +8,7 @@
 
 SUBROUTINE CLOUD_S_LAYER(&
  ! Input quantities
- &  YDMODEL,KDIM, LDRAIN1D, PAUX, STATE, TENDENCY, &
+ &  YDMODEL,KDIM, LLKEYS, PAUX, STATE, TENDENCY, &
  ! Input/Output quantities
  &  AUXL, FLUX, PDIAG,&
  ! Output tendencies
@@ -26,7 +26,7 @@ SUBROUTINE CLOUD_S_LAYER(&
 !        --------------------
 !     ==== INPUTS ===
 ! KDIM     : Derived variable for dimensions
-! LDRAIN1D : key to activate 1DRAIN
+! LLKEYS   : Derived variable with logical keys
 ! state    : Derived variable for model state
 ! tendency : D. V. for model tendencies (entering cloud) from processes before 
 ! PAUX     : Derived variables for general auxiliary quantities
@@ -61,14 +61,15 @@ SUBROUTINE CLOUD_S_LAYER(&
 !     --------------
 !      F. Vana  8-Apr-2016  small fix
 !      F. Vana  14-Sep-2020 arguments update & simplified prognostic scheme 
+!      F. Vana  (Jan 2023) Cleaning
 
 !-----------------------------------------------------------------------
 
 USE TYPE_MODEL, ONLY : MODEL
 USE PARKIND1  , ONLY : JPIM, JPRB
 USE YOMHOOK   , ONLY : LHOOK,   DR_HOOK, JPHOOK
-
-USE YOMPHYDER , ONLY : DIMENSION_TYPE, STATE_TYPE, AUX_TYPE, &
+USE YOETHF    , ONLY : YDTHF=>YRTHF
+USE YOMPHYDER , ONLY : DIMENSION_TYPE, STATE_TYPE, AUX_TYPE, KEYS_LOCAL_TYPE, &
   &                    FLUX_TYPE, MASK_GFL_TYPE, AUX_DIAG_LOCAL_TYPE, AUX_DIAG_TYPE
 USE YOECLDP   , ONLY : NCLDQR,NCLDQS,NCLDQI,NCLDQL
 
@@ -78,7 +79,7 @@ IMPLICIT NONE
 
 TYPE(MODEL)                     ,INTENT(INOUT) :: YDMODEL
 TYPE (DIMENSION_TYPE)          , INTENT (IN)   :: KDIM
-LOGICAL                        , INTENT (IN)   :: LDRAIN1D
+TYPE (KEYS_LOCAL_TYPE)         , INTENT (IN)   :: LLKEYS
 TYPE (AUX_TYPE)                , INTENT (IN)   :: PAUX
 TYPE (STATE_TYPE)              , INTENT (IN)   :: STATE
 TYPE (STATE_TYPE)              , INTENT (IN)   :: TENDENCY
@@ -113,7 +114,7 @@ ASSOCIATE(TSPHY=>YDPHY2%TSPHY,LEPCLD2=>YDPHNC%LEPCLD2, &
 IFLAG=2
 Z_T1(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV)=STATE%T(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV) &
  & + TSPHY*TENDENCY%T(KDIM%KIDIA:KDIM%KFDIA,1:KDIM%KLEV)
-CALL SATUR (KDIM%KIDIA, KDIM%KFDIA, KDIM%KLON, KDIM%KTDIA, KDIM%KLEV, LPHYLIN, &
+CALL SATUR (YDTHF, YDMODEL%YRCST, KDIM%KIDIA, KDIM%KFDIA, KDIM%KLON, KDIM%KTDIA, KDIM%KLEV, LPHYLIN, &
  & PAUX%PRSF1, Z_T1, PDIAG%PQSAT, IFLAG) 
 
 
@@ -125,7 +126,7 @@ IF (LEPCLD2) THEN
   CALL CLOUDSC2 (&
     & YDMODEL%YRML_PHY_SLIN%YREPHLI,YDPHNC, &
     & YDMODEL%YRML_PHY_EC%YRECLD,YDMODEL%YRML_PHY_EC%YRECLDP, &
-    & KDIM%KIDIA  , KDIM%KFDIA , KDIM%KLON , KDIM%KTDIA , KDIM%KLEV, LDRAIN1D, &
+    & KDIM%KIDIA  , KDIM%KFDIA , KDIM%KLON , KDIM%KTDIA , KDIM%KLEV, LLKEYS%LLRAIN1D, &
     & TSPHY  , &
     & PAUX%PRS1  , PAUX%PRSF1, STATE%Q   , PDIAG%PQSAT , STATE%T, &
     & STATE%CLD(:,:,NCLDQL),STATE%CLD(:,:,NCLDQI), &
@@ -142,7 +143,7 @@ ELSE
   CALL CLOUDST &
     & ( YDMODEL%YRML_PHY_SLIN%YREPHLI,YDPHNC, &
     & YDMODEL%YRML_PHY_EC%YRECLD,YDMODEL%YRML_PHY_EC%YRECLDP, &
-    & KDIM%KIDIA  , KDIM%KFDIA , KDIM%KLON , KDIM%KTDIA , KDIM%KLEV, LDRAIN1D, &
+    & KDIM%KIDIA  , KDIM%KFDIA , KDIM%KLON , KDIM%KTDIA , KDIM%KLEV, LLKEYS%LLRAIN1D, &
     & TSPHY  , &
     & PAUX%PRS1  , PAUX%PRSF1, STATE%Q   , PDIAG%PQSAT , STATE%T, &
     & PDIAG%ZLUDE , PDIAG%ZLU   , &

@@ -97,7 +97,7 @@ IF (LDMODEL_TO_FILE) THEN
       CALL SPNH_CONV_NHVAR(YDGEOMETRY,YDML_GCONF,YDDYNA,.TRUE.,YDSPEC)
     ENDIF
 !   Convert (vor,div,mean-U,mean-V) to geographical (U,V) at the end
-    CALL ESPCONVERT(YDGEOMETRY,.TRUE.,YDSPEC) 
+    CALL ESPCONVERT(YDGEOMETRY,.TRUE.,YDSPEC)
   ELSE
 !   Convert RT to T if relevent
     IF (YDDYNA%LSPRT) THEN

@@ -1,0 +1,87 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE FIELD_FACTORY_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList ()
+
+USE FIELD_MODULE
+${fieldType.useParkind1 ()}$
+
+IMPLICIT NONE
+
+PRIVATE
+
+INTERFACE FIELD_NEW
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${ft.name}$_NEW_OWNER
+  MODULE PROCEDURE ${ft.name}$_NEW_WRAPPER
+#:endfor
+END INTERFACE
+
+PUBLIC :: FIELD_NEW
+
+INTERFACE FIELD_DELETE
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${ft.name}$_DELETE
+#:endfor
+END INTERFACE FIELD_DELETE
+
+PUBLIC :: FIELD_DELETE
+
+CONTAINS
+
+#:for ft in fieldTypeList
+SUBROUTINE ${ft.name}$_NEW_OWNER (FIELD_PTR, UBOUNDS, LBOUNDS, PERSISTENT, DELAYED, INIT_VALUE)
+
+CLASS(${ft.name}$), POINTER :: FIELD_PTR
+TYPE(${ft.name}$_OWNER), POINTER :: FIELD_OWNER
+INTEGER(KIND=JPIM), INTENT(IN) :: UBOUNDS (${ft.rank}$)
+INTEGER(KIND=JPIM), OPTIONAL, INTENT(IN) :: LBOUNDS (${ft.rank}$)
+LOGICAL, OPTIONAL, INTENT(IN) :: PERSISTENT
+LOGICAL, OPTIONAL,  INTENT(IN) :: DELAYED
+${ft.type}$, OPTIONAL, INTENT(IN) :: INIT_VALUE
+
+ALLOCATE (FIELD_OWNER)
+
+CALL FIELD_OWNER%INIT (LBOUNDS=LBOUNDS, UBOUNDS=UBOUNDS, PERSISTENT=PERSISTENT, DELAYED=DELAYED, INIT_VALUE=INIT_VALUE)
+
+FIELD_PTR => FIELD_OWNER
+
+END SUBROUTINE 
+
+SUBROUTINE ${ft.name}$_NEW_WRAPPER (FIELD_PTR, LBOUNDS, PERSISTENT, DATA)
+
+CLASS(${ft.name}$), POINTER :: FIELD_PTR
+${ft.type}$, TARGET, INTENT (IN) :: DATA (${ft.shape}$)
+TYPE(${ft.name}$_WRAPPER), POINTER :: FIELD_WRAPPER
+INTEGER(KIND=JPIM), OPTIONAL, INTENT(IN) :: LBOUNDS (${ft.rank}$)
+LOGICAL, OPTIONAL, INTENT(IN) :: PERSISTENT
+
+ALLOCATE (FIELD_WRAPPER)
+
+CALL FIELD_WRAPPER%INIT (DATA, LBOUNDS=LBOUNDS, PERSISTENT=PERSISTENT)
+
+FIELD_PTR => FIELD_WRAPPER
+
+END SUBROUTINE 
+
+SUBROUTINE ${ft.name}$_DELETE (FIELD_PTR)
+
+CLASS(${ft.name}$), POINTER :: FIELD_PTR
+
+CALL FIELD_PTR%FINAL ()
+DEALLOCATE (FIELD_PTR)
+NULLIFY (FIELD_PTR)
+
+END SUBROUTINE 
+
+#:endfor
+
+END MODULE

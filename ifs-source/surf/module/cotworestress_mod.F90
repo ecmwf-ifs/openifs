@@ -1,3 +1,83 @@
+
+! (C) Copyright 1997- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+  !**   *COTWORESTRESS* - CALCULATES NET ASSIMILATION OF CO2 AND CANOPY CONDUCTANCE  
+
+  !     A. Boone       * Meteo-France *     27/10/97 
+  !     (following Belair)
+  !     MODIFIED BY
+  !     V. Masson and V. Rivailland            12/03 
+  !     modification of ISBA routines order
+  !     M.H. Voogt (KNMI) "C-Tessel"  09/2005 
+  !     S. Lafont (ECMWF) C-TESSEL 18/05
+  !     G. Balsamo (ECMWF) 24/3/2014 cleaning and LDLAND protection
+  !     M. Kelbling and S. Thober (UFZ) 25/5/2020 implemented spatially distributed parameters and
+  !                                               use of parameter values defined in namelist
+  !     A. Agusti-Panareda Nov 2020  couple atm CO2 tracer (new input) with photosynthesis 
+  !     V.Bastrikov,F.Maignan,P.Peylin,A.Agusti-Panareda/S.Boussetta Feb 2021 Add Farquhar photosynthesis model
+  !     I. Ayan-Miguez Sep 2023 Added PSSDP2 object for spatially distributed parameters
+
+  !     PURPOSE
+  !     -------
+  !     Calculates net assimilation of CO2 and leaf/canopy conductance.
+
+  !     INTERFACE
+  !     ---------
+  !     COTWORESTRESS IS CALLED BY *VSURF_MOD* 
+
+  !     PARAMETER     DESCRIPTION                                   UNITS
+  !     ---------     -----------                                   -----
+  !     INPUT PARAMETERS (INTEGER):
+
+  !     *KVTYPE*       VEGETATION TYPE CORRESPONDING TO TILE 
+
+  !     INPUT PARAMETERS (REAL)
+  !     *PFRTI*      TILE FRACTIONS                                   (0-1)
+  !            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+  !            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+  !            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+  !            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+  !     *PTM1*         TEMPERATURE AT T-1                            K
+  !     *PQM1*         SPECIFIC HUMIDITY AT T-1                      KG/KG 
+  !     *PCM1*         ATMOSPHERIC CO2 AT T-1                      KG/KG 
+  !     *PAPHM1*       PRESSURE AT T-1				   PA
+  !     *PTSKM1M*      SURFACE TEMPERATURE                           K
+  !     *PTSOIL*       SOIL TEMPERATURE LEVEL 3 (28 - 100cm)         K
+  !     *PEVAP*        PRELIMINARY MOISTURE FLUX                     KG/M2/S
+  !     *PLAI*         LEAF AREA INDEX                               M2/M2
+  !     *PSRFD*        DOWNWARD SHORT WAVE RADIATION FLUX AT SURFACE W/M2
+  !     *PRAQ*         PRELIMINARY AERODYNAMIC RESISTANCE            S/M
+  !     *PMU0*        LOCAL COSINE OF INSTANTANEOUS MEAN SOLAR ZENITH ANGLE
+  !     *PF2*	     SOIL MOISTURE STRESS FUNCTION 	           -
+  !     *PQS*          SATURATION Q AT SURFACE			   KG/KG
+
+  !     OUTPUT PARAMETERS (REAL):
+
+  !     *PAN*          NET CO2 ASSIMILATION OVER CANOPY          KG_CO2/M2/S
+  !                    positive downwards, to be changed for diagnostic output
+  !     *PAG*          GROSS CO2 ASSIMILATION OVER CANOPY        KG_CO2/M2/S
+  !                    positive downwards, to be changed for diagnostic output
+  !     *PRD*          DARK RESPIRATION                          KG_CO2/M2/S
+  !                    positive upwards
+  !     *PWET*         "BULK" STOMATAL RESISTANCE = canopy resistance  S/M  
+  !     *PDSP*         specific humidity deficit for PDHVEGS
+  !     *PDMAXT*       maximum specific humidity deficit for PDHVEGS
+
+  !     METHOD
+  !     ------
+  !     Calvet et al. 1998 Forr. Agri. Met. [from model of Jacobs(1994)]
+
+  !     REFERENCE
+  !     ---------
+  !     Calvet et al. 1998 Forr. Agri. Met. 
+
+  !     ------------------------------------------------------------------------
+
 MODULE COTWORESTRESS_MOD
 CONTAINS
 SUBROUTINE COTWORESTRESS(KIDIA,KFDIA,KLON,KVTYPE,KCO2TYP,PFRTI,&
@@ -10,13 +90,6 @@ SUBROUTINE COTWORESTRESS(KIDIA,KFDIA,KLON,KVTYPE,KCO2TYP,PFRTI,&
      & PAN, PAG,PRD, &
      & PWET,PDSP,PDMAXT)
 
-! (C) Copyright 1997- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
   !**   *COTWORESTRESS* - CALCULATES NET ASSIMILATION OF CO2 AND CANOPY CONDUCTANCE  
 
   !     A. Boone       * Meteo-France *     27/10/97 

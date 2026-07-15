@@ -6,23 +6,24 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE BASCOE_GS_LIQ(KSTEP, KMONTH, KIDIA, KFDIA, KLON, KLEV, KTROPOP, PRSF1, PLAT, PTP,PAER,PSA_SIZEDIST,PAER_INFO)
+SUBROUTINE BASCOE_GS_LIQ(KSTEP, KYEAR, KMONTH, KIDIA, KFDIA, KLON, KLEV, KTROPOP, PRSF1, PLAT, PTP,PAER,PSA_SIZEDIST,PAER_INFO)
 
 
 !**   DESCRIPTION 
 ! ----------------------------------------------------------------------
 USE PARKIND1  ,    ONLY : JPIM,   JPRB
 USE YOMHOOK   ,    ONLY : LHOOK,  DR_HOOK, JPHOOK
+!USE YOMLUN    ,    ONLY : NULOUT 
 USE BASCOE_MODULE, ONLY :  NBINS, NAER, IAER_NTOT, IAER_SAD, &
 ! J. Debosscher: related to SAD climatology:
-  & NLAT_CLIM, NLEV_CLIM, SAD_CLIM,P_CLIM,LAT_CLIM
+  & NSYEAR_CLIM, NEYEAR_CLIM, NYEAR_CLIM, NLAT_CLIM, NLEV_CLIM, SAD_CLIM, P_CLIM, LAT_CLIM
 !-----------------------------------------------------------------------
 IMPLICIT NONE
 
 !-----------------------------------------------------------------------
 !*       0.1  ARGUMENTS
 !             ---------
-INTEGER(KIND=JPIM),INTENT(IN)      :: KSTEP, KMONTH, KIDIA, KFDIA, KLON, KLEV
+INTEGER(KIND=JPIM),INTENT(IN)      :: KSTEP, KYEAR, KMONTH, KIDIA, KFDIA, KLON, KLEV
 INTEGER(KIND=JPIM),INTENT(IN)      :: KTROPOP(KLON)
 REAL   (KIND=JPRB),INTENT(IN)      :: PTP(KLON,KLEV),PRSF1(KLON,KLEV)
 REAL   (KIND=JPRB),INTENT(IN)      :: PLAT(KLON)
@@ -39,11 +40,10 @@ REAL(KIND=JPRB),PARAMETER :: ZXR = 0.07E-6, ZXMED = 1.76  ! def. of aerosol dist
 REAL(KIND=JPRB)           :: ZXN, ZTEMP, ZND(NBINS)
 ! LOGICAL                   :: LL_PRESENCE_STS
 
-REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
+REAL(KIND=JPHOOK)  :: ZHOOK_HANDLE
 INTEGER(KIND=JPIM) :: JL,JK,JN
-!-----------------------------------------------------------------------
-INTEGER(KIND=JPIM)         :: JLAT,JLEV
-!-----------------------------------------------------------------------
+INTEGER(KIND=JPIM)         :: ILAT,ILEV,IYEAR
+
 !-------------------------------------------------------------------
 #include "bascoe_initsp.intfb.h"
 #include "bascoe_sage_number_density.intfb.h"
@@ -122,14 +122,32 @@ DO JL=KIDIA,KFDIA
 !    ENDIF
 !---------------------------------------------------------
 ! J. Debosscher: use SAD climatology from file in stead
-    JLAT=MINLOC(ABS(LAT_CLIM(1:NLAT_CLIM)-PLAT(JL)),1)
-    JLEV=MINLOC(ABS(P_CLIM(KMONTH,JLAT,1:NLEV_CLIM)-PRSF1(JL,JK)),1)
+    ILAT=MINLOC(ABS(LAT_CLIM(1:NLAT_CLIM)-PLAT(JL)),1)
+    IF (NYEAR_CLIM == 1_JPIM)then
+        ILEV=MINLOC(ABS(P_CLIM(1,KMONTH,ILAT,1:NLEV_CLIM)-PRSF1(JL,JK)),1)
+        PAER(JL,JK,IAER_SAD)=1.E-2_JPRB*SAD_CLIM(1,KMONTH,ILAT,ILEV)
 
-    !write(NULOUT,*)'JLAT',JLAT
-    !write(NULOUT,*)'KMONTH',KMONTH
+    ELSE
+        IF(KYEAR < NSYEAR_CLIM)THEN
+            IYEAR=1_JPIM
+        ELSEIF (KYEAR > NEYEAR_CLIM)THEN
+            IYEAR=NYEAR_CLIM
+        ELSE
+            IYEAR=KYEAR-NSYEAR_CLIM+1
+        ENDIF
+        IF(PRSF1(JL,JK)< P_CLIM(IYEAR,KMONTH,ILAT,1))THEN
+            PAER(JL,JK,IAER_SAD)=0._JPRB
+        ELSEIF(PRSF1(JL,JK)> P_CLIM(IYEAR,KMONTH,ILAT,NLEV_CLIM))THEN
+            PAER(JL,JK,IAER_SAD)=0._JPRB
+        ELSE
+            ILEV=MINLOC(ABS(P_CLIM(IYEAR,KMONTH,ILAT,1:NLEV_CLIM)-PRSF1(JL,JK)),1) 
+            PAER(JL,JK,IAER_SAD)=1.E-2_JPRB*SAD_CLIM(IYEAR,KMONTH,ILAT,ILEV)       
+        ENDIF
 
 
-    PAER(JL,JK,IAER_SAD)=1.E-2_JPRB*SAD_CLIM(KMONTH,JLAT,JLEV)
+    
+    END IF
+
     !write(NULOUT,*)'SAD CLIM OK'
 
 !---------------------------------------------------------

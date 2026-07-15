@@ -1,0 +1,85 @@
+grid:        O320
+directions:  24
+frequencies: 29
+bathymetry:  ETOPO1
+
+advection:
+    timestep: 900
+physics:
+    timestep: 900
+
+analysis.begin: 2022-12-31 12:00:00
+analysis.end:   2023-01-01 00:00:00
+forecast.begin: 2023-01-01 00:00:00
+forecast.end:   2023-01-01 06:00:00
+
+begin: ${analysis.begin}
+end:   ${forecast.end}
+
+nproma: 24
+
+forcings:
+    file:  data/forcings/oper_an_12h_fc_2023010100_36h_O320.grib
+
+    at:
+      - begin:     ${analysis.begin}
+        end:       ${analysis.end}
+        timestep:  06:00
+      - begin:     ${forecast.begin}
+        end:       ${forecast.end}
+        timestep:  01:00
+
+output:
+    fields:
+        name:
+          - swh         # Significant height of combined wind waves and swell
+          - mwd         # Mean wave direction
+          - mwp         # Mean wave period
+          - pp1d        # Peak wave period
+          - dwi         # 10 metre wind direction
+          - cdww        # Coefficient of drag with waves
+          - wind        # 10 metre wind speed
+        format: grib    # (default : grib) or binary
+        at:
+          - timestep: 01:00
+
+    restart:
+        format: binary # (default : binary) or grib
+        at:
+          - time: ${end}
+
+
+validation:
+
+  double_precision:
+
+    # initial analysis time
+    - name: swh
+      time: 2022-12-31 12:00:00
+      average: 0.1334538277979496E+01
+      relative_tolerance: 1.e-14
+      hashes: [0x3FF55A44CF32E9DB]
+
+    # initial forecast time
+    - name: swh
+      time: 2023-01-01 00:00:00
+      average: 0.1522673342953333E+01
+      relative_tolerance: 1.e-14
+      hashes: [0x3FF85CDEB9279BE1]
+
+    # 6h into forcast
+    - name: swh
+      time: 2023-01-01 06:00:00
+      average: 0.1602274516041420E+01
+      relative_tolerance: 1.e-14
+      hashes: [0x3FF9A2EA9A59CB46]
+    - name: swh
+      time: 2023-01-01 06:00:00
+      minimum: 0.1739548424203607E-01
+      relative_tolerance: 1.e-14
+      hashes: [0x3F91D01F2FABA6BE]
+    - name: swh
+      time: 2023-01-01 06:00:00
+      maximum: 0.7470743687402659E+01
+      relative_tolerance: 1.e-14
+      hashes: [0x401DE20AA218C57F]

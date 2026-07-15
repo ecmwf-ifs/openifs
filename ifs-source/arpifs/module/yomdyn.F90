@@ -359,6 +359,11 @@ INTEGER(KIND=JPIM) :: NRUBC
 
 ! LSIDG   : .F.: Semi-implicit-scheme with reduced divergence.
 !           .T.: Semi-implicit scheme with not reduced divergence.
+! LDYN_STABAN : Analysis of stability for linear operator L under SUSI/SUNHSI.
+!           Eigenvalues of matrix "M = (I - tau L)^-1 (I + tau L)" are computed.
+!           The dimension of M is (2*NFLEVG + 1)*(2*NFLEVG + 1). 
+!           Correctly design L operator implies abs(eigenvalue) <= 1 for all
+!           eigenvalues of M.
 
 ! BETADT  : coefficient for the semi-implicit treatment of divergence,
 !           temperature, continuity (and NH if required) equations.
@@ -375,6 +380,7 @@ INTEGER(KIND=JPIM) :: NRUBC
 ! SITIME  : =TDT (if not, Helmholtz matrices are recomputed in CNT4).
 ! SIRPRG  : auxiliary variable for SIGAM,SIGAMA.
 ! SIRPRN  : auxiliary variable for SITNU,SITNUA
+! SIRSLP  : square of the maximum orography slope over the domain
 ! NSITER  : number of iterations to treat the non linear semi-implicit terms
 !           in the non-hydrostatic scheme.
 ! NCURRENT_ITER : for LNHDYN with PC scheme - current iteration: 
@@ -399,7 +405,7 @@ INTEGER(KIND=JPIM) :: NRUBC
 ! SITLAH(0:NFLEVG): half-level pressures.
 ! SITLAF(NFLEVG)  : full-level pressures.
 ! SIDPHI(NFLEVG)  : geopotential differences across layers.
-
+! SIWEIG(NFLEVG,3): vertical interpolating parameters
 ! SIB(NFLEVG,NFLEVG)   : operator "B" of the SI scheme (DIV ===> DP/DT=B.DIV).
 ! SIMO(NFLEVG,NFLEVG)  : eigenvectors of "B".
 ! SIMI(NFLEVG,NFLEVG)  : SIMO**-1
@@ -420,6 +426,7 @@ INTEGER(KIND=JPIM) :: NRUBC
 ! VNORM : constant for new scaling.
 
 LOGICAL :: LSIDG
+LOGICAL :: LDYN_STABAN
 REAL(KIND=JPRB) :: BETADT
 REAL(KIND=JPRB) :: RBT
 REAL(KIND=JPRB) :: RBTS2
@@ -432,6 +439,8 @@ REAL(KIND=JPRB) :: SIPRUB
 REAL(KIND=JPRB) :: SITIME
 REAL(KIND=JPRB) :: SIRPRG
 REAL(KIND=JPRB) :: SIRPRN
+REAL(KIND=JPRB) :: SIRSLP
+REAL(KIND=JPRB) :: RSLOPE_MAX
 INTEGER(KIND=JPIM) :: NSITER
 INTEGER(KIND=JPIM) :: NCURRENT_ITER
 LOGICAL :: LRHDI_LASTITERPC
@@ -445,6 +454,7 @@ REAL(KIND=JPRB),ALLOCATABLE:: SIRDEL(:)
 REAL(KIND=JPRB),ALLOCATABLE:: SITLAH(:)
 REAL(KIND=JPRB),ALLOCATABLE:: SITLAF(:)
 REAL(KIND=JPRB),ALLOCATABLE:: SIDPHI(:)
+REAL(KIND=JPRB),ALLOCATABLE:: SIWEIG(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: SIB(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: SIMO(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: SIMI(:,:)
@@ -537,7 +547,9 @@ REAL(KIND=JPRB) :: VNORM
 ! LSLDP_RK  : when .TRUE. the iterative algorithm is replaced by 4th order Runge Kutta method
 
 ! LSLDP_CURV : on/off - horizontal wind components from lat,lon are transformed to cartesian coords
+! LSLDP_CURV_FIX  : on/off - for the wind vector fixer when LSLDP_CURV
 ! LRHS_CURV  : on/off - for the right hand side interpolation
+! LRHS_CURV_FIX  : on/off - for the wind vector fixer when LRHS_CURV
 ! LSLDP_XYZ  : on/off - when .TRUE. the SL trajectory iterations are performed entirely in 
 !              cartesian x, y, z coordinates - needs LSLDP_CURV
 ! LSLDP_SAVE : on/off  the departure point at each timestep are saved and used as starting values
@@ -653,7 +665,9 @@ LOGICAL :: LWENOBC
 INTEGER(KIND=JPIM) :: NQMHOISLT
 LOGICAL :: LSLDP_RK
 LOGICAL :: LSLDP_CURV
+LOGICAL :: LSLDP_CURV_FIX
 LOGICAL :: LRHS_CURV
+LOGICAL :: LRHS_CURV_FIX
 LOGICAL :: LSLDP_XYZ
 LOGICAL :: LSLDP_SAVE
 REAL(KIND=JPRB) :: VESL
@@ -993,6 +1007,7 @@ CONTAINS
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RTEMRB = ', SELF%RTEMRB
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NRUBC = ', SELF%NRUBC
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LSIDG = ', SELF%LSIDG
+    WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LDYN_STABAN = ', SELF%LDYN_STABAN
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'BETADT = ', SELF%BETADT
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RBT = ', SELF%RBT
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RBTS2 = ', SELF%RBTS2
@@ -1005,6 +1020,7 @@ CONTAINS
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SITIME = ', SELF%SITIME
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIRPRG = ', SELF%SIRPRG
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIRPRN = ', SELF%SIRPRN
+    WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIRSLP = ', SELF%SIRSLP
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NSITER = ', SELF%NSITER
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NCURRENT_ITER = ', SELF%NCURRENT_ITER
     WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LRHDI_LASTITERPC = ', SELF%LRHDI_LASTITERPC
@@ -1044,6 +1060,11 @@ CONTAINS
       WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIDPHI allocated of shape ', SHAPE( SELF%SIDPHI )
     ELSE
       WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIDPHI not allocated '
+    ENDIF
+    IF (ALLOCATED(SELF%SIWEIG)) THEN
+      WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIWEIG allocated of shape ',SHAPE( SELF%SIWEIG )
+    ELSE
+      WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIWEIG not allocated '
     ENDIF
     IF (ALLOCATED(SELF%SIB)) THEN
       WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'SIB allocated of shape ', SHAPE( SELF%SIB )

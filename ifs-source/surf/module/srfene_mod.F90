@@ -1,11 +1,3 @@
-MODULE SRFENE_MOD
-CONTAINS
-SUBROUTINE SRFENE(&
- & KIDIA  , KFDIA  , KLON  , KLEVS,&
- & LDLAND , LDSICE ,&
- & PTSAM1M, KSOTY, PCVL , PCVH ,&
- & YDCST  , YDSOIL ,&
- & PENES)  
 
 ! (C) Copyright 1996- ECMWF.
 !
@@ -14,6 +6,78 @@ SUBROUTINE SRFENE(&
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SRFENE* - COMPUTES SOIL ENERGY FOR EACH LAYER.
+
+!     Original  P.VITERBO      E.C.M.W.F.     26/03/96
+!     Modified  P.VITERBO  99-03-26   Tiling of the land surface
+!               P.VITERBO  2004-05-24 Move to surf library
+!               G.BALSAMO  2006-07-03 Add soil type 
+!               M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!               I. Ayan-Miguez (BSC) Sep 2023  Add PSSDP3 object for spatially distributed parameters
+!     PURPOSE.
+!     --------
+
+!          THIS ROUTINE COMPUTES THE SOIL ENERGY
+!          IN THE SOIL, AVOIDING DELICATE SNOW SITUATIONS. APPARENT
+!          STANDS FOR THE FACT THAT THE EFFECTS OF FREEZING AND MELTING
+!          OF WATER IN THE SOIL ARE TAKEN INTO ACCOUNT.
+
+!**   INTERFACE.
+!     ----------
+
+!          *SRFENE* IS CALLED FROM DIAGNOSTIC (DDH) ROUTINES.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+
+!     INPUT PARAMETERS (LOGICAL):
+
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LDSICE*     SEA ICE MASK (.T. OVER SEA ICE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+
+!    *PTSAM1M*    SOIL TEMPERATURE                                  K
+!    *PCVL*       LOW VEGETATION COVER  (CORRECTED)                (0-1)
+!    *PCVH*       HIGH VEGETATION COVER (CORRECTED)                (0-1)
+
+!     OUTPUT PARAMETERS:
+
+!    *PENES*      SOIL ENERGY per unit area                        J/M**2
+
+!     METHOD.
+!     -------
+
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION.
+
+!     EXTERNALS.
+!     ----------
+
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+
+!     ------------------------------------------------------------------
+
+MODULE SRFENE_MOD
+CONTAINS
+SUBROUTINE SRFENE(&
+ & KIDIA  , KFDIA  , KLON  , KLEVS,&
+ & LDLAND , LDSICE ,&
+ & PTSAM1M, KSOTY, PCVL , PCVH ,&
+ & YDCST  , YDSOIL ,&
+ & PENES)  
 
 !**** *SRFENE* - COMPUTES SOIL ENERGY FOR EACH LAYER.
 

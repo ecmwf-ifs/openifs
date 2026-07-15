@@ -1,3 +1,62 @@
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *SUVEXC* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_EXC*
+
+!     A.C.M. BELJAARS         E.C.M.W.F.       2/11/89
+
+!     PURPOSE
+!     -------
+
+!          THIS ROUTINE INITIALIZES THE CONSTANTS IN COMMON BLOCK
+!     *YOS_EXC*
+
+!     INTERFACE.
+!     ----------
+
+!    Logicals (In):
+
+!      LD_LEOCWA : .T. if WARM OCEAN LAYER PARAMETRIZATION active
+!      LD_LEOCCO : .T. if COOL OCEAN SKIN PARAMETRIZATION active
+!      LD_LEOCSA : .T. if SALINTY EFFECT ON SATURATION AT OCEAN SURFACE active
+!      LD_LEOCLA : .T. if LANGMUIR CIURCULATION EFFECT IN VOSKIN active
+
+!      LD_LWCOU    : .T. COUPLING TO WAVE MODEL
+!      LD_LWCOU2W  : .T. COUPLING TO WAVE MODEL WITH FEEDBACK TO ATMOSPHERE
+!      LD_LWCOUHMF : .T. SEA STATE DEPENDENT HEAT AND MOISTURE FLUXES IF COUPLED TO WAVE MODEL 
+
+
+
+!     CALL *SUVEXC* FROM *SUSURF*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     NONE.
+
+!     REFERENCE.
+!     ----------
+
+!     MODIFICATIONS
+!     -------------
+!     J.-J. MORCRETTE         E.C.M.W.F.      91/07/14
+!     M.Hamrud                01-Oct-2003     CY28 Cleaning
+!     P. Viterbo              09/06/2005      Externalise surf
+!     N.Semane+P.Bechtold 04-10-2012 Add PRPLRG factor for small planet
+!     E. Dutra                10/10/2014      add LELWTL
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+!     ------------------------------------------------------------------
+
 MODULE SUVEXC_MOD
 CONTAINS
 SUBROUTINE SUVEXC(LD_LEOCWA,LD_LEOCCO,LD_LEOCSA,LD_LEOCLA,&
@@ -8,14 +67,6 @@ SUBROUTINE SUVEXC(LD_LEOCWA,LD_LEOCCO,LD_LEOCSA,LD_LEOCLA,&
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_EXC  , ONLY : TEXC
-! (C) Copyright 1989- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !     ------------------------------------------------------------------
 
 !**   *SUVEXC* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_EXC*
@@ -101,7 +152,7 @@ RKAP   =0.4_JPRB
 RZ0ICE =0.001_JPRB/PRPLRG
 
 ! Simplified physics constant
-RCHAR  =0.0155_JPRB
+RCHAR  =0.018_JPRB
 
 ! Other constants
 

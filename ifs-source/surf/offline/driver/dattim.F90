@@ -1,6 +1,3 @@
-SUBROUTINE DATTIM(PJUL,KYMD,KHM)
-USE PARKIND1  ,ONLY : JPIM     ,JPRB , JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! (C) Copyright 1996- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -8,6 +5,53 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *DATTIM*  - Gives time of the model in the format yyyymmdd and hhmm
+
+!     Purpose.
+!     --------
+!     Gives time of the model
+
+!**   Interface.
+!     ----------
+!        *CALL* *DATTIM
+
+!        Explicit arguments :
+!        --------------------
+
+!     KYMD   CURRENT DATE IN THE MODEL (YYYYMMDD)      OUTPUT
+!     KHM    CURRENT TIME IN THE MODEL (HHMM)          OUTPUT
+!     PJUL   Current fractional Julian day, i.e. a counter in days
+!             that corresponds to 0 at 1 January of the first year
+!             of simulation
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 96-03-03
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE DATTIM(PJUL,KYMD,KHM)
+USE PARKIND1  ,ONLY : JPIM     ,JPRB , JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 
 !**** *DATTIM*  - Gives time of the model in the format yyyymmdd and hhmm
 

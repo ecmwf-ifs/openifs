@@ -114,12 +114,12 @@ SUBROUTINE APACHE(LDNEIGE,KPROMA,KSTART,KPROF,KLEV,KOPLEV,KPPGFL,KPPM,YDKC,&
 !      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
 !      A. Geer        Dec 2015    PP routines no longer take 0:KFLEVG but 1:KFLEVG
 !      K. Yessad (Feb 2018): remove deep-layer formulations.
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB,   JPRD
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCST   , ONLY : RATM, RV, RCPV, RETV, RCW, RCS, RLVTT, RLSTT, RTT,&
- & RALPW, RBETW, RGAMW, RALPS, RBETS, RGAMS, RALPD, RBETD, RGAMD, RG
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMLUN   , ONLY : NULOUT
 USE YOMSTA   , ONLY : RDTDZ1
 USE YOMPPVI  , ONLY : LESCALE  ,LESCALE_T, LESCALE_Q, LESCALE_U,&
@@ -257,7 +257,12 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !     -----------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('APACHE',0,ZHOOK_HANDLE)
-ASSOCIATE(YDVAB=>YDVERT_GEOM%YRVAB,YDCVER=>YDVERT_GEOM%YRCVER)
+ASSOCIATE(YDVAB=>YDVERT_GEOM%YRVAB, YDCVER=>YDVERT_GEOM%YRCVER, &
+ & RATM=>YDCST%RATM, RCPV=>YDCST%RCPV, RETV=>YDCST%RETV, RCW=>YDCST%RCW, RCS=>YDCST%RCS, &
+ & RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, RALPW=>YDCST%RALPW, &
+ & RBETW=>YDCST%RBETW, RGAMW=>YDCST%RGAMW, RALPS=>YDCST%RALPS, RBETS=>YDCST%RBETS, &
+ & RGAMS=>YDCST%RGAMS, RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, RGAMD=>YDCST%RGAMD, &
+ & RG=>YDCST%RG, RV=>YDCST%RV)
 !     -----------------------------------------------------------------
 
 !*       1.    PRELIMINARY CALCULATIONS.

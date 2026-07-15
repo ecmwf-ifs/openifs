@@ -9,7 +9,7 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
-SUBROUTINE SUAFN(YDNAMFPSCI,YDAFN,LDNEWCL,YGFL,LDNHDYN,KFPCONF,YDCOMPO,YDEAERATM,CDFPSFXFNAME)
+SUBROUTINE SUAFN(YDNAMFPSCI,YDAFN,LDNEWCL,YGFL,LDNHDYN,KFPCONF,LDIRCLSMOD,LDIRSICMOD,YDCOMPO,YDEAERATM,CDFPSFXFNAME)
 
 !**** *SUAFN*  - INITIALIZE ARPEGE FIELD DESCRIPTORS
 
@@ -27,6 +27,8 @@ SUBROUTINE SUAFN(YDNAMFPSCI,YDAFN,LDNEWCL,YGFL,LDNHDYN,KFPCONF,YDCOMPO,YDEAERATM
 !                     0 : vertical interpolation only (<CFPFMT='MODEL'>)
 !                     1 : gridpoint post-processing, possibly with spectral filters (<NFPOS=1>)
 !                     2 : gridpoint/spectral post-processing (spectral outputs possible) (<NFPOS=2>)
+!           LDIRCLSMOD : defines whether the PBL fields (T, RH, U&V, neutral U&V) should be taken 
+!                        from the model physical surface fields (.TRUE.) or from the model instantaneous fluxes.
 !           CDFPSFXFNAME : array of filename of surfex climatology file on target geometries
 
 !        IMPLICIT ARGUMENTS
@@ -56,6 +58,7 @@ SUBROUTINE SUAFN(YDNAMFPSCI,YDAFN,LDNEWCL,YGFL,LDNHDYN,KFPCONF,YDCOMPO,YDEAERATM
 !      R. El Khatib : 03-04-17 Fullpos improvemnts
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      R. El Khatib 17-Aug-2016 No printouts if no Fullpos
+!      R. El Khatib 11-Mar-2021 Support for LDIRCLSMOD
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
@@ -74,12 +77,14 @@ LOGICAL            ,INTENT(IN)    :: LDNEWCL(2)
 TYPE(TYPE_GFLD)    ,INTENT(IN)    :: YGFL
 LOGICAL            ,INTENT(IN)    :: LDNHDYN
 INTEGER(KIND=JPIM), INTENT(IN)    :: KFPCONF
+LOGICAL            ,INTENT(IN)    :: LDIRCLSMOD
+LOGICAL            ,INTENT(IN)    :: LDIRSICMOD
 TYPE(TCOMPO)       ,INTENT(IN), OPTIONAL    :: YDCOMPO
 TYPE(TEAERATM)     ,INTENT(IN), OPTIONAL    :: YDEAERATM
 !Phasing - comment:
 !YDEAERATM was made OPTIONAL for the phasing of the LAM ->
 !Temporary solution - the correct way would be to introduce YDMODEL
-!into ebicli.F90 or to make a new suafn.F90 for the LAM
+!into ebicli.F90
 !This probably applies to YDCOMPO too, which is now needed
 !here for IFS with atmospheric composition enabled.
 CHARACTER(LEN=*),   INTENT(IN), OPTIONAL :: CDFPSFXFNAME(:)
@@ -101,7 +106,7 @@ CALL SUAFN1(YDNAMFPSCI,YDAFN,LDNEWCL,YGFL,KFPCONF,YDCOMPO,YDEAERATM,CDFPSFXFNAME
 !*       3. SET EQUIVALENCES
 !           ----------------
 
-CALL SUAFN2(LDNHDYN,YDAFN,KFPCONF)
+CALL SUAFN2(LDNHDYN,YDAFN,KFPCONF,LDIRCLSMOD,LDIRSICMOD)
 
 !*       4. PRINT OUT FINAL VALUES
 !           ----------------------

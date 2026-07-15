@@ -805,7 +805,9 @@ IF (LHOOK) CALL DR_HOOK('TWOSTREAM_SPHERE',0,ZHOOK_HANDLE )
 !       ... Eddington approximation
 !-----------------------------------------------------------------------
          ZGAM1 =  .25_JPRB * (7._JPRB - ZOM*(4._JPRB + 3._JPRB*ZG))
-         ZGAM2 = -.25_JPRB * (1._JPRB - ZOM*(4._JPRB - 3._JPRB*ZG))
+         ! Refactored to improve accuracy when ZG << 1 and 4*ZOM =~ 1,
+         ! especially in single precision:
+         ZGAM2 = -.25_JPRB * ((1._JPRB - ZOM*4._JPRB) + 3._JPRB*ZG*ZOM)
          ZGAM3 =  .25_JPRB * (2._JPRB - 3._JPRB*ZG*PMU2(i))
          ZGAM4 = 1._JPRB - ZGAM3
 !-----------------------------------------------------------------------
@@ -1020,13 +1022,17 @@ IF (LHOOK) CALL DR_HOOK('GET_LAYDENS',0,ZHOOK_HANDLE )
       DO ILC = 1,KMXCLY
          ZDELTAZ = (PZS(ILC-1) - PZS(ILC)) * 1.E5_JPRB
          DO i = 1, nabspec
-            IF( PDENS(ILC-1,i) > 0. .and. PDENS(ILC,i) > 0. .and. &
-     &                ABS(1.0_JPRB - PDENS(ILC,i)/PDENS(ILC-1,i)) > ZEPSILN ) THEN
-               PLAYDENS(ILC,i) = 1._JPRB / (LOG(PDENS(ILC,i) / PDENS(ILC-1,i))) * &
+            IF (PDENS(ILC-1,i) > 0.) THEN
+               IF (PDENS(ILC,i) > 0. .AND. &
+     &              ABS(1.0_JPRB - PDENS(ILC,i)/PDENS(ILC-1,i)) > ZEPSILN ) THEN
+                  PLAYDENS(ILC,i) = 1._JPRB / (LOG(PDENS(ILC,i) / PDENS(ILC-1,i))) * &
      &                        (PDENS(ILC,i) - PDENS(ILC-1,i)) * ZDELTAZ
-             ELSE
-               PLAYDENS(ILC,i) = &
-     &              .5 * ABS( (PDENS(ILC-1,i) + PDENS(ILC,i) )*ZDELTAZ )
+               ELSE
+                  PLAYDENS(ILC,i) =  .5 * ABS( (PDENS(ILC-1,i) + PDENS(ILC,i) )*ZDELTAZ )
+               ENDIF
+            ELSE
+               ! This line is duplicated above to avoid division by zero in IF statement
+               PLAYDENS(ILC,i) =  .5 * ABS( (PDENS(ILC-1,i) + PDENS(ILC,i) )*ZDELTAZ )
             ENDIF
          ENDDO
       ENDDO

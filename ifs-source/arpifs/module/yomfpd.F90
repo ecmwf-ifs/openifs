@@ -54,8 +54,8 @@ SAVE
 
 !========== DEFINITION OF BOYD DOMAIN =============
 
-!     NFPBWX     : width of Boyd extension zone in x direction
-!     NFPBWY     : width of Boyd extension zone in y direction
+! NFPBWX : width of Boyd window in x direction
+! NFPBWY : width of Boyd window in y direction
 
 
 TYPE TNAMFPD

@@ -1,3 +1,49 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUDYN1S*   - Initialize constants and control for temporal evolution
+!                   of the one-column surface model
+
+!     Purpose.
+!     --------
+!           Initialize YOMDYN1S
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUDYN1S(KULOUT)
+
+!        Explicit arguments :
+!        --------------------
+!        KULOUT : Logical unit for the output
+
+!        Implicit arguments :
+!        --------------------
+!        COMMON YOMDYN1S
+!        COMMON YOMLUN1S
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one-column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        95-03-21
+!      03/12/2013 : E. DUTRA ADD LOGICAL CONTROLING FORCING INTERPOLATION 
+
 SUBROUTINE SUDYN1S(KULOUT)
 USE PARKIND1  ,ONLY : JPIM     ,JPRB          ,JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -6,13 +52,6 @@ USE YOMLUN1S , ONLY : NULNAM
 USE YOMRIP   , ONLY : RTIMTR   ,RTIMST
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUDYN1S*   - Initialize constants and control for temporal evolution
 !                   of the one-column surface model

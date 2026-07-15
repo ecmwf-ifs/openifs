@@ -1,0 +1,41 @@
+# (C) Copyright 2011- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+
+env:
+    OMP_STACKSIZE: '64M'
+    CRAYBLAS_AUTOTUNING_OFF: 1
+    ATP_ENABLED: 1
+    MPICH_RANK_REORDER_DISPLAY: 1
+    GRIB_API_IO_BUFFER_SIZE: 4194304
+    GRIB_API_WRITE_ON_FAIL: 0
+    GRIB_API_LARGE_CONSTANT_FIELDS: 1
+    FDB_DEBUG: 'yes'
+    FDB_IO: 'aio'
+    TRACEBACK_LEVEL: 2'
+    MPICH_MAX_THREAD_SAFETY: 'multiple'
+
+run_opts:
+    nproc: 64
+    tasks_per_node: 32
+    nthread: 4
+    nproc_io: 2    
+    forecast_length: h24
+
+exp:
+    local_path: '@IFSBENCH_TL159_DATA@'
+
+relative_paths: 
+    - in: 'O3CHEM'
+      out: '159l_2/o3chem_l137/\g<name>'
+      match: left
+
+# Disable spectral postprocessing at the moment as this doesn't work with GPUs
+# as of now (see issue DE-1099).
+namelist:
+  "NAMFPC/NFPPHY": 0
+  "NAMFPC/NRFP3S": null

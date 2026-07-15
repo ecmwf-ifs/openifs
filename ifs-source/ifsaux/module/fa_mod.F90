@@ -238,7 +238,7 @@ TYPE FAFICH
   INTEGER (KIND=JPLIKB), POINTER :: NSC2ALF(:)   => NULL ()
   LOGICAL                        :: LISEC1       = .TRUE.   ! From farine.F90
   LOGICAL                        :: LISC2F       = .TRUE.   ! From farine.F90
-  INTEGER (KIND=JPLIKB)          :: NCOGRIF(12) 
+  INTEGER (KIND=JPLIKB)          :: NCOGRIF(14) 
   REAL (KIND=JPDBLR),    POINTER :: FLAP1D(:)    => NULL ()
   REAL (KIND=JPDBLR),    POINTER :: FLAP1DA(:)   => NULL ()
   INTEGER (KIND=JPLIKB)          :: NCPLSIZE     = NUNDEF
@@ -431,8 +431,9 @@ TYPE FA_COM
  
 !  3 - PARAMETRES DEFINISSANT LE CODAGE GRIBEX
 
-  INTEGER (KIND=JPLIKB) :: NCODGRI(12) = (/ NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, &
-                                          & NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF /)
+  INTEGER (KIND=JPLIKB) :: NCODGRI(14) = (/ NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, &
+                                          & NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, NUNDEF, &
+                                          & NUNDEF, NUNDEF /)
   INTEGER (KIND=JPLIKB) JPXPAR
   INTEGER (KIND=JPLIKB) NBPARC
   INTEGER (KIND=JPLIKB) :: NIDCEN = 85_JPLIKB
@@ -489,9 +490,11 @@ LOGICAL, SAVE :: FA_COM_DEFAULT_INIT = .FALSE.
 
 CONTAINS
 
-SUBROUTINE NEW_CADRE (CA, KTYPTR, KPXLAT, KPXTRO, KPXNIV)
+SUBROUTINE NEW_CADRE (CA, KTYPTR, KPXLAT, KPXTRO, KPXNIV, LDSURF)
 TYPE (FACADR) :: CA
 INTEGER (KIND=JPLIKB), INTENT (IN) :: KTYPTR, KPXLAT, KPXTRO, KPXNIV
+LOGICAL,               INTENT (IN) :: LDSURF
+INTEGER (KIND=JPLIKB) :: IPXNIV
 LOGICAL :: LLMLAM
 
 INTEGER (KIND=JPLIKB) :: &
@@ -500,6 +503,12 @@ INTEGER (KIND=JPLIKB) :: &
 &      IPXCHA
 INTEGER (KIND=JPLIKB) :: INPAHE
 INTEGER (KIND=JPLIKB) :: JM, JN, IPOS
+
+IF (LDSURF) THEN
+  IPXNIV = 1
+ELSE
+  IPXNIV = KPXNIV
+ENDIF
 
 LLMLAM = KTYPTR .LE. 0
 
@@ -523,13 +532,13 @@ ELSE
 ENDIF
 
 ALLOCATE (                       &
-&  CA%SFOHYB  (2,0:KPXNIV),      &
+&  CA%SFOHYB  (2,0:IPXNIV),      &
 &  CA%NSEC2SP (22),              &
 &  CA%NSEC2LL (22),              &
 &  CA%NSEC2GG (22+KPXLAT),       &
 &  CA%NSEC2LA (22),              &
 &  CA%NSEC2AL (22),              &
-&  CA%XSEC2   (10+2*(KPXNIV+1)))
+&  CA%XSEC2   (10+2*(IPXNIV+1)))
 
 IF (LLMLAM) THEN
 
@@ -860,10 +869,7 @@ KPXIND=(KPXAU1*(KPXAU1/KPXAU2)+KPXAU2*     &
 &         /((KPXAU1/KPXAU2)+(KPXAU2/KPXAU1)) 
 KPXGEO=(12*(12/KPXAU1)+KPXAU1*(KPXAU1/12)) &
 &          /((12/KPXAU1)+(KPXAU1/12)) 
-!KPXCSP=(1+KPXTRO)*(2+KPXTRO) 
-! that formulation is valid for triangular truncation (global model) only
-! the next one, valid for square truncation (limited area model) returns a bigger value
-KPXCSP=(2*KPXTRO+1)*(2*KPXTRO+1)
+KPXCSP=(1+KPXTRO)*(2+KPXTRO) 
 KPXPDG=KPXLON*KPXLAT 
 KPXCHA=(KPXCSP*(KPXCSP/KPXPDG)+            &
 &         KPXPDG*(KPXPDG/KPXCSP))          &

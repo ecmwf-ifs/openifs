@@ -45,7 +45,8 @@
 ! OUTPUTS:
 ! -------
 ! PTENC1  (KLON,KLEV,NCHEM)     : TENDENCY OF CONCENTRATION OF TRACERS BECAUSE OF CHEMISTRY (kg/kg s-1), no update
-! POUT    (KLON,KLEV,5)         : additional output, e.g. UBC contribution , Photolysis rates O3 , NO2, tau for output
+! POUT    (KLON,0:KLEV,5)       : additional output, e.g. UBC contribution , Photolysis rates O3 , NO2, tau for output
+!                               : Extra zeroth level for additional boundary conditions in some schemes
 !
 ! INOUTPUTS:
 ! -------
@@ -82,16 +83,17 @@
 
 USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
 USE PARKIND1  ,ONLY : JPIM, JPRB, JPRD
-USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
 ! NCHEM : number of chemical species
 ! YCHEM : Data structure with Chemistry meta data
 USE YOMLUN   , ONLY : NULERR, NULOUT
 USE YOMCHEM  , ONLY : TCHEM
 USE YOMCST   , ONLY : RMD, RG , RPI , RNAVO
 USE YOMRIP0  , ONLY : NINDAT
-USE BASCOE_MODULE, ONLY : IO3, INO, ICO2, INO2, IH2O, ISTRATAER, NHET, NBINS, NAER, &
+USE BASCOE_TRACERS, ONLY : IO3, INO, ICO2, INO2, IH2O, ISTRATAER, &
   &                       IN2O5, IHCL, IHOCL, ICLONO2,IHOBR, IHBR,IBRONO2, IHNO3,   &
   &                       NBC, BASCOE_BC
+USE BASCOE_MODULE, ONLY :  NHET, NBINS, NAER
 
 ! General KPP settings
 USE CIFS_KPP_INTPARAM  , ONLY : HMIN,HSTART,RTOLS_G,IAUTONOM,IROSMETH, VMR_BAD_LARGE
@@ -133,7 +135,7 @@ REAL(KIND=JPRB)   ,INTENT(IN) :: PGELAT(KLON)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PGELAM(KLON)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PCEN(KLON,KLEV,YDML_GCONF%YGFL%NCHEM)
 REAL(KIND=JPRB)   ,INTENT(OUT):: PTENC1(KLON,KLEV,YDML_GCONF%YGFL%NCHEM)
-REAL(KIND=JPRB)   ,INTENT(OUT):: POUT(KLON,KLEV,5)
+REAL(KIND=JPRB)   ,INTENT(OUT):: POUT(KLON,0:KLEV,5)
 
 
 !*       0.2 Local PARAMETERS
@@ -163,7 +165,6 @@ REAL(KIND=JPRB) , DIMENSION(KLON,YDML_GCONF%YGFL%NCHEM+3)   :: ZCVM
 REAL(KIND=JPRB) , DIMENSION(KLON,YDML_GCONF%YGFL%NCHEM)     :: ZCVM0 
 REAL(KIND=JPRB) , DIMENSION(KLON,KLEV)                      :: ZDENS
 REAL(KIND=JPRB)                                             :: ZAIRDM1
-REAL(KIND=JPRD) :: ZDENS_DP
 
 
 ! * Photolysis data:
@@ -191,10 +192,10 @@ REAL(KIND=JPRB),PARAMETER                 :: ZSMALL_VMR=1.0E-30
 
 !KPP related
 INTEGER(KIND=JPIM),DIMENSION(20)         :: ICNTRL, ISTATUS
-REAL(KIND=JPRD),   DIMENSION(20)         :: ZCNTRL, ZCNTRL_P, ZSTATE
-REAL(KIND=JPRD),   DIMENSION(NREACT)     :: ZRCONST
-REAL(KIND=JPRD),   DIMENSION(NVAR)       :: ZVAR
-REAL(KIND=JPRD),   DIMENSION(NFIX)       :: ZFIX
+REAL(KIND=JPRB),   DIMENSION(20)         :: ZCNTRL, ZCNTRL_P, ZSTATE
+REAL(KIND=JPRB),   DIMENSION(NREACT)     :: ZRCONST
+REAL(KIND=JPRB),   DIMENSION(NVAR)       :: ZVAR
+REAL(KIND=JPRB),   DIMENSION(NFIX)       :: ZFIX
 INTEGER(KIND=JPIM)                       :: IERR
 
 ! Strato. PSC / aerosol related 
@@ -240,6 +241,7 @@ INTEGER(KIND=JPIM)                        :: IRANGE_TROPOP
 #include "cifs_kpp_wlamch.intfb.h"
 ! CH4 boundary condition...
 ! #include "tm5_boundary_ch4.intfb.h"
+#include "updcal.intfb.h"
 !-----------------------------------------------------------------------
 ! chemistry scheme name - this will later also come from external input
 IF (LHOOK) CALL DR_HOOK('CHEM_BASCOE',0,ZHOOK_HANDLE )
@@ -417,7 +419,7 @@ ELSE
   ENDDO
 ENDIF
 
-CALL BASCOE_GS_LIQ(KSTEP, IMONTH, KIDIA, KFDIA, KLON, KLEV,  JTROPOP, PRSF1, ZLAT, PTP, ZAER, ZSA_SIZEDIST, ZAER_INFO)
+CALL BASCOE_GS_LIQ(KSTEP, IYEAR, IMONTH, KIDIA, KFDIA, KLON, KLEV,  JTROPOP, PRSF1, ZLAT, PTP, ZAER, ZSA_SIZEDIST, ZAER_INFO)
 
 IF (KSTEP == 0_JPIM) THEN
   ! Create 'tendency' to arrive at aerosol field
@@ -631,9 +633,8 @@ DO JK=1,KLEV
        !  Now call the chem box solver
        ! ----------------------------------------------------------------------
        ! Call kpp integrator... (provide 'ZVAR' and 'ZRCONST' !)
-       ZDENS_DP=ZDENS(JL,JK)
-       CALL BASCOE_KPP_INTEGRATOR(0._JPRD, PTSTEP, ICNTRL,ZCNTRL_P, ISTATUS,ZSTATE,IERR,&
-          & ZVAR,ZFIX,ZRCONST, ZDENS_DP)
+       CALL BASCOE_KPP_INTEGRATOR(0._JPRB, PTSTEP, ICNTRL,ZCNTRL_P, ISTATUS,ZSTATE,IERR,&
+          & ZVAR,ZFIX,ZRCONST, ZDENS(JL,JK))
        !- Filter error due to bad concentrations
        IF (IERR>0) THEN
 
@@ -719,7 +720,7 @@ DO JB=1,NBC
     ZTENBC(JL) = ZBCVAL(JLAT_LBC) - PCEN(JL,KLEV,JBC)
     PTENC1(JL,KLEV,JBC) =  ZTENBC(JL)  / PTSTEP
     ! store this special LBC budget contribution in POUT(:,x,x)
-    POUT(JL,JB+1,1)=PTSTEP *PTENC1(JL,KLEV,JBC)*PDELP(JL,KLEV) / RG
+    POUT(JL,JB,1)=PTSTEP *PTENC1(JL,KLEV,JBC)*PDELP(JL,KLEV) / RG
   ENDDO
 ENDDO
 

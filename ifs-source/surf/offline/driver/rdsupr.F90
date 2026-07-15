@@ -1,3 +1,57 @@
+! (C) Copyright 2000- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *RDSUPR * - Reading netCDF file containing surface prognostic fields
+
+!     Purpose.
+!     --------
+!            initialization surface prognostics
+
+!**   Interface.
+!     ----------
+!        *CALL* *RDSUPR(NCID)
+
+!        Explicit arguments :
+!        --------------------
+!     NCID      INT     NetCDF file ID
+
+
+!        Implicit arguments :
+!        --------------------
+
+
+!     Method.
+!     -------
+!       Opens a file called 'soilinit' to read relevant fields
+!       In the file, fields are assumed to be stored as 
+!           FIELD(LAT,LON)
+!       or as
+!           FIELD(NLEVS,LAT,LON)
+
+
+!     Externals.
+!     ----------
+!       NETCDF-utilities
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk, KNMI
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-13
+!        E. Dutra 07/2014 : netcdf4 
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE RDSUPR(NCID)
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
@@ -21,13 +75,6 @@ USE NETCDF
 USE NETCDF_UTILS, ONLY: NCERROR
 USE MPL_MODULE
 #ifdef DOC
-! (C) Copyright 2000- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *RDSUPR * - Reading netCDF file containing surface prognostic fields
 

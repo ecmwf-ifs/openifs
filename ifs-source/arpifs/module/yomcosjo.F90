@@ -12,7 +12,7 @@
 MODULE YOMCOSJO
 
 USE PARKIND1    , ONLY : JPIM, JPRB
-USE PARDIMO     , ONLY : JPNOTP, JPHUBLEV
+USE PARDIMO     , ONLY : JPNOTP, JPHUBLEV, JPGNSSRO_SAT, JPGNSSRO_TYP
 USE PARERR      , ONLY : JPMXESLV
 USE PARCMA      , ONLY : JPMXTOCH, JPMXOCT, JP_NUMEV 
 USE RTTOV_CONST , ONLY : NINST
@@ -47,6 +47,7 @@ SAVE
 !        B. Ingleby    15-Apr-2020 Fix merge of last two changes
 !        A. Geer       01-Feb-2021 Move NVAR to a dedicated module (and make it dynamic)
 !        E. Holm       20-Aug-2021 Add REDJO
+!        N. Semane     24-Oct-2022 Add JPGNSSRO_SAT, JPGNSSRO_TYP, LGNSSRO_OBERROR_SCALING and GNSSRO_SIGMAO_COEF
 !*
 
 INTEGER(KIND=JPIM), ALLOCATABLE :: NOTVAR(:,:)
@@ -135,6 +136,11 @@ REAL(KIND=JPRB) :: FGERRGROWTH
 !* Modification of sigmaos by a global factor
 REAL(KIND=JPRB)            :: SIGMAO_COEF(JPNOTP)    ! normalization coefficient of sigmaos
 REAL(KIND=JPRB)            :: REDJO                  ! global normalization coefficient applied all sigmaos (cf REDNMC)
+LOGICAL                    :: LALTS3D                ! TURN ON ALTIMETER S3D
+REAL(KIND=JPRB)            :: ALTS3D_SIGMAO          ! altimeter S3D sigmao
+!* Flexible GNSS-RO observation uncertainty model 
+LOGICAL :: LGNSSRO_OBERROR_SCALING    ! TURN ON SOME SCALING OF GNSSRO R MATRIX
+REAL(KIND=JPRB)            :: GNSSRO_SIGMAO_COEF(JPGNSSRO_SAT,JPGNSSRO_TYP,4)    ! scaling coefficient of gnssro sigmaos
 
 !     obs error correlation (general)
 !     LOBSCOR                                         L  MAIN SWITCH TO ACCOUNT FOR OBS ERROR CORRELATIONS

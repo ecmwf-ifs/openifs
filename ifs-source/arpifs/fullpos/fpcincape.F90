@@ -1,7 +1,7 @@
 ! (C) Copyright 1989- Meteo-France.
 
 !OPTIONS XOPT(NOEVAL)
-SUBROUTINE FPCINCAPE(YDTOPH,KST,KEND,KPROMA,KLEV,KLEVST,PENTRA,PT,PRP,PQV,PCAPE,PCIN,KLCL,KFCL,KLNB)
+SUBROUTINE FPCINCAPE(YDTOPH,KST,KEND,KPROMA,KLEV,KLEVST,PENTRA,PMLDEP,PT,PRP,PQV,PCAPE,PCIN,KLCL,KFCL,KLNB)
 
 ! --------------------------------------------------------------
 ! **** *FPCINCAPE* COMPUTE CAPE AND CIN.
@@ -26,6 +26,7 @@ SUBROUTINE FPCINCAPE(YDTOPH,KST,KEND,KPROMA,KLEV,KLEVST,PENTRA,PT,PRP,PQV,PCAPE,
 ! - VARIABLES
 ! KLEVST   : LEVEL FROM WHICH PARCEL IS RAISED
 ! PENTRA   : ENTRAINMENT
+! PMLDEP   : Mean Layer DEPth for MLCAPE computation (Pa).
 ! PT       : TEMPERATURE (K)
 ! PRP      : PRESSURE (PA)
 ! PQV      : WATER VAPOUR SPECIFIC HUMIDITY (NO DIM)
@@ -62,16 +63,14 @@ SUBROUTINE FPCINCAPE(YDTOPH,KST,KEND,KPROMA,KLEV,KLEVST,PENTRA,PT,PRP,PQV,PCAPE,
 !      THEN FURTHER TO THE LEVEL OF NEUTRAL BUOYANCY (LNB), WHERE THE
 !      PARCEL BECOMES UNBUOYANT.
 
-!      ALL COMPUTATIONS ARE DONE WITHOUT ENTRAINMENT OF ENVIRONMENTAL AIR.
-
 !      CIN IS MASS SPECIFIC ENERGY TO RAISE THE PARCEL FROM 
-!          from LO to LC further to LFC.
+!          from LO to LFC.
 !          ONLY THE SUM OF NEGATIVE TERMS.
 !      CAPE IS MASS SPECIFIC ENERGY  PROVIDED BY THE RAISE OF THE PARCEL
 !          from LFC to LNB.
 !          ONLY THE SUM OF POSITIVE TERMS.
 
-! AUTEUR/AUTHOR:   2001-03, J.M. PIRIOU, N. PRISTOV.
+! AUTHOR:   2001-03, J.M. PIRIOU, N. PRISTOV.
 
 ! MODIFICATIONS:
 !        M.Hamrud      01-Oct-2003 CY28 Cleaning
@@ -80,18 +79,19 @@ SUBROUTINE FPCINCAPE(YDTOPH,KST,KEND,KPROMA,KLEV,KLEVST,PENTRA,PT,PRP,PQV,PCAPE,
 !    2010-02-17  J.M. Piriou. Protections in case of cold temperature, low pressure, etc.
 !    2010-02-17  J.M. Piriou. First Newton loop in a single DO loop.
 !    2010-02-17  J.M. Piriou. Compute CAPE only below the convective reference level (NTCVIM).
+!    2018-10-11  J.M. Piriou. Mean level CAPE if KLEVST < 0. 
+!    2020-07-06  J.M. Piriou. Compute entrainment and ascent in the same Newton loop.
+!    2021-06-15  J.M. Piriou. Protect CIN from FA & GRIB compacting, in imposing CIN < GCINMAX.
+!    R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 ! --------------------------------------------------------------
 
-USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
+USE PARKIND1  ,ONLY : JPIM     ,JPRB  , JPRD
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCAPE  , ONLY :  NCAPEITER,NETAPES  ,GCAPERET
-USE YOMCST   , ONLY :  RTT      ,RDAY     ,REPSM    ,RETV     ,&
- & RCW      ,REA      ,RD       ,RV       ,RCPD     ,RCPV     ,&
- & RCS      ,RLVTT    ,RLSTT    ,RBETS    ,RALPW    ,RBETW    ,&
- & RGAMW    ,RALPS    ,RGAMS    ,RALPD    ,RBETD    ,RGAMD    ,&
- & RG
+USE YOMCAPE  , ONLY :  NCAPEITER, GMISCINV, GCINMAX, LADAE, GCAPEMIN
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMTOPH, ONLY : TTOPH
+USE YOMLSFORC, ONLY : LMUSCLFA,NMUSCLFA
 
 IMPLICIT NONE
 
@@ -102,6 +102,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KST
 INTEGER(KIND=JPIM),INTENT(IN)    :: KEND 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEVST 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PENTRA
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PMLDEP
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PT(KPROMA,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PRP(KPROMA,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PQV(KPROMA,KLEV) 
@@ -111,29 +112,44 @@ INTEGER(KIND=JPIM)   ,INTENT(OUT)   :: KLCL(KPROMA)
 INTEGER(KIND=JPIM)   ,INTENT(OUT)   :: KFCL(KPROMA)
 INTEGER(KIND=JPIM)   ,INTENT(OUT)   :: KLNB(KPROMA)
 INTEGER(KIND=JPIM)      :: IPREVIOUS_NULL_ZRT(KPROMA)
-INTEGER(KIND=JPIM) :: JLEV,JLON,JIT,JETAPES
-REAL(KIND=JPRB) :: ZDLOG(KPROMA),ZBUOY,ZTV1,ZTV2,ZQV2,ZRT(KPROMA),ZT2,ZDT(KPROMA),ZST,ZDELARG,ZL,ZCP, &
- & ZFDERQS,ZADD,ZDERL,ZRDLOG,ZZQV
-REAL(KIND=JPRB) :: ZBUOYPREC(KPROMA),ZQS(KPROMA),ZQV(KPROMA), ZQV1(KPROMA), &
- & ZT(KPROMA), ZT1(KPROMA),ZQL(KPROMA),ZQI(KPROMA),ZSQV(KPROMA), &
- & ZSQL(KPROMA),ZSQI(KPROMA),ZTDEPART(KPROMA),ZLOG(KPROMA), &
- & ZPARRIVEE(KPROMA),ZPDEPART(KPROMA),ZQVDEPART(KPROMA),ZZT(KPROMA)  
-REAL(KIND=JPRB) :: ZFDERFOLH0(KPROMA),ZDELARG0(KPROMA),ZL0(KPROMA),ZCP0(KPROMA)
-REAL(KIND=JPRB) :: ZFDERQS0, ZDZ, ZZFOEW(KPROMA)
+INTEGER(KIND=JPIM) :: JLEV,JLON,JIT
+REAL(KIND=JPRB) :: ZDLOG(KPROMA),ZBUOY,ZTV1,ZTV2,ZRT(KPROMA),ZDELARG,ZL,ZCP, &
+ & ZFDERQS,ZDERL(KPROMA),ZRDLOG,ZZQV
+REAL(KIND=JPRB) :: ZQS(KPROMA),ZQSENV(KPROMA,KLEV),ZQV(KPROMA), ZQV1(KPROMA), &
+ & ZT(KPROMA), ZT1(KPROMA), &
+ & ZLOG(KPROMA), &
+ & ZZT(KPROMA),ZDELTA(KPROMA)
+REAL(KIND=JPRB) :: ZDELARG0(KPROMA),ZL0(KPROMA)
+REAL(KIND=JPRB) :: ZDZ(KPROMA,KLEV), ZZFOEW(KPROMA)
 REAL(KIND=JPRB) :: ZMAXT,ZMINT,ZMINDERI,ZMINQ,ZMAXQ
 REAL(KIND=JPRB) :: ZTIN(KPROMA,KLEV) 
 REAL(KIND=JPRB) :: ZQVIN(KPROMA,KLEV) 
+REAL(KIND=JPRB) :: ZMEAN_THETA(KPROMA),ZMEAN_QV(KPROMA),ZDENO(KPROMA)
+REAL(KIND=JPRB) :: ZBIN(KPROMA,KLEV)
+REAL(KIND=JPRB) :: ZBINCAPE
+INTEGER(KIND=JPIM) :: ILEVST
+REAL(KIND=JPRB) :: ZMIX(KPROMA),ZAUGM
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+REAL(KIND=JPRB) :: ZT_ASC(KPROMA,KLEV),ZQV_ASC(KPROMA,KLEV)
+REAL(KIND=JPRB) :: ZTRS(KPROMA),ZQVRS(KPROMA)
+REAL(KIND=JPRB) :: ZF,ZDERI,ZQVDRY,ZQVMOIST,ZENTRA,ZQSCL(KPROMA)
 !---------
 
 !  FUNCTIONS
+#include "wrscmr.intfb.h"
 #include "fctast.func.h"
 #include "fcttrm.func.h"
 #include "fcttim.func.h"
 
 IF (LHOOK) CALL DR_HOOK('FPCINCAPE',0,ZHOOK_HANDLE)
-ASSOCIATE(NTCVIM=>YDTOPH%NTCVIM)
+ASSOCIATE(NTCVIM=>YDTOPH%NTCVIM, &
+ & RTT=>YDCST%RTT, RDAY=>YDCST%RDAY, REPSM=>YDCST%REPSM, RETV=>YDCST%RETV, &
+ & RCW=>YDCST%RCW, REA=>YDCST%REA, RCPD=>YDCST%RCPD, RCPV=>YDCST%RCPV, RCS=>YDCST%RCS, &
+ & RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RBETS=>YDCST%RBETS, RALPW=>YDCST%RALPW, &
+ & RBETW=>YDCST%RBETW, RGAMW=>YDCST%RGAMW, RALPS=>YDCST%RALPS, RGAMS=>YDCST%RGAMS, &
+ & RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, RGAMD=>YDCST%RGAMD, RG=>YDCST%RG, &
+ & RATM=>YDCST%RATM, RV=>YDCST%RV, RD=>YDCST%RD)
 !-------------------------------------------------
 ! INITIALIZE DEFAULT VALUES.
 !-------------------------------------------------
@@ -149,121 +165,195 @@ ZMAXT=400._JPRB
 ZMINDERI=1000._JPRB
 ZMINQ=1.E-07_JPRB
 ZMAXQ=1.0_JPRB-ZMINQ
-
+!
+!-------------------------------------------------
+! Initialize T and qv.
+!-------------------------------------------------
+!
 DO JLEV=1,KLEV
   DO JLON=KST,KEND
     ZTIN(JLON,JLEV)=MAX(ZMINT,MIN(ZMAXT,PT(JLON,JLEV)))
     ZQVIN(JLON,JLEV)=MAX(ZMINQ,MIN(ZMAXQ,PQV(JLON,JLEV)))
+    ZQSENV(JLON,JLEV)=FOQS(FOEW(ZTIN(JLON,JLEV),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTIN(JLON,JLEV))))/PRP(JLON,JLEV))  
+    ZT_ASC(JLON,JLEV)=ZTIN(JLON,JLEV)
+    ZQV_ASC(JLON,JLEV)=ZQVIN(JLON,JLEV)
   ENDDO
 ENDDO
+DO JLON=KST,KEND
+  ! ZQSCL is saturation qv at condensation level (CL). 
+  ! Below this CL it is initialized to a low value
+  ! so that the cubic entrainment function saturates to 1.
+  ZQSCL(JLON)=FOQS(FOEW(ZTIN(JLON,NTCVIM),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTIN(JLON,NTCVIM))))/PRP(JLON,NTCVIM))  
+ENDDO
 
-ZBUOYPREC(KST:KEND)=0.0_JPRB
-ZT (KST:KEND)=ZTIN (KST:KEND,KLEVST)
-ZQV(KST:KEND)=ZQVIN(KST:KEND,KLEVST)
-ZQL(KST:KEND)=0.0_JPRB
-ZQI(KST:KEND)=0.0_JPRB
+!
+!-------------------------------------------------
+! Starting level and starting parcel.
+!-------------------------------------------------
+!
+ILEVST=ABS(KLEVST)
+ZT (KST:KEND)=ZTIN (KST:KEND,ILEVST)
+ZQV(KST:KEND)=ZQVIN(KST:KEND,ILEVST)
 
 IPREVIOUS_NULL_ZRT(KST:KEND)=999999
 
-DO JLEV=KLEVST,NTCVIM+1,-1
+ZBIN(:,:)=0._JPRB ! 1. inside a PMLDEP pressure-depth layer, 0. outside.
+IF(KLEVST < 0) THEN
+  ! If KLEVST < 0, a mean layer CAPE is computed: 
+  ! ascent starts from a (T,qv) value, valid at level -KLEVST, obtained as the
+  ! mean value of theta and qv over a layer, centered on -KLEVST,
+  ! whose depth is PMLDEP (in Pa).
+  !
+  ! Compute mean theta and qv over the layers.
+  ZMEAN_THETA(:)=0._JPRB
+  ZMEAN_QV(:)=0._JPRB
+  ZDENO(:)=0._JPRB
+  DO JLEV=KLEV,NTCVIM+1,-1
+    DO JLON=KST,KEND
+      ZBIN(JLON,JLEV)=MAX(0._JPRB,SIGN(1._JPRB,PMLDEP+PRP(JLON,JLEV)-PRP(JLON,ILEVST)))&
+       & *MAX(0._JPRB,SIGN(1._JPRB,PRP(JLON,ILEVST)-PRP(JLON,JLEV)))
+      ZMEAN_THETA(JLON)=ZMEAN_THETA(JLON)+ZBIN(JLON,JLEV)*ZTIN(JLON,JLEV)*(RATM/PRP(JLON,JLEV))**(RD/RCPD)
+      ZMEAN_QV(JLON)=ZMEAN_QV(JLON)+ZBIN(JLON,JLEV)*ZQVIN(JLON,JLEV)
+      ZDENO(JLON)=ZDENO(JLON)+ZBIN(JLON,JLEV)
+    ENDDO
+  ENDDO
+  DO JLON=KST,KEND
+    ZMEAN_THETA(JLON)=ZMEAN_THETA(JLON)/MAX(1._JPRB,ZDENO(JLON))
+    ZMEAN_QV(JLON)=ZMEAN_QV(JLON)/MAX(1._JPRB,ZDENO(JLON))
+    !
+    ! Starting T and qv values.
+    ZT(JLON)=ZMEAN_THETA(JLON)*(RATM/PRP(JLON,ILEVST))**(-RD/RCPD)
+    ZQV(JLON)=ZMEAN_QV(JLON)
+  ENDDO
+ENDIF
+
+DO JLEV=ILEVST,NTCVIM+1,-1
   DO JLON=KST,KEND
     !
     !-------------------------------------------------
-    ! SATURATION SPECIFIC HUMIDITY.
+    ! SATURATION SPECIFIC HUMIDITY ZQS TO DIAGNOSE WHETHER CONDENSATION IS REACHED OR NOT.
     !-------------------------------------------------
     !
     ZT(JLON)=MAX(ZMINT,MIN(ZMAXT,ZT(JLON)))
+    ZQV(JLON)=MAX(ZMINQ,MIN(ZMAXQ,ZQV(JLON)))
     ZQS(JLON)=FOQS(FOEW(ZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT(JLON))))/PRP(JLON,JLEV))  
-    ZDLOG(JLON)=LOG(PRP(JLON,MIN(KLEVST,JLEV+1))/PRP(JLON,JLEV)) * MAX(0,-SIGN(1,JLEV-KLEVST))  
+    ZDELTA(JLON)=MAX(0._JPRB,SIGN(1._JPRB,ZQV(JLON)-ZQS(JLON)))
+    ZDLOG(JLON)=LOG(PRP(JLON,MIN(ILEVST,JLEV+1))/PRP(JLON,JLEV)) * MAX(0,-SIGN(1,JLEV-ILEVST))  
     !
   ENDDO
   DO JLON=KST,KEND
     !
     !-------------------------------------------------
-    ! PRESSURE AND BUOYANCY.
+    ! IF THE PARCEL IS SUPERSATURATED, SUPERSATURATION IS REMOVED.
+    ! THIS IS DONE THROUGH AN ISOBARIC TRANSFORMATION FROM (ZT,ZQV)
+    ! TO (ZTRS,ZQVRS): RS=Remove Sursaturation.
+    ! Solution for T
+    ! f(T)=cp*(T-T0)+L*(q-q0)=0
+    ! with constraint q=qs(T,p0),
+    ! solved by the method of Newton, iteration T --> T-f(T)/f'(T), with starting point ZT.
     !-------------------------------------------------
     !
-    ZQV(JLON)=MAX(ZMINQ,MIN(ZMAXQ,ZQV(JLON)))
-    ZTV1=ZT(JLON)*(1.0_JPRB+ZQV(JLON)/(1.0_JPRB-ZQV(JLON))*RV/RD)/&
-     & (1.0_JPRB+ZQV(JLON)/&
-     & (1.0_JPRB-ZQV(JLON))+ZQL(JLON)/(1.0_JPRB-ZQL(JLON))+ZQI(JLON)/(1.0_JPRB-ZQI(JLON)))  
-    ZTV2=ZTIN(JLON,JLEV)*(1.0_JPRB+ZQVIN(JLON,JLEV)/(1.0_JPRB-ZQVIN(JLON,JLEV))*RV/RD)/&
-     & (1.0_JPRB+ZQVIN(JLON,JLEV)/(1.0_JPRB-ZQVIN(JLON,JLEV)) )  
-    ZBUOY=(ZTV1/ZTV2-1.0_JPRB)*(RD+(RV-RD)*ZQVIN(JLON,JLEV))*ZTIN(JLON,JLEV)
+    ZTRS(JLON)=ZT(JLON)
+    !
+    !-------------------------------------------------
+    ! LATENT HEAT
+    !-------------------------------------------------
+    !
+    ZDELARG0(JLON)=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT(JLON)))
+    ZL0(JLON)=FOLH(ZT(JLON),ZDELARG0(JLON))
+    ZDERL(JLON)=-RV*(RGAMW+ZDELARG0(JLON)*RGAMD)
+  ENDDO ! JLON
+  !
+  !-------------------------------------------------
+  ! Newton's loop to solve the sursaturation.
+  !-------------------------------------------------
+  !
+  DO JIT=1,NCAPEITER
+    DO JLON=KST,KEND
+      ZZFOEW(JLON)=FOEW(ZTRS(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTRS(JLON))))
+    ENDDO
+    DO JLON=KST,KEND
+      !
+      ! SATURATION SPECIFIC HUMIDITY ZQVRS.
+      ZQVRS(JLON)=FOQS(ZZFOEW(JLON)/PRP(JLON,JLEV))  
+      ZCP=RCPD*(1.0_JPRB-ZQVRS(JLON))+RCPV*ZQVRS(JLON) 
+      ZFDERQS=FODQS(ZQVRS(JLON),ZZFOEW(JLON)/PRP(JLON,JLEV)&
+        & ,FODLEW(ZTRS(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTRS(JLON)))))
+      ZF=ZCP*(ZTRS(JLON)-ZT(JLON))+ZL0(JLON)*(ZQVRS(JLON)-ZQV(JLON))
+      ZDERI=ZCP+((RCPV-RCPD)*(ZTRS(JLON)-ZT(JLON))+ZL0(JLON))*ZFDERQS+ZDERL(JLON)*(ZQVRS(JLON)-ZQV(JLON))
+      ZTRS(JLON)=MAX(ZMINT,MIN(ZMAXT,ZTRS(JLON)-ZF/MAX(ZMINDERI,ZDERI)))
+    ENDDO ! JLON
+  ENDDO ! JIT
+  DO JLON=KST,KEND
+    !
+    ! Choose RS (Remove Saturation) point or original point, depending on saturation ZDELTA.
+    ZT(JLON)=ZDELTA(JLON)*ZTRS(JLON)+(1._JPRB-ZDELTA(JLON))*ZT(JLON)
+    ZQV(JLON)=ZDELTA(JLON)*ZQVRS(JLON)+(1._JPRB-ZDELTA(JLON))*ZQV(JLON)
+    !
+    ! ZT_ASC and ZQV_ASC are stored as profile arrays for MUSC diagnostics only.
+    ZT_ASC(JLON,JLEV)=ZT(JLON)
+    ZQV_ASC(JLON,JLEV)=ZQV(JLON)
+    !
+    !-------------------------------------------------
+    ! BUOYANCY.
+    !-------------------------------------------------
+    !
+    ZTV1=ZT(JLON)*(1._JPRB+RETV*ZQV(JLON)) ! Tv ascent.
+    ZTV2=ZTIN(JLON,JLEV)*(1._JPRB+RETV*ZQVIN(JLON,JLEV)) ! Tv environment.
+    ZBUOY=RG*(ZTV1/ZTV2-1._JPRB)
     !
     !-------------------------------------------------
     ! CIN AND CAPE INTEGRALS.
     !-------------------------------------------------
     !
-    ZRT(JLON)=0.5_JPRB*(ZBUOY+ZBUOYPREC(JLON))*ZDLOG(JLON)
+    ZRT(JLON)=ZBUOY/RG*(RD+(RV-RD)*ZQVIN(JLON,JLEV))*ZTIN(JLON,JLEV)*ZDLOG(JLON)
     !------------------------------------------
-    ! CUMULATE CAPE IF POSITIVE CONTRIBUTION.
+    ! CUMULATE CAPE IF POSITIVE CONTRIBUTION AND SATURATION.
     !------------------------------------------
-    PCAPE(JLON)=PCAPE(JLON)+MAX(0.0_JPRB,ZRT(JLON))
+    PCAPE(JLON)=PCAPE(JLON)+MAX(0.0_JPRB,ZRT(JLON))*MAX(0._JPRB,SIGN(1._JPRB,ZDELTA(JLON)-0.5_JPRB))
     !------------------------------------------
     ! CUMULATE CIN IF NEGATIVE CONTRIBUTION AND BELOW LFC.
     !------------------------------------------
-    IF(PCAPE(JLON) == 0.0_JPRB) PCIN(JLON)=PCIN(JLON)+MIN(0.0_JPRB,ZRT(JLON))
-    ZBUOYPREC(JLON)=ZBUOY
-    !
-    !-------------------------------------------------
-    ! IF THE PARCEL IS SUPERSATURATED, SUPERSATURATION IS REMOVED.
-    ! THIS IS DONE THROUGH AN ISOBARIC TRANSFORMATION FROM (ZT,ZQV)
-    ! TO (ZT1,ZQV1).
-    !       Solution for T
-    !            f(T)=cp*(T-T0)+L*(q-q0)=0
-    !            with constraint q=qs(T,p0),
-    !       it is solved by the method of Newton, iteration
-    !       T --> T-f(T)/f'(T), with starting point ZT.
-    !-------------------------------------------------
-    !
-    ZT1(JLON)=ZT(JLON)
+    IF(PCAPE(JLON) < GCAPEMIN) PCIN(JLON)=PCIN(JLON)+MIN(0.0_JPRB,ZRT(JLON))
   ENDDO
+
   DO JLON=KST,KEND
-    ZQV1(JLON)=FOQS(FOEW(ZT1(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT1(JLON))))/PRP(JLON,JLEV))  
-    IF ((ZQV1(JLON)<=ZQV(JLON)).AND.(KLCL(JLON)==-1)) THEN
+    IF (ZDELTA(JLON) > 0.5_JPRB .AND. KLCL(JLON)==-1) THEN
+      ! Parcel is saturated. LCL found.
       KLCL(JLON)=JLEV
+      ZQSCL(JLON)=FOQS(FOEW(ZTIN(JLON,JLEV),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTIN(JLON,JLEV))))/PRP(JLON,JLEV))  
     ENDIF
-    IF ((PCAPE(JLON) > 0.0_JPRB).AND.(KFCL(JLON)==-1)) THEN
+    IF (PCAPE(JLON) > 0.0_JPRB .AND. KFCL(JLON)==-1) THEN
+      ! Positive CAPE. FCL found.
       KFCL(JLON)=JLEV
     ENDIF
-    IF ((ZRT(JLON) <= 0.0_JPRB).AND.(JLEV<KFCL(JLON)).AND.(JLEV<IPREVIOUS_NULL_ZRT(JLON)-1)) THEN
+    IF (ZRT(JLON) <= 0.0_JPRB .AND. JLEV<KFCL(JLON) .AND. JLEV<IPREVIOUS_NULL_ZRT(JLON)-1) THEN
+      ! Negative buoyancy. LNB found.
       KLNB(JLON)=JLEV
     ENDIF
     IF (ZRT(JLON) <= 0.0_JPRB) THEN
       IPREVIOUS_NULL_ZRT(JLON)=JLEV
     ENDIF
+    !
+    !-------------------------------------------------
+    ! MOIST OR DRY ASCENT FROM JLEV TO JLEV-1.
+    ! TRANSFORMATION FROM (ZT1,ZQV1) TO (ZZT,ZZQV).
+    !      Solution for T
+    !             f(T)=cp*(T-T0)+delta*L*(q-q0)+phi-phi0=0
+    !      either f(T)=cp*(T-T0)+delta*L*(q-q0)-R*T*log(p/p0)=0
+    !            with constraint q=qs(T,p), knowing that q0=qs(T0,p0)
+    !       it is solved by the method of Newton, iteration
+    !       T --> T-f(T)/f'(T), with starting point ZT1.
+    !-------------------------------------------------
+    !
+    ZT1(JLON)=ZT(JLON)
+    ZQV1(JLON)=ZQV(JLON)
+    ZZT(JLON)=ZT1(JLON)
+    ZLOG(JLON)=LOG(PRP(JLON,JLEV-1)/PRP(JLON,JLEV))
   ENDDO
-
   DO JIT=1,NCAPEITER
     DO JLON=KST,KEND
-      !
-      !-------------------------------------------------
-      ! LATENT HEAT
-      !-------------------------------------------------
-      !
-      ZDELARG0(JLON)=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT1(JLON)))
-      ZL0(JLON)=FOLH(ZT1(JLON),ZDELARG0(JLON))
-      ZFDERFOLH0(JLON)=-RV*(RGAMW+ZDELARG0(JLON)*RGAMD)
-      ZCP0(JLON)=RCPD*(1.0_JPRB-ZQV1(JLON))+RCPV*ZQV1(JLON)
-      !
-      !-------------------------------------------------
-      ! Newton's loop to solve the supersaturation.
-      !-------------------------------------------------
-      !
-    ENDDO
-    DO JLON=KST,KEND
-      ZZFOEW(JLON)=FOEW(ZT1(JLON),ZDELARG0(JLON))
-    ENDDO
-    DO JLON=KST,KEND
-      ZFDERQS0=FODQS(ZQV1(JLON),ZZFOEW(JLON)/PRP(JLON,JLEV),FODLEW(ZT1(JLON),ZDELARG0(JLON)))
-      ZT1(JLON)=MAX(ZMINT,MIN(ZMAXT,ZT1(JLON)-(ZCP0(JLON)*(ZT1(JLON)-ZT(JLON))+ZL0(JLON)*(ZQV1(JLON)-ZQV(JLON)))&
-       & /MAX(ZMINDERI,ZCP0(JLON)+((RCPV-RCPD)*(ZT1(JLON)-ZT(JLON))+ZL0(JLON))* ZFDERQS0&
-       & +(ZQV1(JLON)-ZQV(JLON))*ZFDERFOLH0(JLON))))
-      ZDELARG0(JLON)=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT1(JLON)))
-    ENDDO
-    DO JLON=KST,KEND
-      ZZFOEW(JLON)=FOEW(ZT1(JLON),ZDELARG0(JLON))
+      ZZFOEW(JLON)=FOEW(ZZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZZT(JLON))))
     ENDDO
     DO JLON=KST,KEND
       !
@@ -271,141 +361,89 @@ DO JLEV=KLEVST,NTCVIM+1,-1
       ! SATURATION SPECIFIC HUMIDITY
       !-------------------------------------------------
       !
-      ZQV1(JLON)=FOQS(ZZFOEW(JLON)/PRP(JLON,JLEV))  
-    ENDDO
-  ENDDO
-
-  DO JLON=KST,KEND
-    ZADD=GCAPERET*(ZQV(JLON)-ZQV1(JLON))
-                        
-    ZSQL(JLON)=ZQL(JLON)+ZADD*MAX(0.0_JPRB,SIGN(1.0_JPRB,ZT1(JLON)-RTT))
-    ZSQI(JLON)=ZQI(JLON)+ZADD*MAX(0.0_JPRB,-SIGN(1.0_JPRB,ZT1(JLON)-RTT))
-    !
-    !-------------------------------------------------
-    ! MOIST ADIABATIC ASCENT.
-    ! TRANSFORMATION FROM (ZT1,ZQV1) TO (ZT2,ZQV2).
-    !      Solution for T
-    !             f(T)=cp*(T-T0)+L*(q-q0)+phi-phi0=0
-    !      either f(T)=cp*(T-T0)+L*(q-q0)-R*T*log(p/p0)=0
-    !            with constraint q=qs(T,p), knowing that q0=qs(T0,p0)
-    !       it is solved by the method of Newton, iteration
-    !       T --> T-f(T)/f'(T), with starting point ZT1.
-    !-------------------------------------------------
-    !
-    ZZT(JLON)=ZT1(JLON)
-  ENDDO
-  !-------------------------------------------------
-  ! CALCULATION IS DIVIDED IN MORE STEPS IN ORDER
-  ! TO GET MORE PRECISE VALUES
-  !-------------------------------------------------
-  DO JETAPES=1,NETAPES
-    DO JLON=KST,KEND
-      ZPDEPART(JLON) =PRP(JLON,JLEV)+(PRP(JLON,JLEV-1)-PRP(JLON,JLEV))*REAL(JETAPES-1)/REAL(NETAPES)  
-      ZPARRIVEE(JLON)=PRP(JLON,JLEV)+(PRP(JLON,JLEV-1)-PRP(JLON,JLEV))*REAL(JETAPES)/REAL(NETAPES)  
-      ZTDEPART(JLON)=ZZT(JLON)
-    ENDDO
-    DO JLON=KST,KEND
-      ZQVDEPART(JLON)=FOQS(FOEW(ZTDEPART(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTDEPART(JLON))))&
-       & /ZPDEPART(JLON))
-      ZLOG(JLON)=LOG(ZPARRIVEE(JLON)/ZPDEPART(JLON))
-    ENDDO
-    DO JIT=1,NCAPEITER
-      DO JLON=KST,KEND
-        ZZFOEW(JLON)=FOEW(ZZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZZT(JLON))))
-      ENDDO
-      DO JLON=KST,KEND
-        !
+      ZZQV=FOQS(ZZFOEW(JLON)/PRP(JLON,JLEV-1))  
+      !
+      !-------------------------------------------------
+      ! LATENT HEAT
+      !-------------------------------------------------
+      !
+      ZDELARG=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT1(JLON)))
+      ZL=FOLH(ZZT(JLON),ZDELARG)  
+      ZDERL(JLON)=-RV*(RGAMW+ZDELARG*RGAMD)
+      IF(LADAE) THEN
         !-------------------------------------------------
-        ! SATURATION SPECIFIC HUMIDITY
+        ! Entrainment is larger in low relative humidity and large saturation specific humidity.
+        ! This entrainment formula follows the Tiedtke-Bechtold convection scheme.
         !-------------------------------------------------
-        !
-        ZZQV=FOQS(ZZFOEW(JLON)/ZPARRIVEE(JLON))  
-        !
+        ZENTRA=(1._JPRB-ZBIN(JLON,JLEV))*PENTRA*(1.3_JPRB-MIN(1._JPRB,ZQVIN(JLON,JLEV)/ZQSENV(JLON,JLEV)))&
+          & *MIN(1._JPRB,ZQSENV(JLON,JLEV)/ZQSCL(JLON))**3
+      ELSE
         !-------------------------------------------------
-        ! LATENT HEAT
+        ! Uniform entrainment.
         !-------------------------------------------------
-        !
-        ZDELARG=MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZTDEPART(JLON)))
-        !
-        ! CALCULATION WHERE IT IS CONSIDERED THAT LATENT HEAT RELEASE
-        ! FROM CONDENSATION IS ABSORBTED ONLY BY THE GASEOUS PORTION 
-        ! OF THE PARCEL, AND NOT BY THE CONDENSATE
-        !
-        ZL=FOLH(ZZT(JLON),ZDELARG)  
-        ZDERL=-RV*(RGAMW+ZDELARG*RGAMD)
-        !
-        !-------------------------------------------------
-        ! Newton's loop to solve the moist adiabatic ascent.
-        !-------------------------------------------------
-        !
-        ZRDLOG=(RD+(RV-RD)*ZZQV)*ZLOG(JLON)
-        ZCP=RCPD*(1.0_JPRB-ZZQV)+RCPV*ZZQV 
-        ZFDERQS=FODQS(ZZQV,ZZFOEW(JLON)/ZPARRIVEE(JLON)&
-          & ,FODLEW(ZZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZZT(JLON)))))
-        ZZT(JLON)=MAX(ZMINT,MIN(ZMAXT,ZZT(JLON)-(ZCP*(ZZT(JLON)-ZTDEPART(JLON))&
-         & +ZL*(ZZQV-ZQVDEPART(JLON))-ZZT(JLON)&
-         & *ZRDLOG)/MAX(ZMINDERI,ZCP+((RCPV-RCPD)*(ZZT(JLON)-ZTDEPART(JLON))&
-         & +ZL-ZLOG(JLON)*ZZT(JLON)*(RV-RD))*ZFDERQS&
-         & +(ZZQV-ZQVDEPART(JLON))*ZDERL-ZRDLOG)))
-      ENDDO      ! JLON
-    ENDDO     ! JIT
-  ENDDO   !JETAPES
+        ZENTRA=(1._JPRB-ZBIN(JLON,JLEV))*PENTRA
+      ENDIF
+      !
+      !-------------------------------------------------
+      ! Newton's loop to solve the moist or dry adiabatic ascent and entrainment.
+      !-------------------------------------------------
+      !
+      ZRDLOG=(RD+(RV-RD)*ZZQV)*ZLOG(JLON)
+      ZCP=RCPD*(1.0_JPRB-ZZQV)+RCPV*ZZQV 
+      ZFDERQS=FODQS(ZZQV,ZZFOEW(JLON)/PRP(JLON,JLEV-1)&
+        & ,FODLEW(ZZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZZT(JLON)))))
+      ! ZDZ: layer depth in meter.
+      ZDZ(JLON,JLEV)=(PRP(JLON,JLEV)-PRP(JLON,JLEV-1))/(0.5*(PRP(JLON,JLEV)+ &
+        & PRP(JLON,JLEV-1)))*(RD+(RV-RD)*(0.5*(ZQVIN(JLON,JLEV)+ &
+        & (ZQVIN(JLON,JLEV-1)))))*0.5*(ZTIN(JLON,JLEV)+(ZTIN(JLON,JLEV-1)))/RG
+      ZMIX(JLON)=MIN(1._JPRB,ZENTRA*ZDZ(JLON,JLEV))
+      ZAUGM=1._JPRB+ZMIX(JLON)
+      ZF=ZCP*(ZZT(JLON)*ZAUGM-ZT1(JLON)-ZMIX(JLON)*PT(JLON,JLEV))&
+       & +ZDELTA(JLON)*ZL*(ZZQV*ZAUGM-ZQV1(JLON)-ZMIX(JLON)*PQV(JLON,JLEV))-ZZT(JLON)*ZRDLOG
+      ZDERI=ZCP*ZAUGM+ZDELTA(JLON)*((RCPV-RCPD)*(ZZT(JLON)*ZAUGM-ZT1(JLON)-ZMIX(JLON)*PT(JLON,JLEV))&
+       & +ZL*ZAUGM-(RV-RD)*ZZT(JLON)*ZLOG(JLON))*ZFDERQS&
+       & +(ZZQV*ZAUGM-ZQV1(JLON)-ZMIX(JLON)*PQV(JLON,JLEV))*ZDELTA(JLON)*ZDERL(JLON)-ZRDLOG
+      ZZT(JLON)=MAX(ZMINT,MIN(ZMAXT,ZZT(JLON)-ZF/MAX(ZMINDERI,ZDERI)))
+    ENDDO ! JLON
+  ENDDO ! JIT
   
   DO JLON=KST,KEND
-    ZZFOEW(JLON)=FOEW(ZZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZZT(JLON))))
     !
     !-------------------------------------------------
-    ! DRY ADIABATIC ASCENT.
+    ! UPDATE PARCEL STATE. T in moist or dry mode.
     !-------------------------------------------------
     !
-    ZDT(JLON)=ZT(JLON)*(PRP(JLON,JLEV-1)/PRP(JLON,JLEV))**((RD+(RV-RD)&
-     & *ZQV(JLON))/(RCPD*(1.0_JPRB-ZQV(JLON))+RCPV*ZQV(JLON)))  
+    ZT(JLON)=ZZT(JLON)
     !
-  ENDDO
-  DO JLON=KST,KEND
-    ZT2=ZZT(JLON)
+    !-------------------------------------------------
+    ! UPDATE PARCEL STATE. qv in moist and dry modes.
+    !-------------------------------------------------
+    !
+    ZQVMOIST=FOQS(FOEW(ZT(JLON),MAX(0.0_JPRB,SIGN(1.0_JPRB,RTT-ZT(JLON))))/PRP(JLON,JLEV-1))
+    ZQVDRY=ZQV1(JLON)+ZMIX(JLON)*(ZQVIN(JLON,JLEV)-ZQV1(JLON))
+    !
+    !-------------------------------------------------
+    !  VALUES FROM DRY OR MOIST ASCENT MODES ARE CHOSEN 
+    !-------------------------------------------------
+    !
+    ZQV(JLON)=ZDELTA(JLON)*ZQVMOIST+(1._JPRB-ZDELTA(JLON))*ZQVDRY
+  ENDDO ! JLON
+ENDDO ! JLEV
 
-    ZQV2=FOQS(ZZFOEW(JLON)/PRP(JLON,JLEV-1))
+DO JLON=KST,KEND
+  ZBINCAPE=MAX(0._JPRB,SIGN(1._JPRB,PCAPE(JLON)-GCAPEMIN))
+  ! 1. If ZBINCAPE=0., no LFC (Level of Free Convection) has been found, set CIN to a positive value GMISCINV, 
+  ! to plot it as missing data.
+  ! 2. If ZBINCAPE=1. : to avoid compacting problems that may create positive CIN values, one forces CIN <= GCINMAX.
+  ! GCINMAX is < 0., its absolute value is choosen high enough to ensure 
+  ! that CIN remains < 0 even after GRIB or FA file compacting.
+  PCIN(JLON)=ZBINCAPE*MIN(GCINMAX,PCIN(JLON))+(1._JPRB-ZBINCAPE)*GMISCINV
+ENDDO
 
-    ZADD=GCAPERET*(ZQV1(JLON)-ZQV2)*MAX(0.0_JPRB,SIGN(1.0_JPRB,ZQV1(JLON)-ZQV2))
-    ZSQL(JLON)=ZSQL(JLON)+ZADD*MAX(0.0_JPRB,SIGN(1.0_JPRB,ZT2-RTT))
-    ZSQI(JLON)=ZSQI(JLON)+ZADD*MAX(0.0_JPRB,-SIGN(1.0_JPRB,ZT2-RTT))
-    !
-    !-------------------------------------------------
-    ! UPDATE PARCEL STATE. The result of moist adiabatic ascent.
-    !-------------------------------------------------
-    !
-    ZST=ZT2
-    ZSQV(JLON)=ZQV2
-    !-------------------------------------------------
-    !  VALUES FROM DRY ADIABATIC OR MOIST ADIABATIC ASCENT ARE CHOSEN 
-    !-------------------------------------------------
-    !
-    ZADD=MAX(0.0_JPRB,SIGN(1.0_JPRB,ZQV(JLON)-ZQS(JLON)))
-    ZT(JLON)=ZST*ZADD + ZDT(JLON)*(1.0_JPRB-ZADD)
-    ZQV(JLON)=ZSQV(JLON)*ZADD + ZQV(JLON)*(1.0_JPRB-ZADD)
-    ZQL(JLON)=ZSQL(JLON)*ZADD
-    ZQI(JLON)=ZSQI(JLON)*ZADD
-    !-----------------------------------------------------
-    ! Entrainement
-    !-----------------------------------------------------
-    IF (PENTRA > 0.0_JPRB) THEN
-      ZDZ=(PRP(JLON,JLEV)-PRP(JLON,JLEV-1))/(0.5*(PRP(JLON,JLEV)+&
-        & PRP(JLON,JLEV-1)))*(RD+(RV-RD)*(0.5*(ZQVIN(JLON,JLEV)+&
-        & (ZQVIN(JLON,JLEV-1)))))*0.5*(ZTIN(JLON,JLEV)+(ZTIN(JLON,JLEV-1)))/RG
-      IF(ZT(JLON) > ZTIN(JLON,JLEV-1)) THEN
-        ZT(JLON)=MAX(ZTIN(JLON,JLEV-1),ZT(JLON)+PENTRA*ZDZ*(ZTIN(JLON,JLEV-1)-ZT(JLON)))
-      ELSE
-        ZT(JLON)=MIN(ZTIN(JLON,JLEV-1),ZT(JLON)+PENTRA*ZDZ*(ZTIN(JLON,JLEV-1)-ZT(JLON)))
-      ENDIF
-      IF(ZQV(JLON) > ZQVIN(JLON,JLEV-1)) THEN
-        ZQV(JLON)=MAX(ZQVIN(JLON,JLEV-1),ZQV(JLON)+PENTRA*ZDZ*(ZQVIN(JLON,JLEV-1)-ZQV(JLON)))
-      ELSE
-        ZQV(JLON)=MIN(ZQVIN(JLON,JLEV-1),ZQV(JLON)+PENTRA*ZDZ*(ZQVIN(JLON,JLEV-1)-ZQV(JLON)))
-      ENDIF
-    ENDIF
-  ENDDO                     ! JLON
-ENDDO                     !JLEV
+IF(LMUSCLFA) THEN
+  CALL WRSCMR(NMUSCLFA,'T_ASC',ZT_ASC,KPROMA,KLEV)
+  CALL WRSCMR(NMUSCLFA,'QV_ASC',ZQV_ASC,KPROMA,KLEV)
+ENDIF
 
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('FPCINCAPE',1,ZHOOK_HANDLE)

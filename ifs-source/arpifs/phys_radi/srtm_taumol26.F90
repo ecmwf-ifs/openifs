@@ -1,7 +1,16 @@
-SUBROUTINE SRTM_TAUMOL26&
- & (YDDIMV, KIDIA   , KFDIA    , KLEV,&
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+SUBROUTINE SRTM_TAUMOL26 &
+ & ( KIDIA   , KFDIA    , KLEV,&
  & P_COLMOL  ,K_LAYTROP,&
- & P_SFLUXZEN, P_TAUG   , P_TAUR    , PRMU0&
+ & P_SFLUXZEN, P_TAUG   , P_TAUR    , PRMU0   &
  & )  
 
 !     Written by Eli J. Mlawer, Atmospheric & Environmental Research.
@@ -17,7 +26,6 @@ SUBROUTINE SRTM_TAUMOL26&
 !        D.Salmond  31-Oct-2007 Vector version in the style of RRTM from Meteo France & NEC
 !     JJMorcrette 20110610 Flexible configuration for number of g-points
 
-USE YOMDIMV  , ONLY : TDIMV
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE PARSRTM  , ONLY : JPG
@@ -27,15 +35,14 @@ USE YOESRTA26, ONLY : SFLUXREFC, RAYLC
 IMPLICIT NONE
 
 !-- Output
-TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA, KFDIA 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: P_COLMOL(KIDIA:KFDIA,YDDIMV%NFLEVG) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: P_COLMOL(KIDIA:KFDIA,KLEV) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: K_LAYTROP(KIDIA:KFDIA) 
 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: P_SFLUXZEN(KIDIA:KFDIA,JPG) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: P_TAUG(KIDIA:KFDIA,YDDIMV%NFLEVG,JPG) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: P_TAUR(KIDIA:KFDIA,YDDIMV%NFLEVG,JPG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: P_TAUG(KIDIA:KFDIA,KLEV,JPG) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: P_TAUR(KIDIA:KFDIA,KLEV,JPG) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PRMU0(KIDIA:KFDIA)
 !- from AER
 !- from INTFAC      
@@ -48,7 +55,6 @@ INTEGER(KIND=JPIM) :: IG, I_LAY, I_LAYSOLFR(KIDIA:KFDIA), I_NLAYERS, IPLON
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL26',0,ZHOOK_HANDLE)
-ASSOCIATE(NFLEVG=>YDDIMV%NFLEVG)
 
 I_NLAYERS = KLEV
 
@@ -94,6 +100,6 @@ DO I_LAY = 1, I_NLAYERS
 ENDDO
 
 !-----------------------------------------------------------------------
-END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL26',1,ZHOOK_HANDLE)
+
 END SUBROUTINE SRTM_TAUMOL26

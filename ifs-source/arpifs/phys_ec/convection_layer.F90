@@ -6,9 +6,9 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE CONVECTION_LAYER(YDSURF, &
+SUBROUTINE CONVECTION_LAYER(YDSURF, YDMODEL, &
  ! Input quantities
-  & YDMODEL,KDIM, LDSLPHY, STATE, TENDENCY_CML, TENDENCY_DYN, PAUX, PPERT, &
+  & KDIM, STATE, TENDENCY_CML, TENDENCY_DYN, PTENDENCY_VD9, PAUX, PPERT, &
  ! Input/Output quantities
   & LLKEYS, PDIAG, AUXL, PERTL, FLUX, PSURF, GEMSL, &
  ! Output tendencies
@@ -26,12 +26,12 @@ SUBROUTINE CONVECTION_LAYER(YDSURF, &
 !        --------------------
 !     ==== INPUTS ===
 ! KDIM     : Derived variable for dimensions
-! LDSLPHY  : Key for SL phys
 ! state    : Derived variable for model state
 ! tendency_cml : D. V. for stored model tendencies from processes before 
 ! tendency_dyn : Dynamics tendencies
 ! PAUX     : Derived variables for general auxiliary quantities
 ! PPERT    : Derived variable for incoming perturbations etc... 
+! PTENDENCY_VD9 : tendencies from previous timestep vertical diffusion
 
 !     ==== Input/output ====
 ! LLKEYS       : Derived variable with keys
@@ -67,6 +67,7 @@ SUBROUTINE CONVECTION_LAYER(YDSURF, &
 !     M. Leutbecher & S.-J. Lock (Jan 2016) Introduced SPP scheme (LSPP)
 !     P. Lopez (8 Dec 2020) Added separate fields for lightning parameterization.
 !     M. Leutbecher (Oct 2020) SPP abstraction
+!     F. Vana       (Jan 2023): new seq. physics order
 !     --------------
 
 !-----------------------------------------------------------------------
@@ -80,6 +81,7 @@ USE YOMPHYDER ,ONLY : DIMENSION_TYPE, STATE_TYPE, AUX_TYPE, &
    & AUX_DIAG_TYPE, AUX_DIAG_LOCAL_TYPE, SURF_AND_MORE_TYPE, &
    & KEYS_LOCAL_TYPE, PERTURB_LOCAL_TYPE, FLUX_TYPE, GEMS_LOCAL_TYPE, &
    & PERTURB_TYPE
+USE YOMDYNCORE, ONLY : RPLDARE, RPLRG
 
 !-----------------------------------------------------------------------
 
@@ -88,10 +90,10 @@ IMPLICIT NONE
 TYPE(TSURF), INTENT(INOUT) :: YDSURF
 TYPE(MODEL) ,INTENT(INOUT) :: YDMODEL
 TYPE (DIMENSION_TYPE)          , INTENT (IN)   :: KDIM
-LOGICAL                        , INTENT (IN)   :: LDSLPHY
 TYPE (STATE_TYPE)              , INTENT (IN)   :: STATE
 TYPE (STATE_TYPE)              , INTENT (IN)   :: TENDENCY_CML
 TYPE (STATE_TYPE)              , INTENT (IN)   :: TENDENCY_DYN
+REAL(KIND=JPRB)                , INTENT (IN)   :: PTENDENCY_VD9(KDIM%KLON,KDIM%KLEV,YDMODEL%YRML_PHY_G%YRSLPHY%NVTEND_VD)
 TYPE (AUX_TYPE)                , INTENT (IN)   :: PAUX
 TYPE (PERTURB_TYPE)            , INTENT (IN)   :: PPERT
 TYPE (KEYS_LOCAL_TYPE)         , INTENT(INOUT) :: LLKEYS
@@ -129,16 +131,15 @@ DO JARP=1, YDSPP_CONFIG%SM%NRFTOTAL
 ENDDO
 
 CALL CUCALLN &
-  & ( YDMODEL%YRML_PHY_RAD%YRERAD,YDMODEL%YRML_PHY_SLIN,YDMODEL%YRML_PHY_EC,YDMODEL%YRML_GCONF%YGFL, &
-  & YDMODEL%YRML_CHEM%YRCHEM, YDMODEL%YRML_GCONF%YRSPP_CONFIG, &
+  & (RPLDARE, RPLRG, YDMODEL%YRML_PHY_EC%YRTHF,YDMODEL%YRCST,YDMODEL, &
   & KDIM%KIDIA  , KDIM%KFDIA , KDIM%KLON  , KDIM%KSMAX  , KDIM%KLEV, &
-  & LLKEYS%LLLAND, LDSLPHY,&
+  & LLKEYS%LLLAND, LLKEYS%LLSLPHY,&
   & TSPHY,YDMODEL%YRML_PHY_G%YRVDF%RVDIFTS,&
   & STATE%T    , STATE%Q   , STATE%U   , STATE%V,   AUXL%ZLISUM,&
   & PAUX%PVERVEL, FLUX%PDIFTQ, FLUX%PDIFTS,  PAUX%PAPRS,&
   & PAUX%PRSF1  , PAUX%PRS1  , PAUX%PGEOM1, PAUX%PGEOMH, PAUX%PGAW,&
   & PERTL%ZCUCONVCA, ZGP2DSPP, &
-  & TENDENCY_CML, TENDENCY_LOC, TENDENCY_DYN,& 
+  & TENDENCY_CML, TENDENCY_LOC, TENDENCY_DYN, PTENDENCY_VD9,& 
   & PSURF%PSD_VN(:,YSD_VN%YACPR%MP),&
   & AUXL%ITOPC  , AUXL%IBASC , PDIAG%ITYPE, &
   & PDIAG%ICBOT , PDIAG%ICTOP, AUXL%IBOTSC, LLKEYS%LLCUM , LLKEYS%LLSC,&
@@ -151,7 +152,6 @@ CALL CUCALLN &
   & FLUX%PSTRCU, FLUX%PSTRCV, FLUX%PFCCQL, FLUX%PFCCQN,&
   & PDIAG%PMFUDE_RATE ,    PDIAG%PMFDDE_RATE ,   PDIAG%PCAPE,  PERTL%ZWMEAN, PDIAG%PVDISCU, PERTL%ZDISSCU,&
   & GEMSL%ITRAC  , GEMSL%ZCEN  , GEMSL%ZTENC, GEMSL%ZSCAV )
-
 
 !     ------------------------------------------------------------------
 END ASSOCIATE

@@ -13,6 +13,22 @@
 !     JEAN BIDLOT    E.C.M.W.F.      24/10/2013.
 !     JEAN BIDLOT    E.C.M.W.F.      10/04/2015. sea-state dependent latent and sensible transfer coefficients
 !                                                after Janssen( Tech memo 239, 1997) 
+!     I. AYAN-MIGUEZ  BSC Oct 2023: Added refactorization of Global parameters
+!     ------------------------------------------------------------------
+
+!     FCZ0 DESCRIBES THE FUNCTIONAl DEPENDENCE OF THE ROUGHNESS LENGTHS 
+!     ON THE ENVIROMENT 
+
+!     ------------------------------------------------------------------
+
+
+!     ------------------------------------------------------------------
+
+!     *FCZ0** CONTAINS STATEMENT FUNCTIONS DESCRIBING ROUGNESS LENGTHS
+
+!     JEAN BIDLOT    E.C.M.W.F.      24/10/2013.
+!     JEAN BIDLOT    E.C.M.W.F.      10/04/2015. sea-state dependent latent and sensible transfer coefficients
+!                                                after Janssen( Tech memo 239, 1997) 
 
 !     ------------------------------------------------------------------
 

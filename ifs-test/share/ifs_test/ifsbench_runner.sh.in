@@ -1,0 +1,65 @@
+#! /usr/bin/env bash
+# (C) Copyright 2011- ECMWF.
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# 
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction
+
+
+# Helper script that is used to run ifsbench-based tests in the ifs-test context.
+# It essentially calls the ifsbench-test.py script with the following 
+# modifications:
+#
+# * If the test is designated as a large test (IS_LARGE=true), the test will
+#   be skipped, unless the environment variable IFS_TEST_RUN_LARGE is set to 1.
+# * Similar to other tests in ifs-test, setting IFS_TEST_BITIDENTICAL to 2 
+#   will store reference results in reference.json. Setting it to 1 will 
+#   validate the results against the stored reference results. Setting it to 
+#   0 will run the test without any verification.
+
+# Let the script fail, if one of its commands fail.
+set -e
+
+# Whether the test is large or not.
+IS_LARGE=@IS_LARGE@
+RUN_LARGE=${IFS_TEST_RUN_LARGE:-0}
+TEST_CMD="./ifs-run.py from_yaml"
+TEST_TOL=${IFS_TEST_TOLERANCE:-0}
+IFSBENCH_ARCH=${IFS_TEST_ARCH:-"@IFSBENCH_DEFAULT_ARCH@"}
+
+FLAGS=()
+
+if [ -n "${IFS_TEST_LAUNCHER_FLAGS}" ]
+then
+  FLAGS+=("--launch-options=${IFS_TEST_LAUNCHER_FLAGS}")
+fi
+
+if [ -n "${IFSBENCH_ARCH}" ]
+then
+  FLAGS+=("--arch=${IFSBENCH_ARCH}")
+fi
+
+if [[ ${IS_LARGE} ]] && [[ ${RUN_LARGE} != 1 ]]
+then
+  echo "Test skipped. Set the IFS_TEST_RUN_LARGE=1 environment flag to run it."
+  exit 
+fi
+
+case "${IFS_TEST_BITIDENTICAL:-0}" in
+  2|init)
+    ${TEST_CMD} "${FLAGS[@]}" -r ./reference.json --update-reference $@
+    echo "Reference data was written to ./reference.json."
+    ;;
+  1|true|yes|on|check)
+     ${TEST_CMD} "${FLAGS[@]}" -r ./reference.json --validate --tolerance=${TEST_TOL} $@
+    ;;
+  0|false|no|off)
+    ${TEST_CMD} "${FLAGS[@]}" $@
+    ;;
+  *)
+    echo "Unknown IFS_TEST_BITIDENTICAL value"
+    exit 1
+    ;;
+esac

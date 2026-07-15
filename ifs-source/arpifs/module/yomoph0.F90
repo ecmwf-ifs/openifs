@@ -77,7 +77,10 @@ SAVE
 ! LINC     : incremental switch for files (true : hour, false : time step)
 ! CCLIMINC : suffix in front of month value for climatology files (no month value if empty string)
 ! CFPEXTSFX : extension used after the time stamp for the the Surfex files
-! NTIMEFMT : time format in output files; 0: +HHHH, 1: +HHHH.mm
+! NTIMEFMT : time stamp format in output files :
+!  0 : hours (+HHHH)
+!  1 : hours and minutes (+HHHH:MM)
+!  2 : hours, minutes ans seconds (+HHHH:MM:SS)
 ! LBCINC   : incremental switch for input LBC files (true : hour, false : number)
 ! CFPATH   : directory name (ending with a '/') of time-dependent output files
 ! NCADFORM:format of *FA* frames in new limited area files
@@ -139,8 +142,6 @@ INTEGER(KIND=JPIM) :: NTIMEFMT = 0
 
 
 LOGICAL :: LBCINC
-
-INTEGER(KIND=JPIM) :: NCADFORM
 
 TYPE(TFAOPH) :: YMDLOPH(1)
 !     ------------------------------------------------------------------

@@ -1,13 +1,12 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2003- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
 MODULE YOESW
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -129,8 +128,8 @@ REAL(KIND=JPRB) :: RADJUST
 !  RPDU1 :  1 + EXPONENT PRESSURE DEPENDENCE UNIFORMLY MIXED GASES
 !  RPNH  :  REFERENCE PRESSURE FACTOR FOR H2O
 !  RPNU  :  REFERENCE PRESSURE FACTOR FOR UNIFORMLY MIXED GASES
-!  RSWCE :  E-TYPE, H2O CONTINUUM ABSORPTION COEFFICIENT 
-!  RSWCP :  P-TYPE, H2O CONTINUUM ABSORPTION COEFFICIENT 
+!  RSWCE :  E-TYPE, H2O CONTINUUM ABSORPTION COEFFICIENT
+!  RSWCP :  P-TYPE, H2O CONTINUUM ABSORPTION COEFFICIENT
 !  RTDH2O:  EXPONENT TEMPERATURE DEPENDENCE H2O
 !  RTDUMG:  EXPONENT TEMPERATURE DEPENDENCE UNIFORMLY MIXED GASES
 !  RTH2O :  REFERENCE TEMPERATURE H2O
@@ -237,18 +236,18 @@ REAL(KIND=JPRB) :: RADJUST
 
 !  NAME     TYPE     PURPOSE
 !  ----  :  ----   : -------
-!RTWEIGHT:  REAL     S.W. INTEGRATED WEIGHT 
-! NMPSRTM: INTEGER  : Indices for mapping SW[1:6] albedo into SRTM[1:14]  
+!RTWEIGHT:  REAL     S.W. INTEGRATED WEIGHT
+! NMPSRTM: INTEGER  : Indices for mapping SW[1:6] albedo into SRTM[1:14]
 !     -----------------------------------------------------------------
 
 CONTAINS
-  
-  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION 
+
+  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION
 
 END TYPE TESWRT
 
-CONTAINS 
-  
+CONTAINS
+
   SUBROUTINE PRINT_CONFIGURATION(SELF, KDEPTH, KOUTNO)
   IMPLICIT NONE
   CLASS(TESWRT), INTENT(IN) :: SELF

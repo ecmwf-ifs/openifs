@@ -1,11 +1,17 @@
 ! easy_netcdf_read_mpi.f90 - Read netcdf file on one task and share with other tasks
 !
-! Copyright (C) 2017 ECMWF
+! (C) Copyright 2017- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
 ! License: see the COPYING file for details
-!
 
 module easy_netcdf_read_mpi
 
@@ -30,20 +36,27 @@ module easy_netcdf_read_mpi
     procedure :: open => open_netcdf_file
     procedure :: open_active => open_netcdf_file_active
     procedure :: close => close_netcdf_file
+    procedure :: get_rank
     procedure :: get_real_scalar
+    procedure :: get_int_scalar
     procedure :: get_real_vector
     procedure :: get_real_vector_active
+    procedure :: get_int_vector
     procedure :: get_real_matrix
     procedure :: get_real_matrix_active
     procedure :: get_real_array3
     procedure :: get_real_array3_active
+    procedure :: get_real_array3_indexed
+    procedure :: get_real_array3_indexed2
     procedure :: get_real_array4
     procedure :: get_real_array4_active
-    generic   :: get => get_real_scalar, get_real_vector, &
+    generic   :: get => get_real_scalar, get_int_scalar, &
+         &              get_real_vector, get_int_vector, &
          &              get_real_matrix, get_real_array3, &
-         &              get_real_array4
-    generic   :: get_active => get_real_vector_active, get_real_matrix_active, get_real_array3_active, &
-         &                     get_real_array4_active
+         &              get_real_array4, get_real_array3_indexed, &
+         &              get_real_array3_indexed2
+    generic   :: get_active => get_real_vector_active, get_real_matrix_active, &
+         &                     get_real_array3_active, get_real_array4_active
     procedure :: get_global_attribute
 
     procedure :: set_verbose
@@ -86,7 +99,7 @@ contains
     this%file%do_transpose_2d = .false.
 
     !! these two if statements have to be nested, because MPL_NPROC() crashes if mpi is not initialized
-    if (this%mpi_enabled) then 
+    if (this%mpi_enabled) then
       if (MPL_MYRANK() == 1) then
         this%is_master_task = .true.
         call this%file%open(file_name, iverbose)
@@ -213,6 +226,29 @@ contains
 
 
   !---------------------------------------------------------------------
+  ! Return the number of dimensions of variable with name var_name, or
+  ! -1 if the variable is not found
+  function get_rank(this, var_name) result(ndims)
+
+    USE MPL_MODULE, ONLY : MPL_BROADCAST, MPL_NPROC
+
+    class(netcdf_file)           :: this
+    character(len=*), intent(in) :: var_name
+    integer :: ndims
+
+    if (this%is_master_task) then
+      ndims = this%file%get_rank(var_name)
+    end if
+
+    if (MPL_NPROC() > 1) then
+      CALL MPL_BROADCAST(ndims, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_RANK')
+    end if
+
+  end function get_rank
+
+
+  !---------------------------------------------------------------------
   ! The method "get" will read either a scalar, vector or matrix
   ! depending on the rank of the output argument. This version reads a
   ! scalar.
@@ -237,6 +273,28 @@ contains
     end if
 
   end subroutine get_real_scalar
+
+
+  !---------------------------------------------------------------------
+  ! Read an integer scalar
+  subroutine get_int_scalar(this, var_name, scalar)
+
+    USE MPL_MODULE, ONLY : MPL_BROADCAST, MPL_NPROC
+
+    class(netcdf_file)           :: this
+    character(len=*), intent(in) :: var_name
+    integer,          intent(out):: scalar
+
+    if (this%is_master_task) then
+      call this%file%get(var_name, scalar)
+    end if
+
+    if (MPL_NPROC() > 1) then
+      CALL MPL_BROADCAST(scalar, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_INT_SCALAR')
+    end if
+
+  end subroutine get_int_scalar
 
 
   !---------------------------------------------------------------------
@@ -304,6 +362,7 @@ contains
     if (MPL_NPROC() > 1) then
       CALL MPL_BROADCAST(n, mtagrad+iactive_rank, iactive_rank, &
            &  CDSTRING='EASY_NETCDF_READ_MPI:GET_REAL_VECTOR:SIZE')
+
       if (mpl_rank .ne. iactive_rank) then
         if(allocated(vector))deallocate(vector)
         allocate(vector(n))
@@ -314,6 +373,42 @@ contains
     end if
 
   end subroutine get_real_vector_active
+
+
+  !---------------------------------------------------------------------
+  ! Read a 1D integer array into "vector", which must be allocatable
+  ! and will be reallocated if necessary
+  subroutine get_int_vector(this, var_name, vector)
+
+    USE MPL_MODULE, ONLY : MPL_BROADCAST, MPL_NPROC
+
+    class(netcdf_file)                :: this
+    character(len=*),     intent(in)  :: var_name
+    integer, allocatable, intent(out) :: vector(:)
+
+    integer                      :: n  ! Length of vector
+
+    n = 0
+
+    if (this%is_master_task) then
+      call this%file%get(var_name, vector)
+      n = size(vector)
+    end if
+
+    if (MPL_NPROC() > 1) then
+      CALL MPL_BROADCAST(n, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_INT_VECTOR:SIZE')
+
+      if (.not. this%is_master_task) then
+        if (allocated(vector)) deallocate(vector)
+        allocate(vector(n))
+      end if
+
+      CALL MPL_BROADCAST(vector, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_INT_VECTOR')
+    end if
+
+  end subroutine get_int_vector
 
 
   !---------------------------------------------------------------------
@@ -476,6 +571,84 @@ contains
     end if
 
   end subroutine get_real_array3_active
+
+
+  !---------------------------------------------------------------------
+  ! Read 3D array into "var", which must be allocatable and will be
+  ! reallocated if necessary.  Whether to pemute is specifed by the
+  ! final optional argument
+  subroutine get_real_array3_indexed(this, var_name, var, index, ipermute)
+
+    USE MPL_MODULE, ONLY : MPL_BROADCAST, MPL_NPROC
+
+    class(netcdf_file)                   :: this
+    character(len=*), intent(in)         :: var_name
+    real(jprb), allocatable, intent(out) :: var(:,:,:)
+    integer, intent(in)                  :: index
+    integer, optional, intent(in)        :: ipermute(3)
+
+    integer                              :: n(3)
+
+    n = 0
+
+    if (this%is_master_task) then
+      call this%file%get(var_name, var, index, ipermute)
+      n = shape(var)
+    end if
+
+    if (MPL_NPROC() > 1) then
+      CALL MPL_BROADCAST(n, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_REAL_ARRAY3_INDEXED:SIZE')
+
+      if (.not. this%is_master_task) then
+        if (allocated(var)) deallocate(var)
+        allocate(var(n(1),n(2),n(3)))
+      end if
+
+      CALL MPL_BROADCAST(var, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_REAL_ARRAY3_INDEXED')
+    end if
+
+  end subroutine get_real_array3_indexed
+
+
+  !---------------------------------------------------------------------
+  ! Read 3D array into "var", which must be allocatable and will be
+  ! reallocated if necessary.  Whether to pemute is specifed by the
+  ! final optional argument
+  subroutine get_real_array3_indexed2(this, var_name, var, index4, index5, ipermute)
+
+    USE MPL_MODULE, ONLY : MPL_BROADCAST, MPL_NPROC
+
+    class(netcdf_file)                   :: this
+    character(len=*), intent(in)         :: var_name
+    real(jprb), allocatable, intent(out) :: var(:,:,:)
+    integer, intent(in)                  :: index4, index5
+    integer, optional, intent(in)        :: ipermute(3)
+
+    integer                              :: n(3)
+
+    n = 0
+
+    if (this%is_master_task) then
+      call this%file%get(var_name, var, index4, index5, ipermute)
+      n = shape(var)
+    end if
+
+    if (MPL_NPROC() > 1) then
+      CALL MPL_BROADCAST(n, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_REAL_ARRAY3_INDEXED2:SIZE')
+
+      if (.not. this%is_master_task) then
+        if (allocated(var)) deallocate(var)
+        allocate(var(n(1),n(2),n(3)))
+      end if
+
+      CALL MPL_BROADCAST(var, mtagrad, 1, &
+           &  CDSTRING='EASY_NETCDF_READ_MPI:GET_REAL_ARRAY3_INDEXED2')
+    end if
+
+  end subroutine get_real_array3_indexed2
 
 
   !---------------------------------------------------------------------

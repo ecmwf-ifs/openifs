@@ -1,9 +1,3 @@
-MODULE KPP_SWFRAC_MOD
-CONTAINS
-SUBROUTINE KPP_SWFRAC &
-  & ( KIDIA    ,KFDIA    ,KLON     ,KLEVO    ,KZ       ,&
-  &   LDINIT_KPP,LDKPPCAL,PFACT    ,PDO      ,PSWDK_SAVE,&
-  &   PSWDK    ,YDOCEAN_ML)
 
 ! (C) Copyright 1994- ECMWF.
 !
@@ -12,6 +6,44 @@ SUBROUTINE KPP_SWFRAC &
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+! Purpose :
+! -------
+!   This routine computes fraction of solar short-wave flux penetrating 
+!   to specified depth.
+
+! Interface :
+! ---------
+!   Call *TRIDCOF* from *OCNINT*
+!   KZ : >= 0 use PSWDK_SAVE to optimize expoential operation
+!         < 0 calculate directly
+
+! Method :
+! ------
+!     two band solar absorption model of Simpson and  Paulson (1977)
+
+! Externals :
+! ---------
+
+! Reference :
+! ---------
+! Large, W. G., J. C. McWilliams, S. C. Doney (1994), Rev. Geophys.
+! Simpson, J. J. and C. A. Paulson (1979), Quart. J. Roy. Meteorol. Soc.
+
+! Modifications :
+! -------------
+!     06-Jun-1994  Bill Large
+!            2002  Steve Woolnough, Reading Univ. Optimized with lookup table 
+!     07-Oct-2008  Yuhei Takaya,    E.C.M.W.F.    Implemented to IFS.
+! End Modifications :
+!---------------------------------------------------------------------
+
+MODULE KPP_SWFRAC_MOD
+CONTAINS
+SUBROUTINE KPP_SWFRAC &
+  & ( KIDIA    ,KFDIA    ,KLON     ,KLEVO    ,KZ       ,&
+  &   LDINIT_KPP,LDKPPCAL,PFACT    ,PDO      ,PSWDK_SAVE,&
+  &   PSWDK    ,YDOCEAN_ML)
+
 ! Purpose :
 ! -------
 !   This routine computes fraction of solar short-wave flux penetrating 

@@ -88,6 +88,8 @@ TYPE :: TCOMPO
     LOGICAL :: LCHEM_TROPO
 ! Use EQSAM4CLIM
     LOGICAL :: LAEREQSAM4CLIM
+! Use pH from EQSAM4CLIM in chemistry
+    LOGICAL :: LCHEM_EQSAM4CLIMPH
 ! aerosol surface fluxes  
     LOGICAL :: LAEROSFC
 ! Climatological diurnal Cycle (cosine) for climatological dry deposition velocities (AER + CHEM)    

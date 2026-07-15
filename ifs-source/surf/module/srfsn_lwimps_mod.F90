@@ -1,3 +1,82 @@
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**** *SRFSNS_LWIMP* - CONTAINS SNOW PARAMETRIZATION
+!
+!     PURPOSE.
+!     --------
+!          COMPUTES CHANGES IN SNOW TEMPERATURE
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_SLWIMP* IS CALLED FROM *SURFTSTPS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg/m**2/s
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PHLICEM1M*  LAKE ICE THICKNESS                             m
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION                             KG/M**2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+!    *PTSFC*      Convective Throughfall at the surface        KG/M**2/S
+!    *PTSFL*      Large Scale Throughfall at the surface       KG/M**2/S
+
+!     PARAMETERS AT T+1 :
+!    *PTSN*       SNOW TEMPERATURE                               K
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+
+! (#) THOSE TWO QUANTITIES REPRESENT THE WHOLE GRID-BOX. IN RELATION
+!       TO THE DOCUMENTATION, THEY ARE PGSN=Fr_s*G_s
+
+!     METHOD.
+!     -------
+!     Based on the original snow (as in ERA-40) with the following updates:
+!     - Liquid water as a diagnostics
+!     - Interception of rainfall
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original:
+!     ---------
+!          Simplified version based on SRFSN_LWIMP
+!     M. Janiskova              E.C.M.W.F.     26-07-2011  
+
+!     Modifications
+!     -------------
+
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_LWIMPS_MOD
 CONTAINS
 SUBROUTINE SRFSN_LWIMPS(KIDIA  ,KFDIA  ,KLON   ,PTMST,        &
@@ -5,7 +84,7 @@ SUBROUTINE SRFSN_LWIMPS(KIDIA  ,KFDIA  ,KLON   ,PTMST,        &
  & PSLRFL  ,PSSRFLTI,PFRTI   ,PAHFSTI ,PEVAPTI,               &
  & PSSFC   ,PSSFL   ,PEVAPSNW,                                &
  & PTSFC   ,PTSFL   ,                                         &
- & YDCST   ,YDVEG   ,YDSOIL  ,YDFLAKE ,                       &
+ & YDCST   ,YDVEG   ,YDSOIL  ,YDFLAKE ,YDURB,                 &
  & PTSN    ,PGSN )
 
 
@@ -15,15 +94,9 @@ USE YOS_CST   , ONLY : TCST
 USE YOS_VEG   , ONLY : TVEG
 USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_FLAKE , ONLY : TFLAKE
+USE YOS_URB   , ONLY : TURB
 
 #ifdef DOC
-! (C) Copyright 2011- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**** *SRFSNS_LWIMP* - CONTAINS SNOW PARAMETRIZATION
 !
 !     PURPOSE.
@@ -125,6 +198,7 @@ TYPE(TCST),         INTENT(IN)   :: YDCST
 TYPE(TVEG),         INTENT(IN)   :: YDVEG
 TYPE(TSOIL),        INTENT(IN)   :: YDSOIL
 TYPE(TFLAKE),       INTENT(IN)   :: YDFLAKE
+TYPE(TURB),         INTENT(IN)   :: YDURB
 
 REAL(KIND=JPRB),    INTENT(OUT)  :: PTSN(:)
 REAL(KIND=JPRB),    INTENT(OUT)  :: PGSN(:)
@@ -152,7 +226,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('SRFSN_LWIMPS_MOD:SRFSN_LWIMPS',0,ZHOOK_HANDLE)
 ASSOCIATE(RDAY=>YDCST%RDAY, RLMLT=>YDCST%RLMLT, RLSTT=>YDCST%RLSTT, &
  & RLVTT=>YDCST%RLVTT, RPI=>YDCST%RPI, RTT=>YDCST%RTT, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & RALAMSN=>YDSOIL%RALAMSN, RDSNMAX=>YDSOIL%RDSNMAX, RFRSMALL=>YDSOIL%RFRSMALL, &
  & RFRTINY=>YDSOIL%RFRTINY, RHOCI=>YDSOIL%RHOCI, RHOICE=>YDSOIL%RHOICE, &
  & RLAMICE=>YDSOIL%RLAMICE, RLWCSWEA=>YDSOIL%RLWCSWEA, &
@@ -203,6 +277,11 @@ DO JL=KIDIA,KFDIA
   ENDIF
   ZGRIDFRAC=(PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)&
    & +PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8))
+
+  IF ( LEURBAN ) THEN
+   ZGRIDFRAC=(PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)&
+   & +PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8)+PFRTI(JL,10))
+  ENDIF
 
   IF ( LEFLAKE ) THEN
     IF ( PFRTI(JL,9) .EQ. 1._JPRB ) THEN

@@ -37,24 +37,23 @@ INTEGER(KIND=JPIM) :: NSWB_MNH    !number of SW bands for surface
                                   ! (must be equal to NSW !!)
 INTEGER(KIND=JPIM) :: NGPAR       !number of fields in the buffer containing
                                   ! the 2D pseudo-historical variables.
-INTEGER(KIND=JPIM) :: MINPRR      !pointer on INPRR 
-INTEGER(KIND=JPIM) :: MACPRR      !pointer on ACPRR 
+INTEGER(KIND=JPIM) :: MINPRR      !pointer on INPRR
 INTEGER(KIND=JPIM) :: MINPRS      !pointer on INPRS
-INTEGER(KIND=JPIM) :: MACPRS      !pointer on ACPRS
 INTEGER(KIND=JPIM) :: MINPRG      !pointer on INPRG
+INTEGER(KIND=JPIM) :: MACPRR      !pointer on ACPRR 
+INTEGER(KIND=JPIM) :: MACPRS      !pointer on ACPRS
 INTEGER(KIND=JPIM) :: MACPRG      !pointer on ACPRG
 INTEGER(KIND=JPIM) :: MALBDIR     !pointer on ALBDIR
 INTEGER(KIND=JPIM) :: MALBSCA     !pointer on ALBSCA
 INTEGER(KIND=JPIM) :: MRAIN       !pointer on surface rain
 INTEGER(KIND=JPIM) :: MSNOW       !pointer on surface snow
-INTEGER(KIND=JPIM) :: MGZ0        !pointer on GZ0 
-INTEGER(KIND=JPIM) :: MGZ0H       !pointer on GZ0H 
+INTEGER(KIND=JPIM) :: MGZ0        !pointer on GZ0
+INTEGER(KIND=JPIM) :: MGZ0H       !pointer on GZ0H
 INTEGER(KIND=JPIM) :: MVQS        !pointer on surface moisture
-INTEGER(KIND=JPIM) :: MVTS        !pointer on surface temperature 
+INTEGER(KIND=JPIM) :: MVTS        !pointer on surface temperature
 INTEGER(KIND=JPIM) :: MVEMIS      !pointer on surface emissivity
 INTEGER(KIND=JPIM) :: MSWDIR      !pointer on SW direct surface flux
 INTEGER(KIND=JPIM) :: MSWDIF      !pointer on SW surface diffuse flux
-INTEGER(KIND=JPIM) :: MFRTHDS     !pointer on IR downward surface flux
 INTEGER(KIND=JPIM) :: MLSM        !pointer on land-sea mask
 INTEGER(KIND=JPIM) :: MCD         !pointer on drag coefficient
 
@@ -65,19 +64,28 @@ LOGICAL :: LOSEDIC     ! activate cloud sedimentation
 LOGICAL :: LOWARM      ! see OWARM in mesoNH
 LOGICAL :: LOSIGMAS    ! activate calculation of variance of departure to 
                        ! saturation in turb scheme (to be used in subgrid condensation)
-LOGICAL :: LOLSMC      ! Land/sea mask for cloud droplet number conc. 
+LOGICAL :: LOLSMC      ! Land/sea mask for cloud droplet number conc.
 LOGICAL :: LOTOWNC     ! Town mask for cloud droplet number conc.
 
 LOGICAL :: LOCND2      ! Separate solid and liquid phase
-LOGICAL :: LGRSN       ! Turn graupel to snow for high supersaturation wrt ice 
+LOGICAL :: LKOGAN      ! Use Kogan autocoversion of liquid
+LOGICAL :: LMODICEDEP  ! Logical switch for alternative dep/evap of ice
+LOGICAL :: LICERAD     ! Assume higher fraction of condensate for 
+                       ! ice/snow/graupel than the actual cloud cover in
+                       ! radiation
 REAL(KIND=JPRB) :: RADGR  ! Tuning of ice for radiation, TO BE REMOVED
 REAL(KIND=JPRB) :: RADSN  ! Tuning of ice for radiation, TO BE REMOVED
 
 REAL(KIND=JPRB) :: VSIGQSAT ! coeff applied to qsat variance contribution
                             ! for subgrid condensation
 
+! Constants / tuning parameters for possible modifying some processes related to
+! graupeln in RFRMIN(1:8),  IN - concentration in RFRMIN(9) and Kogan
+! autoconversion in RFRMIN(10:11).
+REAL(KIND=JPRB) :: RFRMIN(40)
+
 ! switches for MF scheme (Pergaud et al)
-CHARACTER (LEN=4)  :: CMF_UPDRAFT  ! Type of Mass Flux Scheme 
+CHARACTER (LEN=4)  :: CMF_UPDRAFT  ! Type of Mass Flux Scheme
                                      ! 'NONE','DUAL', 'EDKF', 'RHCJ' or 'RAHA' 
 CHARACTER (LEN=4)  :: CMF_CLOUD  ! type of cloud scheme associated with MF Scheme
                                      ! 'NONE', 'DIRE' or 'STAT'
@@ -88,20 +96,22 @@ LOGICAL            :: LLCRIT    ! True if temperature dependent
 LOGICAL            :: LTOTPREC  ! True if precipitation tendencies
                                 ! from the sub-grid scheme are
                                 ! added to the total precip tendencies.
+LOGICAL            :: LTOTPRECL ! As LTOTPREC but updraft fraction untouched
+LOGICAL            :: LHGT_QS   ! Switch for height dependent VQSIGSAT
 
 ! Tuning variables for MF scheme 
 
 REAL(KIND=JPRB) :: XALP_PERT    ! coefficient for the perturbation of
-                                ! theta_l and r_t at the first level of 
+                                ! theta_l and r_t at the first level of
                                 ! the updraft
-REAL(KIND=JPRB) :: XABUO        ! coefficient of the buoyancy term in the w_up equation  
+REAL(KIND=JPRB) :: XABUO        ! coefficient of the buoyancy term in the w_up equation
 REAL(KIND=JPRB) :: XBENTR       ! coefficient of the entrainment term in the w_up equation
 REAL(KIND=JPRB) :: XBDETR       ! coefficient of the detrainment term in the w_up equation
-REAL(KIND=JPRB) :: XCMF         ! coefficient for the mass flux at the first level 
-                                ! of the updraft (closure) 
+REAL(KIND=JPRB) :: XCMF         ! coefficient for the mass flux at the first level
+                                ! of the updraft (closure)
 REAL(KIND=JPRB) :: XENTR_MF     ! entrainment constant (m/Pa) = 0.2 (m)
 REAL(KIND=JPRB) :: XCRAD_MF     ! cloud radius in cloudy part
-REAL(KIND=JPRB) :: XENTR_DRY    ! coefficient for entrainment in dry part 
+REAL(KIND=JPRB) :: XENTR_DRY    ! coefficient for entrainment in dry part
 REAL(KIND=JPRB) :: XDETR_DRY    ! coefficient for detrainment in dry part
 REAL(KIND=JPRB) :: XDETR_LUP    ! coefficient for detrainment in dry part
 REAL(KIND=JPRB) :: XKCF_MF      ! coefficient for cloud fraction
@@ -139,7 +149,7 @@ INTEGER(KIND=JPIM) :: NPTP ! index in NPROMA paquet where the print will be done
 INTEGER(KIND=JPIM) :: NPRINTFR !frequency of physical prints in apl_arome
 
 !* for other diagnostics
-!  wmax per vertical level 
+!  wmax per vertical level
 LOGICAL :: LDIAGWMAX !activate print of WMAX in apl_arome
 INTEGER(KIND=JPIM) :: NDIAGWMAX ! frequency of preceding prints (in time step)
 
@@ -150,6 +160,8 @@ INTEGER(KIND=JPIM) :: NDTCHEM ! time step factor for chemical scheme
 LOGICAL :: LAROBU_ENABLE ! for MNH budget anlysis
 !* for turbulence scheme
 REAL(KIND=JPRB) :: XLINI ! minimum bl89 mixing length
+LOGICAL :: LSTATNW !  updated full statistical cloud scheme
+                   !  (yet only to be used in combination with EDMFm convection (DUAL))
 LOGICAL :: LHARATU !  if true RACMO turbulence is used
                    !  (yet only to be used in combination with EDMFm convection (DUAL))
 !* Subgrid precipitation scheme
@@ -185,11 +197,18 @@ LOGICAL :: LEVLIMIT   ! When .TRUE. water vapour pressure is limited by saturati
 LOGICAL :: LCONVHG ! TRUE to allow the conversion from hail to graupel
 !
 LOGICAL :: LCRFLIMIT !True to limit rain contact freezing to possible heat exchange
+LOGICAL :: LDEPOSC !True to switch on water deposition on vegetation (DEPO_ICE3)
 CHARACTER(LEN=1) :: CFRAC_ICE_ADJUST ! Rule to compute ice/liquid fraction in adjustments
 CHARACTER(LEN=1) :: CFRAC_ICE_SHALLOW_MF ! Rule to compute ice/liquid fraction in shallow_mf
 LOGICAL :: LSEDIM_AFTER !Sedimentation done after microphysics (.TRUE.) or before (.FALSE.)
 !
 REAL(KIND=JPRB) :: XSPLIT_MAXCFL ! Maximum CFL number allowed for SPLIT sedimentation scheme
+REAL(KIND=JPRB) :: XVDEPOSC ! Water deposition speed on vegetation (LDEPOSC) (DEPO_ICE3)
+!
+! for negative deposition (=sublimation) of qs,qg
+ LOGICAL :: LDEPSG   ! activate namelist read of sublimation factors
+REAL(KIND=JPRB) :: RDEPSRED  ! tuning factor of sublimation of snow
+REAL(KIND=JPRB) :: RDEPGRED  ! tuning factor of sublimation of graupel
 !
 !* For total cumulative 3D prec flux for MOCAGE
 LOGICAL :: LFPREC3D ! Switch on total cumulative 3D prec flux output (for MOCAGE use)

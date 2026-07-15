@@ -1,14 +1,15 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE COS_SZA(YDERAD,YDERIP,YDRIP,KSTART,KEND,KCOL,PGEMU,PGELAM,LDRADIATIONTIMESTEP,PMU0)
 
-!**** *COS_SZA*   
+!**** *COS_SZA*
 
 !     Purpose.
 !     --------
@@ -27,7 +28,7 @@ SUBROUTINE COS_SZA(YDERAD,YDERIP,YDRIP,KSTART,KEND,KCOL,PGEMU,PGELAM,LDRADIATION
 !     ----------
 !        *CALL* *COS_SZA(...)
 
-!        Explicit arguments : 
+!        Explicit arguments :
 !        ------------------
 !            PGEMU - Sine of latitude
 !            PGELAM - Geographic longitude in radians
@@ -191,7 +192,7 @@ IF (LDRADIATIONTIMESTEP) THEN
         ! range 0 to 2PI)
         IF (YDERIP%RWSOVRM + PGELAM(JCOL) < 2.0_JPRB*RPI) THEN
           ZHOURANGLESTART = ZSOLARTIMESTART + PGELAM(JCOL) - RPI
-          ZHOURANGLEEND   = ZSOLARTIMEEND   + PGELAM(JCOL) - RPI 
+          ZHOURANGLEEND   = ZSOLARTIMEEND   + PGELAM(JCOL) - RPI
         ELSE
           ZHOURANGLESTART = ZSOLARTIMESTART + PGELAM(JCOL) - 3.0_JPRB*RPI
           ZHOURANGLEEND   = ZSOLARTIMEEND   + PGELAM(JCOL) - 3.0_JPRB*RPI
@@ -290,7 +291,7 @@ ELSE
         ! range 0 to 2PI)
         IF (YDRIP%RWSOVR + PGELAM(JCOL) < 2.0_JPRB*RPI) THEN
           ZHOURANGLESTART = ZSOLARTIMESTART + PGELAM(JCOL) - RPI
-          ZHOURANGLEEND   = ZSOLARTIMEEND   + PGELAM(JCOL) - RPI 
+          ZHOURANGLEEND   = ZSOLARTIMEEND   + PGELAM(JCOL) - RPI
         ELSE
           ZHOURANGLESTART = ZSOLARTIMESTART + PGELAM(JCOL) - 3.0_JPRB*RPI
           ZHOURANGLEEND   = ZSOLARTIMEEND   + PGELAM(JCOL) - 3.0_JPRB*RPI

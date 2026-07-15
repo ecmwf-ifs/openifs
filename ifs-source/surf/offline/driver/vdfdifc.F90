@@ -1,5 +1,3 @@
-SUBROUTINE VDFDIFC(KIDIA,KFDIA,KLON,KLEV,KTOP,KTRAC,&
-                 & PTMST,PCM1,PTENC,PAPHM1,PCFH,PCFLX)  
 ! (C) Copyright 2004- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -8,6 +6,56 @@ SUBROUTINE VDFDIFC(KIDIA,KFDIA,KLON,KLEV,KTOP,KTRAC,&
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+!     ------------------------------------------------------------------
+
+!**   *VDFDIFC* - Does the implicit computation for diffusion of tracers
+
+!     A. Beljaars       ECMWF    18-03-2004
+
+!     PURPOSE
+!     -------
+
+!     Solve the tridiagonal equations for the diffusion of tracers. 
+
+!     INTERFACE
+!     ---------
+
+!     *VDFDIFC* is called by *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        Start point
+!     *KFDIA*        End point
+!     *KLEV*         Number of levels
+!     *KLON*         Number of grid points per packet
+!     *KTOP*         Index for boundary layer top
+!     *KTRAC*        Number of tracers
+!     *PCFLX*        Surface flux boundary condition for tracers       (kg/m2s)
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        Time step                                         (s)
+!     *PCM1*         Tracer concentration at T-1                       (kg/kg)
+!     *PAPHM1*       Pressure AT T-1                                   (Pa)
+!     *PCFH*         Prop. to exch. coeff. (K-star in doc.)
+
+!     UPDATED PARAMETERS (REAL):
+
+!     *PTENC*        Tendency of tracer concentration                  (1/s)
+
+!     METHOD
+!     ------
+
+!     *LU*-decomposition (downward scan), followed by 
+!     back substitution (upward scan).
+
+!     EXTERNALS.
+!     ----------
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE VDFDIFC(KIDIA,KFDIA,KLON,KLEV,KTOP,KTRAC,&
+                 & PTMST,PCM1,PTENC,PAPHM1,PCFH,PCFLX)  
 !     ------------------------------------------------------------------
 
 !**   *VDFDIFC* - Does the implicit computation for diffusion of tracers

@@ -479,6 +479,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 210 IJK=1,ILOT
       C(JA+J)=A(IA+I)+A(IB+I)
       C(JB+J)=A(IA+I)-A(IB+I)
@@ -506,6 +507,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 230 IJK=1,ILOT
       C(JA+J)=A(IA+I)+A(IB+I)
       D(JA+J)=B(IA+I)-B(IB+I)
@@ -530,6 +532,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 270 IJK=1,ILOT
       C(JA+J)=A(IA+I)
       C(JB+J)=-B(IA+I)
@@ -546,6 +549,7 @@
         DO 294 L=1,ILA
         I=IBASE
 !OCL NOVREC
+!NEC$ ivdep
         DO 292 IJK=1,ILOT
         T1=2.0*(A(IA+I)-A(IB+I))
         A(IA+I)=2.0_JPRB*(A(IA+I)+A(IB+I))
@@ -560,6 +564,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 296 IJK=1,ILOT
         C(JA+J)=2.0_JPRB*(A(IA+I)+A(IB+I))
         C(JB+J)=2.0_JPRB*(A(IA+I)-A(IB+I))
@@ -591,6 +596,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 310 IJK=1,ILOT
       C(JA+J)=A(IA+I)+A(IB+I)
       C(JB+J)=(A(IA+I)-0.5_JPRB*A(IB+I))-(SIN60*(B(IB+I)))
@@ -622,6 +628,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 330 IJK=1,ILOT
       C(JA+J)=A(IA+I)+(A(IB+I)+A(IC+I))
       D(JA+J)=B(IA+I)+(B(IB+I)-B(IC+I))
@@ -665,6 +672,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 370 IJK=1,ILOT
       C(JA+J)=A(IA+I)+A(IB+I)
       C(JB+J)=(0.5_JPRB*A(IA+I)-A(IB+I))-(SIN60*B(IA+I))
@@ -683,6 +691,7 @@
         DO 394 L=1,ILA
         I=IBASE
 !OCL NOVREC
+!NEC$ ivdep
         DO 392 IJK=1,ILOT
         T1=(2.0_JPRB*A(IA+I)-A(IB+I))-(SSIN60*B(IB+I))
         T2=(2.0_JPRB*A(IA+I)-A(IB+I))+(SSIN60*B(IB+I))
@@ -699,6 +708,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 396 IJK=1,ILOT
         C(JA+J)=2.0_JPRB*(A(IA+I)+A(IB+I))
         C(JB+J)=(2.0_JPRB*A(IA+I)-A(IB+I))-(SSIN60*B(IB+I))
@@ -733,6 +743,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 410 IJK=1,ILOT
       C(JA+J)=(A(IA+I)+A(IC+I))+A(IB+I)
       C(JB+J)=(A(IA+I)-A(IC+I))-B(IB+I)
@@ -769,6 +780,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 430 IJK=1,ILOT
       C(JA+J)=(A(IA+I)+A(IC+I))+(A(IB+I)+A(ID+I))
       D(JA+J)=(B(IA+I)-B(IC+I))+(B(IB+I)-B(ID+I))
@@ -812,6 +824,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 470 IJK=1,ILOT
       C(JA+J)=A(IA+I)+A(IB+I)
       C(JB+J)=SIN45*((A(IA+I)-A(IB+I))-(B(IA+I)+B(IB+I)))
@@ -830,6 +843,7 @@
         DO 494 L=1,ILA
         I=IBASE
 !OCL NOVREC
+!NEC$ ivdep
         DO 492 IJK=1,ILOT
         T1=2.0_JPRB*((A(IA+I)-A(IC+I))-B(IB+I))
         T2=2.0_JPRB*((A(IA+I)+A(IC+I))-A(IB+I))
@@ -848,6 +862,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 496 IJK=1,ILOT
         C(JA+J)=2.0_JPRB*((A(IA+I)+A(IC+I))+A(IB+I))
         C(JB+J)=2.0_JPRB*((A(IA+I)-A(IC+I))-B(IB+I))
@@ -885,6 +900,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 510 IJK=1,ILOT
       C(JA+J)=A(IA+I)+(A(IB+I)+A(IC+I))
       C(JB+J)=((A(IA+I)-0.25_JPRB*(A(IB+I)+A(IC+I)))+                   &
@@ -930,6 +946,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 530 IJK=1,ILOT
 !
       A10=(A(IA+I)-0.25_JPRB*((A(IB+I)+A(IE+I))+(A(IC+I)+A(ID+I))))     &
@@ -978,6 +995,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 570 IJK=1,ILOT
       C(JA+J)=(A(IA+I)+A(IB+I))+A(IC+I)
       C(JB+J)=(QRT5*(A(IA+I)-A(IB+I))+                                  &
@@ -1008,6 +1026,7 @@
         DO 594 L=1,ILA
         I=IBASE
 !OCL NOVREC
+!NEC$ ivdep
         DO 592 IJK=1,ILOT
         T1=(2.0_JPRB*(A(IA+I)-0.25_JPRB*(A(IB+I)+A(IC+I)))              &
      &    +QQRT5*(A(IB+I)-A(IC+I)))-(SSIN72*B(IB+I)+SSIN36*B(IC+I))
@@ -1032,6 +1051,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 596 IJK=1,ILOT
         C(JA+J)=2.0_JPRB*(A(IA+I)+(A(IB+I)+A(IC+I)))
         C(JB+J)=(2.0_JPRB*(A(IA+I)-0.25_JPRB*(A(IB+I)+A(IC+I)))         &
@@ -1076,6 +1096,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 610 IJK=1,ILOT
       C(JA+J)=(A(IA+I)+A(ID+I))+(A(IB+I)+A(IC+I))
       C(JD+J)=(A(IA+I)-A(ID+I))-(A(IB+I)-A(IC+I))
@@ -1126,6 +1147,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 630 IJK=1,ILOT
 !
       A11= (A(IE+I)+A(IB+I))+(A(IC+I)+A(IF+I))
@@ -1181,6 +1203,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 670 IJK=1,ILOT
       C(JA+J)=A(IB+I)+(A(IA+I)+A(IC+I))
       C(JD+J)=B(IB+I)-(B(IA+I)+B(IC+I))
@@ -1206,6 +1229,7 @@
         DO 694 L=1,ILA
         I=IBASE
 !OCL NOVREC
+!NEC$ ivdep
         DO 692 IJK=1,ILOT
         T1=(2.0_JPRB*(A(IA+I)-A(ID+I))+(A(IB+I)-A(IC+I)))               &
      &    -(SSIN60*(B(IB+I)+B(IC+I)))
@@ -1233,6 +1257,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 696 IJK=1,ILOT
         C(JA+J)=(2.0_JPRB*(A(IA+I)+A(ID+I)))+                           &
      &          (2.0_JPRB*(A(IB+I)+A(IC+I)))
@@ -1282,6 +1307,7 @@
         DO 820 L=1,ILA
         I=IBASE
 !OCL NOVREC
+!NEC$ ivdep
         DO 810 IJK=1,ILOT
         T2=2.0_JPRB*(((A(IA+I)+A(IE+I))-A(IC+I))-(B(IB+I)-B(ID+I)))
         T6=2.0_JPRB*(((A(IA+I)+A(IE+I))-A(IC+I))+(B(IB+I)-B(ID+I)))
@@ -1312,6 +1338,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 830 IJK=1,ILOT
         C(JA+J)=2.0_JPRB*(((A(IA+I)+A(IE+I))+A(IC+I))+(A(IB+I)+A(ID+I)))
         C(JE+J)=2.0_JPRB*(((A(IA+I)+A(IE+I))+A(IC+I))-(A(IB+I)+A(ID+I)))
@@ -1455,6 +1482,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 210 IJK=1,ILOT
       C(JA+J)=A(IA+I)+A(IB+I)
       C(JB+J)=A(IA+I)-A(IB+I)
@@ -1481,6 +1509,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 230 IJK=1,ILOT
       C(JA+J)=A(IA+I)+(C1*A(IB+I)+S1*B(IB+I))
       C(JB+J)=A(IA+I)-(C1*A(IB+I)+S1*B(IB+I))
@@ -1505,6 +1534,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 270 IJK=1,ILOT
       C(JA+J)=A(IA+I)
       D(JA+J)=-A(IB+I)
@@ -1523,6 +1553,7 @@
         I=IBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 292 IJK=1,ILOT
         T1=Z*(A(IA+I)-A(IB+I))
         A(IA+I)=Z*(A(IA+I)+A(IB+I))
@@ -1537,6 +1568,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 296 IJK=1,ILOT
         C(JA+J)=Z*(A(IA+I)+A(IB+I))
         C(JB+J)=Z*(A(IA+I)-A(IB+I))
@@ -1568,6 +1600,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 310 IJK=1,ILOT
       C(JA+J)=A(IA+I)+(A(IB+I)+A(IC+I))
       C(JB+J)=A(IA+I)-0.5_JPRB*(A(IB+I)+A(IC+I))
@@ -1599,6 +1632,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 330 IJK=1,ILOT
       A1=(C1*A(IB+I)+S1*B(IB+I))+(C2*A(IC+I)+S2*B(IC+I))
       B1=(C1*B(IB+I)-S1*A(IB+I))+(C2*B(IC+I)-S2*A(IC+I))
@@ -1632,6 +1666,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 370 IJK=1,ILOT
       C(JA+J)=A(IA+I)+0.5_JPRB*(A(IB+I)-A(IC+I))
       D(JA+J)=-SIN60*(A(IB+I)+A(IC+I))
@@ -1652,6 +1687,7 @@
         I=IBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 392 IJK=1,ILOT
         T1=Z*(A(IA+I)-0.5_JPRB*(A(IB+I)+A(IC+I)))
         T2=ZSIN60*(A(IC+I)-A(IB+I))
@@ -1668,6 +1704,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 396 IJK=1,ILOT
         C(JA+J)=Z*(A(IA+I)+(A(IB+I)+A(IC+I)))
         C(JB+J)=Z*(A(IA+I)-0.5_JPRB*(A(IB+I)+A(IC+I)))
@@ -1702,6 +1739,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 410 IJK=1,ILOT
       C(JA+J)=(A(IA+I)+A(IC+I))+(A(IB+I)+A(ID+I))
       C(JC+J)=(A(IA+I)+A(IC+I))-(A(IB+I)+A(ID+I))
@@ -1738,6 +1776,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 430 IJK=1,ILOT
       A0=A(IA+I)+(C2*A(IC+I)+S2*B(IC+I))
       A2=A(IA+I)-(C2*A(IC+I)+S2*B(IC+I))
@@ -1777,6 +1816,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 470 IJK=1,ILOT
       C(JA+J)=A(IA+I)+SIN45*(A(IB+I)-A(ID+I))
       C(JB+J)=A(IA+I)-SIN45*(A(IB+I)-A(ID+I))
@@ -1797,6 +1837,7 @@
         I=IBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 492 IJK=1,ILOT
         T1=Z*(A(IA+I)-A(IC+I))
         T3=Z*(A(ID+I)-A(IB+I))
@@ -1815,6 +1856,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 496 IJK=1,ILOT
         C(JA+J)=Z*((A(IA+I)+A(IC+I))+(A(IB+I)+A(ID+I)))
         C(JC+J)=Z*((A(IA+I)+A(IC+I))-(A(IB+I)+A(ID+I)))
@@ -1852,6 +1894,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 510 IJK=1,ILOT
       A1=A(IB+I)+A(IE+I)
       A3=A(IB+I)-A(IE+I)
@@ -1899,6 +1942,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 530 IJK=1,ILOT
       A1=(C1*A(IB+I)+S1*B(IB+I))+(C4*A(IE+I)+S4*B(IE+I))
       A3=(C1*A(IB+I)+S1*B(IB+I))-(C4*A(IE+I)+S4*B(IE+I))
@@ -1952,6 +1996,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 570 IJK=1,ILOT
       A1=A(IB+I)+A(IE+I)
       A3=A(IB+I)-A(IE+I)
@@ -1982,6 +2027,7 @@
         I=IBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 592 IJK=1,ILOT
         A1=A(IB+I)+A(IE+I)
         A3=A(IB+I)-A(IE+I)
@@ -2004,6 +2050,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 596 IJK=1,ILOT
         A1=A(IB+I)+A(IE+I)
         A3=A(IB+I)-A(IE+I)
@@ -2050,6 +2097,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 610 IJK=1,ILOT
       A11=(A(IC+I)+A(IF+I))+(A(IB+I)+A(IE+I))
       C(JA+J)=(A(IA+I)+A(ID+I))+A11
@@ -2098,6 +2146,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 630 IJK=1,ILOT
       A1=C1*A(IB+I)+S1*B(IB+I)
       B1=C1*B(IB+I)-S1*A(IB+I)
@@ -2156,6 +2205,7 @@
       J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
       DO 670 IJK=1,ILOT
       C(JA+J)=(A(IA+I)+0.5_JPRB*(A(IC+I)-A(IE+I)))+                     &
      &         SIN60*(A(IB+I)-A(IF+I))
@@ -2183,6 +2233,7 @@
         I=IBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 692 IJK=1,ILOT
         A11=(A(IC+I)-A(IF+I))+(A(IE+I)-A(IB+I))
         T1=Z*((A(IA+I)-A(ID+I))-0.5_JPRB*A11)
@@ -2207,6 +2258,7 @@
         J=JBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 696 IJK=1,ILOT
         A11=(A(IC+I)+A(IF+I))+(A(IB+I)+A(IE+I))
         C(JA+J)=Z*((A(IA+I)+A(ID+I))+A11)
@@ -2254,6 +2306,7 @@
         I=IBASE
 !OCL NOVREC
 !DEC$ IVDEP
+!NEC$ ivdep
         DO 810 IJK=1,ILOT
         T3=Z*((A(IA+I)+A(IE+I))-(A(IC+I)+A(IG+I)))
         T4=Z*((A(ID+I)+A(IH+I))-(A(IB+I)+A(IF+I)))

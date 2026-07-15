@@ -1,3 +1,126 @@
+
+! (C) Copyright 2010- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+!**** UPDDIAG - INTERFACE ROUTINE TO COPY IFS VARIABLES TO
+!		OFFLINE CODE DIAGNOSTICS BUFFERS
+
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL based on:
+!        Marita Voogt (KNMI) "C-Tessel" 09/2005
+!        Sebastien Lafont (ECMWF) "C-TESSEL"
+
+!     E. Dutra May 2014, add KIDIAF,KFDIAF for NPROMA implementation 
+
+!
+! INTERFACE
+!
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KIDIA*        FIRST POINT
+!    *KFDIA*        LAST POINT
+!    *KLEV*         NUMBER OF LOWEST LEVEL
+!    *KLEVS*        SOIL LAYERS
+!    *KLEVSN*       SNOW LAYERS
+!    *KTILES*       NUMBER OF TILES (I.E. SUBGRID AREAS WITH DIFFERENT 
+!                   OF SURFACE BOUNDARY CONDITION)
+
+!    *KVTYPES*      NUMBER OF VEGETATION TYPES
+
+!    *KDHVTLS*      Number of variables for individual tiles
+!    *KDHFTLS*      Number of fluxes for individual tiles
+!    *KDHVTSS*      Number of variables for snow energy budget
+!    *KDHFTSS*      Number of fluxes for snow energy budget
+!    *KDHVTTS*      Number of variables for soil energy budget
+!    *KDHFTTS*      Number of fluxes for soil energy budget
+!    *KDHVIIS*      Number of variables for interception water budget
+!    *KDHFIIS*      Number of fluxes for interception water budget
+!    *KDHVSSS*      Number of variables for snow water budget
+!    *KDHFSSS*      Number of fluxes for snow water budget
+!    *KDHVWLS*      Number of variables for soil water budget
+!    *KDHFWLS*      Number of fluxes for soil water budget
+!    *KDHVRESS*     Number of variables for resistances 
+!    *KDHFRESS*     Number of fluxes for resistances
+
+!    *KDHVCO2S*     Number of variables for CO2
+!    *KDHFCO2S*     Number of fluxes for CO2
+!    *KDHVBIOS*     Number of variables for biomass
+!    *KDHFBIOS*     Number of fluxes for biomass
+!    *KDHVVEGS*     Number of variables for vegetation
+!    *KDHFVEGS*     Number of fluxes for vegetation
+
+
+!
+!    *PTSPHY*       time step length
+!    *PDHTLS*	    surface fluxes
+!    *PDHTSS*	    snow fluxes
+!    *PDHTTS*	    soil T fluxes
+!    *PDHSSS*	    snow mass fluxes
+!    *PDHIIS*	    interception mass fluxes
+!    *PDHWLS*	    soil water fluxes
+!    *PDHRESS*      resistances 
+!
+!    *PT2M*         Screen-level air temperature  
+!    *PD2M*         Screen-level air dew point temperature 
+!
+!     PWSAE1	 : tendency of soil water content
+!     PWLE1	 : tendency of interception reservoir content
+!     PSNSE1	 : tendency of snow mass
+
+!    *PDHCO2S*      CO2 fluxes per vegetation type
+!    *PDHBIOS*      biomass per vegetation type
+!    *PDHVEGS*      vegetation variables per vegetation type
+
+
+
+!     PSRSOD     : SURFACE SHORTWAVE RADIATIVE FLUX DOWNWARDS.
+!     PSRTHD     : SURFACE LONGWAVE RADIATIVE FLUX DOWNWARDS.
+!     PFRSO      : SHORTWAVE RADIATIVE FLUX.
+!     PFRTH      : LONGWAVE RADIATIVE FLUX.
+!     PALB       : MODEL SURFACE SHORTWAVE ALBEDO.
+!     PFTLHEV    : SURFACE LATENT HEAT FLUX (SNOW FREE FRACTION)
+!     PFTLHSB    : SURFACE LATENT HEAT FLUX (SNOW COVERED FRACTION)
+!     PDIFTQ     : TURBULENT FLUX OF MOISTURE
+!     PDIFTS     : TURBULENT FLUX OF ENTHALPY (OR DRY STATIC ENERGY).
+!     PSTRTU     : TURBULENT MOMENTUM FLUX 
+!     PSTRTV     : TURBULENT MOMENTUM FLUX 
+!     PLSRF      : LARGE SCALE RAINFALL
+!     PCRF       : CONVECTIVE RAINFALL
+!     PLSSF      : LARGE SCALE SNOWFALL
+!     PCSF       : CONVECTIVE SNOWFALL
+!     PFWRO1     : SURFACE RUNOFF
+!     PFWROD     : DEEP RUNOFF
+!     PFWMLT     : SNOW MELT
+
+!     PAN        : NET CO2 ASSIMILATION OVER CANOPY         
+!     PAG        : GROSS CO2 ASSIMILATION OVER CANOPY   
+!     PRD        : DARK RESPIRATION                         
+!     PRSOIL_STR : RESPIRATION FROM SOIL AND STRUCTURAL BIOMASS
+!     PRECO      : ECOSYSTEM RESPIRATION 
+!     PCO2FLUX   : CO2 FLUX
+!     PCH4FLUX   : CH4 FLUX
+!     PBVOCFLUX  : BVOC FLUX
+!     PLAI       : LAI (M2/M2)
+!     PBIOM      : BIOMASS (KG/M2)
+!     PBLOSS     : BIOMASS LOSS (KG/M2)
+!     PBGAIN     : BIOMASS GAIN (KG/M2)
+!     PBIOMSTR   : ABOVE GROUND STRUCTURAL BIOMASS (KG/M2)
+!     PBIOMSTR2  : BELOW GROUND STRUCTURAL BIOMASS (KG/M2)
+!     PWSAE1	 : tendency of soil water content
+!     PWLE1	 : tendency of interception reservoir content
+!     PSNSE1	 : tendency of snow mass
+!     PTAIR      : AIR TEMPERATURE (forcing T+1, end of timestep)
+!     PQAIR      : AIR SPECIFIC HUMIDITY (forcing T+1, end of timestep)
+!     PUWIND     : U WIND SPEED (forcing T+1, end of timestep)
+!     PVWIND     : V WIND SPEED (forcing T+1, end of timestep)
+
+
+
+!
+
 SUBROUTINE UPDDIAG( &
  & KIDIA,KFDIA,KLON,KLEV,KLEVS,KLEVSN,KTILES,KVTYPES, &
  & KDHVTLS,KDHFTLS,KDHVTSS,KDHFTSS, &
@@ -17,13 +140,6 @@ SUBROUTINE UPDDIAG( &
  & PDHTLS,PDHTSS,PDHTTS,PDHSSS,PDHIIS,PDHWLS,PDHRESS,&
  & PT2M,PD2M,PDHCO2S,PDHBIOS,PDHVEGS)
 
-! (C) Copyright 2010- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !
 !**** UPDDIAG - INTERFACE ROUTINE TO COPY IFS VARIABLES TO
 !		OFFLINE CODE DIAGNOSTICS BUFFERS

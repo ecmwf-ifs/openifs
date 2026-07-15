@@ -79,33 +79,33 @@ SUBROUTINE WRSPECA(YDGEOMETRY,YDGFL,YDSURF,YDXFU,YDML_GCONF,YDDYN,YDDYNA,YDSPEC,
 !   O. Marsden: Sept 2016 Added spectral argument for call to WRSPECA_GP
 !     ----------------------------------------------------------------------------
 
-USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
+USE MODEL_GENERAL_CONF_MOD, ONLY : MODEL_GENERAL_CONF_TYPE
 USE YOMDYN             , ONLY : TDYN
 USE YOMDYNA            , ONLY : TDYNA
 USE YOMXFU             , ONLY : TXFU
 USE GEOMETRY_MOD       , ONLY : GEOMETRY
 USE SURFACE_FIELDS_MIX , ONLY : TSURF
-USE YOMGFL   , ONLY : TGFL
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCT0   , ONLY : LWRSPECA_GP
-USE YOMMP0   , ONLY : MYSETV, NPRTRV
-USE YOMTAG, ONLY : MTAG_MFIO_WRSPECA
+USE YOMGFL             , ONLY : TGFL
+USE PARKIND1           , ONLY : JPIM, JPRB
+USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCT0             , ONLY : LWRSPECA_GP
+USE YOMMP0             , ONLY : MYSETV, NPRTRV
+USE YOMTAG             , ONLY : MTAG_MFIO_WRSPECA
 USE SPECTRAL_FIELDS_MOD
-USE YOMMCUF                , ONLY : TMCUF
-USE IOSPECA_MOD, ONLY : IOSPECA_SELECTD,&
-                      & IOSPECA_SELECTF,&
-                      & IOSPECA_START,&
-                      & IOSPECA_COUNT,&
-                      & IOSPECA_FINISH,&
-                      & IOSPECA_VSETOFF,&
-                      & IOSPECA_CTX,&
-                      & NSPECACT_WRITE
-USE IOFLDDESC_MOD, ONLY : IOFLDDESC
+USE YOMMCUF            , ONLY : TMCUF
+USE IOSPECA_MOD        , ONLY : IOSPECA_SELECTD,&
+                              & IOSPECA_SELECTF,&
+                              & IOSPECA_START,&
+                              & IOSPECA_COUNT,&
+                              & IOSPECA_FINISH,&
+                              & IOSPECA_VSETOFF,&
+                              & IOSPECA_CTX,&
+                              & NSPECACT_WRITE
+USE IOFLDDESC_MOD      , ONLY : IOFLDDESC
 
-USE FACTX_MOD, ONLY : FACTX
+USE FACTX_MOD          , ONLY : FACTX
 
-USE YOMFP_SERV, ONLY : FP_SERV_C001
+USE YOMFP_SERV         , ONLY : FP_SERV_C001
 
 !      -----------------------------------------------------------
 

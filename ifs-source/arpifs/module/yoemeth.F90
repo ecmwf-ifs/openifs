@@ -25,13 +25,19 @@ SAVE
 
 !     C. JAKOB        E.C.M.W.F.          98/04/07
 
+!     MODIFICATIONS
+!        R.Forbes   01/2023 Added time-varying methox reference values
+
 !      NAME     TYPE      PURPOSE
 !      ----     ----      -------
 
 !     *RALPHA1* REAL      CONSTANT IN TIME SCALE 1 CALCULATIONS
 !     *RALPHA2* REAL      CONSTANT IN TIME SCALE 2 CALCULATIONS
-!     *RQLIM*   REAL      UPPERLIMIT OD SPECIFIC HUMIDITY FOR 
-!                         METHANE OXIDATION TO BE ACTIVE
+!     *RQLIM*   REAL      Global mean stratospheric specific humidity
+!                         relaxation limit (value in upper stratosphere)
+!     *RQLIM_REFYR* REAL  Global mean stratospheric specific humidity
+!                         relaxation limit for reference year (2010
+!     *RCH4_REFYR*  REAL  Global mean surface methane for reference year (2010)
 !     *RPBOTOX* REAL      PRESSURE BELOW WHICH METHANE OXIDATION
 !                         IS CONSIDERED ACTIVE
 !     *RPBOTPH* REAL      PRESSURE BELOW WHICH H2O PHOTOLYSIS
@@ -42,15 +48,19 @@ SAVE
 !                         IS USED IN H2O PHOTOLYISIS
 !     *RALPHA3* REAL      CONSTANT IN TIME SCALE 2 CALCULATIONS
 !     *RLOGPPH* REAL      CONSTANT IN TIME SCALE 2 CALCULATIONS
+!     *LMETHOX_TIMEVAR* LOGICAL Switch for time-varying methox
 
 REAL(KIND=JPRB) :: RALPHA1
 REAL(KIND=JPRB) :: RALPHA2
 REAL(KIND=JPRB) :: RQLIM
+REAL(KIND=JPRB) :: RQLIM_REFYR
+REAL(KIND=JPRB) :: RCH4_REFYR
 REAL(KIND=JPRB) :: RPBOTOX
 REAL(KIND=JPRB) :: RPBOTPH
 REAL(KIND=JPRB) :: RPTOPOX
 REAL(KIND=JPRB) :: RPTOPPH
 REAL(KIND=JPRB) :: RALPHA3
 REAL(KIND=JPRB) :: RLOGPPH
+LOGICAL :: LMETHOX_TIMEVAR
 
 END MODULE YOEMETH

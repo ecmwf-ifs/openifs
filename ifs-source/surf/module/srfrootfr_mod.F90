@@ -1,9 +1,3 @@
-MODULE SRFROOTFR_MOD
-CONTAINS
-SUBROUTINE SRFROOTFR(KLEVS,KVTYPES,PSDEPTH,PROOTF)
- 
-USE PARKIND1  ,ONLY : JPIM     ,JPRB
-USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
 ! (C) Copyright 2000- ECMWF.
 !
@@ -12,6 +6,60 @@ USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SRFROOTFR* - Initializing root fraction
+
+!     Purpose.
+!     --------
+!          Computes the fraction of roots for each soil layer, for each
+!     vegetation type in the BATS classification.
+
+!     Interface.
+!     ----------
+!          *SRFROOTFR* is called from *SUVEG* and *SUSURF*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KLEVS*      Number of soil layers
+!    *KVTYPES*    Number of vegetation (surface cover) types
+
+!     INPUT PARAMETERS (REAL):
+!    *PSDEPTH*    Soil layer depth (dimension KLEVS)
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PROOTF*     Root fraction (dimension KLEVS,KVTYPES)
+
+!     Method.
+!     -------
+!     Straightforward substitution of the ECMWF accumulated layer depths
+!     into the integrated root fraction formula used by Canadell et al.
+!     1996, Jackson et al. 1996, and adapted to the BATS classification
+!     by Zeng et al. 1998.
+
+!     References.
+!     ----------
+
+!     Authors:
+!     --------
+! Canadell, 1996:
+! Jackson, 1996:
+! Zeng, 1998:
+
+!     Modifications:
+!     --------------
+!     C. Fischer 00-12-20 Meteo-France recode initialization for prootf
+!                         to avoid memory overflow on SUN workstations
+!     P.Viterbo       E.C.M.W.F.     12/01/1999.
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+
+MODULE SRFROOTFR_MOD
+CONTAINS
+SUBROUTINE SRFROOTFR(KLEVS,KVTYPES,PSDEPTH,PROOTF)
+ 
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
 !**** *SRFROOTFR* - Initializing root fraction
 

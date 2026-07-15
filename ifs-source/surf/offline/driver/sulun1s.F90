@@ -1,3 +1,46 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SULUN1S * - Routine to initialize the common YOMLUN1S
+
+!     Purpose.
+!     --------
+!           Initialize and print the common YOMLUN1S
+
+!**   Interface.
+!     ----------
+!        *CALL* *SULUN1S
+
+!        Explicit arguments :
+!        --------------------
+!        none
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Pedro Viterbo and Jean-Francois Mahfouf  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original     : 95-03-08
+!        J.F. Mahfouf : 95-03-14 (Logical unit of forcing data)
+!        BART vd HURK (KNMI): preparation of NetCDF output (jul 2000)
+!        Y. Takaya (ECMWF) : add ocean mixed layer model part
+!        E Dutra : June 2014: update netcdf4 interface 
+
 SUBROUTINE SULUN1S
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
@@ -20,13 +63,6 @@ USE YOMCST   , ONLY : RDAY
 USE YOMRIP   , ONLY : NINDAT   ,NSSSSS
 USE NETCDF
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SULUN1S * - Routine to initialize the common YOMLUN1S
 

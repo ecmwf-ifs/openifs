@@ -1,20 +1,3 @@
-MODULE SURFBC_CTL_MOD
-CONTAINS
-SUBROUTINE SURFBC_CTL(KIDIA, KFDIA, KLON, KTILES,KLEVSN, &
- & PTVL, PCO2TYP, PTVH, PSOTY, PSDOR, PCVLC, PCVHC, PCURC, PLAILC, PLAIHC, PLAILI, PLAIHI, &
- & PLSM, PCI, PCLAKE, PHLICE, PGEMU, PSNM1M, PWLM1M, PRSNM1M, &  
- & LDLAND, LDSICE, LDLAKE, LDNH, LDOCN_KPP, &      
- & KTVL, KCO2TYP, KTVH, KSOTY, &
- & PCVL, PCVH, PCUR, PLAIL, PLAIH, PWLMX, PFRTI, &
- & YDSOIL, YDVEG, YDFLAKE, YDOCEAN_ML)  
-
-USE PARKIND1,     ONLY : JPIM, JPRB
-USE YOMHOOK,      ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_SOIL,     ONLY : TSOIL
-USE YOS_VEG,      ONLY : TVEG
-USE YOS_FLAKE,    ONLY : TFLAKE
-USE YOS_OCEAN_ML, ONLY : TOCEAN_ML
-USE ABORT_SURF_MOD  
 
 ! (C) Copyright 1999- ECMWF.
 !
@@ -23,6 +6,127 @@ USE ABORT_SURF_MOD
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+!**   *SURFBC* - CREATES BOUNDARY CONDITIONS CHARACTERIZING THE SURFACE
+
+!     PURPOSE
+!     -------
+!     CREATES AUXILIARY FIELDS NEEDED BY SURFEXCDRIVER, SURFTSTP, AND SURFRAD
+
+!     INTERFACE
+!     ---------
+!     *SURFBC* IS CALLED BY *CALLPAR* AND *RADPAR*
+
+!     INPUT PARAMETERS (INTEGER):
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILES*       TILE INDEX
+!     *KLEVSN*       NUMBER OF SNOW LAYERS
+!     *PTVL*         LOW VEGETATION TYPE (REAL)
+!     *PCO2TYP*      TYPE OF PHOTOSYNTHETIC PATHWAY FOR LOW VEGETATION (C3/C4)
+!     *PTVH*         HIGH VEGETATION TYPE (REAL)
+!     *PSOTY*        SOIL TYPE (REAL)                               (1-7)
+!     *PSDOR*        STANDARD DEV. OF OROGRAPHY                     (m)
+
+!     INPUT PARAMETERS (REAL):
+!     *PCVLC*        LOW VEGETATION COVER  (CLIMATE)                (0-1)
+!     *PCVHC*        HIGH VEGETATION COVER (CLIMATE)                (0-1)
+!     *PCURC*        URBAN COVER (CLIMATE)                          (0-1)
+!     *PLAILC*       LOW LAI (FROM CLIMATE FILE)                    m2/m2
+!     *PLAIHC*       HIGH LAI (FROM CLIMATE FILE)                   m2/m2
+!     *PLAILCP*      Prev LOW LAI (FROM CLIMATE FILE)               m2/m2
+!     *PLAIHCP*      Prev HIGH LAI (FROM CLIMATE FILE)              m2/m2
+!     *PAVGPARC*     Average PAR for use in BVOC emissions module   W/m2
+
+!     *PLAILI*        LOW LAI (Interactive)                         m2/m2
+!     *PLAIHI*        HIGH LAI (Interactive)                        m2/m2
+
+!     *PLSM*         LAND-SEA MASK                                  (0-1)
+!     *PCI*          SEA-ICE FRACTION                               (0-1)
+!     *PCIL*         LAND-ICE FRACTION (OUT: CORRECTED)             (0-1)
+!     *PCLAKE*       LAKE FRACTION                                  (0-1)
+!     *PHLICE*       LAKE ICE THICKNESS                               m
+!     *PGEMU*        COSINE OF LATITUDE
+!     *PSNM1M*       SNOW MASS (per unit area)                      kg/m**2
+!     *PWLM1M*       INTERCEPTION RESERVOIR CONTENTS                kg/m**2
+!     *PRSNM1M*      SNOW DENSITY                                   kg/m**3
+
+!     OUTPUT PARAMETERS (LOGICAL):
+!     *LDLAND*       LAND INDICATOR
+!     *LDSICE*       SEA-ICE INDICATOR
+!     *LDLICE*       LAND-ICE INDICATOR
+!     *LDLAKE*       LAKE INDICATOR
+!     *LDNH*         NORTHERN HEMISPHERE INDICATOR
+!     *LDOCM_KPP*    OCEAN INDICATOR
+
+!     OUTPUT PARAMETERS (REAL):
+!     *PCVL*         LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!     *PCVH*         HIGH VEGETATION COVER (CORRECTED)              (0-1)
+!     *PCUR*         URBAN COVER (CORRECTED)                        (0-1)
+!     *PLAIL*         LOW LAI  (CORRECTED)                         (m2/m2)
+!     *PLAIH*         HIGH LAI (CORRECTED)                         (m2/m2)
+!     *PAVGPAR*      Average PAR for use in BVOC emissions module   W/m2
+!     *PWLMX*        MAXIMUM SKIN RESERVOIR CAPACITY                kg/m**2
+!     *PFRTI*        TILE FRACTIONS                                 (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!     *PCSN*         SNOW COVER FRACTION (diagnostic)                (0-1)
+
+!     OUTPUT PARAMETERS (INTEGER):
+!     *KTVL*         LOW VEGETATION COVER
+!     *KCO2TYP*      TYPE OF PHOTOSYNTHETIC PATHWAY (C3/C4)
+!     *KTVH*         HIGH VEGETATION COVER
+!     *KSOTY*        SOIL TYPE                                      (1-7)
+
+!     METHOD
+!     ------
+!     IT IS NOT ROCKET SCIENCE, BUT CHECK DOCUMENTATION
+
+!     Modifications
+!     P. VITERBO       E.C.M.W.F.         18-02-99
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     P. Viterbo    24-05-2004      Change surface units
+!     P. Viterbo   ECMWF   03-12-2004  Include user-defined RTHRFRTI
+!     G. Balsamo   ECMWF   15-01-2007  Add soil type
+!     E. Dutra/G. Balsamo  01-05-2008  Add lake tile / Allow sub-grid lake tile 
+!     Y. Takaya    ECMWF   07-10-2008  Add ocean mixed layer grids
+!     E. Dutra             21/11/2008  Couple snow deck with lake ice (recalculation of tile fractions )
+!     S. Boussetta/G.Balsamo May 2009 Add lai
+!     S. Boussetta/G.Balsamo 04-06-2009 2009 Added exp function for crops RCOV
+!     E. Dutta             16-11-2009  snow 2009 cleaning
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL
+!     G.Balsamo              Jan 2015 Add subgrid lake ice fraction
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     I. Ayan-Miguez         June 2023 Add refactorization of RVCOV
+!     J. McNorton           24/08/2022  urban tile
+!     G. Arduini             2024 general land/sea ice tile
+!     ------------------------------------------------------------------
+
+MODULE SURFBC_CTL_MOD
+CONTAINS
+SUBROUTINE SURFBC_CTL(KIDIA, KFDIA, KLON, KTILES,KLEVSN, &
+ & PTVL, PCO2TYP, PTVH, PSOTY, PSDOR, PCVLC, PCVHC, PCURC, PLAILC, PLAIHC, PLAILI, PLAIHI, &
+ & PLSM, PCI, PCLAKE, PHLICE, PGEMU, PSNM1M, PWLM1M, PRSNM1M, &  
+ & LDLAND, LDSICE, LDLAKE, LDNH, LDOCN_KPP, &      
+ & KTVL, KCO2TYP, KTVH, KSOTY, &
+ & PCVL, PCVH, PCUR, PLAIL, PLAIH, PWLMX, PFRTI, &
+ & YDSOIL, YDVEG, YDFLAKE, YDURB, YDOCEAN_ML)  
+
+USE PARKIND1,     ONLY : JPIM, JPRB
+USE YOMHOOK,      ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_SOIL,     ONLY : TSOIL
+USE YOS_VEG,      ONLY : TVEG
+USE YOS_FLAKE,    ONLY : TFLAKE
+USE YOS_URB,      ONLY : TURB
+USE YOS_OCEAN_ML, ONLY : TOCEAN_ML
+USE ABORT_SURF_MOD  
 
 !     ------------------------------------------------------------------
 !**   *SURFBC* - CREATES BOUNDARY CONDITIONS CHARACTERIZING THE SURFACE
@@ -112,6 +216,7 @@ USE ABORT_SURF_MOD
 !     E. Dutta             16-11-2009  snow 2009 cleaning
 !     S. Boussetta/G.Balsamo May 2010 Add CTESSEL
 !     G.Balsamo              Jan 2015 Add subgrid lake ice fraction
+!     J. McNorton           24/08/2022  urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -167,19 +272,24 @@ REAL(KIND=JPRB),    INTENT(OUT) :: PFRTI(:,:)
 TYPE(TSOIL),        INTENT(IN)  :: YDSOIL
 TYPE(TVEG),         INTENT(IN)  :: YDVEG
 TYPE(TFLAKE),       INTENT(IN)  :: YDFLAKE
+TYPE(TURB),         INTENT(IN)  :: YDURB
 TYPE(TOCEAN_ML),    INTENT(IN)  :: YDOCEAN_ML
 
 REAL(KIND=JPRB) ::    ZCVW(KLON)   ,ZCVS(KLON) , ZFRAUX(KLON)
 REAL(KIND=JPRB) ::    ZLICE(KLON), ZPCVL,ZPCVH,ZPCVB,ZPCVLK
 REAL(KIND=JPRB) ::    ZTHRESH, ZEPS, ZSUM(KLON), ZSUM2(KLON)
+REAL(KIND=JPRB) ::    ZEPSILON, TMP1, TMP2
 
-INTEGER(KIND=JPIM) :: IK, JK, JL,JT
+INTEGER(KIND=JPIM) :: IK, JK, JL, JT, KLACT
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+ZEPSILON = 10._JPRB*EPSILON(ZEPSILON)
 
 !         Convert types to integer
 
 IF (LHOOK) CALL DR_HOOK('SURFBC_CTL_MOD:SURFBC_CTL',0,ZHOOK_HANDLE)
-ASSOCIATE(LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ASSOCIATE(LEFLAKE=>YDFLAKE%LEFLAKE,LEURBAN=>YDURB%LEURBAN, &
+ & RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & LEOCML=>YDOCEAN_ML%LEOCML, &
  & LESN09=>YDSOIL%LESN09, RCIMIN=>YDSOIL%RCIMIN, RQSNCR=>YDSOIL%RQSNCR, &
  & RTHRFRTI=>YDSOIL%RTHRFRTI, RWLMAX=>YDSOIL%RWLMAX, &
@@ -254,11 +364,25 @@ DO JL=KIDIA,KFDIA
   IF (.NOT.LESN09) THEN 
     ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,SUM(PSNM1M(JL,:))*RQSNCR))
   ELSE
-    ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,(100.0_JPRB*SUM(PSNM1M(JL,:)/PRSNM1M(JL,:))*RQSNCR)))
+!   ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,(100.0_JPRB*SUM(PSNM1M(JL,:)/PRSNM1M(JL,:))*RQSNCR)))
 ! tanh formulations:
-!   ZCVS(JL)=MAX(0._JPRB,MIN(1._JPRB, TANH(100.0_JPRB*SUM(PSNM1M(JL,:)/PRSNM1M(JL,:))*RQSNCR)   ) )
-!   IF (ZCVS(JL) >= 0.99_JPRB) ZCVS(JL)=1._JPRB
-
+    KLACT=0
+    DO JK=1,KLEVSN
+      IF (PSNM1M(JL,JK) > ZEPSILON) KLACT=JK
+    ENDDO
+    IF (KLACT > 0) THEN
+      IF (KLACT == 1) THEN
+        TMP1=PSNM1M(JL,1)/PRSNM1M(JL,1)
+        TMP2=MAX(100._JPRB,MIN(400._JPRB,PRSNM1M(JL,1)))
+      ELSE
+        TMP1=SUM(PSNM1M(JL,:)/PRSNM1M(JL,:))
+        TMP2=MAX(100._JPRB,MIN(400._JPRB,SUM(PSNM1M(JL,:))/TMP1))
+      ENDIF
+      ZCVS(JL)=MAX(0._JPRB,MIN(1._JPRB, TANH(4000.0_JPRB*TMP1/TMP2)))
+      IF (ZCVS(JL) >= 0.99_JPRB) ZCVS(JL)=1._JPRB
+    ELSE
+      ZCVS(JL)=0._JPRB
+    ENDIF
   ENDIF
 !   IF (ZCVS(JL) < 0.5) THEN
 !     ZCVS(JL)=MAX(0._JPRB,MIN(1.0_JPRB,SQRT(MAX(0._JPRB,SUM(PSNM1M(JL,:)/PRSNM1M(JL,:)))/0.2_JPRB)))
@@ -295,7 +419,7 @@ IF (LEFLAKE) THEN
         ZPCVLK=0.0_JPRB
       ENDIF
       
-      IF (KTILES .GT. 9 .AND. ZPCVLK+PCUR(JL) .GT. 1.0_JPRB) THEN
+      IF (ZPCVLK+PCUR(JL) .GT. 1.0_JPRB) THEN
        PCUR(JL)=1.0_JPRB-ZPCVLK
       ENDIF
 
@@ -315,18 +439,18 @@ IF (LEFLAKE) THEN
          PFRTI(JL,9)=ZPCVLK
       ENDIF
      
-      IF (KTILES .GT. 9) THEN !URBAN
+      IF (LEURBAN) THEN !URBAN
        ZPCVL=PCVL(JL)*(1.0_JPRB-ZPCVLK-PCUR(JL))
        ZPCVH=PCVH(JL)*(1.0_JPRB-ZPCVLK-PCUR(JL))
        ZPCVB=1.0_JPRB-ZPCVL-ZPCVH-ZPCVLK-PCUR(JL)
        PFRTI(JL,3)=ZCVW(JL)*(1.0_JPRB-ZCVS(JL))*(ZPCVL+ZPCVH+ZPCVB+PCUR(JL))
        PFRTI(JL,4)=ZPCVL*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
-       PFRTI(JL,5)=ZCVS(JL)*(ZPCVB+ZPCVL)
+       PFRTI(JL,5)=ZCVS(JL)*(ZPCVB+ZPCVL+PCUR(JL))
        PFRTI(JL,6)=ZPCVH*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
-       PFRTI(JL,7)=ZCVS(JL)*(ZPCVH+PCUR(JL))
+       PFRTI(JL,7)=ZCVS(JL)*ZPCVH
        PFRTI(JL,8)=ZPCVB*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
        PFRTI(JL,10)=PCUR(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
-      ENDIF 
+      ENDIF
 
     ENDIF
  ENDDO
@@ -347,9 +471,9 @@ ELSE
     PFRTI(JL,4)=PCVL(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
     PFRTI(JL,6)=PCVH(JL)*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
     PFRTI(JL,8)=(1.0_JPRB-PCVL(JL)-PCVH(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
-    IF (KTILES .GT. 9) THEN !URBAN
-     PFRTI(JL,5)=ZCVS(JL)*(1.0_JPRB-(PCVH(JL)*(1.0_JPRB-PCUR(JL))+PCUR(JL)))
-     PFRTI(JL,7)=ZCVS(JL)*(PCVH(JL)*(1.0_JPRB-PCUR(JL))+PCUR(JL))
+    IF (LEURBAN) THEN !URBAN
+     PFRTI(JL,5)=ZCVS(JL)*(1.0_JPRB-(PCVH(JL)*(1.0_JPRB-PCUR(JL))))
+     PFRTI(JL,7)=ZCVS(JL)*(PCVH(JL)*(1.0_JPRB-PCUR(JL)))
      PFRTI(JL,4)=PCVL(JL)*(1.0_JPRB-PCUR(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
      PFRTI(JL,6)=PCVH(JL)*(1.0_JPRB-PCUR(JL))*(1.0_JPRB-ZCVS(JL))*(1.0_JPRB-ZCVW(JL))
      PFRTI(JL,8)=(1.0_JPRB-(PCVL(JL)*(1.0_JPRB-PCUR(JL)))-(PCVH(JL)*(1.0_JPRB-PCUR(JL))) - &

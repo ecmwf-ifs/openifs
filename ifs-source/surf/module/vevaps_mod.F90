@@ -1,3 +1,81 @@
+
+! (C) Copyright 1990- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VEVAPS* - COMPUTE EQUIVALENT EVAPOTRANSPIRATION EFFICIENCY
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.     18/01/90.
+
+!     OBUKHOV-L UPDATE      ACMB           26/03/90.
+!     (MAINLY TECHNICAL; TO MAKE CODE MORE READABLE)
+!     Tiling of land surface ACMB          26/03/99.
+!     Change surface units  P Viterbo      24/05/2004
+!     Move to SURF library  P Viterbo      15/05/2005
+!          (based on VDFEVAP)
+!     Code re-organization  M.Janiskova    16/02/2006
+!     for efficient TL/AD versions
+
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE EQUIVALENT EVAPOTRANSPIRATION EFFICIENCY
+
+!     INTERFACE
+!     ---------
+
+!     *VEVAP* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILE*        TILE INDEX
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        TIME STEP
+!     *PRVDIFTS*     Semi-implicit factor for vertical diffusion discretization
+!     *PWLMX*        MAXIMUM INTERCEPTION LAYER CAPACITY
+!     *PTMLEV*       TEMPERATURE AT T-1, lowest atmospheric level
+!     *PQMLEV*       SPECIFIC HUMUDITY AT T-1, lowest atmospheric level
+!     *PAPHMS*       PRESSURE AT T-1, surface
+!     *PTSKM1M*      SKIN TEMPERATURE
+!     *PTSAM1M*      SURFACE TEMPERATURE
+!     *PQS*          SATURATION Q AT SURFACE
+!     *PCFQ*         PROP. TO EXCH. COEFF. FOR MOISTURE(C-STAR IN DOC.)
+!                    (SURFACE LAYER ON;Y)
+!     *PWETB*        BARE SOIL RESISTANCE
+!     *PWETL*        STOMATAL RESISTANCE LOW VEGETATION
+!     *PWETH*        STOMATAL RESISTANCE HIGH VEGETATION, SNOW FREE
+!     *PWETHS*       STOMATAL RESISTANCE HIGH VEGETATION WITH SNOW
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PCPTS*        DRY STATIC ENRGY AT SURFACE
+!     *PCSAT*        MULTIPLICATION FACTOR FOR QS AT SURFACE
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCAIR*        MULTIPLICATION FACTOR FOR Q AT LOWEST MODEL LEVEL
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCSNW*        MULTIPLICATION FACTOR FOR MOISTURE FLUX
+!                    COMPUTATION FROM SNOW THROUGH CANOPY (TILE 7)
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
 MODULE VEVAPS_MOD
 CONTAINS
 SUBROUTINE VEVAPS(KIDIA,KFDIA,KLON,PTMST,PRVDIFTS,KTILE,&
@@ -11,14 +89,6 @@ USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_THF  , ONLY : RVTMP2
 USE YOS_CST  , ONLY : TCST
 USE YOS_VEG  , ONLY : TVEG
-
-! (C) Copyright 1990- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 

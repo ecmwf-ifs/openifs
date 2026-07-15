@@ -1,10 +1,16 @@
-! radiation_ice_optics_baran2016.f90 - Baran et al. (2016) scheme for ice optical properties
+! (C) Copyright 2016- ECMWF.
 !
-! Copyright (C) 2016 ECMWF
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+! radiation_ice_optics_baran2016.f90 - Baran et al. (2016) scheme for ice optical properties
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 
 module radiation_ice_optics_baran2016
@@ -16,7 +22,7 @@ module radiation_ice_optics_baran2016
 
 contains
 
-  
+
   !---------------------------------------------------------------------
   ! Compute ice-particle scattering properties using a
   ! parameterization as a function of ice water mixing ratio and
@@ -37,10 +43,10 @@ contains
     real(jprb), intent(in) :: temperature
     ! Total optical depth, scattering optical depth and asymmetry factor
     real(jprb), intent(out) :: od(nb), scat_od(nb), g(nb)
-    
+
     ! Powers of temperature, some multiplied by qi
     real(jprb) :: qi_T, T2, qi_over_T4
-    
+
     !real(jphook) :: hook_handle
 
     !if (lhook) call dr_hook('radiation_ice_optics:calc_ice_optics_baran2016',0,hook_handle)

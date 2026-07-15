@@ -1,8 +1,3 @@
-MODULE KPP_CPSW_MOD
-CONTAINS
-SUBROUTINE KPP_CPSW &
-  & ( KIDIA    ,KFDIA    ,KLON     ,KLEV     ,LDKPPCAL ,&
-  &   PS       ,PT1      ,P0       ,PCPSW    )
 
 ! (C) Copyright 2008- ECMWF.
 !
@@ -11,6 +6,40 @@ SUBROUTINE KPP_CPSW &
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+! Purpose :
+! -------
+! Compute Specific heat
+
+! Interface :
+! ---------
+!       PRESSURE        P0       dbar
+!       TEMPERATURE     PT1      deg.C (IPTS-68)
+!       SALINITY        PS       (IPSS-78)
+!       SPECIFIC HEAT   PCPSW    J/(KG DEG C)
+
+! Method :
+! ------
+
+! Externals :
+! ---------
+
+! Reference :
+! ---------
+!   Millero et al., 1973, JGR, 78, 4499-4507
+!   Millero et al., 1981, UNESCO Report No. 38 pp. 99-188.
+
+! Modifications :
+! -------------
+!     07-Oct-2008  Yuhei Takaya,    E.C.M.W.F.    Implemented to IFS.
+! End Modifications :
+!---------------------------------------------------------------------
+
+MODULE KPP_CPSW_MOD
+CONTAINS
+SUBROUTINE KPP_CPSW &
+  & ( KIDIA    ,KFDIA    ,KLON     ,KLEV     ,LDKPPCAL ,&
+  &   PS       ,PT1      ,P0       ,PCPSW    )
+
 ! Purpose :
 ! -------
 ! Compute Specific heat

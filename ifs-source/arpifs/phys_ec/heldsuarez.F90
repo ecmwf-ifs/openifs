@@ -76,6 +76,7 @@ SUBROUTINE HELDSUAREZ(YDVAB,YDCVER,YDDIMV,YDSURF, YDRIP,KIDIA, KFDIA, KLON, KLEV
 !      K. Yessad (Jan 2011): remove useless overdimension.
 !      K. Yessad (July 2014): Move some variables.
 !      K. Yessad (Feb 2018): remove deep-layer formulations.
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !-----------------------------------------------------------------------
 
 USE YOMVERT            , ONLY : TVAB, VP00
@@ -83,7 +84,7 @@ USE YOMDIMV            , ONLY : TDIMV
 USE SURFACE_FIELDS_MIX , ONLY : TSURF
 USE PARKIND1           , ONLY : JPIM, JPRB
 USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCST             , ONLY : RPI, REA, RG, RD, RDAY, REPSM, RCPD
+USE YOMCST             , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMLUN             , ONLY : NULOUT
 USE YOMCT3             , ONLY : NSTEP
 USE YOMRIP0            , ONLY : RTIMST
@@ -155,6 +156,8 @@ LOGICAL         :: LLHELDSUAREZ
 IF (LHOOK) CALL DR_HOOK('HELDSUAREZ',0,ZHOOK_HANDLE)
 ASSOCIATE(NFLEVG=>YDDIMV%NFLEVG, &
  & TSTEP=>YDRIP%TSTEP, &
+ & RPI=>YDCST%RPI, REA=>YDCST%REA, RG=>YDCST%RG, RDAY=>YDCST%RDAY, REPSM=>YDCST%REPSM, &
+ & RCPD=>YDCST%RCPD, RD=>YDCST%RD, &
  & YSD_X2D=>YDSURF%YSD_X2D, YSD_XAD=>YDSURF%YSD_XAD)
 !     ------------------------------------------------------------------
 

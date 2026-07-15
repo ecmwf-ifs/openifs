@@ -10,7 +10,7 @@
 SUBROUTINE CLOUD_LAYER( &
  ! Input quantities
   & YDSURF, YDECLDP,YDECUMF,YDEPHLI,YDPHY2,YDERAD,YDEPHY,YDVDF,YDSPP_CONFIG,YGFL,&
-  & KDIM, LDSLPHY, PAUX, PPERT, STATE, & 
+  & KDIM, LDDIAG, PAUX, PPERT, STATE, & 
   & TENDENCY_CML, TENDENCY_DYN, TENDENCY_VDF, PRAD, &
   & PSURF, LLKEYS, &
  ! Input/Output quantities
@@ -30,7 +30,7 @@ SUBROUTINE CLOUD_LAYER( &
 !        --------------------
 !     ==== INPUTS ===
 ! KDIM     : Derived variable for dimensions
-! LDSLPHY  : key to activate SL physics
+! LDDIAG   : key to activate diagnostics
 ! PAUX     : Derived variables for general auxiliary quantities
 ! PPERT    : Derived variable for incoming perturbations etc... 
 ! state    : Derived variable for model state
@@ -74,6 +74,7 @@ SUBROUTINE CLOUD_LAYER( &
 !      M Ahlgrimm 2017-11-11 add cloud heterogeneity FSD
 !      R. Forbes  2020-11-15 Remove TENDENCY_TMP and add various inputs to cloudsc
 !      M. Leutbecher 2020-10-12 SPP abstraction
+!      F. Vana     (Jan 2023): new seq. physics order
 !-----------------------------------------------------------------------
 
 USE YOECLDP            , ONLY : TECLDP, NCLDQR, NCLDQS, NCLDQI, NCLDQL
@@ -108,13 +109,13 @@ TYPE(TVDF)  ,INTENT(INOUT) :: YDVDF
 TYPE(TSPP_CONFIG) ,INTENT(IN) :: YDSPP_CONFIG
 TYPE(TYPE_GFLD),INTENT(INOUT) :: YGFL
 TYPE (DIMENSION_TYPE)          , INTENT (IN)   :: KDIM
-LOGICAL                        , INTENT (IN)   :: LDSLPHY
+LOGICAL                        , INTENT (IN)   :: LDDIAG
 TYPE (AUX_TYPE)                , INTENT (IN)   :: PAUX
 TYPE (PERTURB_TYPE)            , INTENT (IN)   :: PPERT
 TYPE (STATE_TYPE)              , INTENT (IN)   :: STATE
 TYPE (STATE_TYPE)              , INTENT (IN)   :: TENDENCY_CML
 TYPE (STATE_TYPE)              , INTENT (IN)   :: TENDENCY_DYN
-TYPE (STATE_TYPE)              , INTENT (IN)   :: TENDENCY_VDF
+TYPE (STATE_TYPE), TARGET      , INTENT (IN)   :: TENDENCY_VDF
 TYPE (AUX_RAD_TYPE)            , INTENT (IN)   :: PRAD
 TYPE (SURF_AND_MORE_TYPE)      , INTENT(INOUT) :: PSURF
 TYPE (KEYS_LOCAL_TYPE)         , INTENT (IN)   :: LLKEYS
@@ -128,6 +129,7 @@ INTEGER(KIND=JPIM) :: JRF, JL, JK
 REAL(KIND=JPRB)    :: ZGP2DSPP(KDIM%KLON, YDSPP_CONFIG%SM%NRFTOTAL)  !SPP pattern
 REAL(KIND=JPRB)    :: ZFSD(KDIM%KLON,KDIM%KLEV)
 
+REAL(KIND=JPRB), POINTER  :: ZVDFA(:,:), ZVDFL(:,:), ZVDFI(:,:)
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -154,6 +156,11 @@ ENDDO
    
 ZFSD(:,:)=0.0_JPRB
 
+! Define/associate cloud tendencies from VDIFF
+ZVDFA=>TENDENCY_VDF%A(:,:)
+ZVDFL=>TENDENCY_VDF%CLD(:,:,NCLDQL)
+ZVDFI=>TENDENCY_VDF%CLD(:,:,NCLDQI)
+
 ! ------------------------------------------------------------------------------
 !
 !*       2. Call cloud microphysics and convection-cloud interaction
@@ -161,20 +168,20 @@ ZFSD(:,:)=0.0_JPRB
 ! ------------------------------------------------------------------------------
 CALL CLOUDSC &
   & (YDECLDP,YDECUMF,YDEPHLI, YDERAD, YDEPHY,  YDVDF, YDSPP_CONFIG,&
-  & KDIM%KIDIA,    KDIM%KFDIA,    KDIM%KLON,    KDIM%KLEV, &
+  & KDIM%KIDIA,    KDIM%KFDIA,    KDIM%KLON,    KDIM%KLEV, LDDIAG, &
   & TSPHY,&
   & STATE%T, STATE%Q, &
   & TENDENCY_CML%T, TENDENCY_CML%Q, TENDENCY_CML%A, TENDENCY_CML%CLD, &
   & TENDENCY_LOC%T, TENDENCY_LOC%Q, TENDENCY_LOC%A, TENDENCY_LOC%CLD, &
-  & TENDENCY_VDF%A, TENDENCY_VDF%CLD(:,:,NCLDQL), TENDENCY_VDF%CLD(:,:,NCLDQI),&
+  & ZVDFA, ZVDFL, ZVDFI, &
   & TENDENCY_DYN%A, TENDENCY_DYN%CLD(:,:,NCLDQL), TENDENCY_DYN%CLD(:,:,NCLDQI),&
   & TENDENCY_DYN%CLD(:,:,NCLDQR), TENDENCY_DYN%CLD(:,:,NCLDQS),&
   & PRAD%PHRSW,    PRAD%PHRLW,&
-  & PAUX%PVERVEL,  PAUX%PRSF1,    PAUX%PRS1,&
+  & PAUX%PVERVEL,  PAUX%PRSF1,    PAUX%PRS1, PAUX%PGEOM1,&
   & PSURF%PSD_VF(:,YSD_VF%YLSM%MP),PAUX%PGAW,     LLKEYS%LLCUM, &
   & PDIAG%ICTOP,   PDIAG%ITYPE,    PDIAG%IPBLTYPE,PDIAG%ZEIS,&
   & PDIAG%ZLU,     PDIAG%ZLUDE,    PDIAG%ZLUDELI, PDIAG%ZSNDE,   PDIAG%PMFU,     PDIAG%PMFD, ZGP2DSPP,&
-  & LDSLPHY, &
+  & LLKEYS%LLSLPHY, &
   & STATE%A, &
   & STATE%CLD, &
 !-- arrays for aerosol-cloud interactions

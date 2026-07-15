@@ -1,0 +1,253 @@
+# Source surface environment variables
+source ../common/env_vars
+
+# Prevent job hanging while creating/reading NetCDF files
+export HDF5_USE_FILE_LOCKING=FALSE
+
+# Include common namelists
+cat > input << EOF
+  &NAMCT01S
+    NSTART=0        ! first timestep of model 0 
+    NSTOP=94                ! last timestep of model 
+    NFRPOS=94                 ! frequency of post-processing events (time-steps)
+    NFRRES=0                 ! frequency of writing intermediate restart files (time-steps)
+    LNF=.TRUE.               ! .T. = start, .F. = restart
+    NCYCLE=1                ! number of the experiment
+    CNMEXP="DEFAULT"            ! name of the experiment
+    /
+    &NAMDYN1S
+    TSTEP=1800             !  TSTEP   : length of the timestep in seconds
+    NACCTYPE=2              ! =0  Forcing fluxes assument centered on timestamp (linear interp.)
+                            ! =1  forward accumulation (starting at timestamp)
+                            ! =2  backward accumulation (ending at timestamp)
+    LSWINT=.FALSE.          ! SWdown solar angle interpolation if true 
+    LPREINT=.FALSE.         ! precipitation interpolation if true
+    LFLXINT=.FALSE.         ! SWdown/LWdown linear interpolation if true 
+    TCOUPFREQ=169200.       ! Coupling frequency with CaMa-flood, run once over the time period 
+
+    /
+    &NAMDIM
+    NLAT=0                 ! number of latitudes
+    NLON=687               ! number of longitudes
+    NDFORC=120             ! namelist forcing dimension
+    NPROMA=120             ! 
+    NCSS=4                 ! # of vertical layers in the soil
+
+    NCSNEC=5
+    /
+    &NAMRIP
+    NINDAT=20200101       ! run initial date in the form YYYYMMDD 
+    NSSSSS=0       ! initial time in seconds (e.g. for 12h, 43200)
+    /
+    &NAM1S
+    CFFORC='netcdf'          ! CHARACTER: IDENTIFIES THE FORCING DATA SET
+    CFOUT='netcdf'           ! CHARACTER: IDENTIFIES THE OUTPUT DATA SET
+    CFSURF='netcdf'          ! CHARACTER: IDENTIFIES THE SURFACE CLIMATOLOGY DATA SET 
+    CFINIT='netcdf'          ! CHARACTER: IDENTIFIES THE INITIALIZATION DATA SET
+    CMODID='ecLand'         ! CHARACTER: MODEL IDENTIFICATION
+    LACCUMW=.TRUE.           ! LOGICAL : WRITE OUT ACCUMULATED FLUXES (DEFAULT=TRUE)
+    LRESET=.TRUE.            ! LOGICAL : RESET ACCUMULATION EVERY WRITE OUT TIME STEP
+    NACCUR=1               ! INTEGER : OUTPUT CDF ACCURACY: 1=SINGLE PREC, 2=DOUBLE PREC
+    NDIMCDF=1         ! INTEGER : NR OF GRID DIMENSIONS
+    NDLEVEL=0                ! INTEGER : Level of netcdf4 compression 0-9: 0== no compression -faster output
+    NCDFTYPE=4               ! type of netcdf output 
+    LWRGG=.TRUE.            ! logical, wrtie o_gg  - instantaneus prognostics 
+    LWRCLM=.FALSE.            ! logical, write o_fix - fix soil properties 
+    LWRGGD=.FALSE.            ! logical, write o_ggd - mean prognostic evolution
+    LWREFL=.FALSE.            ! logical, write o_efl - surface energy balance 
+    LWRWAT=.FALSE.            ! logical, write o_wat - water balance
+    LWRD2M=.FALSE.            ! logical, write o_d2m - 2 meters diagnostics 
+    LWRSUS=.FALSE.            ! logical, write o_sus - surface state variables (vegT,albedo, etc..)
+    LWREVA=.FALSE.            ! logical, write o_eva - evaporation components 
+    LWRCLD=.FALSE.            ! logical, write o_cld - cold processes variables 
+    LWRCO2=.FALSE.           ! logical, write o_co2 - cO2 fluxes 
+    LWRBIO=.FALSE.           ! logical, write o_bio - biomass 
+    LWRVEG=.FALSE.           ! logical, write o_veg - vegetation 2D high/low veg 
+    LWRVTY=.FALSE.           ! logical, write o_vty - vegetation 2D high/low veg biomass
+    LWRTIL=.FALSE.           ! logical, write o_til - tiles 2D (tile) state
+    LWRLKE=.FALSE.           ! logical, write o_lke - lake variables - not active for now... 
+    LSEMISS=.FALSE.          ! LOGICAL : EMISSIVITY SET TO CONSTANT VALUE REMISS
+    LDBGS1=.FALSE.           ! LOGICAL : PRINT DEBUG INFO, EG FORCING DATA (DEFAULT=FALSE)
+    IDBGS1=1                 ! Debug level : output printing
+    LNCSNC=.False.
+    /
+    &NAMFORC
+    
+    ZPHISTA=10.000         ! REFERENCE LEVEL (FOR T, Q) last model level ERAI
+    ZUV=10.000                ! REFERENCE LEVEL FOR WIND   last model level ERAI
+    ZDTFORC=3600            ! FORCING TIME STEP     
+    IFYYYY=2020           ! REFERENCE YEAR
+    IFMM=01               ! REFERENCE MONTH
+    IFDD=01               ! REFERENCE DAY
+    IFTIM=0000             ! REFERENCE TIME (HHMM)
+    INSTFC=0                 ! NUMBER OF TIME STEPS TO BE READ (0 = ALL)
+    NDIMFORC=1        ! NUMBER OF GRID DIMENSIONS in FORCING
+    LOADIAB=.FALSE.          ! FLAG FOR APPLYING ADIABATIC HEIGHT CORRECTION
+    CFORCV="forcing/Wind_N.nc"
+    CFORCU="forcing/Wind_E.nc"
+    CFORCT="forcing/Tair.nc"
+    CFORCQ="forcing/Qair.nc"
+    CFORCP="forcing/PSurf.nc"
+    CFORCRAIN="forcing/Rainf.nc"
+    CFORCSNOW="forcing/Snowf.nc"
+    CFORCSW="forcing/SWdown.nc"
+    CFORCLW="forcing/LWdown.nc"
+    /
+  &NAMPHY
+    LEVGEN=true           ! LOGICAL : TURN THE VAN GENUCHTEN HYDROLOGY ON
+    LESSRO=true           ! LOGICAL : TURN THE SUB-GRID SURFACE RUNOFF ON
+    LEFLAKE=true          ! LOGICAL : TURN THE FLAKE ON
+    LESN09=true           ! LOGICAL : TURN THE NEW SNOW PARAMETERIZATION ON 
+    LELAIV=true           ! LOGICAL : TURN THE LAI SEASONAL ON
+    LECTESSEL=true        ! LOGICAL : TURN CTESSEL ON
+    LEAGS=false           ! LOGICAL : TURN COUPLING OF EVAPORATION WITH PHOTOSYNTHESIS
+    LEFARQUHAR=true       ! LOGICAL : TURN ON FARQUHAR PHOTOSYNTHESIS (true: Farquhar; false: A-gs)
+    LEOPTSURF=false       ! LOGICAL : USE FARQUHAR PARAMETERS FROM NAMELIST (OTHERWISE USE DEFAULT VALUES)
+    LEAIRCO2COUP=false    ! LOGICAL : TURN ATM CO2 COUPLING WITH PHOTOSYNTHESIS
+    LEC4MAP=true          ! LOGICAL : Use C3/C4 photosynthesis pathway map from climate fields (if false it assigns C3/C4 according to PFT)
+    RLAIINT=0             ! Coefecient for interactive LAI relaxation with clim (1 fully interactive; 0 fully clim)
+    LECLIM10D=.false.     ! LOGICAL : TURN usage of 10-day Climatology for Alb and LAI
+    LESNML=true           ! LOGICAL : TURN THE MULTI-LAYER SNOW SCHEME 
+    LECMF1WAY=false       ! Logical : Turn on Coupling with CaMa-Flood 
+    LECMF2LAKEC=0         ! Integer: 2way coupling : 0 -> off, 1 -> replace , 2 -> add 
+  /
+  &NAMOPTSURF
+     OVR0VT=1.798E-07,1.141E-07,5.00E-07,4.186E-07,4.122E-07,
+            3.743E-07,0.762E-07,1.450E-07,4.576E-07,1.066E-07,
+            0.051E-07,1.450E-07,4.534e-07,1.450E-07,1.450E-07,
+            1.070E-07,0.729E-07,5.419E-07,2.106E-07,2.700E-07,
+            2.213e-07
+
+    OVCMAX25=49, 48.7, 62.2, 35, 41.9, 33.9, 40.3, -9999, 70, 60, 50, -9999, 48.6, -9999, -9999, 58.4, 44.5, 42.2, 50, -9999, 70.5
+    OHUMREL=4, 3.32, 2.93, 1, 3.25, 4.0, 3.52, 1, 4, 1, 1, 1, 4, 1, 1, 2.63, 4, 1.73, 1, 1, 2.06
+    OA1=0.946, 0.888, 0.68, 0.85, 0.9775, 0.9775, 0.668, 0.85, 0.9775, 0.85, 0.72, 0.85, 0.919, 0.85, 0.85, 0.864, 0.9775, 0.722, 0.85, 0.85, 0.864
+    OB1=0.13, 0.117, 0.168, 0.14, 0.112, 0.138, 0.21, 0.14, 0.112, 0.14, 0.2, 0.14, 0.126, 0.14, 0.14, 0.206, 0.112, 0.153, 0.14, 0.14, 0.168
+    OG0=0.00699, 0.00664, 0.00533, 0.00625, 0.007696, 0.007838, 0.017, 0.00625, 0.008125, 0.00625, 0.01875, 0.00625, 0.00739, 0.00625, 0.00625, 0.0142, 0.00773, 0.00543, 0.00625, 0.00625, 0.0219
+    OGM25=0.513, 0.657, 0.1, 0.4, 0.719, 0.387, 0.4, 0.4, 0.8, 0.4, 0.4, 0.4, 0.59, 0.4, 0.4, 0.4, 0.724, 0.404, 0.4, 0.4, 0.4
+    OE_VCMAX=72801.3, 50059.1, 59880.2, 71513, 92966.9, 67706.09, 47110, 71513, 50059.1, 71513, 67300, 71513, 72906.6, 71513, 71513, 47110, 50059.1, 67899.3, 71513, 71513, 80090.2
+    OE_JMAX=64849.2, 41459.5, 35048.2, 49884, 34918.8, 34918.8, 54530, 49884, 34918.8, 49884, 77900, 49884, 34918.8, 49884, 49884, 54530, 52755.6, 34918.8, 49884, 49884, 101270
+    /
+  &NAMPHYOFF
+  LEWBCHECK=false
+  LEWBCHECKAbort=false
+  LESNCHECK=false
+  LESNCHECKAbort=false
+  LEWBSOILFIX=true
+  LESKTI5=false
+  LESKTI8=false
+  LESOILCOND=true
+  LESNWBCON=false
+  LEROLAKE=true
+  /
+EOF
+
+# CAMA-FLOOD
+cat > diminfo.txt << EOF
+1440  !! nXX
+720   !! nYY
+10    !! floodplain layer
+2048  !! input nXX 
+1     !! input nYY 
+8     !! input num
+NONE
+0     !! west  edge
+0     !! east  edge
+0     !! north edge
+0     !! south edge
+EOF
+
+cat > input_cmf.nam << EOF
+&NRUNVER
+LADPSTP=.TRUE.              ! true for adaptive time step
+LFPLAIN=.TRUE.              ! true: consider floodplain (false: only river channel)
+LKINE=.FALSE.               ! true for kinematic river routing
+LFLDOUT=.TRUE.              ! true: floodplain flow (high-water channel flow) active
+LPTHOUT=.TRUE.              ! true: activate bifurcation scheme
+LDAMOUT  = .FALSE.          !  true: activate dam operation (under development)
+LROSPLIT=true               ! true: input if surface (Qs) and sub-surface (Qsb) runoff
+LWEVAP=false                ! true: Evap is recieved in CaMa-Flood and extracted from floodplains 
+LWEVAPFIX=.FALSE            ! true : extract water downstream to conserve water
+LWEXTRACTRIV=FALSE          ! true : extract water also from river channel  
+LGDWDLY=false               ! True to activate ground water reservoir
+LSLPMIX=.FALSE.             ! True to activate mixed kinematic and local inertia solution 
+LMEANSL=.FALSE.             ! true: boundary condition for mean sea level
+LSEALEV=.FALSE.             ! true: boundary condition for variable sea level
+LRESTART=false              ! true: initial condition from restart file
+LSTOONLY=false              ! true for restart only from storage
+LOUTPUT=.TRUE.              ! true: use standard output (to file)
+LGRIDMAP=.TRUE.             ! true: for standard XY gridded 2D map
+LLEAPYR=.TRUE.              ! true: account for leap year (Feb29 skipped)
+LMAPEND=.FALSE.             ! true: for map data endian conversion
+LBITSAFE=.TRUE.             ! true: for Bit Identical simulation (avoid OSM ATOMIC)
+LSLOPEMOUTH=.FALSE.         ! true: prescribe water level slope == elevation slope on river month 
+/
+&NDIMTIME
+CDIMINFO = "diminfo.txt"   ! text file for dimention information
+DT       = 86400 ! 1800            ! time step length (sec)
+IFRQ_INP = 24             ! input forcing update frequency (hour) 
+/
+&NPARAM
+PMANRIV  = 0.03D0                  ! manning coefficient river
+PMANFLD  = 0.10D0                  ! manning coefficient floodplain
+PGRV     = 9.8D0                     ! gravity accerelation
+PDSTMTH  = 25000.D0                  ! downstream distance at river mouth [m]
+PCADP    = 0.7                     ! CFL coefficient
+PMINSLP  = 1.D-5                       ! minimum slope (kinematic wave)
+IMIS     = -9999                       ! missing value for integer
+RMIS     = 1.E20                       ! missing value for real*4
+DMIS     = 1.E20                       ! missing value for real*8
+CSUFBIN  = '.bin'                      ! file suffix for plain binary 2D map
+CSUFVEC  = '.vec'                      ! file suffix for plain binary 1D vector
+CSUFPTH  = '.pth'                      ! file suffix for plain binary bifurcation channel
+CSUFCDF  = '.nc'                       ! file suffix for netCDF
+/
+&NSIMTIME
+SYEAR=2020 ! start year
+SMON=01  ! month 
+SDAY=01  ! day  
+SHOUR=00 ! hour 
+EYEAR=2020   ! end year
+EMON=02    ! end
+EDAY=01    ! end  
+EHOUR=00   ! hour 
+/
+&NMAP
+LMAPCDF=.TRUE.                      ! true for netCDF map input
+CPTHOUT="bifprm.txt"                ! bifurcation channel list
+CRIVCLINC="rivclim.nc"              ! * netCDF river maps
+CRIVPARNC="rivpar.nc"               ! * netCDF river width & depth
+/
+&NRESTART
+CRESTDIR="./"                       ! restart directory
+CRESTSTO=""                ! restart file
+LRESTCDF=.FALSE.                     ! true for netCDF restart file
+CVNREST="restart"                   ! restart variable name
+IFRQ_RST=0                          ! restart write frequency (1-24: hour, 0:end of run)
+/
+&NFORCE
+LINPCDF=false             ! true for netCDF input
+LINTERP=true              !  true for runoff interpolation using input matrix
+LINPEND  = .FALSE.        ! true for runoff endian conversion
+LITRPCDF = .TRUE.         ! * true for netCDF input matrix
+CINPMAT  ="inpmat.nc"     ! input matrix file name
+DROFUNIT =86400.          ! runoff unit conversion to get m/s. 
+CROFCDF="runoff.nc"       ! * netCDF input runoff file name
+CVNROF   = "Qs"           ! * netCDF input runoff variable name
+CVNSUB   = "Qsb"          ! * netCDF input runoff variable name
+SYEARIN=2020              ! * for netCDF input start date (start of the initial time step)
+SMONIN=01
+SDAYIN=01
+SHOURIN=00
+/
+&NOUTPUT
+COUTDIR="./"           ! output directory ("NONE" for no output)
+CVARSOUT="rivsto"            ! list of variables to output 
+COUTTAG=""       ! Output Tag Name for each experiment
+LOUTVEC=.FALSE.        ! for 1-D land-only output (small data size, post processing required)
+LOUTCDF=.TRUE.         ! true for netCDF output
+NDLEVEL=0              ! Netcdf4 Deflation Level 
+IFRQ_OUT = 48          ! output data write frequency (hour)
+/
+EOF
+
+export IFS_EXECUTABLE=osmMASTER

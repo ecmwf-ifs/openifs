@@ -1,3 +1,106 @@
+
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFSN_DRIVER* - Snow scheme driver 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE CONTROLS THE SNOW SCHEME 
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_DRIVER* IS CALLED FROM *SURFTSTP*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVSN*     NUMBER OF SNOW LAYERS
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE) 
+!    *LDSICE*     SEA-ICE INDICATOR (True for do sea-ice)
+!    *LDNH*       TRUE FOR NORTHERN HEMISPHERE
+!    *PSDOR*      OROGRAPHIC PARAMETER                           m
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg m-2
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PASNM1M*    SNOW ALBEDO                                    -
+!    *PRSNM1M*    SNOW DENSITY                                 kg m-3
+!    *PWSNM1M*    SNOW LIQUID WATER CONTENT                    kg m-2
+
+!    *PRFTI*      TILE FRACTIONS
+!    *PCIL*       LAND-ICE FRACTION                          (0-1)
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PTIAM1M*    ICE  TEMPERATURE                               K
+!    *PUSRF*      WIND U LOWEST MODEL LEVEL                     m s-1
+!    *PVSRF*      WIND V LOWEST MODEL LEVEL                     m s-1
+!    *PTSRF*      AIR TEMPERATURE LOWEST MODEL LEVEL             K
+!    *PAPRS*      AIR PRESSURE    LOWEST MODEL LEVEL             Pa
+
+!    *PSSFC*      CONVECTIVE SNOWFALL                        kg m-2 s-1
+!    *PSSFL*      LARGE-SCALE SNOWFALL                       kg m-2 s-1   
+!    *PTSFC*      CONVECTIVE Throughfall                     kg m-2 s-1
+!    *PTSFL*      LARGE-SCALE Throughfall                    kg m-2 s-1
+
+!    *PSLRFLTI*   NET LW RADIATION TILED                        W m-2
+!    *PSSRFLTI*   NET SW RADIATION TILED                        W m-2  
+!    *PAHFSTI*    SENSIBLE HEAT FLUX TILED                      W m-2  
+!    *PEVAPTI*    EVAPORATION  TILED                            kg m-2 s-1
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST            kg m-2 s-1
+
+!    *YDSOIL*    SOIL DERIVED TYPE WITH CONSTATNS 
+!    *YDCST*     CONSTANTS 
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PSSN*    SNOW MASS (per unit area)                      kg m-2
+!    *PTSN*    SNOW TEMPERATURE                                 K
+!    *PASN*    SNOW ALBEDO                                      -
+!    *PRSN*    SNOW DENSITY                                   kg m-3
+!    *PWSN*    SNOW LIQUID WATER CONTENT                      kg m-2
+
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+
+!     METHOD.
+!     -------
+!          
+!          As a single prognostic snowpack for seasonal snow and land ice is used,
+!          the two different contributions for density and albedo evolutions 
+!          are weighted by PCIL for sub-grid ice.
+
+!     EXTERNALS.
+!     ----------
+!          SRFSN_WEBAL - WATER/ENERGY BALANCE
+!          SRFSN_RSN   - SNOW DENSITY 
+!          SRFSN_ASN   - SNOW ALBEDO 
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   E. Dutra      ECMWF     04/12/2015
+!                G. Arduini    ECMWF     01/09/2021
+!     Modified:  I. Ayan-Miguez (BSC) Sep 2023: Add PSSDP3 and adapt FSOILTCOND function
+!     Modified:  G. Arduini    Jan 2024 Snow over sea ice
+!     Modified:  G. Arduini    Sept 2024 Snow over Land ice
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_DRIVER_MOD
 CONTAINS
 SUBROUTINE SRFSN_DRIVER(KIDIA   ,KFDIA   ,KLON   ,KLEVSN, PTMST, LDLAND,&
@@ -34,14 +137,6 @@ USE SRFSN_REGRID_MOD
 USE SRFSN_SSRABS_MOD
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2015- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFSN_DRIVER* - Snow scheme driver 
 !     PURPOSE.
@@ -346,7 +441,7 @@ PEMSSN(KIDIA:KFDIA) = 0._JPRB
 !*             
 !             -----------------------------------------------------------
 
-CALL SRFSN_RSN(KIDIA,KFDIA,KLON,KLEVSN,PTMST,LLNOSNOW,&
+CALL SRFSN_RSN(KIDIA,KFDIA,KLON,KLEVSN,PTMST,LLNOSNOW,ZFRSN,&
               &ZRSNM1M,ZSSNM1M,ZTSNM1M,ZWSNM1M,PWSN,&
               &ZSNOWF,PUSRF,PVSRF,PTSRF,&
               &YDSOIL,YDCST,PRSN,PDHTSS)
@@ -366,6 +461,13 @@ CALL SRFSN_ASN(KIDIA,KFDIA,KLON,PTMST,LLNOSNOW,PASNM1M,&
 !    ------------------------------------------------------------------
 IF (SIZE(PDHTSS) > 0 .AND. SIZE(PDHSSS) > 0) THEN
   DO JL=KIDIA,KFDIA
+    ! initialise values
+    PDHSSS(JL,1:KLEVSN,2) =0._JPRB
+    PDHSSS(JL,1:KLEVSN,3) =0._JPRB
+    PDHTSS(JL,1:KLEVSN,11)=0._JPRB
+    PDHTSS(JL,1:KLEVSN,12)=0._JPRB
+    PDHTSS(JL,1:KLEVSN,5) =100.0_JPRB
+
     IF (.NOT. LLNOSNOW(JL)) THEN      
       ! ls snowfall
       PDHSSS(JL,1,2)=PSSFL(JL)

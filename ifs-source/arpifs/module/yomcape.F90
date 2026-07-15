@@ -29,13 +29,10 @@ SAVE
 !                  VERTICAL ASCENT BETWEEN TWO MODEL PRESSURE LEVELS.
 !                  Default value is 2.
 
-!        GCAPEPSD : RATIO OF p/ps OF LAYER ABOVE THE GROUND
-!                   IN CASE OF TYPE 2: IN WHICH MOST UNSTABLE PARCEL IS 
-!                                       SEARCHED FOR (CAPE Pressure Search Depth)
-!                   IN CASE OF TYPE 6: DEFINES DEPTH OF LAYER FOR MIXING THE PARCEL TO BE LIFTED
-!                                      (ML CAPE computation)
-!
-!        NCAPEPSD : DEPTH of GCAPEPSD recalculated homogeneously
+!        GCAPEPSD : CAPEs are calculated for the parcels released from
+!                   all model levels where p > GCAPEPSD*ps.
+
+!        NCAPEPSD : model-level of GCAPEPSD recalculated homogeneously
 
 !        GCAPERET: FRACTION OF THE CONDENSATES WHICH IS RETAINED, 
 !                  I.E. WHICH DOES NOT PRECIPITATE.
@@ -56,6 +53,11 @@ INTEGER(KIND=JPIM) :: NCAPEPSD
 
 REAL(KIND=JPRB) :: GCAPERET
 REAL(KIND=JPRB) :: GCAPEPSD
+REAL(KIND=JPRB) :: GMISCINV ! MISsing CIN Value. This value is used where CAPE=0, CIN cannot thus be defined.
+REAL(KIND=JPRB) :: GCAPEMIN ! Minimal CAPE value under which LFC is not considered as found.
+REAL(KIND=JPRB) :: GCINMAX ! Maximum value of CIN, to avoid compacting problems.
 
+LOGICAL :: LADAE ! activates ADAptative Entrainment. Uniform entrainment if .false..
+LOGICAL :: LMCAPEA ! activates Tiedtke-Bechtold Model-CAPE Algorithm to be that of CUASCN rather than CUBASEN.
 !     ------------------------------------------------------------------
 END MODULE YOMCAPE

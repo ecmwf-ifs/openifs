@@ -1,7 +1,3 @@
-MODULE SUSOCEAN_ML_MOD
-
-CONTAINS
-SUBROUTINE SUSOCEAN_ML(LD_LEOCML,YDOCEAN_ML)
 
 ! (C) Copyright 2008- ECMWF.
 !
@@ -10,6 +6,35 @@ SUBROUTINE SUSOCEAN_ML(LD_LEOCML,YDOCEAN_ML)
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+! Purpose :
+! -------
+!   Setup for the ocean mixed layer model (KPP).
+
+! Interface :
+! ---------
+
+! Method :
+! ------
+
+! Externals :
+
+! ---------
+
+! Reference :
+! ---------
+!   Large, W. G., J. C. McWilliams, and S. C. Doney (1994), Rev. Geophys.
+!   Bernie, D. J., S. J. Woolnough, and J. M. Slingo (2005), J. Climate
+
+! Modifications :
+! -------------
+!   07-Oct-2008  Yuhei Takaya,    E.C.M.W.F.    Implemented to IFS.
+!---------------------------------------------------------------------
+
+MODULE SUSOCEAN_ML_MOD
+
+CONTAINS
+SUBROUTINE SUSOCEAN_ML(LD_LEOCML,YDOCEAN_ML)
 
 ! Purpose :
 ! -------

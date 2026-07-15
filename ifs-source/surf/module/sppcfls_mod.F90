@@ -1,17 +1,3 @@
-MODULE SPPCFLS_MOD
-CONTAINS
-SUBROUTINE SPPCFLS(KIDIA,KFDIA,KLON,&
- & PUMLEV,PVMLEV,PQMLEV,PAPHMS,PGEOMLEV,PCPTGZLEV,&
- & PCPTS,PQSAM,PZ0MM,PZ0HM,PZ0QM,PBUOM,&
- & YDCST,YDEXC,&
-! OUPUTS     
- & PU10  ,PV10  ,P10NU  ,P10NV  ,PT2   ,PD2 ,PQ2 )  
-
-USE PARKIND1  , ONLY : JPIM, JPRB
-USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_THF   , ONLY : R4LES, R2ES, R3LES, RVTMP2
-USE YOS_CST   , ONLY : TCST
-USE YOS_EXC   , ONLY : TEXC
 
 ! (C) Copyright 1995- ECMWF.
 !
@@ -20,6 +6,87 @@ USE YOS_EXC   , ONLY : TEXC
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+!     ------------------------------------------------------------------
+
+!**   *SPPCFLS* - COMPUTES THE SURFACE (2 M) TEMPERATURE AND HUMIDITY
+!                   WITH STABILITY FROM GELEYN'S INTERPOLATION
+
+!     J.F. MAHFOUF                E.C.M.W.F.    04/10/95.
+!     Modified   P. Viterbo ECMWF 12/05/2005 Externalize SURF
+!                                   (based on vdfppcfls)
+!                H. Hersbach ECMWF 04/12/2009 10-m neutral wind
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE WIND COMPONENTS, TEMPERATURE AND DEWPOINT TEMPERATURE
+!     AT SCREEN LEVEL HEIGHT
+
+!     INTERFACE
+!     ---------
+
+!     *SPPCFLS* IS CALLED BY *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PUMLEV*       X-VELOCITY COMPONENT AT T-1, lowest atmospheric level
+!     *PVMLEV*       Y-VELOCITY COMPONENT AT T-1, lowest atmospheric level
+!     *PQMLEV*       SPECIFIC HUMUDITY AT T-1, lowest atmospheric level
+!     *PAPHMS*       Surface PRESSURE AT T-1
+!     *PGEOMLEV*     GEOPOTENTIAL AT T-1, lowest atmospheric level
+!     *PCPTGZLEV*    DRY STATIC ENERGY AT LOWEST MODEL LEVEL
+!     *PCPTS*        DRY STATIC ENERGY AT THE SURFACE
+!     *PQSAM*        SPECIFIC HUMIDITY AT THE SURFACE
+!     *PZ0MM*        AERODYNAMIC ROUGHNESS LENGTH
+!     *PZ0HM*        ROUGHNESS LENGTH FOR TEMPERATURE
+!     *PZ0QM*        ROUGHNESS LENGTH FOR MOISTURE
+!     *PBUOM*        BUOYANCE FLUX AT THE SURFACE
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PU10*         U-COMPONENT WIND AT 10 M
+!     *PV10*         V-COMPONENT WIND AT 10 M
+!     *P10NU*        U-COMPONENT NEUTRAL WIND AT 10 M
+!     *P10NV*        V-COMPONENT NEUTRAL WIND AT 10 M
+!     *PT2*          TEMPERATURE AT 2 M
+!     *PD2*          DEW POINT TEMPERATURE AT 2 M
+!     *PQ2*          SPECIFIC HUMIDITY AT 2 M
+
+!     METHOD
+!     ------
+
+!     ANALYTIC INTERPOLATION - GELEYN (1988) TELLUS 40A 347-351
+
+!     ------------------------------------------------------------------
+!     REMARK : THE MAIN JUSTIFICATION OF THIS ROUTINE IS 
+!              FOR USE IN TL AND AD VERSIONS OF IFS
+!     ------------------------------------------------------------------
+
+MODULE SPPCFLS_MOD
+CONTAINS
+SUBROUTINE SPPCFLS(KIDIA,KFDIA,KLON,&
+ & PUMLEV,PVMLEV,PQMLEV,PAPHMS,PGEOMLEV,PCPTGZLEV,&
+ & PCPTS,PQSAM,&
+ & PZ0MM, PZ0HM, & 
+ & PZ0QM,PBUOM,&
+ & YDCST,YDEXC,&
+! OUPUTS     
+ & PU10  ,PV10  ,P10NU  ,P10NV  ,&
+ & PT2   ,PD2 ,PQ2, &
+ & LWIND )  
+
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF   , ONLY : R4LES, R2ES, R3LES, RVTMP2
+USE YOS_CST   , ONLY : TCST
+USE YOS_EXC   , ONLY : TEXC
+
 !     ------------------------------------------------------------------
 
 !**   *SPPCFLS* - COMPUTES THE SURFACE (2 M) TEMPERATURE AND HUMIDITY
@@ -99,6 +166,7 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0MM(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0HM(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0QM(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PBUOM(:) 
+LOGICAL           ,INTENT(IN)    :: LWIND
 TYPE(TCST)        ,INTENT(IN)    :: YDCST
 TYPE(TEXC)        ,INTENT(IN)    :: YDEXC
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PU10(:) 
@@ -114,7 +182,7 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQ2(:)
 
 REAL(KIND=JPRB) ::  Z1DZ0M(KLON)  ,Z1DZ0H(KLON),  Z1DZ0Q(KLON)  ,&
  & ZXLNM(KLON) , ZXLNH(KLON) , ZXLNQ(KLON) , ZDU2(KLON)  , ZNLEV(KLON) ,&
- & Z1DZ1D(KLON)  
+ & Z1DZ1D(KLON)
 REAL(KIND=JPRB) ::  ZRICLS(KLON)  ,&
  & ZCFM(KLON)  , ZCFH(KLON)  , ZCFQ(KLON)      ,&
  & ZCDNM(KLON) , ZCDNH(KLON) , ZCDNQ(KLON)   
@@ -238,7 +306,6 @@ DO JL=KIDIA,KFDIA
     ZCFQ(JL)=ZCDNQ(JL)*(1.0_JPRB-Z3B*ZRICLS(JL)/&
      & (1.0_JPRB+Z3B*ZCDNQ(JL)*ZCQ*Z6S))                 
   ENDIF
-
 ENDDO
 
 !     ------------------------------------------------------------------
@@ -260,6 +327,7 @@ DO JL=KIDIA,KFDIA
 
   ZRU=Z10M/ZNLEV(JL)
   ZRS=Z2M/ZNLEV(JL)
+  !*ZRS=Z2M/ZNLEV_S(JL)
 
   ZLOGU=LOG(1.0_JPRB+ZRU*(EXP(ZBN )-1.0_JPRB))
   ZLOGS=LOG(1.0_JPRB+ZRS*(EXP(ZBNH)-1.0_JPRB))

@@ -16,6 +16,16 @@
 
 ! Orbit of the earth
 
+!      -----------------------------------------------------------
+
+! - Astronomical functions
+! you will find the description in the annex 1 of the documentation
+! RRS is the distance Sun-Earth
+! RDS is the declination of the Earth
+! RET is the equation of time
+
+! Orbit of the earth
+
 REAL(KIND=JPRD) :: RTETA,REL,REM,RRS,RLLS,RLLLS,RDS,RET
 REAL(KIND=JPRD) :: PTIME,PTETA
 

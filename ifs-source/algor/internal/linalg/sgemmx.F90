@@ -233,15 +233,29 @@
 
       SUBROUTINE SGEMMXZ(A,B)
       END SUBROUTINE SGEMMXZ
-#elif defined(NECSX) && defined(BLAS) && !defined(USE_MATMUL)
+#elif defined(NECSX) || defined(__NEC__) && defined(BLAS) && !defined(USE_MATMUL)
       SUBROUTINE SGEMMX(NRP,NCP,M,                                      &
      &                  ONE,SA,IAC,IAR,SB,IBC,IBR,                      &
      &                  ZER,SC,ICC,ICR)
 
 !AUTOPROMOTE
-      USE PARKIND1, ONLY : JPRD, JPRB
+      USE PARKIND1, ONLY : JPRD, JPIM, JPRB
       USE YOMHOOK , ONLY : LHOOK, DR_HOOK, JPHOOK
       use, intrinsic :: ieee_exceptions
+      IMPLICIT NONE
+
+      INTEGER(KIND=JPIM) :: NRP
+      INTEGER(KIND=JPIM) :: NCP
+      INTEGER(KIND=JPIM) :: M
+      INTEGER(KIND=JPIM) :: IAC
+      INTEGER(KIND=JPIM) :: IAR
+      INTEGER(KIND=JPIM) :: IBC
+      INTEGER(KIND=JPIM) :: IBR
+      INTEGER(KIND=JPIM) :: ICC
+      INTEGER(KIND=JPIM) :: ICR
+      INTEGER(KIND=JPIM) :: I,J,K
+      REAL(KIND=JPRB) :: ONE
+      REAL(KIND=JPRB) :: ZER
 
 !   C=A*B  , with arbitrary increments IAC,IAR, IBC,IBR, ICC,ICR
 !

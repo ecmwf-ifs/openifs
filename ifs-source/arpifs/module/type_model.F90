@@ -27,6 +27,7 @@ USE MODEL_PHYSICS_MF_MOD          , ONLY : MODEL_PHYSICS_MF_TYPE
 USE MODEL_CHEM_MOD                , ONLY : MODEL_CHEM_TYPE
 USE MODEL_DIAGNOSTICS_MOD         , ONLY : MODEL_DIAGNOSTICS_TYPE
 USE YOEWCOU                       , ONLY : TEWCOU
+USE YOMCST                        , ONLY : TCST
 USE YOMSPSDT                      , ONLY : TSPPT_DATA
 USE SPP_MOD                       , ONLY : TSPP_DATA
 !
@@ -53,6 +54,7 @@ TYPE, PUBLIC :: MODEL
   TYPE(TSPPT_DATA)                      :: YRML_SPPT
   TYPE(TSPP_DATA)                       :: YRML_SPP
   TYPE(TEWCOU)                          :: YREWCOU
+  TYPE(TCST), POINTER                   :: YRCST => NULL()
   TYPE(TELBC_MODEL)                     :: YRML_LBC
   INTEGER(KIND=JPIM)                    :: MOBJECT_ID=0 ! Object identifier
   CHARACTER(LEN=17)                     :: COBJECT_ID='' ! Object identifier string

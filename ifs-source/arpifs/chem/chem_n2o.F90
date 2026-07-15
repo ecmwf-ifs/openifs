@@ -48,7 +48,7 @@
 ! OUTPUTS:
 ! -------
 ! PTENC1  (KLON,KLEV,NCHEM)     : TENDENCY OF N2O BECAUSE OF CHEMISTRY (kg/kg s-1), no update
-! POUT (KLON,KLEV,5)            : additional output
+! POUT (KLON,0:KLEV,5)          : additional output
 !
 ! LOCAL:
 ! -------
@@ -105,7 +105,7 @@ REAL(KIND=JPRB),INTENT(IN)    :: PCSZA(KLON)
 REAL(KIND=JPRB),INTENT(IN)    :: PGELAT(KLON)
 REAL(KIND=JPRB),INTENT(IN)    :: PGELAM(KLON)
 REAL(KIND=JPRB),INTENT(IN)    :: PGEMU(KLON)
-REAL(KIND=JPRB),INTENT(OUT)   :: POUT(KLON,KLEV,5)  
+REAL(KIND=JPRB),INTENT(OUT)   :: POUT(KLON,0:KLEV,5)
 
 
 !*       0.5   LOCAL VARIABLES

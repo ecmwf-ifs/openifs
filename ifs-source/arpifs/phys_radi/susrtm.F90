@@ -1,11 +1,12 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE SUSRTM
 
 !     Adapted from E.J. Mlawer, J. Delamere, Atmospheric & Environmental Research.
@@ -16,7 +17,7 @@ SUBROUTINE SUSRTM
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPRB ,   JPIM
-USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
 
 USE YOESRTM  , ONLY : JPGPT, NGBSW, NGN
 USE YOESRTWN , ONLY : NG      , NSPA, NSPB   , NMPSRTM, &

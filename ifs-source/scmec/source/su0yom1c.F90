@@ -119,6 +119,7 @@ REAL(KIND=JPHOOk)  :: ZHOOK_HANDLE
 #include "sudimf2.intfb.h"
 #include "sugfl.intfb.h"
 #include "susc2c.intfb.h"
+#include "suphmf.intfb.h"
 !     ------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('SU0YOM1C',0,ZHOOK_HANDLE)
@@ -159,8 +160,7 @@ CALL SUJFH
 !              ---------------------------------------------
 
 CALL SUDYNCORE
-CALL SUDYNA(YDGEOMETRY%YRDIM,YDMODEL%YRML_DYN%YRDYNA,YDGEOMETRY%YRCVER%LVERTFE, &
- & YDGEOMETRY%YRCVER%NDLNPR,YDGEOMETRY%LNONHYD_GEOM,NULOUT)
+CALL SUDYNA(YDGEOMETRY,YDMODEL%YRML_DYN%YRDYNA,NULOUT)
 
 
 !        4.    INITIALIZE MODEL TIME.
@@ -266,6 +266,8 @@ CALL SUMCC(YDMODEL%YRML_AOC%YRMCC,YDMODEL%YRML_PHY_EC%YREPHY,NULOUT)
 
 !       15.    INITIALIZE PHYSICS.
 !              -------------------
+
+CALL SUPHMF(YDGEOMETRY,YDMODEL,NULOUT)
 
 CALL SUPHEC(YDGEOMETRY,YDMODEL,NULOUT)
 

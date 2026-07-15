@@ -80,15 +80,15 @@ PUBLIC LTRAJSAVE, LTRAJSLAG, LTRAJPHYS, LTRAJCST,&
  & NGP5, NTRAJ_CST, LPRTTRAJ, LTRAJRESET
 
 #include "abor1.intfb.h"
-
-
-
-
+#include "read_surfgrid_traj.intfb.h"
+#include "read_surfgrid_traj_fromfa.intfb.h"
 
 !-----------------------------------------------------------------------
 CONTAINS
 !-----------------------------------------------------------------------
+
 SUBROUTINE ALLOCATE_TRAJECTORY(YDGEOMETRY,YDGMV,YDGMV5,YDSURF,YDMODEL)
+
 USE TYPE_MODEL         , ONLY : MODEL
 USE GEOMETRY_MOD       , ONLY : GEOMETRY
 USE SURFACE_FIELDS_MIX , ONLY : TSURF
@@ -106,6 +106,7 @@ END SUBROUTINE ALLOCATE_TRAJECTORY
 !-----------------------------------------------------------------------
 
 SUBROUTINE DEALLOCATE_TRAJECTORY(YDDIM,YDGMV,YDGMV5,YDSURF,YDMODEL)
+
 USE TYPE_MODEL         , ONLY : MODEL
 USE SURFACE_FIELDS_MIX , ONLY : TSURF
 USE YOMGMV             , ONLY : TGMV
@@ -120,6 +121,7 @@ call abor1('OIFS - deallocate_trajectory should never be called')
 END SUBROUTINE DEALLOCATE_TRAJECTORY
 
 !-----------------------------------------------------------------------
+
 SUBROUTINE READ_TRAJECTORY(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,KSTEP,LD_LASTRAJ,LDREADGPTRAJ)
 
 USE TYPE_MODEL  , ONLY : MODEL

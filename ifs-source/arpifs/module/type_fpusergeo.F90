@@ -74,7 +74,7 @@ PUBLIC TFPUSERGEO, ALLOC_FPUSERGEO, DEALLOC_FPUSERGEO, PRINT_FPUSERGEO, CHECK_FP
 ! FPLON0 : geographical longitude of reference for the projection (in degrees)
 ! FPLAT0 : geographical latitude of reference for the projection (in degrees)
 ! LFPMRT : If .TRUE. in Mercator case => use of Rotated/Tilted option
-! LFPMAP : .T./.F. if the domain is defined through its coordinates/wavelengths
+! LFPMAP : .T./.F. if the domain is defined by its coordinates/wavelengths
 ! FPLX   : wavelength in x (if LFPMAP=.FALSE. only)
 ! FPLY   : wavelength in y (if LFPMAP=.FALSE. only
 ! NFPBZONL : half-width of relaxation zone (I) zonal dimension (*)

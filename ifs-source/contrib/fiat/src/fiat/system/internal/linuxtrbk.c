@@ -1,8 +1,9 @@
 /*
- * (C) Copyright 2005- ECMWF.
- * 
+ * (C) Copyright 2006- ECMWF.
+ *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ *
  * In applying this licence, ECMWF does not waive the privileges and immunities
  * granted to it by virtue of its status as an intergovernmental organisation
  * nor does it submit to any jurisdiction.
@@ -11,7 +12,7 @@
 
 /* linuxtrbk.c : Print traceback on linux */
 
-/* 
+/*
    Author: Sami Saarinen, ECMWF, 28-Apr-2006
    The code "nicked" from ifsaux/support/drhook.c
 
@@ -117,7 +118,7 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
   int sigcontextptr_given = sigcontextptr ? 1 : 0;
   static int recur = 0;
   const char *a_out = ec_argv()[0];
-  fprintf(stderr,"%s %s [LinuxTraceBack] Backtrace(s) for program '%s' : sigcontextptr=%p\n", 
+  fprintf(stderr,"%s %s [LinuxTraceBack] Backtrace(s) for program '%s' : sigcontextptr=%p\n",
       pfx,ts,a_out ? a_out : "/dev/null", sigcontextptr);
 
   if (++recur > 1) {
@@ -156,9 +157,9 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
   const char *ts    = timestr ? timestr : drhook_TIMESTR(0);
   const char *a_out = ec_argv()[0];
   const char *s1    = strlen(pfx) ? " " : "";
-  const char *s2    = strlen(ts)  ? " " : ""; 
- 
-  fprintf(stderr,"%s%s%s%s[LinuxTraceBack] Backtrace(s) for program '%s' : sigcontextptr=%p\n", 
+  const char *s2    = strlen(ts)  ? " " : "";
+
+  fprintf(stderr,"%s%s%s%s[LinuxTraceBack] Backtrace(s) for program '%s' : sigcontextptr=%p\n",
     pfx,s1,ts,s2,a_out ? a_out : "/dev/null", sigcontextptr);
 
   if (++recur > 1) {
@@ -174,7 +175,7 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
 
 #if (defined(__GNUC__) || defined(__PGI))
   if (sigcontextptr) {
-    /* To have a desired effect, 
+    /* To have a desired effect,
        compile with -g (and maybe -O1 or greater to get some optimization)
        and link with -g -Wl,-export-dynamic */
     char *linuxtrbk_fullpath = getenv("LINUXTRBK_FULLPATH");
@@ -188,7 +189,7 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
     if (trace_size > 1) {
       /* overwrite sigaction with caller's address */
 #ifdef __powerpc64__
-      trace[1] = uc ? (void *) uc->uc_mcontext.regs->nip : NULL;   // Trick from PAPI_overflow() 
+      trace[1] = uc ? (void *) uc->uc_mcontext.regs->nip : NULL;   // Trick from PAPI_overflow()
 #elif defined(__x86_64__) && defined(REG_RIP) // gcc specific
       trace[1] = uc ? (void *) uc->uc_mcontext.gregs[REG_RIP] : NULL; // RIP: x86_64 specific ; only available in 64-bit mode */
 #elif defined(__i386__) && defined(REG_EIP) // gcc specific
@@ -252,7 +253,7 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
                 *plus = '\0';
                 cxx = cxxdemangle(leftB + 1,&istat);
                 if (cxx) *leftB = '\0';
-                fprintf(stderr, "%s%s%s%s[LinuxTraceBack] [%*.*d]: %s%s%s+%s : %s%s at %s\n", 
+                fprintf(stderr, "%s%s%s%s[LinuxTraceBack] [%*.*d]: %s%s%s+%s : %s%s at %s\n",
                   pfx,s1,ts,s2, ndigits, ndigits, i,
                   last_slash,
                   cxx ? "(" : "",
@@ -264,7 +265,7 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
                 if (cxx) free(cxx);
               }
               else {
-                fprintf(stderr, "%s%s%s%s[LinuxTraceBack] [%*.*d]: %s : %s%s at %s\n", 
+                fprintf(stderr, "%s%s%s%s[LinuxTraceBack] [%*.*d]: %s : %s%s at %s\n",
                   pfx,s1,ts,s2, ndigits, ndigits, i,
                   last_slash,
                   cxxfunc ? cxxfunc : func,
@@ -277,8 +278,8 @@ LinuxTraceBack(const char *prefix, const char *timestr, void *sigcontextptr)
           }
           if (!ok) {
               char *cxx = cxxdemangle(strings[i],NULL);
-            fprintf(stderr, "%s%s%s%s[LinuxTraceBack] [%*.*d]: %s\n", 
-              pfx,s1,ts,s2, ndigits, ndigits, i, 
+            fprintf(stderr, "%s%s%s%s[LinuxTraceBack] [%*.*d]: %s\n",
+              pfx,s1,ts,s2, ndigits, ndigits, i,
               cxx ? cxx : strings[i]);
             if (cxx) free(cxx);
           }
@@ -324,7 +325,7 @@ finish:
   recur--;
 }
 #endif
- 
+
 void linux_trbk_(void)
 {
   LinuxTraceBack(NULL,NULL,NULL);
@@ -354,10 +355,10 @@ void linux_trbk(void)
 void gdb_trbk_()
 {
   char *gdb = getenv("GNUDEBUGGER");
-  if (gdb && 
+  if (gdb &&
       (access(TOSTR(GNUDEBUGGER),X_OK) == 0) && /* GNUDEBUGGER was set */
-      (strequ(gdb,"1")    || 
-       strequ(gdb,"true") || 
+      (strequ(gdb,"1")    ||
+       strequ(gdb,"true") ||
        strequ(gdb,"TRUE"))) {
     char gdbcmd[65536];
     pid_t pid = getpid();
@@ -368,7 +369,7 @@ void gdb_trbk_()
     snprintf(gdbcmd,sizeof(gdbcmd),
        "set +eux; %s -batch -n -q -ex 'thread apply all bt' %s %ld < /dev/null",
        TOSTR(GNUDEBUGGER), a_out, (long int)pid);
-    
+
     /* fprintf(stderr,"%s\n",gdbcmd); */
     { int idummy = system(gdbcmd); }
   }
@@ -386,10 +387,10 @@ void gdb_trbk() { gdb_trbk_(); }
 void dbx_trbk_()
 {
   char *dbx = getenv("DBXDEBUGGER");
-  if (dbx && 
+  if (dbx &&
       (access(TOSTR(DBXDEBUGGER),X_OK) == 0) && /* DBXDEBUGGER was set */
-      (strequ(dbx,"1")    || 
-       strequ(dbx,"true") || 
+      (strequ(dbx,"1")    ||
+       strequ(dbx,"true") ||
        strequ(dbx,"TRUE"))) {
     pid_t pid = getpid();
     const char *a_out = ec_argv()[0];
@@ -410,7 +411,7 @@ void dbx_trbk_()
            " | %s%s - %d ",
            TOSTR(DBXDEBUGGER), qopt, pid);
     }
-    
+
     /* fprintf(stderr,"%s\n",dbxcmd); */
     { int idummy = system(dbxcmd); }
   }
@@ -429,26 +430,26 @@ static void InitBFD()
 #ifdef BFDLIB
   if (!abfd) {
     const char *a_out = ec_argv()[0];
- 
+
     bfd_init();
- 
+
     abfd = bfd_openr(a_out, 0);
     if (!abfd) {
       perror("bfd_openr failed: ");
       return;
     }
- 
+
     bfd_check_format(abfd,bfd_object);
- 
+
     unsigned int storage_needed = bfd_get_symtab_upper_bound(abfd);
     syms = (asymbol **) malloc(storage_needed);
     unsigned int cSymbols = bfd_canonicalize_symtab(abfd, syms);
- 
+
     text = bfd_get_section_by_name(abfd, ".text");
   }
 #endif
 }
- 
+
 static int ResolveViaBFD(void *address, BFD_t *b, const char *str)
 {
   int rc = -1;

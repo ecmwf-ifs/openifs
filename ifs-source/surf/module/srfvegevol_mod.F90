@@ -1,3 +1,79 @@
+
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**  *SRFVEG_EVOL*  CALLED BY *SURFTSTP_CTL*
+
+!     PURPOSE
+!     -------
+!     performs the time evolution of vegetation parameters
+!     at solar midnight in the case of interactive vegetation 
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*        START POINT
+!    *KFDIA*        END POINT
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*
+!    *KSTEP*        CURRENT TIME STEP INDEX
+
+!     INPUT PARAMETERS (REAL):
+
+!    *PTSPHY*       TIME STEP FOR THE PHYSICS
+!    *PLAT*         LATITUDE
+!    *PCVT*         VEGETATION TYPE FRACTION                      (0-1)
+!    *PTSKM1M*      SKIN TEMPERATURE                              K
+!    *PTSAM1M*      SOIL TEMPERATURE                              K
+!    *PANFMVT*      MAXIMUM LEAF ASSIMILATION              KG_CO2/KG_AIR M/S    
+!                   positive downwards
+!    *PANDAYVT*     DAILY NET CO2 ASSIMILATION OVER CANOPY    KG_CO2/M2
+!                   positive downwards
+
+!     UPDATED PARAMETERS (REAL):
+
+!    *PLAIVT*       LEAF AREA INDEX                           (M2/M2)
+!    *PRESPBSTR*    RESPIRATION OF ABOVE GROUND STRUCTURAL BIOMASS    KG_CO2/M2
+!    *PRESPBSTR2*   RESPIRATION OF BELOW GROUND STRUCTURAL BIOMASS    KG_CO2/M2
+!    *PBIOMASS_LAST* (ACTIVE) LEAF BIOMASS OF PREVIOUS DAY               KG/M2
+!     NB: value only after nitro_decline, not after laigain!!!!
+!    *PBIOMASSTR_LAST* ABOVE GROUND STRUCTURAL BIOMASS OF PREVIOUS DAY   KG/M2
+!    *PBIOMASSTR2_LAST* BELOW GROUND STRUCTURAL BIOMASS OF PREVIOUS DAY  KG/M2
+!    *PBLOSSVT*     ACTIVE BIOMASS LOSS                                  KG/M2
+!    *PBGAINVT*     ACTIVE BIOMASS GAIN                                  KG/M2
+!    *PLAIE1*       TENDENCY OF LAI                                  (M2/M2)/S
+!    *PBSTRE1*      TENDENCY OF ABOVE GROUND STRUCTURAL BIOMASS          KG/M2
+!    *PBSTR2E1*     TENDENCY OF BELOW GROUND STRUCTURAL BIOMASS          KG/M2
+
+!     OUTPUT PARAMETERS (REAL):
+
+!    *PLAI*         GRID AVERAGED LAI                         (M2/M2)
+!    *PBIOM*        GRID AVERAGED BIOMASS                     (KG/M2)
+!    *PBLOSS*       GRID AVERAGED BIOMASS LOSS (KG/M2)
+!    *PBGAIN*       GRID AVERAGED BIOMASS GAIN (KG/M2)
+!    *PBIOMSTR*     GRID AVERAGED ABOVE GROUND STRUCTURAL BIOMASS (KG/M2)
+!    *PBIOMSTR2*    GRID AVERAGED BELOW GROUND STRUCTURAL BIOMASS (KG/M2)
+!    *PDHBIOS*      Diagnostic array for biomass (see module yomcdh) (KG/M2)
+!    *PDHVEGS*      Diagnostic array for variables per vegetation type
+!                   (see module yomcdh) 
+  
+!     AUTHOR
+!     ------
+!     M.H. Voogt (KNMI) "C-Tessel"  09/2005 
+!     S. LAFONT (ECMWF) "C-TESSEL"  05/2006
+!     F. Vana  05-Mar-2015  Support for single precision
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP2 object for spatially distributed parameters
+!-------------------------------------------------------------------------------
+
 MODULE SRFVEGEVOL_MOD
 CONTAINS
 SUBROUTINE SRFVEGEVOL(KIDIA,KFDIA,KLON,KLEVS,KSTEP, &
@@ -14,14 +90,6 @@ SUBROUTINE SRFVEGEVOL(KIDIA,KFDIA,KLON,KLEVS,KSTEP, &
  & PDHBIOS,PDHVEGS, &
  & YDCST,YDVEG,YDAGS)
 
-
-! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**  *SRFVEG_EVOL*  CALLED BY *SURFTSTP_CTL*
 

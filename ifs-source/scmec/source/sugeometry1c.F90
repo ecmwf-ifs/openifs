@@ -52,6 +52,7 @@ USE YOMHOOK,            ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMLUN,             ONLY : NULOUT
 USE YOMDYNCORE,         ONLY : RPLRADI
 USE YOMCVER,            ONLY : SUCVER_GEOM,PRT_CVER_GEOM
+USE YOMCST,             ONLY : RPI, RA
 
 !     ------------------------------------------------------------------
 
@@ -79,7 +80,8 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SUGEOMETRY1C',0,ZHOOK_HANDLE)
 ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM,YDDIMV=>YDGEOMETRY%YRDIMV,  &
- & YDCSGLEG=>YDGEOMETRY%YRCSGLEG,NGPTOT=>YDGEOMETRY%YRGEM%NGPTOT,NGPBLKS=>YDGEOMETRY%YRDIM%NGPBLKS)
+ & YDCSGLEG=>YDGEOMETRY%YRCSGLEG,NGPTOT=>YDGEOMETRY%YRGEM%NGPTOT,NGPBLKS=>YDGEOMETRY%YRDIM%NGPBLKS,&
+ & RDELXN=>YDGEOMETRY%YRGEM%RDELXN,NDLON=>YDGEOMETRY%YRDIM%NDLON)
 
 !     ------------------------------------------------------------------
 
@@ -113,6 +115,7 @@ CALL SUVERT(YDGEOMETRY)
 WRITE(NULOUT,*) '---- Set up standard atmosphere -----',CLINE
 CALL SUSTA(YDGEOMETRY)
 
+
 !!*    Initialize geometry (second part)
 !!     in particuliar, allocate and fill YRGSGEOM and YRCSGEOM
 !WRITE(NULOUT,*) '---- Set up geometry, part 2 for global model --------',CLINE
@@ -132,6 +135,15 @@ IF (YDML_DYN%YRSLINT%YRVSLETA%NRLEVX > 200000) THEN
   ! push it artificially to NRLEVX=200000
   CALL ABOR1('SUGEOMETRY1C: Assumed ZDVETAH is too small.')
 ENDIF
+
+!     ------------------------------------------------------------------
+!     ------------------------------------------------------------------
+
+!*            Compute RDELXN
+!               --------------
+
+RDELXN=(2.0_JPRB*RPI*RA)/REAL(NDLON,JPRB)
+WRITE(UNIT=NULOUT,FMT='(A,E16.7)') ' RDELXN= ',RDELXN
 
 !     ------------------------------------------------------------------
 

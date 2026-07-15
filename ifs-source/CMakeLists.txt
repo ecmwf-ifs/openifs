@@ -43,6 +43,9 @@ project( ${PROJECT_NAME} VERSION ${ifs_VERSION} LANGUAGES Fortran C CXX )
 
 include( add_symlink )
 include( ifs_propagate_flags )
+include( ifs_target_fortran_module_directory )
+include( ifs_target_compile_definitions_FILENAME )
+include( ifs_target_ignore_missing_symbols )
 
 # ecbuild_enable_fortran: Set Fortran module directory. With ECBUILD_2_COMPAT=ON this automatically gets added as a global
 # include as well, but we don't want to export it as include_directory as it may otherwise
@@ -62,6 +65,9 @@ if( ${PROJECT_NAME}_VERSION_MINOR GREATER 0 )
   set( IFS_CYCLE ${IFS_CYCLE}R${${PROJECT_NAME}_VERSION_MINOR} )
 endif()
 
+# Generate compiler commands listing
+set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
+
 ecbuild_add_option(FEATURE MPI        REQUIRED_PACKAGES "MPI COMPONENTS Fortran" )
 ecbuild_add_option(FEATURE HDF5       REQUIRED_PACKAGES "HDF5 COMPONENTS Fortran Fortran_HL")
 ecbuild_add_option(FEATURE IFS_NETCDF REQUIRED_PACKAGES "NetCDF COMPONENTS Fortran C") # C component for few prepdata tools
@@ -73,7 +79,16 @@ ecbuild_add_option(FEATURE NEMO       DESCRIPTION "Build NEMO project"     DEFAU
 ecbuild_add_option(FEATURE OBSTAT     DESCRIPTION "Build Obstat project"   DEFAULT ON)
 ecbuild_add_option(FEATURE OOPS       REQUIRED_PACKAGES "oops"             DEFAULT ON)
 
+# ecbuild_add_option changes the value of ENABLE_<FEATURE> to the value of IFS_${PREC}_ENABLE_<FEATURE>.
+# We need logic to prevent this from changing here for sub-projects that need both SP and DP
+if(DEFINED ENABLE_SINGLE_PRECISION)
+  set(ENABLE_SINGLE_PRECISION.backup ${ENABLE_SINGLE_PRECISION})
+endif()
 ecbuild_add_option(FEATURE SINGLE_PRECISION DESCRIPTION "Build IFS in single precision" DEFAULT OFF)
+if(DEFINED ENABLE_SINGLE_PRECISION.backup)
+  set(ENABLE_SINGLE_PRECISION ${ENABLE_SINGLE_PRECISION.backup})
+endif()
+
 ecbuild_add_option(FEATURE FORECAST_ONLY DESCRIPTION "Build IFS in forecast-only configuration" DEFAULT OFF)
 ecbuild_add_option(FEATURE OPENIFS_ONLY
                    DESCRIPTION "Build IFS in OpenIFS-only configuration"
@@ -81,16 +96,19 @@ ecbuild_add_option(FEATURE OPENIFS_ONLY
                    CONDITION HAVE_FORECAST_ONLY)
 
 
-ecbuild_use_package(PROJECT eccodes  VERSION 2.0   REQUIRED)
-ecbuild_use_package(PROJECT fdb5     VERSION 5.0   REQUIRED)
+ecbuild_find_package(eccodes  VERSION 2.28   REQUIRED)
+set( ECCODES_LIBRARIES eccodes_f90 eccodes )
+ecbuild_find_package(fdb5     VERSION 5.0   REQUIRED)
 
 
 
-ecbuild_use_package(PROJECT eckit    VERSION 0.17  REQUIRED)
-ecbuild_use_package(PROJECT fckit    VERSION 0.5   REQUIRED)
-ecbuild_use_package(PROJECT multio   VERSION 0.3   REQUIRED)
 
-ecbuild_add_option(FEATURE ATLAS     REQUIRED_PACKAGES "PROJECT atlas VERSION 0.17.1" DEFAULT ON)
+ecbuild_find_package(eckit         REQUIRED)
+ecbuild_find_package(fckit         REQUIRED)
+ecbuild_find_package(multio        REQUIRED)
+ecbuild_find_package(ecflow_light  REQUIRED)
+
+ecbuild_add_option(FEATURE ATLAS     REQUIRED_PACKAGES "atlas VERSION 0.17.1" DEFAULT ON)
 
 ecbuild_add_option(FEATURE MGRIDS DESCRIPTION "Build mgrids" DEFAULT ON)
 
@@ -171,17 +189,14 @@ endif()
 if(multio_FOUND)
   set(MULTIO_LIBRARIES)
   if(multio_HAVE_FDB5)
-    # Force linkage of multio-fdb5 regardless of build type: the library
-    # registers the fdb5 DataSinkFactory via a static C++ initialiser only,
-    # so a --as-needed linker (default on Ubuntu 22.04 / GCC 13) would
-    # otherwise drop it as unreferenced from a shared build, causing
-    # "No DataSinkFactory for [fdb5]" at runtime.
-    list(APPEND MULTIO_LIBRARIES -Wl,--push-state,--no-as-needed multio-fdb5 -Wl,--pop-state)
+    # Force the linkage of multio-fdb5 for static builds
+    if(NOT BUILD_SHARED_LIBS)
+      list(APPEND MULTIO_LIBRARIES -Wl,--push-state,--no-as-needed multio-fapi -Wl,--pop-state)
+    else()
+      list(APPEND MULTIO_LIBRARIES multio-fapi)
+    endif()
   endif()
-  if(multio_HAVE_FDB4)
-    list(APPEND MULTIO_LIBRARIES multio-fdb4 ifsio)
-  endif()
-  list(APPEND MULTIO_LIBRARIES multio)
+  list(APPEND MULTIO_LIBRARIES multio-fapi)
 endif()
 
 include(ProcessorCount)
@@ -203,10 +218,16 @@ list(APPEND IFS_DEFINITIONS
   NONCRAYF
   _RTTOV_DO_DISTRIBCOEF
   _RTTOV_NETCDF
+  _RTTOV_HDF
   WITH_WAVE
   WITH_FCKIT
   UseCDF_CMF
+  WITHOUT_SURFEX
+  ODB_API_SUPPORT
 )
+
+
+
 
 if(HAVE_NEMO)
   list(APPEND IFS_DEFINITIONS WITH_NEMO)
@@ -224,6 +245,9 @@ else()
 endif()
 string( TOLOWER "${PREC}" prec )
 
+# If both forecast- and OpenIFS-only, then no definitions are appended as
+#    all code defined by defs below will be excluded at build time
+list(APPEND IFS_DEFINITIONS WITH_OIFS)
 
 
 if( CMAKE_Fortran_COMPILER_ID MATCHES "Cray" )
@@ -259,14 +283,18 @@ include(fiat)
 include(intfb)
 include(nemo)
 include(ifsaux)
+include(field_api)
 include(algor)
 include(surf)
 include(climfield)
 include(trans)
 include(wam)
+
 include(prepdata)
 include(arpifs)
+
 include(python)
+include(install_bin)
 
 if ( ENABLE_SCMEC )
   include(scmec)
@@ -293,12 +321,13 @@ if(NOT HAVE_SINGLE_PRECISION)
   include(autopromote)
 endif()
 
+
 # Print compile times using COMPILER_LAUNCHER properties.
 # Prepare output file:
 set(timing_file ${CMAKE_BINARY_DIR}/compile_times.log)
 string(TIMESTAMP tstamp UTC)
-file(APPEND ${timing_file} "===== ${tstamp} =====\n")
-foreach(target ${EC_ALL_EXES} ${EC_ALL_LIBS})
+file(APPEND ${timing_file} "===== ${PROJECT_NAME} - ${tstamp} =====\n")
+foreach(target ${${PROJECT_NAME}_ALL_EXES} ${${PROJECT_NAME}_ALL_LIBS})
   set( compiler_launcher /usr/bin/time -ao ${timing_file} -f "(%e s) %C" )
   set_property(TARGET ${target} PROPERTY Fortran_COMPILER_LAUNCHER ${compiler_launcher})
   set_property(TARGET ${target} PROPERTY C_COMPILER_LAUNCHER ${compiler_launcher})

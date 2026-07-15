@@ -1,7 +1,3 @@
-MODULE  SUCOTWO_MOD
-CONTAINS
-SUBROUTINE SUCOTWO(PRVR0VT,YDVEG,YDCST,YDAGS)
-!***
 ! (C) Copyright 1997- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -10,6 +6,50 @@ SUBROUTINE SUCOTWO(PRVR0VT,YDVEG,YDCST,YDAGS)
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+
+!**   *SUCOTWO* - DOES THE INITIALISATION OF AGS PARAMETERS
+
+!     A. Boone       * Meteo-France *     27/10/97
+!     (following Belair)
+!     MODIFIED BY
+!     V. Rivalland                        10/04/02	 
+!        Add: PAH and PBH coefficients for herbaceous water stress response
+!     P. LeMoigne                            03/04   
+!        computation of zgmest in SI units
+!     M.H. Voogt (KNMI) "C-Tessel"  09/2005 
+!      S. Lafont (ECMWF) externalised CTESSEL 04/2006 
+!     Boussetta/Balsamo 11/2010 clean and compact code
+!     Boussetta/Balsamo 07/2011 MACC budget respiration optimisation
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist 
+!     Agusti-Panareda 09/2021 Use optimized respiration from namelist
+!     I. Ayan-Miguez (BSC) Oct 2023: move derived spatially distributed parameters to surf/module/susdp_deriv_ctl_mod.F90 routine
+
+!    PURPOSE
+!    -------
+
+!     Initialize model to calculate net assimilation of 
+!     CO2 and leaf conductance.
+!              
+!     METHOD
+!    ------
+!     Calvet at al (1998) [from model of Jacobs(1994)]
+
+!     EXTERNAL
+!     --------
+!     none
+
+!     REFERENCE
+!     ---------
+
+!     Calvet et al. (1998)
+
+!     -------------------------------------------------------------------------
+!
+
+MODULE  SUCOTWO_MOD
+CONTAINS
+SUBROUTINE SUCOTWO(PRVR0VT,YDVEG,YDCST,YDAGS)
+!***
 
 !**   *SUCOTWO* - DOES THE INITIALISATION OF AGS PARAMETERS
 

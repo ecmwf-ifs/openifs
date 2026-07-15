@@ -11,13 +11,31 @@
 
 function(add_symlink target symlink)
 
+  function(_get_target_location target_path target)
+    # This function wraps the CMake function "get_target_property( <VAR> <TARGET> LOCATION )"
+    # and disabled deprecation warnings of the policy change to OLD
+    cmake_policy( PUSH )
+    # Remove deprecation warnings in this scope
+    if( NOT DEFINED CMAKE_WARN_DEPRECATED OR CMAKE_WARN_DEPRECATED )
+      set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+      set( restore ON )
+    endif()
+    cmake_policy( SET CMP0026 OLD ) # allow property LOCATION on target
+    if( restore )
+      set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
+    endif()
+    get_target_property(location ${target} LOCATION)
+    set( ${target_path} ${location} PARENT_SCOPE )
+    cmake_policy( POP )
+  endfunction()
+
   cmake_parse_arguments(_ARG "NOINSTALL" "" "" ${ARGN})
 
   if(_ARG_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "Unknown keywords given to add_symlink: \"${_ARG_UNPARSED_ARGUMENTS}\"")
   endif()
 
-  get_target_property(target_path ${target} LOCATION)
+  _get_target_location(target_path ${target})
   get_filename_component(target_dir ${target_path} DIRECTORY)
 
   if(IS_ABSOLUTE ${symlink})

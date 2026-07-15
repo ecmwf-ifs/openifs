@@ -1,13 +1,14 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 1986- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUDLFSN &
- & (YDEPHLI, YDECUMF,&
+ & (YDTHF, YDCST, YDEPHLI, YDECUMF,&
  & KIDIA,    KFDIA,    KLON,    KLEV,&
  & KCBOT,    KCTOP,    LDCUM,&
  & PTENH,    PQENH,    PTEN,     PQSEN,    PGEO,&
@@ -99,23 +100,23 @@ SUBROUTINE CUDLFSN &
 !     --------------
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      P. Lopez      20-Jun-2007 CY32R2 Bug correction in latent heat when LPHYLIN=T.
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RCPD     ,RETV     ,RLVTT    ,RLSTT    ,RTT
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                    R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
- &                    RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
- &                    RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOMCST   , ONLY : TCST
+USE YOETHF   , ONLY : TTHF  
 USE YOECUMF  , ONLY : TECUMF
 USE YOEPHLI  , ONLY : TEPHLI
 
 IMPLICIT NONE
 
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
-TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
+TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -148,7 +149,7 @@ REAL(KIND=JPRB) ::     ZTENWB(KLON,KLEV),      ZQENWB(KLON,KLEV),&
  & ZHSMIN(KLON)  
 LOGICAL ::  LLO2(KLON)
 
-INTEGER(KIND=JPIM) :: ICALL, IK, IKE, IS, JK, JL
+INTEGER(KIND=JPIM) :: IK, IKE, IS, JK, JL
 
 REAL(KIND=JPRB) :: ZBUO, ZHSK, ZMFTOP, ZOEALFA,&
  & ZOELHM, ZQTEST, ZTARG, ZTTEST  
@@ -164,6 +165,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('CUDLFSN',0,ZHOOK_HANDLE)
 ASSOCIATE(LMFDD=>YDECUMF%LMFDD, RMFDEPS=>YDECUMF%RMFDEPS, &
+ & RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RLSTT=>YDCST%RLSTT, RLVTT=>YDCST%RLVTT, &
  & LPHYLIN=>YDEPHLI%LPHYLIN, RLPTRC=>YDEPHLI%RLPTRC)
 DO JL=KIDIA,KFDIA
   LDDRAF(JL)=.FALSE.
@@ -248,10 +250,9 @@ IF(LMFDD) THEN
     IF(IS == 0) CYCLE
 
     IK=JK
-    ICALL=2
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK,&
-     &   ZPH,      ZTENWB,   ZQENWB,   LLO2,     ICALL)  
+     & ( YDTHF, YDCST, YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK,&
+     &   ZPH,      ZTENWB,   ZQENWB,   LLO2,     KCALL=2)  
 
 !     2.2          DO MIXING OF CUMULUS AND ENVIRONMENTAL AIR
 !                  AND CHECK FOR NEGATIVE BUOYANCY.

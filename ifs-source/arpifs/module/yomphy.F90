@@ -101,7 +101,6 @@ TYPE TPHY
 !        LCOEFK_THS1  :   .FALSE. - 'moist' Ri computed after GELEYN 1987 - Ri*
 !                     :  .TRUE. - 'moist' Ri* changed by P. Marquet's  pot. temperature
 !        LCOEFK_RIS   :   Ri* or Ri** for SCC, .FALSE. - external SCC
-!        LCOEFK_RIH   :   "HYBRID" Ri COMPUTATION.
 !        LCOEFK_TOMS  : ACTIVATES TOMS COMPUTATION 
 !        LCOEFK_PL    : PROGNOSTIC MIX. LENGTH
 !        LCOEFK_ML    : 'MOIST' MIX. LENGTH
@@ -242,6 +241,9 @@ TYPE TPHY
 !        LCVRA   : CLE D'APPEL DE LA CONVECTION PROFONDE.
 !                : KEY FOR CALLING DEEP CONVECTION.
 !                  ( ACCVIMP ).
+!        LCVTDK  : CLE D'APPEL DE LA CONVECTION PROFONDE IFS.
+!                : KEY FOR CALLING IFS DEEP CONVECTION.
+!                  ( CUCALLN ).
 !        LDAYD   : CLE D'APPEL DE LA DUREE DU JOUR FONCTION DE Z.
 !                : KEY OF DAY DURATION DEPENDING ON Z.
 !        LCVPRO  : CLE D'APPEL DE LA CONVECTION PRONOSTIQUE.
@@ -456,7 +458,13 @@ TYPE TPHY
 !       LNEBGY  : Schema de Turb/(N,RR)stra de J.F. GUEREMY   (ACNEBGY)
 !       LCVRAV3 : Schema de convect. profonde Bougeault-V3 (ACCVIMP_V3)
 !       L2MICRO : Switch for 2 micro-physics
-
+! * GROUPE DES CLES COMMANDANT L'APPEL AUX ROUTINE PARAMETRISATION DES ÉOLIENNES
+!       LWINDFARM : KEY FOR ACTIVATING wind farm parametrisation Fitch et al. 2012 needs additional input
+!       LVOLKER : KEY to use windfarm parametrisation of Volker et al. 2015 instead Fitch et al. 2012 only if LWINDFARM=T
+!       NWINDFARMMODORO : choose kind of height attribution in windfarm parametrisation:
+!                         1 real orography of windmill from input data + hub height (could mean strong deviation from model orography)
+!                         2 model orography (all windmills within one gridbox have the same altitude + individual hub height) DF
+!                         3 model orography + deviation from average orography (from input) of all windmills in gridbox + hub height (recommended in complex terrain)
 ! * GROUPE DES INDICES DE CALCUL.
 INTEGER(KIND=JPIM) :: NBITER
 INTEGER(KIND=JPIM) :: NITERFL
@@ -565,6 +573,7 @@ CHARACTER (LEN = 20) ::  CGTURS
 CHARACTER (LEN = 20) ::  CGTRG
 LOGICAL :: LPRGML
 LOGICAL :: LCVRA
+LOGICAL :: LCVTDK
 LOGICAL :: LDAYD
 LOGICAL :: LCVPRO
 LOGICAL :: LGRAPRO
@@ -585,7 +594,6 @@ LOGICAL :: LCOEFK_F1
 LOGICAL :: LCOEFK_TOMS
 LOGICAL :: LCOEFK_THS1
 LOGICAL :: LCOEFK_RIS
-LOGICAL :: LCOEFK_RIH
 LOGICAL :: LCOEFK_PL
 LOGICAL :: LCOEFK_ML
 LOGICAL :: LCOEFK_PTTE
@@ -658,6 +666,8 @@ INTEGER (KIND=JPIM) :: NPRAC, NPRRI
 INTEGER (KIND=JPIM) :: NPHY
 INTEGER (KIND=JPIM) :: NCALLRAD
 INTEGER (KIND=JPIM)  :: NLEND  
+INTEGER (KIND=JPIM) :: NTEND_DIAG_POS
+INTEGER (KIND=JPIM) :: NTEND_DIAG_FREQ_RESET
 LOGICAL :: LNEBECT
 LOGICAL :: LCVGQKF
 LOGICAL :: LACDIFUS
@@ -669,7 +679,16 @@ LOGICAL :: LAJUCV
 
 LOGICAL :: LSMOOTHMELT
 LOGICAL :: LGCHECKMV ! activates the CHECK of Model Variables.
+LOGICAL :: LGCHECKNAN ! activates the CHECK of Model NaN.
 LOGICAL :: LEDR ! key to activate EDR (3D) diagnostic
+LOGICAL :: LWINDFARM ! key to activate windfarm parametrisation (AROME only so far)
+LOGICAL :: LVOLKER ! key to use Volker et al. instead of Fitch et al. windfarm parametrisation
+INTEGER (KIND=JPIM)  :: NWINDFARMMODORO ! key to switch between different orographic settings in windfarm parametrisation
+                        ! 1) real orography from input, 2) model orography 3) model orography + deviation of real orography from turbine mean orography in the gridbox
+
+! Control key to call ARPEGE physics by the subroutine apl_arpege rather than the original subroutine aplpar.
+! Experimental key, suitable for running on GPUs the model ARPEGE at Météo-France. Requires a "ad hoc" namelist.
+LOGICAL :: LAPL_ARPEGE = .FALSE.
 
 END TYPE TPHY
 

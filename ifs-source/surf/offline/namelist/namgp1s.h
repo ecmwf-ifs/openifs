@@ -7,6 +7,8 @@
 ! nor does it submit to any jurisdiction.
 
 !*    ------------------------------------------------------------------
+
+!*    ------------------------------------------------------------------
 NAMELIST/NAMGP1S/TSLNU,QLINU,TILNU,FSNNU,TSNNU,ASNNU,RSNNU,&
                 &TRENU,WRENU,&
                 &TLICENU,TLMNWNU,TLWMLNU,TLBOTNU,TLSFNU,& ! ENDUTRA

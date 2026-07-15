@@ -1,0 +1,172 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE DEV_ALLOC_MODULE
+
+#:set fieldTypeList = list (filter (lambda ft: not ft.alias, fieldType.getFieldTypeList ([1,2,3,4,5])))
+
+#define USE_DEV_MALLOC
+
+${fieldType.useParkind1 ()}$
+
+#ifdef USE_DEV_MALLOC
+USE ISO_C_BINDING
+#endif
+
+IMPLICIT NONE
+
+INTERFACE DEV_ALLOCATE_HST
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${ft.name}$_DEV_ALLOCATE_HST
+#:endfor
+END INTERFACE
+
+INTERFACE DEV_ALLOCATE_DIM
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${ft.name}$_DEV_ALLOCATE_DIM
+#:endfor
+END INTERFACE
+
+INTERFACE DEV_DEALLOCATE
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${ft.name}$_DEV_DEALLOCATE
+#:endfor
+END INTERFACE
+
+#ifdef USE_DEV_MALLOC
+INTERFACE
+  SUBROUTINE DEV_MALLOC (SIZ, PTR) BIND (C, NAME='dev_malloc')
+    IMPORT :: C_PTR, C_SIZE_T
+    INTEGER (C_SIZE_T), VALUE, INTENT(IN) :: SIZ
+    TYPE (C_PTR), INTENT(OUT) :: PTR
+  END SUBROUTINE
+  SUBROUTINE DEV_FREE (PTR) BIND (C, NAME='dev_free')
+    IMPORT :: C_PTR
+    TYPE (C_PTR), VALUE, INTENT(IN) :: PTR
+  END SUBROUTINE
+END INTERFACE
+#endif
+
+CONTAINS
+
+
+#:for ft in fieldTypeList
+
+#ifndef USE_DEV_MALLOC
+
+SUBROUTINE ${ft.name}$_DEV_ALLOCATE_HST (DEV, HST)
+
+${ft.type}$, POINTER :: DEV(${ft.shape}$)
+${ft.type}$, POINTER :: HST(${ft.shape}$)
+
+#if __INTEL_COMPILER == 1800 && __INTEL_COMPILER_UPDATE == 5
+! Bug with Intel 18.0.5.274
+ALLOCATE (DEV (${ ', '.join (map (lambda i: 'LBOUND (HST, ' + str (i) + '):UBOUND (HST,' + str (i) + ')', range (1, ft.rank+1))) }$))
+#else
+ALLOCATE (DEV, MOLD=HST)
+#endif
+
+!$acc enter data create (DEV)
+
+END SUBROUTINE ${ft.name}$_DEV_ALLOCATE_HST
+
+SUBROUTINE ${ft.name}$_DEV_ALLOCATE_DIM (DEV, UBOUNDS, LBOUNDS)
+
+${ft.type}$, POINTER :: DEV(${ft.shape}$)
+INTEGER (KIND=JPIM), INTENT (IN) :: UBOUNDS (${ft.rank}$)
+INTEGER (KIND=JPIM), INTENT (IN), OPTIONAL :: LBOUNDS (${ft.rank}$)
+INTEGER (KIND=JPIM) :: ILBOUNDS (${ft.rank}$)
+
+ILBOUNDS = 1
+IF (PRESENT (LBOUNDS)) ILBOUNDS = LBOUNDS
+
+ALLOCATE (DEV (${ ', '.join (map (lambda i: 'ILBOUNDS (' + str (i) + '):UBOUNDS (' + str (i) + ')', range (1, ft.rank+1))) }$))
+
+!$acc enter data create (DEV)
+
+END SUBROUTINE ${ft.name}$_DEV_ALLOCATE_DIM
+
+SUBROUTINE ${ft.name}$_DEV_DEALLOCATE (DEV)
+
+${ft.type}$, POINTER :: DEV(${ft.shape}$)
+TYPE (C_PTR) :: PTR
+
+IF (ASSOCIATED (DEV)) THEN
+  !$acc exit data delete (DEV)
+  DEALLOCATE (DEV)
+  PTR = C_LOC (DEV (${ ', '.join (map (lambda i: 'LBOUND (DEV, ' + str (i) + ')', range (1, ft.rank+1))) }$))
+  CALL DEV_FREE (PTR)
+  NULLIFY (DEV)
+ENDIF
+
+END SUBROUTINE ${ft.name}$_DEV_DEALLOCATE
+
+#else
+
+SUBROUTINE ${ft.name}$_DEV_ALLOCATE_HST (DEV, HST)
+
+${ft.type}$, POINTER :: DEV(${ft.shape}$)
+${ft.type}$, POINTER :: HST(${ft.shape}$)
+
+INTEGER :: ILBOUNDS (${ft.rank}$)
+INTEGER :: IUBOUNDS (${ft.rank}$)
+
+ILBOUNDS = LBOUND (HST)
+IUBOUNDS = UBOUND (HST)
+
+CALL ${ft.name}$_DEV_ALLOCATE_DIM (DEV, UBOUNDS=IUBOUNDS, LBOUNDS=ILBOUNDS)
+
+END SUBROUTINE ${ft.name}$_DEV_ALLOCATE_HST
+
+SUBROUTINE ${ft.name}$_DEV_ALLOCATE_DIM (DEV, UBOUNDS, LBOUNDS)
+
+${ft.type}$, POINTER :: DEV(${ft.shape}$)
+INTEGER (KIND=JPIM), INTENT (IN) :: UBOUNDS (${ft.rank}$)
+INTEGER (KIND=JPIM), INTENT (IN), OPTIONAL :: LBOUNDS (${ft.rank}$)
+INTEGER (KIND=JPIM) :: ILBOUNDS (${ft.rank}$)
+${ft.type}$, POINTER :: TMP(${ft.shape}$)
+
+TYPE (C_PTR) :: PTR
+INTEGER (C_SIZE_T) :: SIZ
+
+ILBOUNDS = 1
+IF (PRESENT (LBOUNDS)) ILBOUNDS = LBOUNDS
+
+SIZ = KIND (DEV)
+#:for i in range (1, ft.rank+1, 1)
+SIZ = SIZ * INT (UBOUNDS(${i}$)-ILBOUNDS(${i}$)+1, C_SIZE_T)
+#:endfor
+
+CALL DEV_MALLOC (SIZ, PTR)
+CALL C_F_POINTER (PTR, TMP, UBOUNDS-ILBOUNDS+1)
+DEV (${ ', '.join (map (lambda i: 'ILBOUNDS (' + str (i) + '):', range (1, ft.rank+1))) }$) => TMP
+
+!$acc enter data create (DEV)
+
+END SUBROUTINE ${ft.name}$_DEV_ALLOCATE_DIM
+
+SUBROUTINE ${ft.name}$_DEV_DEALLOCATE (DEV)
+
+${ft.type}$, POINTER :: DEV(${ft.shape}$)
+TYPE (C_PTR) :: PTR
+
+IF (ASSOCIATED (DEV)) THEN
+  !$acc exit data delete (DEV)
+  PTR = C_LOC (DEV (${ ', '.join (map (lambda i: 'LBOUND (DEV, ' + str (i) + ')', range (1, ft.rank+1))) }$))
+  CALL DEV_FREE (PTR)
+  NULLIFY (DEV)
+ENDIF
+
+END SUBROUTINE ${ft.name}$_DEV_DEALLOCATE
+
+#endif
+
+#:endfor
+
+END MODULE DEV_ALLOC_MODULE

@@ -1,4 +1,3 @@
-SUBROUTINE WRTPCDF
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,49 @@ SUBROUTINE WRTPCDF
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *WRTPCDF*  - Writing prognostic variables of the one-column surface model
+
+!     Purpose.
+!     --------
+!     Write out prognostic variables in NetCDF format
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTPCDF
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one-column surface model
+
+!     Author.
+!     -------
+!        Bart vd Hurk *KNMI*
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-24
+!        Y. Takaya (ECMWF) Add ocean mixed layer model output 2008-10-07
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE WRTPCDF
 
 !**** *WRTPCDF*  - Writing prognostic variables of the one-column surface model
 

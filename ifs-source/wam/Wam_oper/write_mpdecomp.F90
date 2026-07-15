@@ -75,11 +75,12 @@
       USE YOWCOUP  , ONLY : LWCOU
       USE YOWMAP   , ONLY : BLK2GLO  ,                                  &
      &            IPER     ,IRGG     ,AMOWEP   ,AMOSOP   ,AMOEAP   ,    &
-     &            AMONOP   ,XDELLA   ,XDELLO   ,ZDELLO   ,LLBOUND
+     &            AMONOP   ,XDELLA   ,XDELLO   ,ZDELLO   ,              &
+     &            NGX      ,NGY      ,NIBLO
       USE YOWMPP   , ONLY : IRANK    ,NPROC    ,NPREVIOUS,NNEXT    ,    &
      &            MPMAXLENGTH,KTAG     ,NPRECR   ,                      &
      &            NPRECI
-      USE YOWPARAM , ONLY : NGX      ,NGY      ,NIBLO    ,LL1D
+      USE YOWPARAM , ONLY : LL1D
       USE YOWSHAL  , ONLY : WVENVI 
       USE YOWSPEC  , ONLY : NSTART   ,NEND     ,KLENTOP  ,KLENBOT  ,    &
      &            NFROMPE  ,NTOPE    ,NIJSTART ,IJTOPE
@@ -365,22 +366,22 @@
 
       DO IPROC=IPROC_S,IPROC_E
         DO IJ=NSTART(IPROC),NEND(IPROC)
-          IX = BLK2GLO(IJ)%IXLG
-          JSN= BLK2GLO(IJ)%KXLT
+          IX = BLK2GLO%IXLG(IJ)
+          JSN= BLK2GLO%KXLT(IJ)
           XLON=AMOWEP+(IX-1)*ZDELLO(JSN)
           XLAT=AMOSOP + (JSN-1)*XDELLA
           ISYMBOL=mod(IPROC,9)
           IF(ISYMBOL.EQ.0) ISYMBOL=9
 
-          IF(LLALLPTS .OR. LLBOUND(IJ) ) THEN
+          IF(LLALLPTS) THEN
 
 !!!1 which frequency to output  ???
           M=3
 !!!!
             WRITE(IUOUT,'(2(1X,F8.3),1X,I4)') XLON,XLAT,isymbol
-            IF (WVENVI(IJ,1)%DEPTH < 999.0_JWRB) THEN
+            IF (WVENVI%DEPTH(IJ,1) < 999.0_JWRB) THEN
               WRITE(IUDPT,'(2(1X,F8.3),1X,I4)')                         &
-     &              XLON,XLAT,NINT(WVENVI(IJ,1)%DEPTH)
+     &              XLON,XLAT,NINT(WVENVI%DEPTH(IJ,1))
               WRITE(22,'(2(1X,F8.3),1X,I4)')                            &
      &              XLON,XLAT-0.25*XDELLA,NINT(1000*OBSLAT(IJ,M,1))
               WRITE(23,'(2(1X,F8.3),1X,I4)')                            &
@@ -440,7 +441,7 @@
      &          ( 46.0.le.xlon .and. xlon.le.55.0  .and. 36.0.le.xlat .and. xlat.le.47.0 ) .or. &
      &          (268.0.le.xlon .and. xlon.le.284.0 .and. 41.0.le.xlat .and. xlat.le.49.0 ) ) then
 
-              WRITE(IUSPT,'(2(1X,F8.3),1X,3(1X,I4))') XLON,XLAT,IX,JSN,NINT(WVENVI(IJ,1)%DEPTH)
+              WRITE(IUSPT,'(2(1X,F8.3),1X,3(1X,I4))') XLON,XLAT,IX,JSN,NINT(WVENVI%DEPTH(IJ,1))
             ENDIF
 
           ENDIF
@@ -481,8 +482,8 @@
           DO IH=1,NTOPE(IPROC)
 
           IJ = IJTOPE(IH,IPROC)
-          IX = BLK2GLO(IJ)%IXLG
-          JSN= BLK2GLO(IJ)%KXLT
+          IX = BLK2GLO%IXLG(IJ)
+          JSN= BLK2GLO%KXLT(IJ)
           XLON=AMOWEP+(IX-1)*ZDELLO(JSN)
           XLAT=AMOSOP + (JSN-1)*XDELLA
           ISYMBOL=MOD(IPROC,9)

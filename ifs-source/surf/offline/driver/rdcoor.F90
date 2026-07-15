@@ -1,8 +1,3 @@
-SUBROUTINE RDCOOR(NCID,LOPLEFT)
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,    JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-USE MPL_MODULE
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -10,6 +5,56 @@ USE MPL_MODULE
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *RDCOOR* - Reading netCDF file containing point coordinates
+
+!     Purpose.
+!     --------
+!        initialization surface coordinates
+!        writing coordinates to output files
+!        reading the catchment mask
+
+!**   Interface.
+!     ----------
+!        *CALL* *RDCOOR*
+
+!     Explicit arguments :
+!     --------------------
+!     INPUT
+!        NCID      integer         NETCDF FILE ID
+!         LOPLEFT: FLAG INDICATING WHETHER MORE POINTS NEED TO BE DONE
+
+!     Implicit arguments :
+!     --------------------
+
+
+!     Method.
+!     -------
+!       Opens a file called 'surfclim' to read relevant fields
+
+
+!     Externals.
+!     ----------
+!       NETCDF-utilities
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk, KNMI
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-13
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE RDCOOR(NCID,LOPLEFT)
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,    JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+USE MPL_MODULE
+#ifdef DOC
 
 !**** *RDCOOR* - Reading netCDF file containing point coordinates
 

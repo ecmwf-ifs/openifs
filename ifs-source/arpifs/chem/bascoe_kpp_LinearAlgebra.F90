@@ -19,8 +19,28 @@
 !     With important contributions from:
 !        M. Damian, Villanova University, USA
 !        R. Sander, Max-Planck Institute for Chemistry, Mainz, Germany
+!     Variable naming changed to ECMWF conventions by V. Huijnen
 ! 
-! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~å
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+!MODULE BASCOE_KPP_LinearAlgebra
+
+!  USE cifs_kpp_Parameters
+!  USE cifs_kpp_JacobianSP
+
+!  IMPLICIT NONE
+
+!CONTAINS
+
+
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+! 
+! SPARSE_UTIL - SPARSE utility functions
+!   Arguments :
+! 
+! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 SUBROUTINE BASCOE_KPP_KppDecomp( PJVS, KERR )
@@ -30,15 +50,15 @@ SUBROUTINE BASCOE_KPP_KppDecomp( PJVS, KERR )
 
   USE BASCOE_KPP_Parameters, only: LU_NONZERO
 !  USE BASCOE_KPP_JacobianSP
-  USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
-  USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+  USE PARKIND1, ONLY : JPIM, JPRB
+  USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
 
   IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(OUT)  :: KERR
-      REAL(kind=JPRD), INTENT(INOUT) :: PJVS(LU_NONZERO)
+      REAL(kind=JPRB), INTENT(INOUT) :: PJVS(LU_NONZERO)
 !Local variables
-      REAL(KIND=JPRD)     :: Za
+      REAL(KIND=JPRB)     :: Za
 
       REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #ifdef WITH_COMPO_DR_HOOK
@@ -1019,618 +1039,6 @@ END SUBROUTINE BASCOE_KPP_KppDecomp
 
 
 
-!!$$ commented out because not called; if needed, it should be put either in a module, a CONTAINS statement, or a standalone file 
-!!$$ ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!$$ SUBROUTINE BASCOE_KPP_KppDecomp_ORIG( PJVS, KERR )
-!!$$ ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!$$ !        Sparse LU factorization
-!!$$ ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!$$ 
-!!$$   USE BASCOE_KPP_Parameters, ONLY: LU_NONZERO, NVAR
-!!$$   USE BASCOE_KPP_JacobianSP, ONLY:LU_DIAG, LU_CROW, LU_ICOL
-!!$$   USE PARKIND1, ONLY : JPIM, JPRB
-!!$$   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-!!$$  
-!!$$   IMPLICIT NONE
-!!$$ 
-!!$$ 
-!!$$   INTEGER(KIND=JPIM), INTENT(OUT) :: KERR
-!!$$   REAL(KIND=JPRB),INTENT(INOUT) :: PJVS(LU_NONZERO)
-!!$$   ! Local
-!!$$   REAL(KIND=JPRB)     :: ZW(NVAR), Za
-!!$$   INTEGER(KIND=JPIM)  :: Ik, Ikk, j, jj
-!!$$   REAL(KIND=JPHOOK)     :: ZHOOK_HANDLE
-!!$$ 
-!!$$   IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_KPPDECOMP_ORIG',0,ZHOOK_HANDLE )
-!!$$ 
-!!$$   Za = 0. ! mz_rs_20050606
-!!$$   KERR = 0
-!!$$   DO Ik=1,NVAR
-!!$$     ! mz_rs_20050606: don't check if real value == 0
-!!$$     ! IF ( PJVS( LU_DIAG(Ik) ) == 0. ) THEN
-!!$$     IF ( ABS(PJVS(LU_DIAG(Ik))) < TINY(Za) ) THEN
-!!$$         KERR = Ik
-!!$$         IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_KPPDECOMP_ORIG',1,ZHOOK_HANDLE )
-!!$$         RETURN
-!!$$     ENDIF
-!!$$     DO Ikk = LU_CROW(Ik), LU_CROW(Ik+1)-1
-!!$$       ZW( LU_ICOL(Ikk) ) = PJVS(Ikk)
-!!$$     ENDDO
-!!$$     DO Ikk = LU_CROW(Ik), LU_DIAG(Ik)-1
-!!$$         j = LU_ICOL(Ikk)
-!!$$         Za = -ZW(j) / PJVS( LU_DIAG(j) )
-!!$$         ZW(j) = -Za
-!!$$         DO jj = LU_DIAG(j)+1, LU_CROW(j+1)-1
-!!$$           ZW( LU_ICOL(jj) ) = ZW( LU_ICOL(jj) ) + Za*PJVS(jj)
-!!$$         ENDDO
-!!$$      ENDDO
-!!$$      DO Ikk = LU_CROW(Ik), LU_CROW(Ik+1)-1
-!!$$         PJVS(Ikk) = ZW( LU_ICOL(Ikk) )
-!!$$      ENDDO
-!!$$   ENDDO
-!!$$       
-!!$$   IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_KPPDECOMP_ORIG',1,ZHOOK_HANDLE )
-!!$$ END SUBROUTINE BASCOE_KPP_KppDecomp_ORIG
-
-
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE BASCOE_KPP_KppDecompCmplx( PJVS, IER )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !        Sparse LU factorization, complex
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters, ONLY : LU_NONZERO, NVAR
-!    USE BASCOE_KPP_JacobianSP
-!    USE PARKIND1  , ONLY : JPIM     ,JPRB
-!    USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-!  
-!    IMPLICIT NONE
-!  
-!    INTEGER(KIND=JPIM),INTENT(OUT) :: IER
-!    DOUBLE COMPLEX,INTENT(INOUT) :: PJVS(LU_NONZERO)
-!    ! Local:
-!    DOUBLE COMPLEX ZW(NVAR), Za
-!    REAL(KIND=JPRB)   :: b = 0.0
-!    INTEGER(KIND=JPIM):: k, kk, j, jj
-!  
-!    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
-!    IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_KPPDECOMPCmplx',0,ZHOOK_HANDLE )
-!    IER = 0
-!    DO k=1,NVAR
-!      IF ( ABS(PJVS(LU_DIAG(k))) < TINY(b) ) THEN
-!    	IER = k
-!    	RETURN
-!      ENDIF
-!      DO kk = LU_CROW(k), LU_CROW(k+1)-1
-!    	  ZW( LU_ICOL(kk) ) = PJVS(kk)
-!      ENDDO
-!      DO kk = LU_CROW(k), LU_DIAG(k)-1
-!    	j = LU_ICOL(kk)
-!    	Za = -ZW(j) / PJVS( LU_DIAG(j) )
-!    	ZW(j) = -Za
-!    	DO jj = LU_DIAG(j)+1, LU_CROW(j+1)-1
-!    	   ZW( LU_ICOL(jj) ) = ZW( LU_ICOL(jj) ) + Za*PJVS(jj)
-!    	ENDDO
-!       ENDDO
-!       DO kk = LU_CROW(k), LU_CROW(k+1)-1
-!    	PJVS(kk) = ZW( LU_ICOL(kk) )
-!       ENDDO
-!    ENDDO
-!        
-!    IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_KPPDECOMPCmplx',1,ZHOOK_HANDLE )
-!  END SUBROUTINE BASCOE_KPP_KppDecompCmplx
-!  
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppDecompCmplxR( PJVSR, PJVSI, IER )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !    Sparse LU factorization, complex
-!  !   (Real and Imaginary parts are used instead of complex data type)     
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER       :: IER
-!        REAL(KIND=JPRB) :: PJVSR(LU_NONZERO), PJVSI(LU_NONZERO) 
-!        REAL(KIND=JPRB) :: WR(NVAR), WI(NVAR), ar, ai, den
-!        INTEGER       :: k, kk, j, jj
-!  
-!        IER = 0
-!        ar  = 0.0
-!        DO k=1,NVAR
-!          IF (  ( ABS(PJVSR(LU_DIAG(k))) < TINY(ar) ) .AND. &
-!                ( ABS(PJVSI(LU_DIAG(k))) < TINY(ar) ) )  THEN
-!              IER = k
-!              RETURN
-!          ENDIF
-!          DO kk = LU_CROW(k), LU_CROW(k+1)-1
-!                WR( LU_ICOL(kk) ) = PJVSR(kk)
-!                WI( LU_ICOL(kk) ) = PJVSI(kk)
-!          ENDDO
-!          DO kk = LU_CROW(k), LU_DIAG(k)-1
-!              j = LU_ICOL(kk)
-!              den = PJVSR(LU_DIAG(j))**2 + PJVSI(LU_DIAG(j))**2
-!              ar = -(WR(j)*PJVSR(LU_DIAG(j)) + WI(j)*PJVSI(LU_DIAG(j)))/den
-!              ai = -(WI(j)*PJVSR(LU_DIAG(j)) - WR(j)*PJVSI(LU_DIAG(j)))/den
-!              WR(j) = -ar
-!              WI(j) = -ai
-!              DO jj = LU_DIAG(j)+1, LU_CROW(j+1)-1
-!                 WR( LU_ICOL(jj) ) = WR( LU_ICOL(jj) ) + ar*PJVSR(jj) - ai*PJVSI(jj)
-!                 WI( LU_ICOL(jj) ) = WI( LU_ICOL(jj) ) + ar*PJVSI(jj) + ai*PJVSR(jj)
-!              ENDDO
-!           ENDDO
-!           DO kk = LU_CROW(k), LU_CROW(k+1)-1
-!              PJVSR(kk) = WR( LU_ICOL(kk) )
-!              PJVSI(kk) = WI( LU_ICOL(kk) )
-!           ENDDO
-!        ENDDO
-!  
-!  END SUBROUTINE KppDecompCmplxR
-!  
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppSolveIndirect( PJVS, X )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !        Sparse solve subroutine using indirect addressing
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER  :: i, j
-!        REAL(KIND=JPRB) :: PJVS(LU_NONZERO), X(NVAR), sum
-!  
-!        DO i=1,NVAR
-!           DO j = LU_CROW(i), LU_DIAG(i)-1 
-!               X(i) = X(i) - PJVS(j)*X(LU_ICOL(j));
-!           ENDDO  
-!        ENDDO
-!  
-!        DO i=NVAR,1,-1
-!          sum = X(i);
-!          DO j = LU_DIAG(i)+1, LU_CROW(i+1)-1
-!            sum = sum - PJVS(j)*X(LU_ICOL(j));
-!          ENDDO
-!          X(i) = sum/JVS(LU_DIAG(i));
-!        ENDDO
-!        
-!  END SUBROUTINE KppSolveIndirect
-!  
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppSolveTRIndirect( PJVS, X )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !        Complex sparse solve transpose subroutine using indirect addressing
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER       :: i, j
-!        REAL(KIND=JPRB) :: PJVS(LU_NONZERO), X(NVAR)
-!  
-!        DO i=1,NVAR
-!          X(i) = X(i)/JVS(LU_DIAG(i))
-!  	! subtract all nonzero elements in row i of PJVS from X
-!          DO j=LU_DIAG(i)+1,LU_CROW(i+1)-1
-!  	  X(LU_ICOL(j)) = X(LU_ICOL(j))-JVS(j)*X(i)
-!  	ENDDO
-!        ENDDO
-!  
-!        DO i=NVAR, 1, -1
-!  	! subtract all nonzero elements in row i of PJVS from X
-!          DO j=LU_CROW(i),LU_DIAG(i)-1
-!  	  X(LU_ICOL(j)) = X(LU_ICOL(j))-JVS(j)*X(i)
-!  	ENDDO
-!        ENDDO
-!        
-!  END SUBROUTINE KppSolveTRIndirect
-!  
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppSolveCmplx( PJVS, X )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !        Complex sparse solve subroutine using indirect addressing
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER        :: i, j
-!        DOUBLE COMPLEX :: PJVS(LU_NONZERO), X(NVAR), sum
-!  
-!        DO i=1,NVAR
-!           DO j = LU_CROW(i), LU_DIAG(i)-1 
-!               X(i) = X(i) - PJVS(j)*X(LU_ICOL(j));
-!           ENDDO  
-!        ENDDO
-!  
-!        DO i=NVAR,1,-1
-!          sum = X(i);
-!          DO j = LU_DIAG(i)+1, LU_CROW(i+1)-1
-!            sum = sum - PJVS(j)*X(LU_ICOL(j));
-!          ENDDO
-!          X(i) = sum/JVS(LU_DIAG(i));
-!        ENDDO
-!        
-!  END SUBROUTINE KppSolveCmplx
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppSolveCmplxR( PJVSR, PJVSI, XR, XI )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !   Complex sparse solve subroutine using indirect addressing
-!  !   (Real and Imaginary parts are used instead of complex data type)     
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER       ::  i, j
-!        REAL(KIND=JPRB) ::  PJVSR(LU_NONZERO), PJVSI(LU_NONZERO), XR(NVAR), XI(NVAR), sumr, sumi, den
-!  
-!        DO i=1,NVAR
-!           DO j = LU_CROW(i), LU_DIAG(i)-1 
-!               XR(i) = XR(i) - (PJVSR(j)*XR(LU_ICOL(j)) - PJVSI(j)*XI(LU_ICOL(j)))
-!               XI(i) = XI(i) - (PJVSR(j)*XI(LU_ICOL(j)) + PJVSI(j)*XR(LU_ICOL(j)))
-!           ENDDO  
-!        ENDDO
-!  
-!        DO i=NVAR,1,-1
-!          sumr = XR(i); sumi = XI(i)
-!          DO j = LU_DIAG(i)+1, LU_CROW(i+1)-1
-!              sumr = sumr - (PJVSR(j)*XR(LU_ICOL(j)) - PJVSI(j)*XI(LU_ICOL(j)))
-!              sumi = sumi - (PJVSR(j)*XI(LU_ICOL(j)) + PJVSI(j)*XR(LU_ICOL(j)))
-!          ENDDO
-!          den   = PJVSR(LU_DIAG(i))**2 + PJVSI(LU_DIAG(i))**2
-!          XR(i) = (sumr*PJVSR(LU_DIAG(i)) + sumi*PJVSI(LU_DIAG(i)))/den
-!          XI(i) = (sumi*PJVSR(LU_DIAG(i)) - sumr*PJVSI(LU_DIAG(i)))/den
-!        ENDDO
-!        
-!  END SUBROUTINE KppSolveCmplxR
-!  
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppSolveTRCmplx( PJVS, X )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !        Complex sparse solve transpose subroutine using indirect addressing
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER        :: i, j
-!        DOUBLE COMPLEX :: PJVS(LU_NONZERO), X(NVAR)
-!  
-!        DO i=1,NVAR
-!          X(i) = X(i)/JVS(LU_DIAG(i))
-!  	! subtract all nonzero elements in row i of PJVS from X
-!          DO j=LU_DIAG(i)+1,LU_CROW(i+1)-1
-!  	  X(LU_ICOL(j)) = X(LU_ICOL(j))-JVS(j)*X(i)
-!  	ENDDO
-!        ENDDO
-!  
-!        DO i=NVAR, 1, -1
-!  	! subtract all nonzero elements in row i of PJVS from X
-!          DO j=LU_CROW(i),LU_DIAG(i)-1
-!  	  X(LU_ICOL(j)) = X(LU_ICOL(j))-JVS(j)*X(i)
-!  	ENDDO
-!        ENDDO
-!        
-!  END SUBROUTINE KppSolveTRCmplx
-!  
-!  
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  SUBROUTINE KppSolveTRCmplxR( PJVSR, PJVSI, XR, XI )
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  !   Complex sparse solve transpose subroutine using indirect addressing
-!  !   (Real and Imaginary parts are used instead of complex data type)     
-!  ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!  
-!    USE BASCOE_KPP_Parameters
-!    USE BASCOE_KPP_JacobianSP
-!  
-!        INTEGER       ::  i, j
-!        REAL(KIND=JPRB) ::  PJVSR(LU_NONZERO), PJVSI(LU_NONZERO), XR(NVAR), XI(NVAR), den
-!  
-!        DO i=1,NVAR
-!          den   = PJVSR(LU_DIAG(i))**2 + PJVSI(LU_DIAG(i))**2
-!          XR(i) = (XR(i)*PJVSR(LU_DIAG(i)) + XI(i)*PJVSI(LU_DIAG(i)))/den
-!          XI(i) = (XI(i)*PJVSR(LU_DIAG(i)) - XR(i)*PJVSI(LU_DIAG(i)))/den
-!  	! subtract all nonzero elements in row i of PJVS from X
-!          DO j=LU_DIAG(i)+1,LU_CROW(i+1)-1
-!  	  XR(LU_ICOL(j)) = XR(LU_ICOL(j))-(PJVSR(j)*XR(i) - PJVSI(j)*XI(i))
-!  	  XI(LU_ICOL(j)) = XI(LU_ICOL(j))-(PJVSI(j)*XR(i) + PJVSR(j)*XI(i))
-!  	ENDDO
-!        ENDDO
-!  
-!        DO i=NVAR, 1, -1
-!  	! subtract all nonzero elements in row i of PJVS from X
-!          DO j=LU_CROW(i),LU_DIAG(i)-1
-!  	  XR(LU_ICOL(j)) = XR(LU_ICOL(j))-(PJVSR(j)*XR(i) - PJVSI(j)*XI(i))
-!  	  XI(LU_ICOL(j)) = XI(LU_ICOL(j))-(PJVSI(j)*XR(i) + PJVSR(j)*XI(i))
-!  	ENDDO
-!        ENDDO
-!        
-!  END SUBROUTINE KppSolveTRCmplxR
-!  
-!  
-!
-! Next few commented subroutines perform sparse big linear algebra
-!
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!SUBROUTINE KppDecompBig( PJVS, IP, IER )
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!        Sparse LU factorization
-!!        for the Runge Kutta (3n)x(3n) linear system
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!
-!  USE BASCOE_KPP_Parameters
-!  USE BASCOE_KPP_JacobianSP
-!
-!      INTEGER  :: IP3(3), IER, IP(3,NVAR)
-!      REAL(KIND=JPRB) :: PJVS(3,3,LU_NONZERO), W(3,3,NVAR), a(3,3), E(3,3)
-!      INTEGER  :: k, kk, j, jj
-!
-!      Za = 0.0d0
-!      IER = 0
-!      DO k=1,NVAR
-!        DO kk = LU_CROW(k), LU_CROW(k+1)-1
-!              W( 1:3,1:3,LU_ICOL(kk) ) = PJVS(1:3,1:3,kk)
-!        ENDDO
-!        DO kk = LU_CROW(k), LU_DIAG(k)-1
-!            j = LU_ICOL(kk)
-!            E(1:3,1:3) = PJVS( 1:3,1:3,LU_DIAG(j) )
-!            ! CALL DGETRF(3,3,E,3,IP3,IER) 
-!            CALL FAC3(E,IP3,IER)
-!            IF ( IER /= 0 )  RETURN
-!            ! Za = W(j) / PJVS( LU_DIAG(j) )
-!            a(1:3,1:3) = W( 1:3,1:3,j )
-!            ! CALL DGETRS ('N',3,3,E,3,IP3,a,3,IER) 
-!            CALL SOL3('N',E,IP3,a(1,1))
-!            CALL SOL3('N',E,IP3,a(1,2))
-!            CALL SOL3('N',E,IP3,a(1,3))
-!            W(1:3,1:3,j) = a(1:3,1:3)
-!            DO jj = LU_DIAG(j)+1, LU_CROW(j+1)-1
-!               W( 1:3,1:3,LU_ICOL(jj) ) = W( 1:3,1:3,LU_ICOL(jj) ) &
-!                        - MATMUL( a(1:3,1:3) , PJVS(1:3,1:3,jj) )
-!            ENDDO
-!         ENDDO
-!         DO kk = LU_CROW(k), LU_CROW(k+1)-1
-!            PJVS(1:3,1:3,kk) = W( 1:3,1:3,LU_ICOL(kk) )
-!         ENDDO
-!      ENDDO
-!
-!      DO k=1,NVAR
-!         ! CALL WGEFA(PJVS(1,1,LU_DIAG(k)),3,3,IP(1,k),IER)
-!         ! CALL DGETRF(3,3,JVS(1,1,LU_DIAG(k)),3,IP(1,k),IER)
-!         CALL FAC3(PJVS(1,1,LU_DIAG(k)),IP(1,k),IER)
-!         IF ( IER /= 0 )  RETURN
-!      ENDDO 
-!      
-!END SUBROUTINE KppDecompBig
-!
-!
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!SUBROUTINE KppSolveBig( PJVS, IP, X )
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!        Sparse solve subroutine using indirect addressing
-!!        for the Runge Kutta (3n)x(3n) linear system
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!
-!  USE BASCOE_KPP_Parameters
-!  USE BASCOE_KPP_JacobianSP
-!
-!      INTEGER  :: i, j, k, m, IP3(3), IP(3,NVAR), IER
-!      REAL(KIND=JPRB) :: PJVS(3,3,LU_NONZERO), X(3,NVAR), sum(3)
-!
-!      DO i=1,NVAR
-!        DO j = LU_CROW(i), LU_DIAG(i)-1 
-!          !X(1:3,i) = X(1:3,i) - MATMUL(PJVS(1:3,1:3,j),X(1:3,LU_ICOL(j)));
-!          DO k=1,3
-!            DO m=1,3
-!	       X(k,i) = X(k,i) - PJVS(k,m,j)*X(m,LU_ICOL(j))
-!            ENDDO
-!          ENDDO
-!        ENDDO  
-!      ENDDO
-!
-!      DO i=NVAR,1,-1
-!        sum(1:3) = X(1:3,i);
-!        DO j = LU_DIAG(i)+1, LU_CROW(i+1)-1
-!          !sum(1:3) = sum(1:3) - MATMUL(PJVS(1:3,1:3,j),X(1:3,LU_ICOL(j)));
-!          DO k=1,3
-!            DO m=1,3
-!	       sum(k) = sum(k) - PJVS(k,m,j)*X(m,LU_ICOL(j))
-!            ENDDO
-!          ENDDO
-!        ENDDO
-!        ! X(i) = sum/JVS(LU_DIAG(i));
-!        ! CALL DGETRS ('N',3,1,JVS(1:3,1:3,LU_DIAG(i)),3,IP(1,i),sum,3,0) 
-!        ! CALL WGESL('N',JVS(1,1,LU_DIAG(i)),3,3,IP(1,i),sum)
-!        CALL SOL3('N',JVS(1,1,LU_DIAG(i)),IP(1,i),sum)
-!        X(1:3,i) = sum(1:3)
-!      ENDDO
-!      
-!END SUBROUTINE KppSolveBig
-!
-!
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!SUBROUTINE KppSolveBigTR( PJVS, IP, X )
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!        Big sparse transpose solve using indirect addressing
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!
-!  USE BASCOE_KPP_Parameters
-!  USE BASCOE_KPP_JacobianSP
-!
-!      INTEGER       :: i, j, k, m, IP(3,NVAR)
-!      REAL(KIND=JPRB) :: PJVS(3,3,LU_NONZERO), X(3,NVAR)
-!
-!      DO i=1,NVAR
-!        ! X(i) = X(i)/JVS(LU_DIAG(i))
-!        CALL SOL3('T',JVS(1,1,LU_DIAG(i)),IP(1,i),X(1,i))
-!        DO j=LU_DIAG(i)+1,LU_CROW(i+1)-1
-!	  !X(1:3,LU_ICOL(j)) = X(1:3,LU_ICOL(j)) &
-!          !    - MATMUL( TRANSPOSE(PJVS(1:3,1:3,j)), X(1:3,i) )
-!          DO k=1,3
-!            DO m=1,3
-!	       X(k,LU_ICOL(j)) = X(k,LU_ICOL(j)) - PJVS(m,k,j)*X(m,i)
-!            ENDDO
-!          ENDDO
-!	ENDDO
-!      ENDDO
-!
-!      DO i=NVAR, 1, -1
-!        DO j=LU_CROW(i),LU_DIAG(i)-1
-!	  !X(1:3,LU_ICOL(j)) = X(1:3,LU_ICOL(j)) &
-!          !   - MATMUL( TRANSPOSE(PJVS(1:3,1:3,j)), X(1:3,i) )
-!          DO k=1,3
-!            DO m=1,3
-!	       X(k,LU_ICOL(j)) = X(k,LU_ICOL(j)) - PJVS(m,k,j)*X(m,i)
-!            ENDDO
-!          ENDDO
-!	ENDDO
-!      ENDDO
-!      
-!END SUBROUTINE KppSolveBigTR
-!
-!
-!
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!SUBROUTINE FAC3(A,IPVT,INFO)
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!     FAC3 FACTORS THE MATRIX Za (3,3) BY
-!!           GAUSS ELIMINATION WITH PARTIAL PIVOTING
-!!     LINPACK - LIKE 
-!!
-!!     Remove comments to perform pivoting
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!
-!      REAL(KIND=JPRB) :: A(3,3)
-!      INTEGER       :: IPVT(3),INFO
-!!      INTEGER       :: L
-!!      REAL(KIND=JPRB) :: t, dmax, da, TMP(3)
-!      REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0, ONE = 1.0
-!
-!      info = 0
-!!      t = TINY(da)
-!!      
-!!      da = ABS(A(1,1)); L = 1
-!!      IF ( ABS(A(2,1))>da ) THEN
-!!        da = ABS(A(2,1)); L = 2
-!!        IF ( ABS(A(3,1))>da ) THEN
-!!          L = 3
-!!        ENDIF  
-!!      ENDIF  
-!!      IPVT(1)  = L
-!!      IF (L /=1 ) THEN
-!!         TMP(1:3) = A(L,1:3)
-!!         A(L,1:3) = A(1,1:3)
-!!         A(1,1:3) = TMP(1:3)
-!!      ENDIF
-!!      IF (ABS(A(1,1)) < t) THEN
-!!         info = 1
-!!         return
-!!      ENDIF   
-!!
-!      A(2,1) = A(2,1)/A(1,1)
-!      A(2,2) = A(2,2) - A(2,1)*A(1,2)
-!      A(2,3) = A(2,3) - A(2,1)*A(1,3)
-!      A(3,1) = A(3,1)/A(1,1)
-!      A(3,2) = A(3,2) - A(3,1)*A(1,2)
-!      A(3,3) = A(3,3) - A(3,1)*A(1,3)
-!      
-!!      IPVT(2)  = 2
-!!      IF (ABS(A(3,2))>ABS(A(2,2))) THEN
-!!         IPVT(2)  = 3
-!!         TMP(2:3) = A(3,2:3)
-!!         A(3,2:3) = A(2,2:3)
-!!         A(2,2:3) = TMP(2:3)
-!!      ENDIF
-!!      IF (ABS(A(2,2)) < t) THEN
-!!         info = 1
-!!         return
-!!      ENDIF   
-!!      
-!      A(3,2)   = A(3,2)/A(2,2)
-!      A(3,3)   = A(3,3) - A(3,2)*A(2,3)
-!      IPVT(3)  = 3
-!      
-!END SUBROUTINE FAC3
-!
-!
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!SUBROUTINE SOL3(Trans,A,IPVT,b)
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!!     SOL3 solves the system 3x3
-!!     Za * x = b  or  trans(a) * x = b
-!!     using the factors computed by WGEFA.
-!!
-!!     Trans      = 'N'   to solve  A*x = b ,
-!!                = 'T'   to solve  transpose(A)*x = b
-!!     LINPACK - LIKE 
-!!
-!!     Remove comments to use pivoting
-!! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-!
-!      CHARACTER     :: Trans
-!      REAL(KIND=JPRB) :: a(3,3),b(3)
-!      INTEGER       :: IPVT(3)
-!!      INTEGER       :: L
-!!      REAL(KIND=JPRB) :: TMP
-!      
-!      SELECT CASE (Trans)
-!
-!      CASE ('n','N')  !  Solve  Za * x = b
-!
-!!     Solve  L*y = b
-!!         L = IPVT(1)
-!!         IF (L /= 1) THEN
-!!            TMP = B(1); B(1) = B(L); B(L) = TMP
-!!         ENDIF
-!         b(2) = b(2)-A(2,1)*b(1)
-!         b(3) = b(3)-A(3,1)*b(1)
-!         
-!!         L = IPVT(2)
-!!         IF (L /= 2) THEN
-!!            TMP = B(2); B(2) = B(L); B(L) = TMP
-!!         ENDIF
-!         b(3) = b(3)-A(3,2)*b(2)
-!
-!!     Solve  U*x = y
-!         b(3) = b(3)/A(3,3)
-!         b(2) = (b(2)-A(2,3)*b(3))/A(2,2)
-!         b(1) = (b(1)-A(1,3)*b(3)-A(1,2)*b(2))/A(1,1)
-!      
-!      
-!      CASE ('t','T')  !  Solve transpose(A) * x = b
-!
-!!      Solve transpose(U)*y = b
-!         b(1) = b(1)/A(1,1)
-!         b(2) = (b(2)-A(1,2)*b(1))/A(2,2)
-!         b(3) = (b(3)-A(1,3)*b(1)-A(2,3)*b(2))/A(3,3)
-!
-!!      Solve transpose(L)*x = y
-!         b(2) = b(2)-A(3,2)*b(3)
-!!         L = ipvt(2)
-!!         IF (L /= 2) THEN
-!!            TMP = B(2); B(2) = B(L); B(L) = TMP
-!!         ENDIF
-!         b(1) = b(1)-A(3,1)*b(3)-A(2,1)*b(2)
-!!         L = ipvt(1)
-!!         IF (L /= 1) THEN
-!!            TMP = B(1); B(1) = B(L); B(L) = TMP
-!!         ENDIF
-!   
-!      END SELECT
-!
-!END SUBROUTINE SOL3
-
-! End of SPARSE_UTIL function
-! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ! 
 ! BASCOE_KPP_KPPSOLVE - sparse back substitution
@@ -1642,7 +1050,7 @@ END SUBROUTINE BASCOE_KPP_KppDecomp
 
 SUBROUTINE BASCOE_KPP_KPPSOLVE ( PJVS, PX )
 
-  USE PARKIND1, ONLY : JPIM, JPRB, JPRD
+  USE PARKIND1, ONLY : JPIM, JPRB
   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
 
   USE BASCOE_KPP_PARAMETERS,  ONLY : NVAR, LU_NONZERO
@@ -1650,9 +1058,9 @@ SUBROUTINE BASCOE_KPP_KPPSOLVE ( PJVS, PX )
   IMPLICIT NONE
 
 ! PJVS - sparse Jacobian of variables
-  REAL(KIND=JPRD), INTENT(IN) :: PJVS(LU_NONZERO)
+  REAL(KIND=JPRB), INTENT(IN) :: PJVS(LU_NONZERO)
 ! PX - Vector for variables
-  REAL(KIND=JPRD), INTENT(OUT) :: PX(NVAR)
+  REAL(KIND=JPRB), INTENT(OUT) :: PX(NVAR)
 
 #ifdef WITH_COMPO_DR_HOOK
   REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE 
@@ -1839,7 +1247,7 @@ END SUBROUTINE BASCOE_KPP_KPPSOLVE
 
 SUBROUTINE BASCOE_KPP_KPPSOLVETR ( PJVS, PX, PXX )
 
-  USE PARKIND1, ONLY : JPIM, JPRB, JPRD
+  USE PARKIND1, ONLY : JPIM, JPRB
   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
 
   USE BASCOE_KPP_PARAMETERS,  ONLY : NVAR, LU_NONZERO
@@ -1847,11 +1255,11 @@ SUBROUTINE BASCOE_KPP_KPPSOLVETR ( PJVS, PX, PXX )
   IMPLICIT NONE
 
 ! PJVS - sparse Jacobian of variables
-  REAL(KIND=JPRD), INTENT(IN) :: PJVS(LU_NONZERO)
+  REAL(KIND=JPRB), INTENT(IN) :: PJVS(LU_NONZERO)
 ! PX - Vector for variables
-  REAL(KIND=JPRD), INTENT(IN) :: PX(NVAR)
+  REAL(KIND=JPRB), INTENT(IN) :: PX(NVAR)
 ! PXX - Vector for output variables
-  REAL(KIND=JPRD), INTENT(OUT) :: PXX(NVAR)
+  REAL(KIND=JPRB), INTENT(OUT) :: PXX(NVAR)
 
   REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE 
 
@@ -2088,14 +1496,14 @@ END SUBROUTINE BASCOE_KPP_KPPSOLVETR
 !         CALL  SCOPY(N,X,1,Y,1)   or   CALL  DCOPY(N,X,1,Y,1)
 !--------------------------------------------------------------
 !     USE BASCOE_KPP_Precision
-      USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
-      USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1, ONLY : JPIM, JPRB
+      USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
      
       IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(IN)    :: KincX,KincY,KN
-      REAL(KIND=JPRD), INTENT(IN)  :: PX(KN)
-      REAL(KIND=JPRD), INTENT(OUT) :: PY(KN)
+      REAL(KIND=JPRB), INTENT(IN)  :: PX(KN)
+      REAL(KIND=JPRB), INTENT(OUT) :: PY(KN)
       REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
       INTEGER(KIND=JPIM)    :: i,IM,IMP1
 
@@ -2149,14 +1557,14 @@ END SUBROUTINE BASCOE_KPP_KPPSOLVETR
 !     replace this by the function from the optimized BLAS implementation:
 !         CALL SAXPY(N,Alpha,X,1,Y,1) or  CALL DAXPY(N,Alpha,X,1,Y,1)
 !--------------------------------------------------------------
-      USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+      USE PARKIND1, ONLY : JPIM, JPRB
      
       IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(IN)  :: KincX,KincY,KN
-      REAL(KIND=JPRD), INTENT(IN)  :: PX(KN),PAlpha
-      REAL(KIND=JPRD), INTENT(OUT) :: PY(KN)
-      REAL(KIND=JPRD), PARAMETER :: ZERO = 0.0_JPRD
+      REAL(KIND=JPRB), INTENT(IN)  :: PX(KN),PAlpha
+      REAL(KIND=JPRB), INTENT(OUT) :: PY(KN)
+      REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0_JPRB
       INTEGER(KIND=JPIM) :: i,IM,IMP1
 
       ! No DR_HOOK for performance
@@ -2198,15 +1606,15 @@ END SUBROUTINE BASCOE_KPP_KPPSOLVETR
 !     replace this by the function from the optimized BLAS implementation:
 !         CALL SSCAL(N,Alpha,X,1) or  CALL DSCAL(N,Alpha,X,1)
 !--------------------------------------------------------------
-      USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
-      USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+      USE PARKIND1, ONLY : JPIM, JPRB
+      USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
      
       IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(IN)  :: KincX,KN
-      REAL(KIND=JPRD),INTENT(INOUT)   :: PX(KN)
-      REAL(KIND=JPRD),INTENT(IN)      :: PAlpha
-      REAL(KIND=JPRD), PARAMETER      :: ZERO=0.0_JPRD, Z_ONE=1.0_JPRD
+      REAL(KIND=JPRB),INTENT(INOUT)   :: PX(KN)
+      REAL(KIND=JPRB),INTENT(IN)      :: PAlpha
+      REAL(KIND=JPRB), PARAMETER      :: ZERO=0.0_JPRB, Z_ONE=1.0_JPRB
       INTEGER(KIND=JPIM)              :: i,IM,IMP1
 
       REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE

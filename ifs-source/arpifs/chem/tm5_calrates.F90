@@ -158,41 +158,6 @@ INTEGER(KIND=JPIM)            :: IRH, JTAB
 REAL(KIND=JPRB)               :: ZKT_LIQ_N2O5, ZKT_ICE_N2O5, ZKT_AER_N2O5, ZM_AER, ZRHO_P, ZVFRAC
 REAL(KIND=JPRB)               :: ZKT_LIQ_HO2,ZKT_ICE_HO2, ZKT_AER_HO2, ZRHO_AER
 REAL(KIND=JPRB)               :: ZRH,ZWV, ZTR, ZR_EFF, ZKTNO3_AER
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_SS=2.2 ! gr/cm^3 ! mean density sea salt. Is this correct?
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_DD=2.5 ! gr/cm^3 ! mean density dessert dust. Is this correct?
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_OM=1.8  ! gr/cm^3
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_BC=1.0  ! gr/cm^3
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_SO4=1.7  ! gr/cm^3
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_H2O=1.0  ! gr/cm^3 (water)
-REAL(KIND=JPRB), PARAMETER    :: ZRHO_SOA=1.8_JPRB  ! gr/m^3
-
-!* tentative sea salt effective radii (cm).
-REAL(KIND=JPRB), DIMENSION(3), PARAMETER    :: ZR_SS=(/0.1E-4,0.7E-4,8.E-4/)
-!* Taken from J.J.Morcrette
-REAL(KIND=JPRB), DIMENSION(3), PARAMETER    :: ZR_DD=(/0.051E-4,0.81E-4,18.E-4/)
-REAL(KIND=JPRB), DIMENSION(3),PARAMETER     :: ZR_SOA=(/0.03E-4_JPRB,0.15E-4_JPRB,0.15E-4_JPRB/)
-REAL(KIND=JPRB), PARAMETER    :: ZR_OM = 0.13E-4 !cm
-REAL(KIND=JPRB), PARAMETER    :: ZR_BC = 0.04E-4 !cm
-!REAL(KIND=JPRB), PARAMETER    :: ZR_SO4 = 0.355e-4 !cm SO4 dry particle radius, email Morcrette
-REAL(KIND=JPRB), PARAMETER    :: ZR_SO4 = 0.18E-4   !cm SO4 dry particle radius, Martin et al., 2003
-
-REAL(KIND=JPRB), PARAMETER    :: ZR_NO3_A=0.2E-4 ! cm (guess value for nitrate particles. Assume also for ammonia)
-
-!* Growth factors corresponding to RH table as given in RRHTAB, according to J.J. Morcrette
-REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_SO4= &
-         & (/1.00,1.00,1.00,1.00,1.169,1.220,1.282,1.363,1.485,1.581,1.732,2.085/)
-! According to Chin et al., AMS 2002
-REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_BC= &
-         & (/1.00,1.00,1.00,1.00,1.00 ,1.000,1.000,1.000,1.200,1.300,1.400,1.500/)
-REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_OM= &
-         & (/1.00,1.00,1.00,1.00,1.169,1.200,1.300,1.400,1.500,1.550,1.600,1.800/)
-REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_SS= &
-         & (/1.00,1.00,1.00,1.00,1.200,1.600,1.700,1.800,2.000,2.200,2.400,2.900/)
-! SOA Martin et al 2003, Table 1
-REAL(KIND=JPRB), DIMENSION(12), PARAMETER    :: ZRH_GROWTH_SOA= &
-         & (/1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.00_JPRB,1.2_JPRB,&
-         & 1.3_JPRB,1.4_JPRB,1.5_JPRB,1.6_JPRB,1.7_JPRB,1.9_JPRB/)
-
 
 ! Assumed uptake coefficients.
 REAL(KIND=JPRB)               :: ZG_HO2_L, ZG_HO2_AER ! gamma (HO2) on cloud according to Thornton
@@ -231,6 +196,7 @@ REAL(KIND=JPRB), PARAMETER    :: ZM_N2O5 =  (2*14+5*16.)/6.02E23_JPRB *1E-3_JPRB
 REAL(KIND=JPRD)               :: ZC_THERMAL_N2O5, ZC_THERMAL_HO2
 ! NO3 uptake...
 REAL(KIND=JPRB)               :: ZG_NO3 ! Type=dependent
+REAL(KIND=JPRB), PARAMETER    :: ZR_NO3_A=0.2E-4 ! cm (guess value for nitrate particles. Assume also for ammonia)
 
 ! Coefficients when using GLOMAP aerosol, specified per mode
 ! MODE_NAMES=(/'nuc_sol','ait_sol','acc_sol','cor_sol','ait_ins','acc_ins','cor_ins'/)
@@ -253,7 +219,6 @@ INTEGER (KIND=JPIM)  :: ITEMP
 REAL(KIND=JPRB)      :: ZTEMP, ZRX1, ZRX2, ZRX3, ZNN, ZNN_B
 REAL(KIND=JPRB)      :: ZH2OX, ZAIRD, ZO2, ZO3, ZO3_P
 
-
 REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 
 ! * counters
@@ -265,11 +230,32 @@ INTEGER(KIND=JPIM) :: JL,JMODE
 !-----------------------------------------------------------------------
 #include "abor1.intfb.h"
 
-
 IF (LHOOK) CALL DR_HOOK('TM5_CALRATES',0,ZHOOK_HANDLE )
 ASSOCIATE(NACTAERO=>YGFL%NACTAERO, YCHEM=>YGFL%YCHEM, &
  & RRHTAB=>YDEAERSNK%RRHTAB, RSSGROWTH_RHTAB=>YDEAERSNK%RSSGROWTH_RHTAB, &
  & RSSDENS_RHTAB=>YDEAERSNK%RSSDENS_RHTAB, &
+ & RRHO_DD=>YDEAERSNK%RRHO_DD, RRHO_SS=>YDEAERSNK%RRHO_SS, &
+ & RRHO_SO4=>YDEAERSNK%RRHO_SO4, &
+ & RRHO_ASH=>YDEAERSNK%RRHO_ASH, &
+ & RRHO_SOA=>YDEAERSNK%RRHO_SOA, &
+ & RRHO_OM=>YDEAERSNK%RRHO_OM, &
+ & RRHO_BC=>YDEAERSNK%RRHO_BC, &
+ & RRHO_NI=>YDEAERSNK%RRHO_NI, &
+ & RRHO_AM=>YDEAERSNK%RRHO_AM, &
+ & RMMD_DD=>YDEAERSNK%RMMD_DD, RMMD_SS=>YDEAERSNK%RMMD_SS, &
+ & RMMD_SO4=>YDEAERSNK%RMMD_SO4, &
+ & RMMD_ASH=>YDEAERSNK%RMMD_ASH, &
+ & RMMD_SOA=>YDEAERSNK%RMMD_SOA, &
+ & RMMD_OM=>YDEAERSNK%RMMD_OM, &
+ & RMMD_BC=>YDEAERSNK%RMMD_BC, &
+ & RMMD_NI=>YDEAERSNK%RMMD_NI, &
+ & RMMD_AM=>YDEAERSNK%RMMD_AM, &
+ & RRHO_WAT=>YDEAERSNK%RHO_WAT, &
+ & RSO4GROWTH_RHTAB=>YDEAERSNK%RSO4GROWTH_RHTAB,             &
+ & RSOAGROWTH_RHTAB=>YDEAERSNK%RSOAGROWTH_RHTAB,             &
+ & ROMGROWTH_RHTAB=>YDEAERSNK%ROMGROWTH_RHTAB,             &
+ & RNIGROWTH_RHTAB=>YDEAERSNK%RNIGROWTH_RHTAB,             &
+ & RAMGROWTH_RHTAB=>YDEAERSNK%RAMGROWTH_RHTAB,             &
  & NTYPAER=>YDEAERATM%NTYPAER, &
  & YAERO_DESC=>YREAERATM%YAERO_DESC, &
  & RSS_DRY_DIAFAC=>YDEAERATM%RSS_DRY_DIAFAC, &
@@ -627,7 +613,7 @@ DO JL = KIDIA,KFDIA
     IF (PAP(JL,KL) > 1E-2_JPRB)  ZM_CLD=PLP(JL,KL)*ZRHO * 1E-3_JPRB / PAP(JL,KL)
 
     ! cloud SAD  [cm^2/cm^3] in cloudy part only
-    ZSAD_CLOUD=3.0_JPRB * ZM_CLD / ( ZRHO_H2O * ZR_CLOUD )
+    ZSAD_CLOUD=3.0_JPRB * ZM_CLD / ( RRHO_WAT*1.E-3_JPRB * ZR_CLOUD )
 
     ! The surface area density for ice particles in now linked to
     ! the IWC by the parameterization of Heymsfield and McFarquar (1996)
@@ -722,7 +708,7 @@ DO JL = KIDIA,KFDIA
 
         ! Baseline values
         ZVFRAC=1.0_JPRB
-        ZRHO_AER=ZRHO_SO4
+        ZRHO_AER=RRHO_SO4*1.E-3_JPRB
 
         ! standard gamma values
         ZG_NO3=0.01
@@ -738,19 +724,19 @@ DO JL = KIDIA,KFDIA
           ! kg/kg -> g/cm^3 ... specific for sea salt
           ZM_AER=PAEROP(JL,KL,JAER)*RSS_DRY_MASSFAC*ZRHO * 1E-3_JPRB
           ! effective wet particle radius
-          ZR_EFF=ZR_SS(IBIN)*RSS_DRY_DIAFAC * ZRH_GROWTH_SS(IRH)
+          ZR_EFF=RMMD_SS(IBIN)*1E-4_JPRB*RSS_DRY_DIAFAC * RSSGROWTH_RHTAB(IRH)
           ! Aerosol density
-          ZRHO_AER=ZRHO_SS
+          ZRHO_AER=RRHO_SS(IBIN)*1E-3_JPRB
           ! Volume fraction dry over full aerosol particle
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_SS(IRH)**3_JPIM
+          ZVFRAC = 1.0_JPRB / RSSGROWTH_RHTAB(IRH)**3_JPIM
           ! Gamma values..
           ZG_N2O5=ZG_N2O5_SS
 
         ELSEIF (ITYP==2) THEN
           ! Dust... (independent to RH)
-          ZR_EFF=ZR_DD(IBIN)
+          ZR_EFF=RMMD_DD(IBIN)*1.E-4_JPRB
           ! Aerosol density
-          ZRHO_AER=ZRHO_DD
+          ZRHO_AER=RRHO_DD(IBIN)*1E-3_JPRB
           ! Volume fraction dry over full aerosol particle
           ZVFRAC = 1.0_JPRB
           ! Gamma values..
@@ -762,11 +748,11 @@ DO JL = KIDIA,KFDIA
 
         ELSEIF (ITYP==3) THEN
           ! POM
-          ZR_EFF=ZR_OM * ZRH_GROWTH_OM(IRH)
+          ZR_EFF=RMMD_OM*1.E-4_JPRB * ROMGROWTH_RHTAB(IRH)
           ! Aerosol density
-          ZRHO_AER=ZRHO_OM
+          ZRHO_AER=RRHO_OM*1.E-3_JPRB
           ! Volume fraction dry over full aerosol particle
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_OM(IRH)**3_JPIM
+          ZVFRAC = 1.0_JPRB / ROMGROWTH_RHTAB(IRH)**3_JPIM
           ! Gamma values..
           IF (IBIN == 1) THEN
             ! High reaction on hydrophylic
@@ -783,11 +769,11 @@ DO JL = KIDIA,KFDIA
           ! Black Carbon... (only hydrophylic...)
 
           ! Volume fraction dry over full aerosol particle
-          ZR_EFF=ZR_BC * ZRH_GROWTH_BC(IRH)
+          ZR_EFF=RRHO_BC*1.E-4_JPRB
           ! Aerosol density
-          ZRHO_AER=ZRHO_BC
+          ZRHO_AER=RRHO_BC*1.E-3_JPRB
           ! Volume fraction dry over full aerosol particle
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_BC(IRH)**3_JPIM
+          ZVFRAC = 1.0_JPRB
           ! Gamma values..
           IF (IBIN == 1) THEN
             ! reaction on hydrophylic
@@ -804,11 +790,11 @@ DO JL = KIDIA,KFDIA
           ! Sulphate
 
           ! Volume fraction dry over full aerosol particle
-          ZR_EFF=ZR_SO4 * ZRH_GROWTH_SO4(IRH)
+          ZR_EFF=RMMD_SO4 *  1.E-4_JPRB*RSO4GROWTH_RHTAB(IRH)
           ! Aerosol density
-          ZRHO_AER=ZRHO_SO4
+          ZRHO_AER=RRHO_SO4*1.E-3_JPRB
           ! Volume fraction dry over full aerosol particle
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_SO4(IRH)**3_JPIM
+          ZVFRAC = 1.0_JPRB / RSO4GROWTH_RHTAB(IRH)**3_JPIM
           ! Gamma values..
           ZG_N2O5=ZG_N2O5_SO4
 
@@ -816,11 +802,11 @@ DO JL = KIDIA,KFDIA
           ! Nitrate or Ammonium
 
           ! Volume fraction dry over full aerosol particle
-          ZR_EFF=ZR_NO3_A * ZRH_GROWTH_SO4(IRH)
+          ZR_EFF=RMMD_NI(IBIN) * 1.E-4_JPRB * RNIGROWTH_RHTAB(IRH)
           ! Aerosol density
-          ZRHO_AER=ZRHO_SO4
+          ZRHO_AER=RRHO_NI(IBIN)*1.E-3_JPRB
           ! Volume fraction dry over full aerosol particle
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_SO4(IRH)**3_JPIM
+          ZVFRAC = 1.0_JPRB / RNIGROWTH_RHTAB(IRH)**3_JPIM
           ! Gamma values..
           ZG_N2O5=ZG_N2O5_NO3A
 
@@ -828,19 +814,19 @@ DO JL = KIDIA,KFDIA
           ! Secondary organic aerosol
 
           ! Volume fraction dry over full aerosol particle
-          ZR_EFF=ZR_SOA(IBIN) * ZRH_GROWTH_SOA(IRH)
+          ZR_EFF=RMMD_SOA*1.E-4_JPRB * RSOAGROWTH_RHTAB(IRH)
           ! Aerosol density
-          ZRHO_AER=ZRHO_SOA
+          ZRHO_AER=RRHO_SOA*1.E-3_JPRB
 
           ! Volume fraction dry over full aerosol particle
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_SOA(IRH)**3_JPIM
+          ZVFRAC = 1.0_JPRB / RSOAGROWTH_RHTAB(IRH)**3_JPIM
           ! Gamma values..
           ZG_N2O5=ZG_N2O5_OM
 
         ENDIF
 
         ! particle density (combination of dry aerosol + water)
-        ZRHO_P = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_AER
+        ZRHO_P = RRHO_WAT*1.E-3_JPRB*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_AER
         !aerosol SAD (cm^2/cm^3)
         ZSAD_AER=3.0_JPRB * ZM_AER / ( ZRHO_P * ZR_EFF )
         ! accumulate total SAD
@@ -925,9 +911,9 @@ DO JL = KIDIA,KFDIA
       ZM_AER=(PNO3_A(JL)+PNH4(JL))*ZRHO * 1E-3_JPRB
 
       ! Volume fraction dry over full aerosol particle. Assume similar to SO4...
-      ZR_EFF=ZR_NO3_A * ZRH_GROWTH_SO4(IRH)
-      ZVFRAC = 1.0/ ZRH_GROWTH_SO4(IRH)**3_JPIM
-      ZRHO_P = ZRHO_H2O*(1.0-ZVFRAC) + ZVFRAC*ZRHO_SO4
+      ZR_EFF=ZR_NO3_A * RNIGROWTH_RHTAB(IRH)
+      ZVFRAC = 1.0/ RNIGROWTH_RHTAB(IRH)**3_JPIM
+      ZRHO_P = RRHO_WAT*1.E-3_JPRB*(1.0-ZVFRAC) + ZVFRAC*RRHO_NI(1)*1.E-3_JPRB
 
       ZSAD_AER=3.0_JPRB * ZM_AER / ( ZRHO_P * ZR_EFF )
       ZSAD_AERT=ZSAD_AERT+ZSAD_AER
@@ -963,10 +949,11 @@ DO JL = KIDIA,KFDIA
       ! kg/kg -> g/cm^3
        ZM_AER=(PSO4(JL)+PNO3_A(JL)+PNH4(JL))*ZRHO * 1E-3_JPRB
 
-      ! Volume fraction dry over full aerosol particle. Assume similar to SO4...
-      ZR_EFF=ZR_NO3_A * ZRH_GROWTH_SO4(IRH)
-      ZVFRAC = 1.0/ ZRH_GROWTH_SO4(IRH)**3_JPIM
-      ZRHO_P = ZRHO_H2O*(1.0-ZVFRAC) + ZVFRAC*ZRHO_SO4
+      ! Volume fraction dry over full aerosol particle.
+      ZR_EFF=ZR_NO3_A * RNIGROWTH_RHTAB(IRH)
+      ZVFRAC = 1.0/ RNIGROWTH_RHTAB(IRH)**3_JPIM
+      ZRHO_P = 1.E-3_JPRB*RRHO_WAT*(1.0-ZVFRAC) + ZVFRAC*RRHO_NI(1)*1.E-3_JPRB
+
 
       ZSAD_AER=3.0_JPRB * ZM_AER / ( ZRHO_P * ZR_EFF )
       ZSAD_AERT=ZSAD_AERT+ZSAD_AER

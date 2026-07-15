@@ -1,6 +1,6 @@
 ! (C) Copyright 1989- Meteo-France.
 
-SUBROUTINE SUFPIOS(KFPGRIB,KFPSURFEX,CDFPDIR,CDFPDOM,CDFPFN,CDFPCLIFNAME,CDFPSFXFNAME,YDNAMFPIOS)
+SUBROUTINE SUFPIOS(KFPGRIB,KFPSURFEX,PTSTEP,KSTOP,CDFPDIR,CDFPDOM,CDFPFN,CDFPCLIFNAME,CDFPSFXFNAME,CDMODEL,LDEXTERN,YDNAMFPIOS)
 
 !**** *SUFPIOS* - SET UP FULLPOS I/O SCHEME
 
@@ -18,11 +18,15 @@ SUBROUTINE SUFPIOS(KFPGRIB,KFPSURFEX,CDFPDIR,CDFPDOM,CDFPFN,CDFPCLIFNAME,CDFPSFX
 !        --------------------
 !           KFPGRIB      : level of GRIB encoding
 !           KFPSURFEX    : Surfex usage for interoperability ISBA => Surfex 
+!           PTSTEP       : forecasting model time step
+!           KSTOP        : forecasting model number of time steps
 !           CDFPDIR      : path or prefix for the output files
 !           CDFPDOM      : array of names of the output domains
 !           CDFPFN       : array of partial output filenames (filenames without extensions)
 !           CDFPCLIFNAME : array of filename of climatology file on target geometry
 !           CDFPSFXFNAME : array of filename of surfex climatology file on target geometries
+!           CDMODEL      : FA model name
+!           LDEXTERN     : .TRUE. to write fields in a separate GRIB2 file
 
 !        Implicit arguments :
 !        --------------------
@@ -51,6 +55,7 @@ SUBROUTINE SUFPIOS(KFPGRIB,KFPSURFEX,CDFPDIR,CDFPDOM,CDFPFN,CDFPCLIFNAME,CDFPSFX
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      R. El Khatib : 09-Dec-2015 NFPWRITE
 !      R. El Khatib : 09-Dec-2015 NFPADDING
+!      R. El Khatib : 23-Jun-2021 NFRFPDI, NFPDITS
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -58,7 +63,8 @@ USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
 USE PARFPOS  , ONLY : JPOSDOM
 USE YOMLUN   , ONLY : NULOUT   ,NULNAM
-USE YOMCT0   , ONLY : CNMEXP, LARPEGEF
+USE YOMCT0   , ONLY : CNMEXP, LARPEGEF, NCONF, LECMWF
+USE YOMFA    , ONLY : CMODEL, LEXTERN
 USE YOMOPH0  , ONLY : CFNCLIMOUT, CFPEXTSFX
 USE YOMFPIOS , ONLY : TNAMFPIOS
 
@@ -66,19 +72,25 @@ IMPLICIT NONE
 
 INTEGER(KIND=JPIM), INTENT(IN) :: KFPGRIB
 INTEGER(KIND=JPIM), INTENT(IN) :: KFPSURFEX
+REAL(KIND=JPRB),    INTENT(IN) :: PTSTEP
+INTEGER(KIND=JPIM), INTENT(IN) :: KSTOP
 CHARACTER(LEN=*), INTENT(IN) :: CDFPDIR
 CHARACTER(LEN=*), INTENT(IN) :: CDFPDOM(:)
 CHARACTER(LEN=*), INTENT(OUT) :: CDFPFN(:)
 CHARACTER(LEN=*), INTENT(OUT) :: CDFPCLIFNAME(:)
 CHARACTER(LEN=*), INTENT(OUT) :: CDFPSFXFNAME(:)
+CHARACTER(LEN=*), INTENT(OUT) :: CDMODEL(:)
+LOGICAL,          INTENT(OUT) :: LDEXTERN(:)
 TYPE(TNAMFPIOS), TARGET, INTENT(OUT) :: YDNAMFPIOS
 
-! CDFPFN      : partial output filenames (filenames without extensions)
+! CDFPFN, CFPFN : partial output filenames (filenames without extensions)
 ! CFPCLIFNAME : filename of climatology file on target geometry
 ! CFPSFXFNAME : filename of surfex climatology file on target geometries
-CHARACTER(LEN=180) :: CFPFN      (JPOSDOM)
+CHARACTER(LEN=180) :: CFPFN      (JPOSDOM) ! sorry Doctor, the variable are in namelist, I won't change it.
 CHARACTER(LEN=180) :: CFPCLIFNAME(JPOSDOM)
 CHARACTER(LEN=180) :: CFPSFXFNAME(JPOSDOM)
+CHARACTER(LEN=64)  :: CFAMODEL(JPOSDOM)
+LOGICAL            :: LFAEXTERN(JPOSDOM)
 
 INTEGER(KIND=JPIM), POINTER :: NFPWRITE, NFPDIGITS, NFPXFLD
 
@@ -87,6 +99,7 @@ INTEGER(KIND=JPIM), POINTER :: NFPWRITE, NFPDIGITS, NFPXFLD
 LOGICAL, POINTER :: LFTZERO, LPGDFWR, LHISFWR
 REAL (KIND=JPRB), POINTER ::  XZSEPS
 INTEGER(KIND=JPIM), POINTER :: NSURFEXCTL
+INTEGER(KIND=JPIM), POINTER :: NFPDITS(:), NFPDITSMIN(:), NFRFPDI
 
 
 INTEGER(KIND=JPIM) :: J, ISTAT, ILASTCHAR, IFPDOM
@@ -111,6 +124,9 @@ WRITE(NULOUT,'('' == Full-Pos : setup I/O handling == '')')
 NFPXFLD=>YDNAMFPIOS%NFPXFLD
 NFPWRITE=>YDNAMFPIOS%NFPWRITE
 NFPDIGITS=>YDNAMFPIOS%NFPDIGITS
+NFPDITS=>YDNAMFPIOS%NFPDITS
+NFPDITSMIN=>YDNAMFPIOS%NFPDITSMIN
+NFRFPDI=>YDNAMFPIOS%NFRFPDI
 LPGDFWR=>YDNAMFPIOS%LFPPGDFWR
 LHISFWR=>YDNAMFPIOS%LFPHISFWR
 
@@ -137,8 +153,19 @@ DO J=1, IFPDOM
   CFPCLIFNAME(J)=TRIM(CFNCLIMOUT)//TRIM(CDFPDOM(J))
   ! Surfex clim filename on target geometry
   CFPSFXFNAME(J)=CFNCLIMOUT(1:ILASTCHAR-1)//TRIM(CFPEXTSFX)//CFNCLIMOUT(ILASTCHAR:ILASTCHAR)//TRIM(CDFPDOM(J))
+  CFAMODEL(J)=CMODEL
+  LFAEXTERN(J)=LEXTERN
 ENDDO
 
+IF (NCONF==1) THEN
+  NFPDITS(:)=0
+  IF (LECMWF) THEN
+    NFRFPDI=1
+  ELSE
+    ! reduce norms frequency to 6 hours for computational time savings (unless the forecast is less, or no forecast)
+    NFRFPDI=MIN(MAX(1,KSTOP),NINT(6._JPRB*3600._JPRB/PTSTEP))
+  ENDIF
+ENDIF
 
 !*       2.   READ NAMELIST
 !             -------------
@@ -156,13 +183,15 @@ IF (KFPSURFEX == 1) THEN
   ENDIF
 ENDIF
 
-!*       3. SAVE FILENAMES
-!           --------------
+!*       3. SAVE FILENAMES & GRIB-SPECIFIC HANDLING PARAMETERS
+!           --------------------------------------------------
 
 DO J=1,IFPDOM
   CDFPFN(J)=TRIM(CFPFN(J))
   CDFPCLIFNAME(J)=TRIM(CFPCLIFNAME(J))
   CDFPSFXFNAME(J)=TRIM(CFPSFXFNAME(J))
+  CDMODEL(J)=TRIM(CFAMODEL(J))
+  LDEXTERN(J)=LFAEXTERN(J)
 ENDDO
 
 IF (LHOOK) CALL DR_HOOK('SUFPIOS',1,ZHOOK_HANDLE)

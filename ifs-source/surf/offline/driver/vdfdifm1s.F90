@@ -1,6 +1,3 @@
-SUBROUTINE VDFDIFM1S(KIDIA,KFDIA,KLON,KLEV,KTOP,&
- & PTMST,PUM1,PVM1,PAPHM1,PCFM,&
- & PVOM,PVOL,PUDIF,PVDIF)  
 ! (C) Copyright 1989- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -9,6 +6,57 @@ SUBROUTINE VDFDIFM1S(KIDIA,KFDIA,KLON,KLEV,KTOP,&
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+!     ------------------------------------------------------------------
+
+!**   *VDFDIFM* - DOES THE IMLPLICIT CALCULATION FOR MOMENTUM DIFFUSION
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.    10-11-89
+
+!     PURPOSE
+!     -------
+
+!     SOLVE TRIDIAGONAL MATRICES FOR MOMENTUM DIFFUSION
+
+!     INTERFACE
+!     ---------
+
+!     *VDFDIFM* IS CALLED BY *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLEV*         NUMBER OF LEVELS
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTOP*         INDEX FOR BOUNDARY LAYER TOP
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        DOUBLE TIME STEP (SINGLE AT 1TH STEP)
+!     *PUM1*         X-VELOCITY COMPONENT AT T-1
+!     *PVM1*         Y-VELOCITY COMPONENT AT T-1
+!     *PAPHM1*       PRESSURE AT T-1
+!     *PCFM*         PROP.TO EXCH.COEFF. FOR MOMENTUM (C,K-STAR IN DOC.)
+!     *PVOM*         U-TENDENCY
+!     *PVOL*         V-TENDENCY
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PUDIF*        U-DOUBLE-TILDE DEVIDED BY ALFA
+!     *PVDIF*        V-DOUBLE-TILDE DEVIDED BY ALFA
+
+!     METHOD
+!     ------
+
+!     *LU*-DECOMPOSITION AND BACK SUBSTITUTION IN ONE DOWNWARD SCAN
+!     AND ONE UPWARD SCAN.
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE VDFDIFM1S(KIDIA,KFDIA,KLON,KLEV,KTOP,&
+ & PTMST,PUM1,PVM1,PAPHM1,PCFM,&
+ & PVOM,PVOL,PUDIF,PVDIF)  
 !     ------------------------------------------------------------------
 
 !**   *VDFDIFM* - DOES THE IMLPLICIT CALCULATION FOR MOMENTUM DIFFUSION

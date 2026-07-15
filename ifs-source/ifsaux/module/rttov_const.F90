@@ -26,7 +26,7 @@ MODULE rttov_const
   ! -------------------------------------------------------
   ! Version number of the current code
   INTEGER(jpim), PARAMETER :: version = 13
-  INTEGER(jpim), PARAMETER :: release = 0
+  INTEGER(jpim), PARAMETER :: release = 2
   INTEGER(jpim), PARAMETER :: minor_version = 0
 
   ! Min/max version numbers of compatible coefficient files:
@@ -39,6 +39,9 @@ MODULE rttov_const
   !   MFASIS LUT files with "version" outside range will be rejected
   INTEGER(jpim), PARAMETER :: mfasislut_version_compatible_min = 0
   INTEGER(jpim), PARAMETER :: mfasislut_version_compatible_max = 2
+  !   MFASIS NN files with "version" outside range will be rejected
+  INTEGER(jpim), PARAMETER :: mfasis_nn_version_compatible_min = 1
+  INTEGER(jpim), PARAMETER :: mfasis_nn_version_compatible_max = 1
   !   PC-RTTOV files with "fmv_pc_comp_pc" outside range will be rejected
   INTEGER(jpim), PARAMETER :: pccoef_version_compatible_min = 3
   INTEGER(jpim), PARAMETER :: pccoef_version_compatible_max = 5
@@ -192,7 +195,7 @@ MODULE rttov_const
   ! Satellite and instrument information
   ! -------------------------------------------------------
   ! Platform ID codes
-  INTEGER(jpim), PARAMETER :: nplatforms = 71
+  INTEGER(jpim), PARAMETER :: nplatforms = 77
   ! NB ID 22 was changed from "insat_3d" - use ID 40 for INSAT3
   !    IDs 41 and 45 are for ground-based and airborne sensors (experimental)
   INTEGER(jpim), PARAMETER :: &
@@ -219,7 +222,9 @@ MODULE rttov_const
          platform_id_electrol  = 61, platform_id_oms       = 62, platform_id_sentinel2 = 63, &
          platform_id_cloudctrl = 64, platform_id_trishna   = 65, platform_id_sbg       = 66, &
          platform_id_saphirhy  = 67, platform_id_aws       = 68, platform_id_cmimmw    = 69, &
-         platform_id_earthcare = 70, platform_id_sentinl5p = 71
+         platform_id_earthcare = 70, platform_id_sentinl5p = 71, platform_id_polsir    = 72, &
+         platform_id_oceansat  = 73, platform_id_micro2b   = 74, platform_id_gosatgw   = 75, &
+         platform_id_wsfm      = 76, platform_id_co2m      = 77
 
   ! Platform names
   INTEGER(jpim), PARAMETER :: len_platform = 9_jpim
@@ -238,7 +243,8 @@ MODULE rttov_const
             'cloudsat ', 'cloudcore', 'forum    ', 'tempest  ', 'jasoncs  ', &
             'electro-l', 'oms      ', 'sentinel2', 'cloudctrl', 'trishna  ', &
             'sbg      ', 'saphirhy ', 'aws      ', 'cmimmw   ', 'earthcare', &
-            'sentinl5p' /)
+            'sentinl5p', 'polsir   ', 'oceansat ', 'micro2b  ', 'gosat-gw ', &
+            'wsf-m    ', 'co2m     ' /)
 
   ! Instrument ID codes
   INTEGER(jpim), PARAMETER :: &
@@ -250,7 +256,7 @@ MODULE rttov_const
          inst_id_mviri      =  20, inst_id_seviri   =  21, inst_id_goesim   =  22, inst_id_goessd   =  23, &
          inst_id_mtsatim    =  24, inst_id_vissr    =  25, inst_id_mvisr    =  26, inst_id_cris     =  27, &
          inst_id_crisfsr    =  28, inst_id_viirs    =  29, inst_id_windsat  =  30, inst_id_gifts    =  31, &
-         inst_id_ssmt1      =  32, inst_id_ssmt2    =  33, inst_id_saphir   =  34, inst_id_madras   =  35, &
+         inst_id_ssmt       =  32, inst_id_ssmt2    =  33, inst_id_saphir   =  34, inst_id_madras   =  35, &
          inst_id_ssmisz     =  36, inst_id_vhrr     =  37, inst_id_insatim  =  38, inst_id_insatsd  =  39, &
          inst_id_mwts       =  40, inst_id_mwhs     =  41, inst_id_iras     =  42, inst_id_mwri     =  43, &
          inst_id_abi        =  44, inst_id_mi       =  45, inst_id_msumr    =  46, inst_id_tansofts =  47, &
@@ -275,9 +281,13 @@ MODULE rttov_const
          inst_id_sntnl2_msi = 120, inst_id_hyms     = 121, inst_id_tir      = 122, inst_id_sbg      = 123, &
          inst_id_gome2      = 124, inst_id_saphirhy = 125, inst_id_aws      = 126, inst_id_cmimmw   = 127, &
          inst_id_ecare_msi  = 128, inst_id_tropomi  = 129, inst_id_sentinl5 = 130, inst_id_mersill  = 131, &
-         inst_id_mwts3      = 132, inst_id_hiras2   = 133
+         inst_id_mwts3      = 132, inst_id_hiras2   = 133, inst_id_polsir   = 134, inst_id_esmr     = 135, &
+         inst_id_nems       = 136, inst_id_eccpr    = 137, inst_id_ssh      = 138, inst_id_amsuamhs = 139, &
+         inst_id_mwhs2e     = 140, inst_id_sstm     = 141, inst_id_mhsm2b   = 142, inst_id_amsr3    = 143, &
+         inst_id_wsfmmwi    = 144, inst_id_mwsfy3   = 145, inst_id_scr      = 146, inst_id_clim     = 147, &
+         inst_id_mwiici     = 148
 
-  INTEGER(jpim), PARAMETER :: ninst = 134
+  INTEGER(jpim), PARAMETER :: ninst = 149
   ! List of instruments - NB HIRS is number 0
   INTEGER(jpim), PARAMETER :: len_instrument = 8_jpim
   CHARACTER(LEN=len_instrument), PARAMETER :: inst_name(0:ninst-1) =     &
@@ -287,7 +297,7 @@ MODULE rttov_const
              'mhs     ', 'iasi    ', 'amsre   ', 'imager  ', 'atms    ', &
              'mviri   ', 'seviri  ', 'imager  ', 'sounder ', 'imager  ', &
              'vissr   ', 'mvisr   ', 'cris    ', 'cris-fsr', 'viirs   ', &
-             'windsat ', 'gifts   ', 'ssmt1   ', 'ssmt2   ', 'saphir  ', &
+             'windsat ', 'gifts   ', 'ssmt    ', 'ssmt2   ', 'saphir  ', &
              'madras  ', 'ssmisz  ', 'vhrr    ', 'imager  ', 'sounder ', &
              'mwts    ', 'mwhs    ', 'iras    ', 'mwri    ', 'abi     ', &
              'mi      ', 'msumr   ', 'tansofts', 'iir     ', 'mwr     ', &
@@ -307,7 +317,10 @@ MODULE rttov_const
              'hrir    ', 'amrc    ', 'msugs   ', 'hytes   ', 'gems1   ', &
              'msi     ', 'hyms    ', 'tir     ', 'sbg     ', 'gome2   ', &
              'saphirhy', 'aws     ', 'cmimmw  ', 'msi     ', 'tropomi ', &
-             'sentinl5', 'mersill ', 'mwts3   ', 'hiras2  ' /)
+             'sentinl5', 'mersill ', 'mwts3   ', 'hiras2  ', 'polsir  ', &
+             'esmr    ', 'nems    ', 'cpr     ', 'ssh     ', 'amsuamhs', &
+             'mwhs2e  ', 'sstm    ', 'mhsm2b  ', 'amsr3   ', 'mwi     ', &
+             'mwsfy3  ', 'scr     ', 'clim    ', 'mwiici  ' /)
 
   ! Sensor type ID codes
   INTEGER(jpim), PARAMETER :: nsensors = 4
@@ -349,12 +362,15 @@ MODULE rttov_const
     sensor_id_ir, sensor_id_mw, sensor_id_ir, sensor_id_hi, sensor_id_mw, &
     sensor_id_ir, sensor_id_mw, sensor_id_ir, sensor_id_ir, sensor_id_hi, &
     sensor_id_mw, sensor_id_mw, sensor_id_mw, sensor_id_ir, sensor_id_hi, &
-    sensor_id_hi, sensor_id_ir, sensor_id_mw, sensor_id_hi /)
+    sensor_id_hi, sensor_id_ir, sensor_id_mw, sensor_id_hi, sensor_id_mw, &
+    sensor_id_mw, sensor_id_mw, sensor_id_mw, sensor_id_ir, sensor_id_mw, &
+    sensor_id_mw, sensor_id_ir, sensor_id_mw, sensor_id_mw, sensor_id_po, &
+    sensor_id_mw, sensor_id_ir, sensor_id_ir, sensor_id_mw /)
 
   ! -------------------------------------------------------
   ! ASCII coefficient file section names
   ! -------------------------------------------------------
-  INTEGER(jpim), PARAMETER :: nsections = 48
+  INTEGER(jpim), PARAMETER :: nsections = 49
   INTEGER(jpim), PARAMETER :: lensection = 34
   CHARACTER(LEN=lensection), PARAMETER :: section_types(nsections) = &
       (/ 'IDENTIFICATION                    ', 'LINE-BY-LINE                      ', &
@@ -380,7 +396,8 @@ MODULE rttov_const
          'IR_SEA_EMIS                       ', 'PROFILE_ENVELOPE                  ', &
          'MFASIS_GENERAL                    ', 'README_MFASIS                     ', &
          'MFASIS_DIMS                       ', 'MFASIS_LUTS                       ', &
-         'REFLECTIVITY                      ', 'POLARISATION                      ' /)
+         'REFLECTIVITY                      ', 'POLARISATION                      ', &
+         'MFASIS_NNS                        '/)
 
   ! -------------------------------------------------------
   ! Gas information
@@ -416,27 +433,30 @@ MODULE rttov_const
   REAL(jprb), PARAMETER :: tskin_land_max = 1250.0_jprb ! K (for Tskin over land only - lavas, fires, etc)
   REAL(jprb), PARAMETER :: tmax           = 400.0_jprb  ! K (for all other input temperatures)
   REAL(jprb), PARAMETER :: tmin           = 90.0_jprb   ! K (for all input temperatures)
-  ! Water Vapour
-  REAL(jprb), PARAMETER :: qmax   = 0.60E+06_jprb    ! ppmv 0.373_jprb kg/kg
-  REAL(jprb), PARAMETER :: qmin   = 0.1E-10_jprb     ! ppmv
-  ! Ozone
-  REAL(jprb), PARAMETER :: o3max  = 1000.0_jprb      ! ppmv  1.657E-3_jprb kg/kg
-  REAL(jprb), PARAMETER :: o3min  = 0.1E-10_jprb     ! ppmv
+  ! Water vapour
+  REAL(jprb), PARAMETER :: qmax   = 0.60E+06_jprb    ! ppmv over dry air / 0.373_jprb kg/kg over dry air
+  REAL(jprb), PARAMETER :: qmin   = 0.1E-10_jprb     ! ppmv over dry air
+  ! Water vapour limits in kg/kg over moist air (for information, not used)
+  REAL(jprb), PARAMETER :: qmax_kgkg = 0.271_jprb    ! kg/kg over moist air
+  REAL(jprb), PARAMETER :: qmin_kgkg = 6.23E-18_jprb ! kg/kg over moist air
+  ! O3
+  REAL(jprb), PARAMETER :: o3max  = 1000.0_jprb      ! ppmv dry / 1.657E-3_jprb kg/kg dry
+  REAL(jprb), PARAMETER :: o3min  = 0.1E-10_jprb     ! ppmv dry
   ! CO2
-  REAL(jprb), PARAMETER :: co2max = 1000.0_jprb      ! ppmv
-  REAL(jprb), PARAMETER :: co2min = 0.1E-10_jprb     ! ppmv
+  REAL(jprb), PARAMETER :: co2max = 1000.0_jprb      ! ppmv dry
+  REAL(jprb), PARAMETER :: co2min = 0.1E-10_jprb     ! ppmv dry
   ! CO
-  REAL(jprb), PARAMETER :: comax  = 10.0_jprb        ! ppmv
-  REAL(jprb), PARAMETER :: comin  = 0.1E-10_jprb     ! ppmv
+  REAL(jprb), PARAMETER :: comax  = 10.0_jprb        ! ppmv dry
+  REAL(jprb), PARAMETER :: comin  = 0.1E-10_jprb     ! ppmv dry
   ! N2O
-  REAL(jprb), PARAMETER :: n2omax = 10.0_jprb        ! ppmv
-  REAL(jprb), PARAMETER :: n2omin = 0.1E-10_jprb     ! ppmv
+  REAL(jprb), PARAMETER :: n2omax = 10.0_jprb        ! ppmv dry
+  REAL(jprb), PARAMETER :: n2omin = 0.1E-10_jprb     ! ppmv dry
   ! CH4
-  REAL(jprb), PARAMETER :: ch4max = 50.0_jprb        ! ppmv
-  REAL(jprb), PARAMETER :: ch4min = 0.1E-10_jprb     ! ppmv
+  REAL(jprb), PARAMETER :: ch4max = 50.0_jprb        ! ppmv dry
+  REAL(jprb), PARAMETER :: ch4min = 0.1E-10_jprb     ! ppmv dry
   ! SO2
-  REAL(jprb), PARAMETER :: so2max = 1000.0_jprb      ! ppmv
-  REAL(jprb), PARAMETER :: so2min = 0.1E-10_jprb     ! ppmv
+  REAL(jprb), PARAMETER :: so2max = 1000.0_jprb      ! ppmv dry
+  REAL(jprb), PARAMETER :: so2min = 0.1E-10_jprb     ! ppmv dry
   ! Cloud Liquid Water
   REAL(jprb), PARAMETER :: clwmax = 1.0_jprb         ! kg/kg
   REAL(jprb), PARAMETER :: clwmin = 0.0_jprb         ! kg/kg
@@ -505,6 +525,13 @@ MODULE rttov_const
   INTEGER(jpim), PARAMETER  :: qflag_mfasis_sumzenangle     = 17 ! Max valid sum of zenith angles exceeded
   INTEGER(jpim), PARAMETER  :: qflag_mfasis_geometry_bounds = 20 ! Scattering angle out of LUT bounds
   INTEGER(jpim), PARAMETER  :: qflag_mfasis_opdpedia_bounds = 21 ! Some opdp/effdia dimension out of LUT bounds
+  
+  ! Activation functions used in MFASIS-NN (CSt: following LMU convention at the moment)
+  INTEGER(jpim), PARAMETER :: mfasis_nn_actfunc_lin = 0
+  INTEGER(jpim), PARAMETER :: mfasis_nn_actfunc_relu = 1
+  INTEGER(jpim), PARAMETER :: mfasis_nn_actfunc_elu = 2
+  INTEGER(jpim), PARAMETER :: mfasis_nn_actfunc_softplus = 3
+  INTEGER(jpim), PARAMETER :: mfasis_nn_actfunc_csu = 99
 
   ! Gas units
   INTEGER(jpim), PARAMETER :: ngases_unit = 2
@@ -541,7 +568,7 @@ MODULE rttov_const
 
   ! Emissivity model variables
   INTEGER(jpim), PARAMETER :: max_ir_sea_emis_model = 2 ! Highest IR sea emis model number available
-  INTEGER(jpim), PARAMETER :: max_fastem_version = 6    ! Highest FASTEM version number available
+  INTEGER(jpim), PARAMETER :: max_fastem_version = 7    ! Highest FASTEM version number available (7 = surfem_ocean)
   INTEGER(jpim), PARAMETER :: fastem_sp = 5             ! Number of fastem surface parameters
 
   ! Solar sea BRDF model variables
@@ -625,6 +652,23 @@ MODULE rttov_const
                            ray_scs_b2  = -3.99668_jprb,    &
                            ray_scs_c2  = -1.10298E-3_jprb, &
                            ray_scs_d2  = -2.71393E-2_jprb
+
+  INTEGER(jpim), PARAMETER :: nray_depol = 36
+  REAL(jprb),    PARAMETER :: ray_depol_wvl(nray_depol) = &
+    [0.200_jprb, 0.205_jprb, 0.210_jprb, 0.215_jprb, 0.220_jprb, 0.225_jprb, &
+     0.230_jprb, 0.240_jprb, 0.250_jprb, 0.260_jprb, 0.270_jprb, 0.280_jprb, &
+     0.290_jprb, 0.300_jprb, 0.310_jprb, 0.320_jprb, 0.330_jprb, 0.340_jprb, &
+     0.350_jprb, 0.360_jprb, 0.370_jprb, 0.380_jprb, 0.390_jprb, 0.400_jprb, &
+     0.450_jprb, 0.500_jprb, 0.550_jprb, 0.600_jprb, 0.650_jprb, 0.700_jprb, &
+     0.750_jprb, 0.800_jprb, 0.850_jprb, 0.900_jprb, 0.950_jprb, 1.000_jprb]
+
+  REAL(jprb),    PARAMETER :: ray_depol_gamma(nray_depol) = &
+    [2.326E-2_jprb, 2.241E-2_jprb, 2.156E-2_jprb, 2.100E-2_jprb, 2.043E-2_jprb, 1.986E-2_jprb, &
+     1.930E-2_jprb, 1.872E-2_jprb, 1.815E-2_jprb, 1.758E-2_jprb, 1.729E-2_jprb, 1.672E-2_jprb, &
+     1.643E-2_jprb, 1.614E-2_jprb, 1.614E-2_jprb, 1.586E-2_jprb, 1.557E-2_jprb, 1.557E-2_jprb, &
+     1.528E-2_jprb, 1.528E-2_jprb, 1.528E-2_jprb, 1.499E-2_jprb, 1.499E-2_jprb, 1.499E-2_jprb, &
+     1.471E-2_jprb, 1.442E-2_jprb, 1.442E-2_jprb, 1.413E-2_jprb, 1.413E-2_jprb, 1.413E-2_jprb, &
+     1.413E-2_jprb, 1.384E-2_jprb, 1.384E-2_jprb, 1.384E-2_jprb, 1.384E-2_jprb, 1.384E-2_jprb]
 
   ! -------------------------------------------------------
   ! Polarisation definitions
@@ -718,9 +762,11 @@ MODULE rttov_const
   ! Aerosols
   INTEGER(jpim), PARAMETER :: naer_opac = 13 ! Number of species in OPAC aerosol files
   INTEGER(jpim), PARAMETER :: naer_cams = 9  ! Number of species in CAMS aerosol files
+  INTEGER(jpim), PARAMETER :: naer_icon = 7  ! Number of species in ICON aerosol files
 
   INTEGER(jpim), PARAMETER :: aer_id_opac = 1 ! ID for OPAC scaercoef files
   INTEGER(jpim), PARAMETER :: aer_id_cams = 2 ! ID for CAMS scaercoef files
+  INTEGER(jpim), PARAMETER :: aer_id_icon = 3 ! ID for ICON scaercoef files
   INTEGER(jpim), PARAMETER :: aer_id_user = 0 ! ID for user scaercoef files
 
   ! OPAC Aerosols
@@ -731,13 +777,17 @@ MODULE rttov_const
   ! OPAC MMR to number density conversion factors [g.m^-3]/[particle.cm^-3]
   ! NB the values stored in the scaercoef files are the reciprocal of these
   REAL(jprb), PARAMETER ::  aer_opac_confac(naer_opac) = &
-    (/ 2.37E-05_jprb, 1.34E-09_jprb, 5.99E-11_jprb, 8.02E-07_jprb, 2.24E-04_jprb, 2.78E-08_jprb, &
-       5.53E-06_jprb, 3.24E-04_jprb, 1.59E-05_jprb, 2.28E-08_jprb,   39.258_jprb,  13.431_jprb,  &
+    (/ 2.37E-05_jprb, 1.34E-09_jprb, 5.99E-11_jprb, 8.02E-07_jprb, 2.24E-04_jprb,   2.78E-08_jprb,   &
+       5.53E-06_jprb, 3.24E-04_jprb, 1.59E-05_jprb, 2.28E-08_jprb, 3.9258E-05_jprb, 1.3431E-05_jprb, &
       1.473E-06_jprb /)
 
   ! CAMS Aerosols
   CHARACTER(LEN=4), PARAMETER :: aer_cams_name(naer_cams) = &
     (/ 'bcar', 'dus1', 'dus2', 'dus3', 'sulp', 'ssa1', 'ssa2', 'ssa3', 'omat' /)
+
+  ! ICON-ART Aerosols
+  CHARACTER(LEN=4), PARAMETER :: aer_icon_name(naer_icon) = &
+    (/ 'soot', 'dusa', 'dusb', 'dusc', 'ssaa', 'ssab', 'ssac' /)
 
   ! Constants for relative humidity calculation for aerosols
   REAL(jprb), PARAMETER :: e00 = 611.21_jprb
@@ -790,6 +840,19 @@ MODULE rttov_const
   INTEGER(jpim), PARAMETER :: nicede_param = 4     ! Max valid value for icede_param
   INTEGER(jpim), PARAMETER :: baran_ngauss = 1000  ! Size of quadrature when computing Baran Leg. coefs
 
+  ! Polarisation modes for approximating the orientation of frozen hydrometeors. Default is the old
+  ! scheme (see rttov_options_scatt).
+  !
+  ! MODE:           APPLICABILITY:                  METHOD:
+  !
+  ! no_scheme :     No polarization                 -
+  ! old_scheme:     Conical scanners                Single scaling factor (v13.0)
+  ! new_scheme:     Conical/across-track scanners   Based on LUT          (optional at v13.2)
+  INTEGER(jpim), PARAMETER :: pol_mode_no_pol     = 0
+  INTEGER(jpim), PARAMETER :: pol_mode_empirical  = 1
+  INTEGER(jpim), PARAMETER :: pol_mode_aro_scaled = 2
+  CHARACTER(LEN=*), PARAMETER :: pol_coef_default_file_name = 'ScalingFactorForBulkProperties.rssp'
+
   ! Cloud overlap schemes
   INTEGER(jpim), PARAMETER :: ncloud_overlap = 2 ! Max valid value for cloud_overlap
   INTEGER(jpim), PARAMETER :: cloud_overlap_max_random = 1
@@ -802,10 +865,11 @@ MODULE rttov_const
   INTEGER(jpim), PARAMETER :: max_ir_scatt_model  = 2 ! Number of IR scattering models
   INTEGER(jpim), PARAMETER :: ir_scatt_dom        = 1
   INTEGER(jpim), PARAMETER :: ir_scatt_chou       = 2
-  INTEGER(jpim), PARAMETER :: max_vis_scatt_model = 3 ! Number of solar scattering models
+  INTEGER(jpim), PARAMETER :: max_vis_scatt_model = 4 ! Number of solar scattering models
   INTEGER(jpim), PARAMETER :: vis_scatt_dom       = 1
   INTEGER(jpim), PARAMETER :: vis_scatt_single    = 2
   INTEGER(jpim), PARAMETER :: vis_scatt_mfasis    = 3
+  INTEGER(jpim), PARAMETER :: vis_scatt_mfasis_nn = 4
 
   ! Discrete Ordinates
   INTEGER(jpim), PARAMETER :: dom_min_nstr = 2     ! Min number of DOM streams allowed

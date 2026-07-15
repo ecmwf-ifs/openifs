@@ -14,10 +14,7 @@ SUBROUTINE GPEPT(YDPHY,KPROMA,KSTART,KPROF,KFLEV,PTETA,PTT0,PRPRESF,PTETAE)
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RV       ,RCPD     ,RCPV     ,RETV     ,&
- &                    RCW      ,RCS      ,RLVTT    ,RLSTT    ,RTT      ,&
- &                    RALPW    ,RBETW    ,RGAMW    ,RALPS    ,RBETS    ,&
- &                    RGAMS    ,RALPD    ,RBETD    ,RGAMD  
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMPHY   , ONLY : TPHY
 
 !**** *GPEPT*    Compute the equivalent potential temperature on model levels
@@ -53,6 +50,7 @@ USE YOMPHY   , ONLY : TPHY
 !     --------------
 !        ORIGINAL : 94-04-08
 !        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     -----------------------------------------------------------------
 
 IMPLICIT NONE
@@ -81,7 +79,11 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !     ------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('GPEPT',0,ZHOOK_HANDLE)
-ASSOCIATE(LNEIGE=>YDPHY%LNEIGE)
+ASSOCIATE(LNEIGE=>YDPHY%LNEIGE, &
+ & RCPD=>YDCST%RCPD, RCPV=>YDCST%RCPV, RETV=>YDCST%RETV, RCW=>YDCST%RCW, RCS=>YDCST%RCS, &
+ & RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, RALPW=>YDCST%RALPW, &
+ & RBETW=>YDCST%RBETW, RGAMW=>YDCST%RGAMW, RALPS=>YDCST%RALPS, RBETS=>YDCST%RBETS, &
+ & RGAMS=>YDCST%RGAMS, RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, RGAMD=>YDCST%RGAMD, RV=>YDCST%RV)
 !     ------------------------------------------------------------------
 
 !*       1.COMPUTE POTENTIAL EQUIVALENT TEMPERATURE ON MODEL LEVELS

@@ -24,18 +24,15 @@ SUBROUTINE VDFEIS (YDECUMF,KIDIA   , KFDIA   , KLON    , KLEV   , LDCLCOMP,&
 !          ------
 !          Martin Koehler         E.C.M.W.F
 !          revised: P. Bechtold, K. Lonitz           Aug. 2014
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG       ,RD       ,RCPD     ,RETV     ,RLVTT    ,&
-                     &RLSTT    ,RTT      ,RV      
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,R4IES    ,&
-                     &R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
-                     &RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
-                     &RTWAT_RTICE_R      ,RTWAT_RTICECU_R
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of included functions. REK.
 USE YOECUMF  , ONLY : TECUMF
 
 IMPLICIT NONE
@@ -65,7 +62,15 @@ REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #include "fcttre.func.h"
 
 IF (LHOOK) CALL DR_HOOK('VDFEIS',0,ZHOOK_HANDLE)
-ASSOCIATE(NJKT4=>YDECUMF%NJKT4, NJKT6=>YDECUMF%NJKT6)
+ASSOCIATE(NJKT4=>YDECUMF%NJKT4, NJKT6=>YDECUMF%NJKT6, &
+ & RG=>YDCST%RG, RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, &
+ & RV=>YDCST%RV, RD=>YDCST%RD, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, &
+ & R4IES=>YDTHF%R4IES, R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, &
+ & R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, RALSDCP=>YDTHF%RALSDCP, &
+ & RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, &
+ & RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R)
+
 ! optimization
 ZRG    = 1.0_JPRB/RG
 ZRDOCP = RD/RCPD

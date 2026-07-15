@@ -1,3 +1,88 @@
+
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFSN_WEBAL* - Snow water & energy balance 
+!     PURPOSE.
+!     --------
+!     THIS ROUTINE COMPUTES ENERGY AND WATER BALANCE IN THE SNOWPACK
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_WEBAL* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVSN*     VERTICAL SNOW LAYERS
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LLNOSNOW*   NO-SNOW/SNOW MASK (TRUE IF NO-SNOW)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PWLM1M*     SKIN RESERVOIR WATER CONTENT                 kg/m**2
+!    *PFRSN*      total snow fraction tile 5 + 7
+!    *PSSNM1M*    TOTAL SNOW MASS IN EACH LAYER (per unit area) kg/m**2
+!    *PWSNM1M*    LIQUID WATER CONTENT IN SNOW                 kg/m**2
+!    *PRSNM1M*    SNOW DENSITY in each layer                   kg/m**3
+!    *PTSNM1M*    TEMPERATURE OF SNOW LAYER                    K
+!    *PTSURF*     TEMPERATURE OF TOP SOIL LAYER                K
+!    *PHFLUX*     CONDUCTIVE HEAT FLUX INTO THE SNOWPACK       W/m**2
+!    *PSNOWF*     TOTAL SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PRAINF*     TOTAL RAIN FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSN*    EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+!    *PSURFCOND*  THERMAL CONDUCTIVITY OF TOP SOIL LAYER
+!    *ZSNOTRS*    SOLAR RADIATION FLUX INTO THE SNOWPACK      W/m**2
+!    *PAPRS*      ATMOSPHERIC PRESSURE ON BOTTOM HALF LEVEL   Pa
+!    
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PSSN*        SNOW MASS each layer (per unit area)        kg/m**2
+!    *PWSN*        LIQUID WATER CONTENT IN SNOW                 kg/m**2
+!    *PTSN*        TEMPERATURE OF SNOW LAYER                    K
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+!    *PRUSN*      FLUX OF MELT WATER FROM SNOW TO SOIL       KG/M**2/S (#)
+!    *PMELTSN*    LATENT HEAT OF MELTED WATER                 J/m**2
+!    *PFREZSN*    LATENT HEAT OF REFREEZE                     J/m**2
+
+
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHIIS*     Diagnostic array for interception layer (see module yomcdh)
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   E. Dutra      ECMWF     04/12/2015
+!                G. Arduini              01/09/2021
+
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_WEBAL_MOD
 CONTAINS
 SUBROUTINE SRFSN_WEBAL(KIDIA,KFDIA,KLON,KLEVSN,&
@@ -14,15 +99,9 @@ USE PARKIND1 , ONLY : JPIM, JPRB, JPRD
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_SOIL , ONLY : TSOIL 
 USE YOS_CST  , ONLY : TCST
-USE ABORT_SURF_MOD
+USE EC_LUN   , ONLY : NULERR
 
-! (C) Copyright 2015- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
+USE ABORT_SURF_MOD
 
 !**** *SRFSN_WEBAL* - Snow water & energy balance 
 !     PURPOSE.
@@ -228,7 +307,8 @@ DO JL=KIDIA,KFDIA
       ZICE(JK)    = PSSNM1M(JL,JK) - PWSNM1M(JL,JK) ! Ice (Kg m-2)
       ! Limit thermally active snow depth to 1 meter of snow (for glaciers in particular)
       ZDSN(JK)    = MIN(RDSNMAX, (PSSNM1M(JL,JK) / PRSNM1M(JL,JK))) ! read snow depth (m)
-      ZSNHC(JK)   = (ZIHCAP*PRSNM1M(JL,JK) * MIN(RDSNMAX, (ZICE(JK)/PRSNM1M(JL,JK))) + ZWHCAP*PWSNM1M(JL,JK) ) * ZTMST
+      !*ZSNHC(JK)   = (ZIHCAP*PRSNM1M(JL,JK) * MIN(RDSNMAX, (ZICE(JK)/PRSNM1M(JL,JK))) + ZWHCAP*PWSNM1M(JL,JK) ) * ZTMST
+      ZSNHC(JK)   = (ZIHCAP*PRSNM1M(JL,JK) * MIN(RDSNMAX, ZDSN(JK))) * ZTMST
       ! heat conductivity from water vapor transport into the snowpack
       ZSNVCOND=(SNHCONDPOV/PAPRS(JL))*MAX(0._JPRB,(SNHCONDAV-SNHCONDBV/(PTSNM1M(JL,JK)-SNHCONDCV)))
       ! snow heat conductivity 
@@ -361,18 +441,21 @@ DO JL=KIDIA,KFDIA
 
     
     IF (ANY(PTSN(JL,:)>RTT+ZEPSILON)) THEN
-      write(*,*) 'All snow melted...'
-      CALL ABORT_SURF('ALL SNOW MELTED')
+      write(*,*) 'Tsn above zero C'
+      !*CALL ABORT_SURF('ALL SNOW MELTED')
     ENDIF
     IF (ANY(PTSN(JL,:)<100._JPRB)) THEN
-      write(*,*) 'Very snow cold temperature'
-      write(*,*) 'Tsn-1',PTSNM1M(JL,:)
-      write(*,*) 'Tsn',PTSN(JL,:)
-      write(*,*) 'SWE-1',PSSNM1M(JL,:)
-      write(*,*) 'SWE',PSSN(JL,:)
-      write(*,*) 'Snow frac,heat,pg0',PFRSN(JL),PHFLUX(JL),PGSN(JL)
+      write(NULERR,*) 'Very cold snow temperature, webal'
+      write(NULERR,*) 'Tsn-1',PTSNM1M(JL,:)
+      write(NULERR,*) 'Tsn',PTSN(JL,:)
+      write(NULERR,*) 'SWE-1',PSSNM1M(JL,:)
+      write(NULERR,*) 'SWE',PSSN(JL,:)
+      write(NULERR,*) 'Snow frac,heat,pg0',PFRSN(JL),PHFLUX(JL),PGSN(JL)
       
-      CALL ABORT_SURF('Very snow cold temperature')
+      WHERE (PTSN(JL,:)<100._JPRB)
+          PTSN(JL,:)=100.0_JPRB
+      ENDWHERE
+      !* CALL ABORT_SURF('Very snow cold temperature')
     ENDIF 
     
     

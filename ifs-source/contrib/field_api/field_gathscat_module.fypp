@@ -1,0 +1,185 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE FIELD_GATHSCAT_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList ()
+
+USE FIELD_MODULE
+USE FIELD_ACCESS_MODULE
+USE FIELD_FACTORY_MODULE
+${fieldType.useParkind1 ()}$
+
+#:for ft in fieldTypeList
+USE ${ft.name}$_GATHSCAT_MODULE
+#:endfor
+
+IMPLICIT NONE
+
+PRIVATE
+
+TYPE FIELD_GATHSCAT
+  INTEGER (KIND=JPIM) :: KGPBLKS = -1, KLON = -1, KGPTOT = -1
+  LOGICAL :: LFULL = .FALSE.  ! No need to gather/scatter, all columns are OK, return pointers based on original fields
+  LOGICAL :: LNULL = .FALSE.  ! No need to gather/scatter, all columns are KO, return pointers on empty arrays
+  CLASS (FIELD_2LM), POINTER :: YLFCOND => NULL ()
+  CLASS (FIELD_3IM), POINTER :: YLFINDS => NULL ()
+#:for ft in fieldTypeList
+  TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER :: ${ft.name}$_LIST => NULL ()
+#:endfor
+CONTAINS
+  PROCEDURE :: INIT => INIT_FIELD_GATHSCAT
+  PROCEDURE :: SCATTER => SCATTER_FIELD_GATHSCAT
+END TYPE FIELD_GATHSCAT
+
+PUBLIC :: FIELD_GATHSCAT
+
+#:for what in ['DEVICE', 'HOST']
+#:for mode in ['RDONLY', 'RDWR']
+INTERFACE GATHER_${what}$_DATA_${mode}$
+#:for ft in fieldTypeList
+  MODULE PROCEDURE :: ${ft.name}$_GATHER_${what}$_DATA_${mode}$
+#:endfor
+END INTERFACE
+
+PUBLIC :: GATHER_${what}$_DATA_${mode}$
+
+#:endfor
+#:endfor
+
+INTEGER (KIND=JPIM), PARAMETER :: NRDWR = 0, NRDONLY = 1, NHOST = 2, NDEVICE = 3
+INTEGER (KIND=JPIM), PARAMETER :: NLONDIM = 1, NBLKDIM = 2
+
+CONTAINS
+
+SUBROUTINE INIT_FIELD_GATHSCAT (SELF, YLFCOND, KGPTOT)
+CLASS (FIELD_GATHSCAT) :: SELF
+CLASS (FIELD_2LM), POINTER :: YLFCOND
+INTEGER (KIND=JPIM), INTENT (IN) :: KGPTOT
+
+LOGICAL, POINTER :: LLF (:,:)
+INTEGER (KIND=JPIM), POINTER :: INDS (:,:,:)
+INTEGER (KIND=JPIM) :: ICOUNT
+INTEGER (KIND=JPIM) :: JLONS, JBLKS, JLONG, JBLKG, I1S, I2S, IPROMA
+
+#include "abor1.intfb.h"
+
+SELF%YLFCOND => YLFCOND
+
+LLF => GET_HOST_DATA_RDONLY (YLFCOND)
+
+IPROMA = SIZE (LLF, 1)
+
+! Reduction
+
+ICOUNT = 0
+
+DO JBLKS = 1, SIZE (LLF, 2)
+  I1S = 1
+  I2S = MIN (IPROMA, KGPTOT - (JBLKS - 1) * IPROMA)
+  ICOUNT = ICOUNT + COUNT (LLF (I1S:I2S,JBLKS))
+ENDDO
+
+SELF%KGPBLKS = (ICOUNT+IPROMA-1) / IPROMA
+SELF%KLON = IPROMA
+SELF%KGPTOT = ICOUNT
+
+SELF%LFULL = SELF%KGPTOT == KGPTOT
+SELF%LNULL = SELF%KGPTOT == 0
+
+IF (SELF%LNULL) THEN
+  ! Do nothing
+ELSEIF (SELF%LFULL) THEN
+  ! Do nothing
+ELSE
+
+  CALL FIELD_NEW (SELF%YLFINDS, UBOUNDS=[2, IPROMA, SELF%KGPBLKS], PERSISTENT=.TRUE.)
+  INDS => GET_HOST_DATA_RDWR (SELF%YLFINDS)
+  
+  ! Create indices (serial code)
+
+  JBLKG = 1
+  JLONG = 1
+  DO JBLKS = 1, SIZE (LLF, 2)
+    DO JLONS = 1, MIN (IPROMA, KGPTOT - (JBLKS - 1) * IPROMA)
+      IF (LLF (JLONS, JBLKS)) THEN
+        IF ((JLONG > SIZE (INDS, 2)) .OR. (JBLKG > SIZE (INDS, 3))) THEN
+          CALL ABOR1 ('INIT_FIELD_GATHSCAT: OUT OF BOUNDS')
+        ENDIF
+        INDS (NLONDIM, JLONG, JBLKG) = JLONS
+        INDS (NBLKDIM, JLONG, JBLKG) = JBLKS
+        JLONG = JLONG + 1
+        IF (JLONG > IPROMA) THEN
+          JLONG = 1
+          JBLKG = JBLKG + 1
+        ENDIF
+      ENDIF
+    ENDDO
+  ENDDO
+  
+  IF (JBLKG <= SIZE (INDS, 3)) THEN
+    DO WHILE (JLONG <= IPROMA)
+      INDS (NLONDIM, JLONG, JBLKG) = -9999999
+      INDS (NBLKDIM, JLONG, JBLKG) = -9999999
+      JLONG = JLONG + 1
+    ENDDO
+  ENDIF
+
+ENDIF
+
+END SUBROUTINE
+
+SUBROUTINE SCATTER_FIELD_GATHSCAT (SELF)
+CLASS (FIELD_GATHSCAT) :: SELF
+#:for ft in fieldTypeList
+TYPE (${ft.name}$_GATHSCAT_PAIR), POINTER :: ${ft.name}$_LIST, ${ft.name}$_NEXT
+#:endfor
+
+IF (SELF%LNULL) THEN
+  ! Do nothing
+ELSEIF (SELF%LFULL) THEN
+  ! Do nothing
+ELSE
+
+#:for ft in fieldTypeList
+  CALL PAIR_SCATTER_DATA (SELF%${ft.name}$_LIST, SELF%YLFINDS)
+
+#:endfor
+
+  CALL FIELD_DELETE (SELF%YLFINDS)
+
+ENDIF
+
+SELF%YLFCOND => NULL ()
+SELF%YLFINDS => NULL ()
+SELF%KGPBLKS = -1
+SELF%KLON = -1
+SELF%KGPTOT = -1
+
+END SUBROUTINE
+
+#:for what in ['DEVICE', 'HOST']
+#:for mode in ['RDONLY', 'RDWR']
+#:for ft in fieldTypeList
+FUNCTION ${ft.name}$_GATHER_${what}$_DATA_${mode}$ (SELF, YLF) RESULT (PTR)
+
+CLASS (FIELD_GATHSCAT)                      :: SELF
+CLASS (${ft.name}$),   POINTER, INTENT (IN) :: YLF
+
+${ft.type}$, POINTER :: PTR(${ft.shape}$)
+
+PTR => PAIR_GATHER_${what}$_DATA_${mode}$ (SELF%${ft.name}$_LIST, SELF%LNULL, SELF%LFULL, SELF%KGPBLKS, SELF%YLFINDS, YLF)
+
+END FUNCTION ${ft.name}$_GATHER_${what}$_DATA_${mode}$
+
+#:endfor
+#:endfor
+#:endfor
+
+END MODULE FIELD_GATHSCAT_MODULE

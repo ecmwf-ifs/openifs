@@ -46,7 +46,6 @@ REAL   (KIND=JPRB),INTENT(OUT)     :: PGH2O,PGHCL
 !-----------------------------------------------------------------------
 !  Local variables 
 !-----------------------------------------------------------------------
-
 REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 REAL(KIND=JPRB)    :: ZNT
 INTEGER(KIND=JPIM) :: JL
@@ -61,9 +60,7 @@ REAL   (KIND=JPRB)         ::ZPPHCL,ZPPH2O
 REAL(KIND=JPRB), PARAMETER :: ZEXPLIMIT = LOG(HUGE(ZEXPLIMIT))
 
 !-------------------------------------------------------------------
-#ifdef WITH_COMPO_DR_HOOK
 IF (LHOOK) CALL DR_HOOK('BASCOE_GLIQ',0,ZHOOK_HANDLE )
-#endif
 
       ZNT=0.0_JPRB
       ZTEMP=MAX(185._JPRB,PTEMP)
@@ -73,9 +70,7 @@ IF (LHOOK) CALL DR_HOOK('BASCOE_GLIQ',0,ZHOOK_HANDLE )
       PGH2O=0.0_JPRB
       PGHCL=0.0_JPRB
       IF( ZNT < 1.E-1_JPRB) THEN
-#ifdef WITH_COMPO_DR_HOOK
         IF (LHOOK) CALL DR_HOOK('BASCOE_GLIQ',1,ZHOOK_HANDLE )
-#endif
         RETURN
       ENDIF
 
@@ -113,7 +108,7 @@ IF (LHOOK) CALL DR_HOOK('BASCOE_GLIQ',0,ZHOOK_HANDLE )
       PGHCL=MAX(1.E-20_JPRB,PGHCL)
       PGH2O=MAX(1.E-20_JPRB,PGH2O)
 
-#ifdef WITH_COMPO_DR_HOOK
 IF (LHOOK) CALL DR_HOOK('BASCOE_GLIQ',1,ZHOOK_HANDLE )
-#endif
+
 END SUBROUTINE BASCOE_GLIQ
+

@@ -6,7 +6,6 @@ SUBROUTINE FPSPECFITG(YDAFN,YDFPGEO,KFPDOM,KFPRESOL,KSPEC2,YDGEOMETRY,KAPTR,PABU
 
 !     PURPOSE.
 !     --------
-!        Cap humidity to saturation and 
 !        spectrally fit dynamic fields.
 
 !**   INTERFACE.

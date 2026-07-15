@@ -1,3 +1,65 @@
+! (C) Copyright 1997- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**   *COTWO* - CALCULATES NET ASSIMILATION OF CO2 AND LEAF CONDUCTANCE
+
+!     A. Boone       * Meteo-France *     27/10/97 
+!     (following Belair)
+!     MODIFIED BY
+!     M.H. Voogt (KNMI) "C-Tessel"  09/2005 
+!     S. Lafont (ECMWF) vectorisation 04/2006 
+!     S. Lafont (ECMWF) optimization  10/2006
+!     G. Balsamo (ECMWF) 24/3/2014 cleaning and LDLAND protection
+!      F. Vana  05-Mar-2015  Support for single precision
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+!     PURPOSE
+!     -------
+!     Calculates net assimilation of CO2 and leaf conductance.
+              
+!     INTERFACE
+!     ---------
+!     COTWO IS CALLED BY SUCOTWO AND COTWORESTRESS 
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (REAL):
+
+!     *PGC*          CUTICULAR CONDUCTANCE                        M/S
+!     *PCSP*         ATMOSPHERIC CONCENTRATION OF CO2      KG_CO2 KG_AIR-1
+!     *PDS*          SPECIFIC HUMIDITY DEFICIT                    KG/KG
+!     *PDMAX*	     MAXIMUM SPECIFIC HUMIDITY DEFICIT 
+!                      TOLERATED BY VEGETATION                    KG/KG
+!     *PIA*          ABSORBED PAR                                 W/M
+!     *PGAMMT*       CO2 COMPENSATION POINT AT T=TSKIN     KG_CO2 KG_AIR-1
+!     *PFZERO*       IDEAL VALUE OF F, NO PHOTORESPIRATION OR 
+!                      SATURATION DEFICIT                         -
+!     *PGMEST*       MESOPHYLL CONDUCTANCE AT T=TSKIN             M/S
+!     *PEPSO*        MAXIMUM INITIAL QUANTUM USE EFFICIENCY KG_CO2 J-1 PAR M3 KG_AIR-1
+!     *PAMMAX*       LEAF PHOTOSYNTHETIC CAPACITY           KG_CO2 KG_AIR-1 M S-1
+
+!     OUTPUT PARAMETERS (REAL):      
+
+!     *PAN*          NET ASSIMILATION OF CO2                KG_CO2 KG_AIR-1 M S-1
+!     *PAG*          GROSS ASSIMILATION OF CO2              KG_CO2 KG_AIR-1 M S-1
+!     *PRD*          DARK RESPIRATION OF CO2                KG_CO2 KG_AIR-1 M S-1
+
+!     *PGS*          LEAF CONDUCTANCE TO H20 (CUTICULAR AND STOMATAL) M/S
+
+!     METHOD
+!     ------
+!     Calvet et al. 1998 Forr. Agri. Met. [from model of Jacobs(1994)]
+
+!     REFERENCE
+!     ---------
+!     Calvet et al. 1998 Forr. Agri. Met. 
+      
+!     --------------------------------------------------------------------------
+
 MODULE COTWO_MOD
 
 CONTAINS
@@ -6,13 +68,6 @@ SUBROUTINE COTWO(KIDIA,KFDIA,KLON,LDLAND, PAN, PAG, PRD, PGS, PGC, PCSP, &
  & PFZERO, PGMEST, PEPSO, PAMMAX  )
 
 !***
-! (C) Copyright 1997- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**   *COTWO* - CALCULATES NET ASSIMILATION OF CO2 AND LEAF CONDUCTANCE
 

@@ -11,7 +11,7 @@
 #   oifs-config.edit_me.sh
 #
 #
-#   This script sets the environment for OpenIFS 48r1
+#   This script sets the environment for OpenIFS 49r1
 #
 #
 #   Read this script using the command:
@@ -21,12 +21,12 @@
 #
 #--- set machine specific settings -----------------------------
 
-export OIFS_HOST="local"
-export OIFS_PLATFORM="local"
+export OIFS_HOST="ecmwf"
+export OIFS_PLATFORM="hpc2020"
 
 #--- set principal OIFS variables ------------------------------
 
-export OIFS_CYCLE=48r1
+export OIFS_CYCLE=49r1
 export OIFS_CLIMATE="climate.v020"
 
 #---Base code assumes openifs and openifs-expt are installed
@@ -83,9 +83,9 @@ export SCM_EXEC="${OIFS_BLD_PARENT}/bin/MASTER_scm.SP"
 
 #---Default assumed paths, only change if you know what you are doing
 export SCM_TEST="${OIFS_HOME}/scripts/scm"
-export SCM_VERSIONDIR="${OIFS_EXPT}/scm_openifs/48r1"
+export SCM_VERSIONDIR="${OIFS_EXPT}/scm_openifs/49r1"
 export SCM_PROJDIR="${SCM_VERSIONDIR}/scm-projects"
-export SCM_RUNDIR="${SCM_PROJDIR}/ref48r1"
+export SCM_RUNDIR="${SCM_PROJDIR}/ref49r1"
 export SCM_LOGFILE="${SCM_RUNDIR}/scm_run_log.txt"
 
 alias scm_env="env -0 | sort -z | tr '\0' '\n' | grep -a SCM_"

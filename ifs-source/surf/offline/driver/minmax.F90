@@ -1,6 +1,3 @@
-SUBROUTINE MINMAX ( CNAME, PA, KLON, KLAT, LMASK, KULOUT )
-
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -8,6 +5,52 @@ SUBROUTINE MINMAX ( CNAME, PA, KLON, KLAT, LMASK, KULOUT )
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *MINMAX * - SPECIFYING STATISTICS OF ARRAY
+
+!     Purpose.
+!     --------
+!            DISPLAY OF ARRAY STATISTICS
+
+!**   Interface.
+!     ----------
+!        *CALL* *MINMAX*
+
+!     Explicit arguments :
+!     --------------------
+!     CNAME	CHARACTER*8	FIELD NAME
+!     PA	REAL()		ARRAY
+!     KLON	INTEGER		X-DIMENSION
+!     KLAT	INTEGER		Y-DIMENSION
+!     LMASK	LOGICAL		MASK ARRAY
+!     KULOUT	INTEGER		LOGICAL UNIT OUTPUT
+
+!     Implicit arguments :
+!     --------------------
+
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk, KNMI
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-07
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE MINMAX ( CNAME, PA, KLON, KLAT, LMASK, KULOUT )
+
+#ifdef DOC
 
 !**** *MINMAX * - SPECIFYING STATISTICS OF ARRAY
 

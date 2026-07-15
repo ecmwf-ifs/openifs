@@ -1,3 +1,109 @@
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+!***  DETERMINES EVOLUTION OF U, V AND T USING A MIXED LAYER MODEL 
+!     FOR THE UPPER OCEAN
+!
+!
+!     AUTHOR: PETER A.E.M. JANSSEN, SEPTEMBER 2009
+!     ------
+!
+!
+!     PURPOSE.
+!     --------
+!
+!         THIS IS A SINGLE COLUMN MODEL FOR THE UPPER OCEAN. IT SOLVES
+!         THE AGEOSTROPHIC MOMENTUM AND HEAT EQUATIONS WHERE THE TURBULENT
+!         EXCHANGE COEFFICIENTS FOLLOW FROM THE TURBULENT KINETIC ENERGY
+!         (TKE) EQUATION.             
+!         THE TKE EQUATION IS SOLVED FORWARD IN TIME WITH AN IMPLICIT SCHEME.
+!         THE SOURCES INVOLVE TURBULENT DISSIPATION, SHEAR
+!         PRODUCTION, BUOYANCY, LANGMUIR TURBULENT PRODUCTION AND 
+!         WAVE BREAKING.   
+!
+!**   INTERFACE.
+!     ----------
+!
+!         CALL OC_MLM(KIDIA,KFDIA,KLON,KLEVO,DELT,NSTEP,RT,Q_0,FC,PHI_W,
+!    V                HS,Z0,PPHIOC,WSTAR,
+!    V                PUSTOKES,PVSTOKES,XKS,DML,U_S,V_S,
+!    V                T_S,POTKE,U,V,T)
+!         
+!         INPUT:
+!         -----
+!
+!         *KIDIA*    INTEGER       START INDEX
+!         *KFDIA*    INTEGER       LAST INDEX
+!         *KLON*     INTEGER       NUMBER OF GRID POINTS PER PACKET
+!         *KLEVO*    INTEGER       NUMBER OF LAYERS
+!         *DELT*     REAL          TIMESTEP
+!         *NSTEP*    INTEGER       NUMBER OF STEPS IN TIME INTERVAL DELTAU
+!         *RT*       REAL          RADIATION
+!         *Q_0*      REAL          TOTAL HEAT FLUX
+!         *FC*       REAL          CORIOLIS PARAMETER
+!         *U10*      REAL          WINDSPEED
+!         *PHI_W*    REAL          WIND DIRECTION
+!         *HS*       REAL          SIGNIFICANT WAVE HEIGHT
+!         *Z0*       REAL          GRADIENT SCALE WAVE-INDUCED STRESS
+!         *PPHIOC*   REAL          ENERGY FLUX INTO THE OCEAN
+!         *WSTAR*    REAL          FRICTION VELOCITY IN WATER
+!         *PUSTOKES* REAL          SURFACE STOKES VELOCITY X-DIRECTION
+!         *PVSTOKES* REAL          SURFACE STOKES VELOCITY Y-DIRECTION
+!         *XKS*      REAL          INVERSE OF DECAY LENGTH SCALE STOKES DRIFT
+!         *U_S*      REAL          U COMPONENT VELOCITY AT DEPTH DML
+!         *V_S*      REAL          V COMPONENT VELOCITY AT DEPTH DML
+!         *T_S*      REAL          TEMPERATURE AT DEPTH DML !!! in degree C !!!
+!         *POTKE*    REAL          TURBULENT KINETIC ENERGY
+!         *U*        REAL          U COMPONENT VELOCITY PROFILE
+!         *V*        REAL          V COMPONENT VELOCITY PROFILE
+!         *T*        REAL          TEMPERATURE PROFILE  !!! in degree C
+!         
+!         OUTPUT:
+!         ------
+!
+!         *POTKE*    REAL          updated TURBULENT KINETIC ENERGY
+!         *T*        REAL          SURFACE TEMPERATURE
+!         *U*        REAL          U-COMPONENT SURFACE CURRENT
+!         *V*        REAL          V-COMPONENT SURFACE CURRENT
+!
+!     METHOD.
+!     -------
+!
+!
+!         SOLVE SIMULTANEOUSLY THE TKE EQUATION WHICH IS OF THE FORM
+!
+!            DE/DT = D/DZ(D_E DE/DZ) + ALPHA*Q -Q^3/BL(Z)+ S_{WAVES}
+!
+!         TOGETHER WITH THE HEAT EQUATION AND THE TWO-DIMENSIONAL MOMENTUM
+!
+!         EQUATION, USING A SEMI-IMPLICIT SCHEME
+!
+!
+!     EXTERNALS.
+!     ----------
+!
+!         NO EXTERNALS.
+!
+!     REFERENCE.
+!     ----------
+!      
+!         MIXED LAYER MODELLING, WAVE BREAKING AND THE GENERATION OF 
+!         LANGMUIR CIRCULATION  BY P.A.E.M. JANSSEN, 7 SEPTEMBER 2009.
+!
+!
+!     HEALTH WARNING
+!     --------------
+!
+!         CODE IS WRITTEN ASSUMING DEPTH Z IS POSITIVE (Z => -Z)		
+!
+!----------------------------------------------------------------------
+
 MODULE OC_MLM_MOD
 
 CONTAINS
@@ -7,14 +113,6 @@ SUBROUTINE OC_MLM(KIDIA,KFDIA,KLON,KLEVO,DELT,NSTEP,RT,Q_0,FC,&
  &                PUSTOKES ,PVSTOKES ,&
  &                XKS,U_S,V_S,T_S,&
  &                POTKE,U,V,T,YDMLM,YDCST)
-
-! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !
 !***  DETERMINES EVOLUTION OF U, V AND T USING A MIXED LAYER MODEL 
 !     FOR THE UPPER OCEAN

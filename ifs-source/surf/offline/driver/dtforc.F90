@@ -1,3 +1,76 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *DTFORC *  - TIME INTERPOLATION OF THE ATMOSPHERIC FORCING DATA
+
+!     PURPOSE.
+!     --------
+!        Computes the atmospheric forcing for the current time step
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *DTFORC*
+
+!-----------------------------------------------------------------------
+
+!     METHOD.
+!     -------
+!     EXTERNALS.
+!     ----------
+!        IYMD2C
+
+!     REFERENCE.
+!     ----------
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE 
+!        ONE COLUMN SURFACE MODEL
+
+!     AUTHOR.
+!     -------
+!        JEAN-FRANCOIS MAHFOUF AND PEDRO VITERBO  *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 95-03-13
+!        BART VD HURK: MULTIPLE GRID POINTS (2000-07-13)
+!        S.Boussetta: interpolation following the solar zenith angle for SW radiation (Jan 2013)
+!        A. Agusti-Panareda: Atmospheric CO2 forcing (2020-11-17)
+        
+!     --------------------------
+
+!
+!     A FEW IMPORTANT PARAMETERS
+!     --------------------------
+!        RTIMST    Time of start of forecast (Julian seconds)
+!        TSTEP     Time step of the forecast model (seconds)
+!        NSTEP     Current model step (0 for first step)
+!        RTIMTR    Midpoint time of current time step (Julian seconds)
+!
+!        RTSTFC    Time of start of forcing (Julian seconds)
+!                  (For fluxes: This can be start, midpoint or end of 
+!                   the first fluxinterval with lenth DTIMFC) 
+!        DTIMFC    Time step of forcing (seconds)
+!
+!
+!        NACCTYPE  Accum. type: 0  =  Centred flux
+!                               1  =  Time stamp at start of flux interval
+!                               2  =  Time stamp at end of flux interval
+!
+! Solar related parameters
+!     RCODECM: COSINE OF THE DECLINATION
+!     RSIDECM:   SINE OF THE DECLINATION
+!     RCOVSRM: COSINE OF TRUE SOLAR TIME
+!     RSIVSRM:   SINE OF TRUE SOLAR TIME
+!
+! Grid point related parameters
+!     GEMU    -  SIN of latitude on the real earth
+!     GELAM   -  longitude on the real earth
+!     GELAT   -  latitude on the real earth
+
 SUBROUTINE DTFORC
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB , JPRD
@@ -22,13 +95,6 @@ USE YOEPHY   , ONLY : LEAIRCO2COUP
 
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *DTFORC *  - TIME INTERPOLATION OF THE ATMOSPHERIC FORCING DATA
 

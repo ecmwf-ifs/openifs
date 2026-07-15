@@ -49,8 +49,12 @@ cmake $SOURCE \
 
 make VERBOSE=1
 
-bin/main_dp
-bin/main_sp
+if [ -f bin/main_dp ] ; then
+  bin/main_dp
+fi
+if [ -f bin/main_sp ] ; then
+  bin/main_sp
+fi
 
 { set +ex; } 2>/dev/null
 echo "+++++++++++++++++"

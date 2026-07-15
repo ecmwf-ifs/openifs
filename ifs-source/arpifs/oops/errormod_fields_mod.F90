@@ -26,7 +26,6 @@ USE YOMHOOK,              ONLY : LHOOK, DR_HOOK, JPHOOK
 IMPLICIT NONE
 PRIVATE
 
-
 TYPE,PUBLIC :: ERRMOD_FIELDS
   TYPE(TMODERR_CONF)                 :: CONF          ! Configuration
   TYPE(GRIDPOINT_FIELD), ALLOCATABLE :: GPMODERR(:)   ! Gridpoint model error
@@ -37,5 +36,6 @@ TYPE,PUBLIC :: ERRMOD_FIELDS
   TYPE(MODEL), POINTER               :: MODEL  => NULL()
   LOGICAL                            :: LLAUX  = .FALSE.
   LOGICAL                            :: LLINCR = .TRUE.
+
 END TYPE ERRMOD_FIELDS
 END MODULE ERRMOD_FIELDS_MOD

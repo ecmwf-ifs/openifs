@@ -1,3 +1,70 @@
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFRCGS* - COMPUTES SOIL VOLUMETRIC HEAT CAPACITY.
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES THE APARENT VOLUMETRIC HEAT CAPACITY
+!          IN THE SOIL, TAKING INTO ACCOUNT SNOW. APPARENT STANDS FOR
+!          THE FACT THAT THE EFFECTS OF FREEZING AND MELTING OF WATER
+!          IN THE SOIL ARE TAKEN INTO ACCOUNT.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFRCGS* IS CALLED FROM *SRFTS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LDSICE*     SEA ICE MASK (.T. OVER SEA ICE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PCVL*       LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!    *PCVH*       HIGH VEGETATION COVER (CORRECTED)              (0-1)
+
+!     OUTPUT PARAMETERS:
+!    *PCTSA*      VOLUMETRIC HEAT CAPACITY                      J/K/M**3
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!     Original    P.VITERBO      E.C.M.W.F.     14/10/93
+!     Modified    P.VITERBO  99-03-26   Tiling of the land surface
+!     Modified    J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     Modified    P. Viterbo   24/05/2004   Change surface units
+!     Modified    G. Balsamo   10/01/2006   Include Van Genuchten Hydro.
+!     Modified    G. Balsamo   03/07/2006   Add soil type
+
+!     Copy of SRFRCG for simpl.phys.
+!     ------------------------------
+!      M. Janiskova    E.C.M.W.F.   26/07/2011 
+
+!     Modifications
+!     -------------
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP3 object for spatially distributed parameters
+!     ------------------------------------------------------------------
+
 MODULE SRFRCGS_MOD
 CONTAINS
 SUBROUTINE SRFRCGS(KIDIA  , KFDIA  , KLON , KLEVS ,&
@@ -12,14 +79,6 @@ USE YOS_CST   , ONLY : TCST
 USE YOS_SOIL  , ONLY : TSOIL
 
 #ifdef DOC
-! (C) Copyright 1993- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !**** *SRFRCGS* - COMPUTES SOIL VOLUMETRIC HEAT CAPACITY.
 !     PURPOSE.
 !     --------

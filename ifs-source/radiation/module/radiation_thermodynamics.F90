@@ -1,10 +1,16 @@
 ! radiation_thermodynamics.F90 - Derived type for pressure & temperature
 !
-! Copyright (C) 2014-2019 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-05-11  R. Hogan  Fix startcol/endcol for get_layer_mass
@@ -16,6 +22,7 @@ module radiation_thermodynamics
   use parkind1, only : jprb
 
   implicit none
+  public
 
   !---------------------------------------------------------------------
   ! Derived type for storing pressure and temperature at half levels
@@ -92,10 +99,10 @@ contains
     if (lhook) call dr_hook('radiation_thermodynamics:deallocate',0,hook_handle)
 
     if (allocated(this%pressure_hl)) then
-       deallocate(this%pressure_hl)
+      deallocate(this%pressure_hl)
     end if
     if (allocated(this%temperature_hl)) then
-       deallocate(this%temperature_hl)
+      deallocate(this%temperature_hl)
     end if
     if (allocated(this%h2o_sat_liq)) then
       deallocate(this%h2o_sat_liq)
@@ -132,7 +139,7 @@ contains
     nlev = size(this%pressure_hl,2) - 1
 
     if (.not. allocated(this%h2o_sat_liq)) then
-       allocate(this%h2o_sat_liq(ncol,nlev))
+      allocate(this%h2o_sat_liq(ncol,nlev))
     end if
 
     do jlev = 1,nlev
@@ -156,7 +163,7 @@ contains
   ! The first version is for all columns.
   subroutine get_layer_mass(this,istartcol,iendcol,layer_mass)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,              only : lhook, dr_hook, jphook
     use radiation_constants,  only : AccelDueToGravity
 
     class(thermodynamics_type), intent(in)  :: this
@@ -187,7 +194,7 @@ contains
   ! The second version is for one column, the one numbered "icol".
   subroutine get_layer_mass_column(this, icol, layer_mass)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,              only : lhook, dr_hook, jphook
     use radiation_constants,  only : AccelDueToGravity
 
     class(thermodynamics_type), intent(in)  :: this
@@ -221,7 +228,7 @@ contains
   ! radiation scheme.
   subroutine get_layer_separation(pressure_hl, temperature_hl, layer_separation)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,              only : lhook, dr_hook, jphook
     use radiation_constants,  only : GasConstantDryAir, AccelDueToGravity
 
     ! Pressure (Pa) and temperature (K) at half-levels, dimensioned
@@ -288,8 +295,8 @@ contains
   ! optionally only considering columns between istartcol and iendcol
   function out_of_physical_bounds(this, istartcol, iendcol, do_fix) result(is_bad)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
-    use radiation_config, only : out_of_bounds_2d
+    use yomhook,          only : lhook, dr_hook, jphook
+    use radiation_check,  only : out_of_bounds_2d
 
     class(thermodynamics_type), intent(inout) :: this
     integer,           optional,intent(in) :: istartcol, iendcol

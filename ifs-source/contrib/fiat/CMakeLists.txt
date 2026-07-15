@@ -37,6 +37,14 @@ ecbuild_add_option( FEATURE DR_HOOK_MULTI_PRECISION_HANDLES
                     DESCRIPTION "[DEPRECATED] Support single precision handles for DR_HOOK"
                     DEFAULT OFF )
 
+ecbuild_add_option( FEATURE DOUBLE_PRECISION
+                    DEFAULT ON
+                    DESCRIPTION "Support for Double Precision" )
+
+ecbuild_add_option( FEATURE SINGLE_PRECISION
+                    DEFAULT ON
+                    DESCRIPTION "Support for Single Precision" )
+
 ecbuild_add_option( FEATURE WARNINGS
                     DEFAULT ON
                     DESCRIPTION "Add warnings to compiler" )

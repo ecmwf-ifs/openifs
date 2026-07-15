@@ -1,3 +1,86 @@
+
+! (C) Copyright 2017- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFWS_FGPROF* - Snow warm start multi-layer 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE GENERATES PARAMETRIZED PROFILES OF 
+!          SNOW TEMPERATURE AND DENSITY BASED ON PARAMETERS
+!          SETUP IN SURFWS_INIT* 
+
+!**   INTERFACE.
+!     ----------
+!          *SURFWS_FGPROF* IS CALLED FROM *SURFWS_CTL*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       Length of arrays
+!    *KLEVSN*     Snow vertical levels
+!    *KLEVSNA*    Snow vertical Active levels
+!    *KLEVMID*    Snow middle levels (surfws_init)
+!    *PTMINCL*    Cluster index for temperature exp function
+!    *PRMINCL*    Cluster index for density exp function
+
+
+!     INPUT PARAMETERS (REAL):
+!    *ZTHRESWS*      snow depth threhsold for warm start
+!    *ZSNPERT*       snow depth threshold for glaciers
+!    *
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LLNOSNOW*     NOSNOW MASK (TRUE IF NO SNOW)
+
+!     INPUT PARAMETERS  (REAL):
+!    *PTSN*       SNOW TEMPERATURE single layer               (K)
+!    *PSSN*       SNOW MASS        single layer               (kg m-2)
+!    *PRSN*       SNOW DENSITY     single layer               (kg m-3)
+!    *PTSA*       soil temperature top layer                  (K)
+!    *PDSNTOT*    Total snow depth                            (m)
+!    *PACTDEPTH*  Active snow depth                           (m)
+!    *PSNDEPTH*   Snow depth per layer wrt 0                  (m)
+!    *PSNDEPTHR*  Snow depth per layer (full) wrt 0           (m)
+!    *PSADEPTH*   Soil depth top layer                        (m)
+!    *PTSNBOTTOM* Snow temperature bottom layer               (K)
+!    *PTSNTOP*    Snow temperature top layer                  (K)
+!    *PTSNMIDDLE* Snow temperature KLEVMID layer              (K)
+!    *PRSNTOP*    Snow density top layer                      (kg m-3)
+!    *PRSNMAX*    Snow density MAX allowed                    (kg m-3)
+!    *PTCONSTAVG* Constants for temperature exp function
+!    *PRCONSTAVG* Constants for density exp function
+!    
+!     OUTPUT PARAMETERS (REAL):
+!    *PTSNWS*        Snow tempeature warm started
+!    *PRSNWS*        Snow density    warm started
+
+
+!     METHOD.
+!     -------
+!     Compute snow temperature and density profiles using 
+!     exponential functions. Parameters of the functions are 
+!     pre-computed using a k-clustering algorithm, see Arduini et al. (2019)
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          Arduini et al. (2019)
+
+!     Modifications:
+!     Original   G. Arduini      ECMWF     28/07/2017
+
+!     ------------------------------------------------------------------
+
 MODULE SURFWS_FGPROF_MOD
 CONTAINS
 
@@ -18,14 +101,6 @@ USE YOS_CST  , ONLY : TCST
 USE YOS_SOIL , ONLY : TSOIL
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2017- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SURFWS_FGPROF* - Snow warm start multi-layer 
 !     PURPOSE.

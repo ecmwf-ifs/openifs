@@ -1,12 +1,13 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2008- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
-SUBROUTINE SUGWWMS(YDSTA,YDDIMV,YDEGWWMS,YDRIP,KSMAX)
+SUBROUTINE SUGWWMS(YDSTA,YDDIMV,YDEGWWMS,YDRIP)
 
 ! INITIALZE YOEGWWMS, THE MODULE THAT CONTROLS THE WARNER MCINTYRE GW PARAMETRIZATION
 
@@ -25,6 +26,7 @@ SUBROUTINE SUGWWMS(YDSTA,YDDIMV,YDEGWWMS,YDRIP,KSMAX)
 !                              for Tropics (NGAUSS=2)
 !          T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
 !          K. Yessad (July 2014): Move some variables.
+!          P. Bechtold (Dec 2022): remove obsolete KSMAX dependency
 !--------------------------------------------------------------------------------
 
 USE YOMSTA   , ONLY : TSTA
@@ -46,7 +48,6 @@ TYPE(TSTA)          ,INTENT(IN)   :: YDSTA
 TYPE(TDIMV)         ,INTENT(IN)   :: YDDIMV
 TYPE(TEGWWMS),TARGET,INTENT(INOUT):: YDEGWWMS
 TYPE(TRIP)          ,INTENT(IN)   :: YDRIP
-INTEGER(KIND=JPIM)  ,INTENT(IN)   :: KSMAX ! horizontal (spectral) resolution of host model
 
 ! internal
 INTEGER(KIND=JPIM) :: JK,IL
@@ -102,9 +103,7 @@ LGINDL     => YDEGWWMS%LGINDL
 NLAUNCHLEV=1   ! number of launch levels (maximum 3)
 
 GFLUXLAUN=3.75E-3_JPRB  !total launch momentum flux in each azimuth (rho_o x F_o)
-! resolution scaling for wavenumber>700 now done for octahedral grid in gwdrag_wms.F90
-!ZSCAL=(1.0_JPRB-MIN(1.0_JPRB,ATAN((MAX(KSMAX,700)-700)/REAL(6000-700))))
-!write(nulout,*)'GWDSETUP SCAL=',zscal
+! resolution scaling as function of dx in gwdrag_wms.F90
 GFLUXLAUN=GFLUXLAUN !*zscal
 
 GFLUXLAUNL(1)=GFLUXLAUN 

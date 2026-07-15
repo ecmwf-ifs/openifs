@@ -1,3 +1,44 @@
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!------------------------------------------------------------------------------
+!
+! Description:
+!
+!  Initialization of YOS_FLAKE 
+!
+!
+! Current Code Owner: DWD, Dmitrii Mironov
+!  Phone:  +49-69-8062 2705
+!  Fax:    +49-69-8062 3721
+!  E-mail: dmitrii.mironov@dwd.de
+!
+! History:
+! Version    Date       Name
+! ---------- ---------- ----
+! 1.00       2005/11/17 Dmitrii Mironov 
+!  Initial release 
+! !VERSION!  !DATE!     <Your name>
+!  <Modification comments>
+!            17-Dec-2015 F. Vana
+!    Single precision support
+!
+! Code Description:
+! Language: Fortran 90.
+! Software Standards: "European Standards for Writing and
+! Documenting Exchangeable Fortran 90 Code".
+!==============================================================================
+!
+! Declarations:
+!
+! Modules used:
+
 ! File %M% from Library %Q%
 ! Version %I% from %G% extracted: %H%
 !------------------------------------------------------------------------------
@@ -6,14 +47,6 @@ MODULE SUSFLAKE_MOD
 
 CONTAINS
 SUBROUTINE SUSFLAKE(LD_LEFLAKE,YDFLAKE)
-
-    ! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !------------------------------------------------------------------------------
 !

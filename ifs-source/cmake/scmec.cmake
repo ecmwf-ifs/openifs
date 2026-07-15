@@ -29,13 +29,14 @@ ecbuild_add_library(
     $<BUILD_INTERFACE:${include_directories}>
 
   PUBLIC_LIBS 
-      arpifs_intfb scmec_intfb  ${IFSAUX_LIBRARIES}  arpifs.${PREC}
+      scmec_intfb
+      arpifs.${PREC}
+      ${IFSAUX_LIBRARIES}
       fiat
 )
 
 # Generate Single-Column-specific Fortran modules in a separate directory to avoid clashes with ifs modules.
-include(target_fortran_module_directory)
-target_fortran_module_directory(
+ifs_target_fortran_module_directory(
     TARGET scmec.${PREC}
     MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/module/scmec${PROJECT_PRECISION_SUFFIX} )
 
@@ -45,14 +46,9 @@ ecbuild_add_executable(TARGET MASTER_scm.${PREC}
   DEFINITIONS ${IFS_DEFINITIONS}
   SOURCES scmec/source/master1c.F90
   INCLUDES
-    ${CMAKE_Fortran_MODULE_DIRECTORY}
     scmec/namelist
-    ${NETCDF_INCLUDE_DIRS}
     ${FCKIT_INCLUDE_DIRS}
-  LIBS scmec.${PREC} ${NETCDF_LIBRARIES})
-
-## Restore the default Fortran module directory
-include_directories(${CMAKE_Fortran_MODULE_DIRECTORY})
+  LIBS scmec.${PREC} NetCDF::NetCDF_Fortran)
 
 # ----------------------------------------------------------------------------
 

@@ -121,7 +121,7 @@ IF  (  ANY( (/ "HNO3","H2O2" /)   ==  CDNMS ) ) THEN
   DO  JL = KIDIA, KFDIA
   ! no temperature correction over sea / water 
     ZTCOR = 0.0_JPRB
-    IF (PTS(JL) < 271.0_JPRB .AND. ANY( KTILE(JL) == (/ 2 , 4, 5, 6, 7, 8/) ))  THEN 
+    IF (PTS(JL) < 271.0_JPRB .AND. ANY( KTILE(JL) == (/ 2 , 4, 5, 6, 7, 8, 10/) ))  THEN 
       ZTS=MAX(PTS(JL), 260._JPRB)
       ZTCOR = MIN(PPRMAX, 1000.0_JPRB * EXP(-ZTS + 269.0_JPRB) )  
     ENDIF 

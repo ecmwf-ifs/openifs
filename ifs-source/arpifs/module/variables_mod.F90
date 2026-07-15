@@ -24,16 +24,19 @@ PUBLIC :: VARIABLES, VARIABLES_CREATE, VARIABLES_DELETE, VARIABLES_CLONE, &
 ! ------------------------------------------------------------------------------
 
 TYPE :: VARIABLES
+  LOGICAL :: lhas_ecv = .false.
   LOGICAL :: linit = .false.
   LOGICAL :: lctrl = .false.
   LOGICAL :: linear = .false.
   integer(kind=jpim), pointer :: fieldids(:)=>null()
+  integer(kind=jpim), pointer :: fieldids_ecv(:)=>null()
 END TYPE VARIABLES
 
 ! ------------------------------------------------------------------------------
 
 interface variables_create
-  module procedure variables_create_old, variables_create_new
+  module procedure variables_create_old, variables_create_new,variables_create_old_ecv, &
+   & variables_create_new_ecv
 end interface
 
 ! ------------------------------------------------------------------------------
@@ -52,7 +55,24 @@ LOGICAL, OPTIONAL, INTENT(IN) :: LDLIN
 SELF%LCTRL = LDCTL
 IF (PRESENT(LDLIN)) SELF%LINEAR=LDLIN
 SELF%LINIT = .true.
+self%lhas_ecv = .false.
 END SUBROUTINE VARIABLES_CREATE_OLD
+
+! ------------------------------------------------------------------------------
+SUBROUTINE VARIABLES_CREATE_OLD_ECV(SELF, LDCTL ,KIDS_ECV,LDLIN)
+IMPLICIT NONE
+TYPE(VARIABLES), INTENT(INOUT) :: SELF
+LOGICAL, INTENT(IN) :: LDCTL
+integer(kind=jpim), intent(in) :: kids_ecv(:)
+LOGICAL, OPTIONAL, INTENT(IN) :: LDLIN
+
+allocate(self%fieldids_ecv(size(kids_ecv)))
+self%fieldids_ecv(:)=kids_ecv(:)
+SELF%LCTRL = LDCTL
+IF (PRESENT(LDLIN)) SELF%LINEAR=LDLIN
+SELF%LINIT = .true.
+self%lhas_ecv = .true.
+END SUBROUTINE VARIABLES_CREATE_OLD_ECV
 
 ! ------------------------------------------------------------------------------
 
@@ -68,6 +88,23 @@ self%lctrl = .true.
 self%linit = .true.
 END SUBROUTINE VARIABLES_CREATE_NEW
 
+SUBROUTINE VARIABLES_CREATE_NEW_ECV(SELF, KIDS,KIDS_ECV)
+IMPLICIT NONE
+TYPE(VARIABLES), INTENT(INOUT) :: SELF
+integer(kind=jpim), intent(in) :: kids(:)
+integer(kind=jpim), intent(in) :: kids_ecv(:)
+
+allocate(self%fieldids(size(kids)))
+self%fieldids(:)=kids(:)
+allocate(self%fieldids_ecv(size(kids_ecv)))
+self%fieldids_ecv(:)=kids_ecv(:)
+
+self%lctrl = .true.
+self%linit = .true.
+self%lhas_ecv = .true.
+END SUBROUTINE VARIABLES_CREATE_NEW_ECV
+
+! ------------------------------------------------------------------------------
 ! ------------------------------------------------------------------------------
 
 SUBROUTINE VARIABLES_CLONE(SELF, OTHER)
@@ -79,8 +116,13 @@ IF (ASSOCIATED(other%fieldids)) THEN
   ALLOCATE(self%fieldids(size(other%fieldids)))
   self%fieldids(:) = other%fieldids(:)
 ENDIF
+IF (ASSOCIATED(other%fieldids_ecv)) THEN
+  ALLOCATE(self%fieldids_ecv(size(other%fieldids_ecv)))
+  self%fieldids_ecv(:) = other%fieldids_ecv(:)
+ENDIF
 self%lctrl = other%lctrl
 self%linear = other%linear
+self%lhas_ecv = other%lhas_ecv
 self%linit = .true.
 END SUBROUTINE VARIABLES_CLONE
 
@@ -90,6 +132,7 @@ SUBROUTINE VARIABLES_DELETE(SELF)
 IMPLICIT NONE
 TYPE(VARIABLES), INTENT(INOUT) :: SELF
 IF (ASSOCIATED(self%fieldids)) DEALLOCATE(self%fieldids)
+IF (ASSOCIATED(self%fieldids_ecv)) DEALLOCATE(self%fieldids_ecv)
 self%linit = .false.
 END SUBROUTINE VARIABLES_DELETE
 

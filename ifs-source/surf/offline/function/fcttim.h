@@ -25,6 +25,25 @@
 ! NCTH  : turn seconds into hours
 ! RTIME : returns the time of the model (in seconds of course!)
 
+!     ------------------------------------------------------------------
+
+! - Time functions
+!   the descriptions are in the annex 1 of the documentation
+! modif seb zero for RTime was set to 01.01.2000 12 UTC
+! changed to 01.01.1986 12 UTC for run on earlier experience  
+! TIME
+
+! NDD   : extraxt dd from ccaammdd
+! NMM   : extract mm from ccaammdd
+! NAA   : extract aa from ccaammdd
+! NCCAA : extract ccaa from ccaammdd
+! NAMD  : extract aammdd from ccaammdd
+! NCENT : return centuary of ccaammdd
+! NYEARC: returns year of the centuary from ccaammdd
+! NCONSTRUCT_DATE : returns ccaammdd given centuary,year,month and day
+! NCTH  : turn seconds into hours
+! RTIME : returns the time of the model (in seconds of course!)
+
 INTEGER(KIND=JPIM) :: NDD,NMM,NCCAA,NAA,NAMD,NCTH,NZZAA,NZZMM,NCENT,NYEARC,&
 &NCONSTRUCT_DATE
 REAL(KIND=JPRD) :: RJUDAT,RTIME

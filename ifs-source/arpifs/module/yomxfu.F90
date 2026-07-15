@@ -24,10 +24,59 @@ SAVE
 
 !*    Contains variables to control activation of instantaneous fluxes.
 
-INTEGER(KIND=JPIM), PARAMETER :: JPFUXT=240  ! maximum number of timesteps where XFU can be activated
+INTEGER(KIND=JPIM), PARAMETER :: JPFUXT=250  ! maximum number of timesteps where XFU can be activated
 INTEGER(KIND=JPIM), PARAMETER :: JPMXXFU=201 ! maximum number of XFU fields
 
-TYPE :: TXFU
+TYPE :: TXFU_KEYS
+
+LOGICAL :: LXFU=.FALSE.                      ! controls switch on/off all XFU
+LOGICAL :: LXTRD=.FALSE.                     ! activates gravity wave drag momentum XFU if .T.
+LOGICAL :: LXTRC=.FALSE.                     ! activates contribution of convection to U, V, q and (cp T) XFU if .T.
+LOGICAL :: LXTRT=.FALSE.                     ! activates contribution of turbulence to U, V, q and (cp T) XFU if .T.
+LOGICAL :: LXPLC=.FALSE.                     ! activates convective precipitation XFU if .T.
+LOGICAL :: LXPLCG=.FALSE.                    ! activates convective graupels CFU if .T.
+LOGICAL :: LXPLCH=.FALSE.                    ! activates convective hail CFU if .T.
+LOGICAL :: LXPLS=.FALSE.                     ! activates stratiform precipitation XFU if .T.
+LOGICAL :: LXPLSG=.FALSE.                    ! activates stratiform graupels CFU if .T.
+LOGICAL :: LXPLSH=.FALSE.                    ! activates stratiform hail CFU if .T.
+LOGICAL :: LXR=.FALSE.                       ! activates radiation XFU if .T.
+LOGICAL :: LXNEBTT=.FALSE.                   ! activates total cloudiness XFU if .T.
+LOGICAL :: LXNEBPA=.FALSE.                   ! activates partial cloudiness XFU if .T.
+LOGICAL :: LXCLS=.FALSE.                     ! activates U, V, T, q and relative humidity at 2 or 10 m (time t-dt) if .T.
+LOGICAL :: LXMWINDCLS=.FALSE.                ! activates mean of U and V at 10 m if .T., also NU/NV if LXNUVCLS
+LOGICAL :: LXNUVCLS=.FALSE.                  ! activates neutral U and V at 10 m (time t-dt) if .T.
+LOGICAL :: LXTTCLS=.FALSE.                   ! activates extreme temperatures at 2 m if .T.
+LOGICAL :: LXHHCLS=.FALSE.                   ! activates extreme relative moistures at 2 m if .T
+LOGICAL :: LXTPWCLS=.FALSE.                  ! activates T'w at 2 m if .T
+LOGICAL :: LXSOIL=.FALSE.                    ! activates soil XFU if .T.
+LOGICAL :: LTXTRD=.FALSE.                    ! activates gravity wave drag momentum XFU at all levels if .T.
+LOGICAL :: LTXTRC=.FALSE.                    ! activates contribution of convection to U, V, q and (cp T) XFU if .T.
+LOGICAL :: LTXTRT=.FALSE.                    ! activates contribution of turbulence to U, V, q and (cp T) XFU if .T.
+LOGICAL :: LTXR=.FALSE.                      ! activates radiation XFU at all levels if .T.
+LOGICAL :: LTXNEB=.FALSE.                    ! activates cloudiness XFU at all levels if .T.
+LOGICAL :: LTXQICE=.FALSE.                   ! total ice water content at all levels
+LOGICAL :: LTXQLI=.FALSE.                    ! total liquid water content at all levels
+LOGICAL :: LXICV=.FALSE.                     ! activates indices of convection
+                                             ! (CAPE and moisture convergence) XFU at all levels if .T.
+LOGICAL :: LXCTOP=.FALSE.                    ! activates pressure of top deep convection
+LOGICAL :: LXCLP=.FALSE.                     ! activates height (in meters) of PBL XFU at all levels if .T.
+LOGICAL :: LXVEIN=.FALSE.                    ! activates ventilation index
+LOGICAL :: LXTGST=.FALSE.                    ! activates gusts as U and V components XFU at all levels if .T.
+LOGICAL :: LXXGST=.FALSE.                    ! activates extreme gusts as U and V components XFU at all levels if .T.
+LOGICAL :: LXXGST2=.FALSE.                   ! activates extreme gusts2 as U and V components XFU at all levels if .T.
+LOGICAL :: LXQCLS=.FALSE.                    ! activates specific moisture at 2 meters
+LOGICAL :: LXTHW=.FALSE.                     ! activates "theta'_w" surface flux
+LOGICAL :: LXXDIAGH=.FALSE.                  ! activates extreme value of hail diagnostic
+LOGICAL :: LXMRT=.FALSE.                     ! activates mean radiant temperature
+LOGICAL :: LXVISI=.FALSE.                    ! activates visibilities diagnostic
+LOGICAL :: LXVISI2=.FALSE.                   ! activates visibilities diagnostic
+LOGICAL :: LXPRECIPS1=.FALSE.                ! activates precipitations types nr 1 diagnostic
+LOGICAL :: LXPRECIPS2=.FALSE.                ! activates precipitations types nr 2 diagnostic
+
+END TYPE TXFU_KEYS
+
+TYPE, EXTENDS(TXFU_KEYS) :: TXFU
+
 TYPE(FLUXES_DESCRIPTOR) :: TYPE_XFU(JPMXXFU) ! contains the fluxes descriptor for the XFU
 
 REAL(KIND=JPRB),ALLOCATABLE:: RMWINDCALC(:)  ! needed for mean wind calculation
@@ -47,7 +96,6 @@ INTEGER(KIND=JPIM) :: NFRRAZ                 ! frequency of reset of flux diagno
 INTEGER(KIND=JPIM) :: N1RAZ                  ! over-riding switch for instantaneous flux reset (0 = false)
 INTEGER(KIND=JPIM) :: NFDXFU                 ! total number of fields in buffer
 
-LOGICAL :: LXFU                              ! controls switch on/off all XFU
 LOGICAL :: LRESET                            ! reset extreme temperatures to zero
 LOGICAL :: LRESET_GST                        ! reset Gust calculation
 LOGICAL :: LRESET_GST2                       ! reset Gust2 calculation
@@ -57,55 +105,12 @@ LOGICAL :: LRESET_VISI                       ! reset visibilities calculations
 LOGICAL :: LRESET_VISI2                      ! reset visibilities calculations
 
 LOGICAL :: LREAXFU                           ! read first input on historic file if .T.
-LOGICAL :: LXTRD                             ! activates gravity wave drag momentum XFU if .T.
-LOGICAL :: LXTRC                             ! activates contribution of convection to U, V, q and (cp T) XFU if .T.
-LOGICAL :: LXTRT                             ! activates contribution of turbulence to U, V, q and (cp T) XFU if .T.
-LOGICAL :: LXPLC                             ! activates convective precipitation XFU if .T.
-LOGICAL :: LXPLCG                            ! activates convective graupels CFU if .T.
-LOGICAL :: LXPLCH                            ! activates convective hail CFU if .T.
-LOGICAL :: LXPLS                             ! activates stratiform precipitation XFU if .T.
-LOGICAL :: LXPLSG                            ! activates stratiform graupels CFU if .T.
-LOGICAL :: LXPLSH                            ! activates stratiform hail CFU if .T.
-LOGICAL :: LXR                               ! activates radiation XFU if .T.
-LOGICAL :: LXNEBTT                           ! activates total cloudiness XFU if .T.
-LOGICAL :: LXNEBPA                           ! activates partial cloudiness XFU if .T.
-LOGICAL :: LXCLS                             ! activates U, V, T, q and relative humidity at 2 or 10 m (time t-dt) if .T.
-LOGICAL :: LXMWINDCLS                        ! activates mean of U and V at 10 m if .T., also NU/NV if LXNUVCLS
-LOGICAL :: LXNUVCLS                          ! activates neutral U and V at 10 m (time t-dt) if .T.
-LOGICAL :: LXTTCLS                           ! activates extreme temperatures at 2 m if .T.
-LOGICAL :: LXHHCLS                           ! activates extreme relative moistures at 2 m if .T
-LOGICAL :: LXTPWCLS                          ! activates T'w at 2 m if .T
-LOGICAL :: LXSOIL                            ! activates soil XFU if .T.
-LOGICAL :: LTXTRD                            ! activates gravity wave drag momentum XFU at all levels if .T.
-LOGICAL :: LTXTRC                            ! activates contribution of convection to U, V, q and (cp T) XFU if .T.
-LOGICAL :: LTXTRT                            ! activates contribution of turbulence to U, V, q and (cp T) XFU if .T.
-LOGICAL :: LTXR                              ! activates radiation XFU at all levels if .T.
-LOGICAL :: LTXNEB                            ! activates cloudiness XFU at all levels if .T.
-LOGICAL :: LTXQICE                           ! total ice water content at all levels
-LOGICAL :: LTXQLI                            ! total liquid water content at all levels
-LOGICAL :: LXICV                             ! activates indices of convection
-                                             ! (CAPE and moisture convergence) XFU at all levels if .T.
-LOGICAL :: LXCTOP                            ! activates pressure of top deep convection
-LOGICAL :: LXCLP                             ! activates height (in meters) of PBL XFU at all levels if .T.
-LOGICAL :: LXVEIN                            ! activates ventilation index
-LOGICAL :: LXTGST                            ! activates gusts as U and V components XFU at all levels if .T.
-LOGICAL :: LXXGST                            ! activates extreme gusts as U and V components XFU at all levels if .T.
-LOGICAL :: LXXGST2                           ! activates extreme gusts2 as U and V components XFU at all levels if .T.
-LOGICAL :: LXQCLS                            ! activates specific moisture at 2 meters
-LOGICAL :: LXTHW                             ! activates "theta'_w" surface flux
-LOGICAL :: LXXDIAGH                          ! activates extreme value of hail diagnostic
-LOGICAL :: LXMRT                             ! activates mean radiant temperature
-LOGICAL :: LXVISI                            ! activates visibilities diagnostic
-LOGICAL :: LXVISI2                           ! activates visibilities diagnostic
-
 
 TYPE(TXFUPTR) :: YXFUPT
 
 REAL (KIND=JPRB), ALLOCATABLE :: XFUBUF(:,:,:)  ! Buffer for instantaneous diagnostics
 
 END TYPE TXFU
-
-!!TYPE(TXFU), POINTER :: YRXFU => NULL()
 
 !     ------------------------------------------------------------
 END MODULE YOMXFU

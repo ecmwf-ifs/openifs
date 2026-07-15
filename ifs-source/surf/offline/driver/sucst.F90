@@ -1,4 +1,3 @@
-SUBROUTINE SUCST(KULOUT,KDAT,KSSS,KPRINTLEV)
 ! (C) Copyright 1987- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,57 @@ SUBROUTINE SUCST(KULOUT,KDAT,KSSS,KPRINTLEV)
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SUCST * - Routine to initialize the constants of the model.
+
+!     Purpose.
+!     --------
+!           Initialize and print the common YOMCST + initialize
+!         date and time of YOMRIP.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUCST (..)
+
+!        Explicit arguments :
+!        --------------------
+
+!        KULOUT  - logical unit for the output
+!        KDAT    - date in the form AAAAMMDD
+!        KSSS    - number of seconds in the day
+!        KPRINTLEV - printing level
+
+!        Implicit arguments :
+!        --------------------
+!        COMMON YOMCST
+!        COMMON YOMRIP
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!        Mats Hamrud and Philippe Courtier  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 87-10-15
+!        Additions : 90-07-30 (J.-F. Geleyn)
+!                    91-11-15 (M. Deque)
+!                    96-08-12 M.Hamrud - Reduce printing
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        A. Agusti-Panareda 2020-11-17 Add CO2 molar mass
+!     ------------------------------------------------------------------
+
+SUBROUTINE SUCST(KULOUT,KDAT,KSSS,KPRINTLEV)
 
 !**** *SUCST * - Routine to initialize the constants of the model.
 
@@ -139,10 +189,11 @@ R1SA=REAL(1.0_JPRB/REAL(RA,KIND(1.0_JPRB)),KIND(R1SA))
 
 !*       4.    DEFINE RADIATION CONSTANTS.
 !              ---------------------------
-RSIGMA=2.0_JPRB * RPI**5 * RKBOL**4 /(15._JPRB* RCLUM**2 * RHPLA**3)
  ! Special case for single precision just activate in this case to keep bit-identical results 
-IF ( JPRB == JPRM ) THEN
+IF ( JPRB == JPRM ) THEN ! SP
   RSIGMA=2.0_JPRB * RPI**5 * (RKBOL/RHPLA)**3 * RKBOL /(15._JPRB* RCLUM**2)
+ELSE ! Double precision
+  RSIGMA=2.0_JPRB * RPI**5 * RKBOL**4 /(15._JPRB* RCLUM**2 * RHPLA**3)
 ENDIF
   
 RI0=1370._JPRB

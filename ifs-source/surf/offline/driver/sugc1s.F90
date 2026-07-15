@@ -1,3 +1,55 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUGC1S*  - Routine to initialize geometry parameters
+
+!     Purpose.
+!     --------
+!           Initialize geometry parameters of the one-column surface model
+
+!**   Interface.
+!     ----------
+
+!     *CALL* SUGC1S(NCID)
+
+!     Explicit arguments :
+!     --------------------
+!        NCID : NETCDF INPUT FILE UNIT
+!         LOPLEFT: FLAG INDICATING WHETHER MORE POINTS NEED TO BE DONE
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one-column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-22
+!        BART VD HURK (KNMI) READING COORDINATES FROM NETCDF
+!        E. DUTRA - NEW OUTPUT FILE - LAKES : 04/07/2008
+!        Y. Takaya  Ocean mixed layer output file : 07/10/2008
+!        E. Dutra: June 2014: netcdf4 inferface 
+!     ------------------------------------------------------------------
+
 SUBROUTINE SUGC1S(NCID,LOPLEFT)
 USE PARKIND1  ,ONLY : JPIM ,JPRB, JPRD
 USE YOMHOOK   ,ONLY : LHOOK     ,DR_HOOK, JPHOOK
@@ -26,13 +78,6 @@ USE NETCDF_UTILS, ONLY : NCERROR
 USE MPL_MODULE
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUGC1S*  - Routine to initialize geometry parameters
 

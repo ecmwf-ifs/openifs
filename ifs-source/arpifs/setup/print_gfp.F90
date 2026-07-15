@@ -19,12 +19,14 @@ SUBROUTINE PRINT_GFP(CDTEXT,CDNAME,YD)
 !      Original : 01-10-2014
 !      R. El Khatib 08-Dec-2015 Interoperability GRIB2 vs FA
 !      R. El Khatib 09-Sep-2016 better interoperability GRIB2 vs FA
+!      R. El Khatib 02-Feb-2021 LFPDISPLAY_PARAMETERS (for documentation) filters out fields not referenced by a FA name or GRIB code
 
 USE YOMHOOK, ONLY : LHOOK, DR_HOOK, JPHOOK
 USE PARKIND1, ONLY : JPRB
 USE YOMLUN, ONLY : NULOUT
 USE YOMCT0, ONLY : LARPEGEF
 USE TYPE_FPDSPHYS, ONLY : FPDSPHY
+USE YOMFPOBJ , ONLY : LFPDISPLAY_PARAMETERS
 
 IMPLICIT NONE
 
@@ -40,13 +42,15 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('PRINT_GFP',0,ZHOOK_HANDLE)
 IF (LARPEGEF) THEN
   IF (PRESENT(CDTEXT).AND.PRESENT(CDNAME).AND.PRESENT(YD)) THEN
-    CLNAME=CDNAME//' '
-    WRITE(NULOUT,FMT='(1X,A25,'' : '',A12,1X,A16,3X,I2,5X,I2,3X,I4,5X,A8,  &
-     & 1X,I1,4X,I2,6X,L1,6X,L1)')                                          &
-     & CDTEXT,CLNAME, YD%CLNAME, YD%IBITS, YD%INTER, YD%IORDR,             &
-     & YD%CLPAIR, YD%IMASK, YD%IANO, YD%LLMON, YD%LLSRF  
+    IF (.NOT.(LFPDISPLAY_PARAMETERS .AND.YD%CLNAME ==' ')) THEN
+      CLNAME=CDNAME//' '
+      WRITE(NULOUT,FMT='(1X,A25,'' : '',A12,1X,A16,3X,I2,5X,I2,3X,I4,5X,A8,  &
+       & 1X,I1,4X,I2,6X,L1,6X,L1)')                                          &
+       & CDTEXT,CLNAME, YD%CLNAME, YD%IBITS, YD%INTER, YD%IORDR,             &
+       & YD%CLPAIR, YD%IMASK, YD%IANO, YD%LLMON, YD%LLSRF  
+    ENDIF
   ELSE
-    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '','' TYPE NAME  '', &
+    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '',''Structure   '', &
      & 1X,''    %CLNAME     '',1X,''%IBITS'',1X,''%INTER'',1X,''%IORDR'',1X, &
      & ''%CLPAIR'',1X,''%IMASK'',1X,''%IANO'',1X,''%LLMON'',1X,''%LLSRF'')')  
   ENDIF
@@ -60,7 +64,7 @@ ELSE
        & YD%CLPAIR, YD%IMASK, YD%IANO, YD%LLMON, YD%LLSRF  
     ENDIF
   ELSE
-    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '','' TYPE NAME  '', &
+    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '',''Structure   '', &
      & 1X,''%IGRIB'',1X,''%IBITS'',1X,''%INTER'',1X,''%IORDR'',1X,           &
      & ''%CLPAIR'',1X,''%IMASK'',1X,''%IANO'',1X,''%LLMON'',1X,''%LLSRF'')')  
   ENDIF

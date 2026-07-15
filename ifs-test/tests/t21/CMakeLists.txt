@@ -18,6 +18,12 @@ set( 4DVAR_PATH "${DATA_CACHE_DIR}/t21/4dvardata")
 
 add_subdirectory( common )
 
+include( add_ifsbench_runner )
+add_ifsbench_runner(
+  FILEPATH  ifs_run.py
+  DO_CONFIGURE true
+)
+
 #################################################################
 # Helper function
 function( add_ifs_test TARGET )
@@ -25,22 +31,27 @@ function( add_ifs_test TARGET )
     execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/${TARGET} )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-run ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run )
+      ${IFSTEST_BINARY_DIR}/ifs-run ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-debug ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-debug )
+      ${IFSTEST_BINARY_DIR}/ifs-debug ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-debug )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-clean ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-clean )
+      ${IFSTEST_BINARY_DIR}/ifs-clean ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-clean )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-check-bitid ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-bitid )
+      ${IFSTEST_BINARY_DIR}/ifs-check-bitid ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-bitid )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-check-tracers ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-tracers )
+      ${IFSTEST_BINARY_DIR}/ifs-check-tracers ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-tracers )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${PROJECT_SOURCE_DIR}/bin/ifs-grep-norms.pl ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-grep-norms.pl )
+
+  execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${IFSTEST_BINARY_DIR}/ifs-run.py
+      ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run.py
+    )
 
   execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${PROJECT_SOURCE_DIR}/bin/set_launcher.bash ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/set_launcher.bash )
@@ -48,29 +59,43 @@ function( add_ifs_test TARGET )
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${SHARE_BINARY_DIR}/ifs_env ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs_env )
 
-    ### for test_fc
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${INIDATA_PATH}/ICMGGepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8INIT )
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${INIDATA_PATH}/ICMGGepc8INIUA ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8INIUA )
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${INIDATA_PATH}/ICMSHepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMSHepc8INIT )
+    foreach(test_name IN ITEMS test_fc np2 nt2 spp hybrid updclie adj tl_taylor sv wavegen mgrids 4dvar_ecv 4dvar_airep_t)
+      if(${TARGET} MATCHES ${test_name} AND NOT ${TARGET} MATCHES 4dvar_ecv_bfas)
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${INIDATA_PATH}/ICMGGepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8INIT )
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${INIDATA_PATH}/ICMSHepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMSHepc8INIT )
+      endif()
+    endforeach()
+    foreach(test_name IN ITEMS test_fc np2 nt2 spp hybrid updclie adj sv mgrids 4dvar_ecv_skt 4dvar_ecv_ssh)
+      if(${TARGET} MATCHES ${test_name})
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${INIDATA_PATH}/ICMGGepc8INIUA ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8INIUA )
+      endif()
+    endforeach()
 
-    ### for test_adj
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${INIDATA_PATH}/ICMGGepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8IMIN )
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${INIDATA_PATH}/ICMGGepc8INIUA ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8IMIUA )
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${INIDATA_PATH}/ICMSHepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMSHepc8IMIN )
+    foreach(test_name IN ITEMS adj test_tl_taylor sv 4dvar_ecv 4dvar_airep_t)
+      if(${TARGET} MATCHES ${test_name} AND NOT ${TARGET} MATCHES 4dvar_ecv_bfas)
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${INIDATA_PATH}/ICMGGepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8IMIN )
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${INIDATA_PATH}/ICMSHepc8INIT ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMSHepc8IMIN )
+      endif()
+    endforeach()
+    foreach(test_name IN ITEMS adj sv 4dvar_airep_t 4dvar_ecv_alphacv 4dvar_ecv_sfc 4dvar_ecv_sdfor)
+      if(${TARGET} MATCHES ${test_name})
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${INIDATA_PATH}/ICMGGepc8INIUA ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMGGepc8IMIUA )
+      endif()
+    endforeach()
 
     ### for test_4dvar
-    foreach(test_name IN ITEMS airep_t ecv_airep_t ecv_iasi ecv_orog ecv_bfas compo)
+    foreach(test_name IN ITEMS airep_t ecv_alphacv ecv_skt ecv_ssh ecv_sfc ecv_sdfor ecv_bfas compo)
       if(${TARGET} MATCHES 4dvar_${test_name})
         #
         foreach(file ifs-check-cvg ifsobs_convert_ascii_CCMA.sh ifsobs_reformat_ascii.py mklinks)
           execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${PROJECT_SOURCE_DIR}/bin/${file} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/${file} )
+            ${IFSTEST_BINARY_DIR}/${file} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/${file} )
         endforeach()
         #
         foreach(file grib_filter create_ioassign convert_dbase)
@@ -102,23 +127,21 @@ function( add_ifs_test TARGET )
       endif()
     endforeach()
     #
-    foreach(test_name IN ITEMS ecv_airep_t ecv_iasi ecv_bfas)
+    foreach(test_name IN ITEMS ecv_alphacv ecv_skt ecv_ssh ecv_sfc)
       if(${TARGET} MATCHES 4dvar_${test_name})
-        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink 
-          ${4DVAR_PATH}/errgrib.ecv3d001 ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/errgrib.ecv3d001 )
-        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink 
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
           ${4DVAR_PATH}/errgrib.ecv2d001 ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/errgrib.ecv2d001 )
       endif()
     endforeach()
     #
-    foreach(test_name IN ITEMS ecv_airep_t ecv_iasi ecv_orog ecv_bfas)
+    foreach(test_name IN ITEMS ecv_alphacv ecv_skt ecv_ssh ecv_sfc ecv_sdfor ecv_bfas)
       if(${TARGET} MATCHES 4dvar_${test_name})
         execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
           ${CMAKE_CURRENT_SOURCE_DIR}/${TARGET}/pre_ecv ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/pre_ecv )
       endif()
     endforeach()
     #
-    if(${TARGET} MATCHES 4dvar_ecv_airep_t )
+    if(${TARGET} MATCHES 4dvar_ecv_alphacv )
       execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
         ${4DVAR_PATH}/acv_blh ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/acv_blh )
       foreach(pert RANGE 1 5)
@@ -127,16 +150,49 @@ function( add_ifs_test TARGET )
       endforeach()
     endif()
     #
-    if(${TARGET} MATCHES 4dvar_ecv_orog )
+    if(${TARGET} MATCHES 4dvar_ecv_bfas )
       execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${4DVAR_PATH}/errgrib.ecv3d001_sdfor ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/errgrib.ecv3d001 )
-      execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${4DVAR_PATH}/errgrib.ecv2d001_sdfor ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/errgrib.ecv2d001 )
+        ${4DVAR_PATH}/errgrib.ecv2d_bfas ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/errgrib.ecv2d_bfas )
     endif()
     #
-    if(${TARGET} MATCHES 4dvar_ecv_iasi )
+    if(${TARGET} MATCHES 4dvar_ecv_sdfor )
       execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${CMAKE_CURRENT_SOURCE_DIR}/${TARGET}/add_o3.ksh ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/add_o3.ksh )
+        ${4DVAR_PATH}/errgrib.ecv2d_sdfor ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/errgrib.sdfor )
+    endif()
+    #
+    foreach(test_name IN ITEMS ecv_skt ecv_ssh)
+      if(${TARGET} MATCHES 4dvar_${test_name})
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${IFSTEST_BINARY_DIR}/add_o3.bash ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/add_o3.bash )
+      endif()
+    endforeach()
+    #
+    if(${TARGET} MATCHES 4dvar_ecv_skt )
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${4DVAR_PATH}/sktecvmtcor ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/sktecvmtcor )
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${4DVAR_PATH}/skttempbal ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/skttempbal )
+    endif()
+    #
+    if(${TARGET} MATCHES 4dvar_ecv_ssh )
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${4DVAR_PATH}/sktecvmtcor ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/sshecvmtcor )
+    endif()
+
+    ### for test_wavegen
+    if(${TARGET} MATCHES wavegen_ecv)
+      execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${4DVAR_PATH}/ifs ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs )
+      execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+       ${4DVAR_PATH}/wavelet_skt_clim_T21.cv  ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/wavelet_ecv_clim_T21.cv )
+      foreach(bgdate RANGE 1 3)
+        foreach(bgmember RANGE 1 9)
+          execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${4DVAR_PATH}/skt_states/state_m00${bgmember}_d00${bgdate} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/state_m00${bgmember}_d00${bgdate} )
+        endforeach()
+        execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+          ${4DVAR_PATH}/skt_states/state_m010_d00${bgdate} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/state_m010_d00${bgdate} )
+      endforeach()
     endif()
 
     ### for test_compo_fc etc.
@@ -203,7 +259,7 @@ function( add_ifs_test TARGET )
     if(${TARGET} MATCHES updclie2)
       execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
         ${INIDATA_PATH}/ICMCLgufnINIT.LMCCIECtrue ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMCLepc8INIT )
-    else()
+    elseif(NOT ${TARGET} MATCHES surface)
       execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
         ${INIDATA_PATH}/ICMCLgu6bINIT.LMCCIECfalse ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMCLepc8INIT )
     endif()
@@ -218,6 +274,8 @@ function( add_ifs_test TARGET )
         ${COMPO_DATA_PATH}/bascoe_input/lbc_CMIP6-1750-2100_15deg_CIFS_v1.dat ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/BASCOE_LBC.dat )
       execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
         ${COMPO_DATA_PATH}/bascoe_input/ICBG_SAD_clim.txt ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICBG_SAD_clim.txt )
+      execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${COMPO_DATA_PATH}/bascoe_input/CMIP6_strato-aerosol-SAD_1990-2018_v4.txt ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/CMIP6_strato-aerosol-SAD_1990-2018_v4.txt )
     endif()
 
     ### for test_compo_mocage_fc
@@ -262,6 +320,26 @@ function( add_ifs_test TARGET )
       ${INIDATA_PATH}/ICMCLhmecINIT_COMPO ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ICMCLhmecINIT_COMPO )
     endif()
 
+    ### for test_surface
+    if(${TARGET} MATCHES surface)
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${INIDATA_PATH}/surfclim ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/surfclim )
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${INIDATA_PATH}/soilinit ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/soilinit )
+    # Cama-flood
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${INIDATA_PATH}/inpmat.nc ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/inpmat.nc )
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${INIDATA_PATH}/bifprm.txt ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/bifprm.txt )
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${INIDATA_PATH}/rivclim.nc ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/rivclim.nc )
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${INIDATA_PATH}/rivpar.nc ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/rivpar.nc )
+    # Directory containing forcing data
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${DATA_CACHE_DIR}/t21/forcing ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/forcing )
+    endif()
+
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${STATIC_DATA_PATH} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifsdata )
@@ -282,10 +360,12 @@ function( add_ifs_test TARGET )
     ecbuild_add_test( TARGET ifs_t21_${TARGET}
               WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}
               COMMAND "./ifs-run"
+              ARGS    "--clean"
               DEPENDS ${TEST_DEPENDS}
             )
 
     set_property(TEST ifs_t21_${TARGET} APPEND PROPERTY LABELS t21)
+    set_property(TEST ifs_t21_${TARGET} APPEND PROPERTY TIMEOUT ${IFS_TEST_TIMEOUT})
 
 endfunction()
 
@@ -312,6 +392,7 @@ add_ifs_test( test_compo_cb05bascoe_fc )
 add_ifs_test( test_compo_chemonly_RnPb_fc )
 add_ifs_test( test_compo_chemonly_nwpo3_fc )
 add_ifs_test( test_compo_updclie )
+add_ifs_test( test_surface )
 
 
 # Tests which will not succeed in OpenIFS-only builds.
@@ -330,19 +411,22 @@ if( NOT ifs_HAVE_OPENIFS_ONLY )
       add_ifs_test( test_adj )
       add_ifs_test( test_tl_taylor )
       add_ifs_test( test_sv )
+      add_ifs_test( test_wavegen_ecv)
       add_ifs_test( test_4dvar_airep_t)
-      add_ifs_test( test_4dvar_ecv_airep_t)
-      add_ifs_test( test_4dvar_ecv_iasi)
-      add_ifs_test( test_4dvar_ecv_orog)
+      add_ifs_test( test_4dvar_ecv_alphacv)
+      add_ifs_test( test_4dvar_ecv_skt)
+      add_ifs_test( test_4dvar_ecv_ssh)
+      add_ifs_test( test_4dvar_ecv_sfc)
+      add_ifs_test( test_4dvar_ecv_sdfor)
       add_ifs_test( test_4dvar_ecv_bfas)
       add_ifs_test( test_4dvar_compo)
     endif()
   endif()
 
-  # Test which can only be run if OOPS-IFS has been compiled:
-  if( ifs_HAVE_OOPS )
-    add_ifs_test( test_compo_fc_dualconf )
-  endif()
+# Test which can only be run if OOPS-IFS has been compiled:
+if( ifs_HAVE_OOPS )
+  add_ifs_test( test_compo_fc_dualconf )
+endif()
 
 endif()
 
@@ -374,6 +458,7 @@ if( ENABLE_TESTS )
   set_property(TEST ifs_t21_test_compo_chemonly_RnPb_fc  APPEND PROPERTY LABELS forecast mpi threading composition RnPb)
   set_property(TEST ifs_t21_test_compo_chemonly_nwpo3_fc APPEND PROPERTY LABELS forecast mpi threading composition nwpo3)
   set_property(TEST ifs_t21_test_compo_updclie           APPEND PROPERTY LABELS forecast mpi threading composition climate mcc_compo)
+  set_property(TEST ifs_t21_test_surface                 APPEND PROPERTY LABELS forecast mpi threading surface)
 
   # Tests to include if this is not an OpenIFS-only build:
   if( NOT ifs_HAVE_OPENIFS_ONLY )
@@ -390,10 +475,13 @@ if( ENABLE_TESTS )
         set_property(TEST ifs_t21_test_adj                   APPEND PROPERTY LABELS adjoint  mpi threading)
         set_property(TEST ifs_t21_test_tl_taylor             APPEND PROPERTY LABELS tangent  mpi threading)
         set_property(TEST ifs_t21_test_sv                    APPEND PROPERTY LABELS adjoint  mpi threading)
+        set_property(TEST ifs_t21_test_wavegen_ecv           APPEND PROPERTY LABELS wavegen  mpi threading ecv)
         set_property(TEST ifs_t21_test_4dvar_airep_t         APPEND PROPERTY LABELS 4dvar    mpi threading)
-        set_property(TEST ifs_t21_test_4dvar_ecv_airep_t     APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
-        set_property(TEST ifs_t21_test_4dvar_ecv_iasi        APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
-        set_property(TEST ifs_t21_test_4dvar_ecv_orog        APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
+        set_property(TEST ifs_t21_test_4dvar_ecv_alphacv     APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
+        set_property(TEST ifs_t21_test_4dvar_ecv_skt         APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
+        set_property(TEST ifs_t21_test_4dvar_ecv_ssh         APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
+        set_property(TEST ifs_t21_test_4dvar_ecv_sfc         APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
+        set_property(TEST ifs_t21_test_4dvar_ecv_sdfor       APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
         set_property(TEST ifs_t21_test_4dvar_ecv_bfas        APPEND PROPERTY LABELS 4dvar    mpi threading ecv)
         set_property(TEST ifs_t21_test_4dvar_compo           APPEND PROPERTY LABELS 4dvar    mpi threading composition)
       endif()
@@ -407,9 +495,9 @@ if( ENABLE_TESTS )
 
   if( ifs_HAVE_MGRIDS )
     if( DOUBLE_PRECISION )
-      set_property(TEST ifs_t21_test_mgrids_advection_sladv  APPEND PROPERTY LABELS forecast serial)
+      set_property(TEST ifs_t21_test_mgrids_advection_sladv  APPEND PROPERTY LABELS forecast serial mgrids)
     endif()
-    set_property(TEST ifs_t21_test_mgrids_advection_mpdata APPEND PROPERTY LABELS forecast serial)
+    set_property(TEST ifs_t21_test_mgrids_advection_mpdata APPEND PROPERTY LABELS forecast serial mgrids)
   endif()
 
 endif()

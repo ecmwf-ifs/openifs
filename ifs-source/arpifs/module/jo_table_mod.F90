@@ -176,8 +176,8 @@ SUBROUTINE PRINT_JO(YDJOT,KNSMAX)
    WRITE(NULOUT,'(/,A,A,A,I4.4,3(A,I5))') &
     & ' Diagnostic JO-table (JOT) ',CLJOB,' T',KNSMAX,&
     & ' NCONF= ',NCONF,' NSIM4D= ',GET_NSIM4D(),' NUPTRA= ',GET_NUPTRA()
-   WRITE(NULOUT,*) &
-    & '====================================================================='//&
+   WRITE(NULOUT,'(/A/)') &
+    & ' ====================================================================='//&
     & '===================='
    
    ZRMS_BGERR=0.0_JPRB
@@ -199,7 +199,7 @@ SUBROUTINE PRINT_JO(YDJOT,KNSMAX)
           & YDJOT%JOT(JOTP)%JOST(JCTP)%SNAME  
          WRITE(NULOUT,'(10X,2A)') &
           & 'Variable          DataCount          Jo_Costfunction'&
-          & ,'         JO/n       ObsErr      BgErr'  
+          & ,'             JO/n       ObsErr      BgErr'  
        ENDIF
        DO JVAR=1,YDJOT%NVAR%JPXVAR
          ICOUNT  = SUM(YDJOT%JOT(JOTP)%JOST(JCTP)%COUNT(JVAR,:))
@@ -213,10 +213,10 @@ SUBROUTINE PRINT_JO(YDJOT,KNSMAX)
            IF(LGUESS .AND. ZRMS_BGERR > 0.0_JPRB .AND. ZRMS_BGERR /= RMDI) &
             & ZRMS_BGERR  = SQRT(ZRMS_BGERR /ICOUNT)
            IF(ZRMS_BGERR /= RMDI) THEN
-             WRITE(NULOUT,'(12X,A10,3X,I10,3X,G27.13,3X,F8.2,1X,2(2x,E10.3))') &
+             WRITE(NULOUT,'(12X,A10,3X,I10,3X,G27.13,3X,F12.2,1X,2(2x,E10.3))') &
             & CLV,ICOUNT,ZCOST,ZCOST/ICOUNT,ZRMS_OBSERR,ZRMS_BGERR
            ELSE
-             WRITE(NULOUT,'(12X,A10,3X,I10,3X,G27.13,3X,F8.2,1X,3X,E10.3,4X,A4)') &
+             WRITE(NULOUT,'(12X,A10,3X,I10,3X,G27.13,3X,F12.2,1X,3X,E10.3,4X,A4)') &
             & CLV,ICOUNT,ZCOST,ZCOST/ICOUNT,ZRMS_OBSERR,'RMDI'
            ENDIF
            IJOSUM=IJOSUM + ICOUNT
@@ -228,8 +228,8 @@ SUBROUTINE PRINT_JO(YDJOT,KNSMAX)
      IJOTOT=IJOTOT+IJOSUM
      IF(IJOSUM /= 0) THEN
        WRITE(NULOUT,'(25X,A)') &
-        & '----------   ---------------------------   --------'  
-       WRITE(NULOUT,'(5X,A,I2,A,I10,3X,G27.13,3X,F8.2)') &
+        & '----------   ---------------------------       --------'  
+       WRITE(NULOUT,'(5X,A,I2,A,I10,3X,G27.13,3X,F12.2)') &
         & 'ObsType ',JOTP,' Total: ',IJOSUM,ZJOSUM,ZJOSUM/IJOSUM  
      ENDIF
    ENDDO
@@ -256,6 +256,7 @@ SUBROUTINE PRINT_JO(YDJOT,KNSMAX)
     & ' ==========================================================================='  
    WRITE(NULOUT,*)
    WRITE(NULOUT,*) ' End of JO-table (JOT)'
+   CALL FLUSH(NULOUT)
    
    IF (LHOOK) CALL DR_HOOK('JO_TABLE_MOD:PRINT_JO',1,ZHOOK_HANDLE)
 
@@ -284,8 +285,8 @@ SUBROUTINE PRINT_SCREEN_STATS(YDJOT)
    WRITE(NULOUT,*)
    WRITE(NULOUT,*) &
     & ' Observation usage summary '
-   WRITE(NULOUT,*) &
-    & '====================================================================='//&
+   WRITE(NULOUT,'(/A/)') &
+    & ' ====================================================================='//&
     & '===================='
 
    DO JOTP=1,NMXOTP
@@ -336,14 +337,14 @@ SUBROUTINE PRINT_SCREEN_STATS(YDJOT)
    WRITE(NULOUT,*)
 
    WRITE(NULOUT,*) &
-    & ' ==========================================================================='
+    & '==========================================================================='
    WRITE(NULOUT,*) 'datum_event1 key'
    WRITE(NULOUT,*)
    DO ISTAT = 1,NODEV1
      WRITE(NULOUT,*) CH1EVENT(ISTAT)
    ENDDO
    WRITE(NULOUT,*) &
-    & ' ==========================================================================='
+    & '==========================================================================='
    WRITE(NULOUT,*)
    WRITE(NULOUT,*) ' End of observation usage summary'
    WRITE(NULOUT,*)
@@ -381,12 +382,12 @@ SUBROUTINE UPDATE(THIS,ZJO_PER_DATUM,YDSET,ZVARNOS,ZFINAL_OBS_ERRORS,ZFG_ERRORS,
 
         ! Find nvar corresponding to this varno
         IIVNM = NINT(ZVARNOS(IBODY),JPIM)
+        IF (IIVNM == 0_JPIM) CYCLE
         CALL THIS%NVAR%MAP_VARNO(IIVNM,IIVAR,ISTATUS)
         IF (ISTATUS/=0) THEN
           ! This is not an error - some varnos do not map to nvar
           !WRITE(NULERR,*)'JO_TABLE % UPDATE: ibody,iivar,NVAR%JPXVAR,zvarno,obstype=',IBODY,IIVAR,NVAR%JPXVAR,ZVARNOS(IBODY),&
           !               &  YDSET%OBSTYPE, MAXVAL(ZCODETYPES),MINVAL(ZCODETYPES)
-          CYCLE
         ENDIF
 
         ! Support combined u,v Jo values

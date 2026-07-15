@@ -9,6 +9,7 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
+!NEC$ options "-minit-stack=zero"
 SUBROUTINE CNT0(LDCOUPACTIVE,KCOMM)
 
 !**** *CNT0*  - Routine which controls the job at level 0.
@@ -72,12 +73,13 @@ SUBROUTINE CNT0(LDCOUPACTIVE,KCOMM)
 !      R. El Khatib  03-Sep-2018 new configuration 904 which is a test program for change of resolution of an object FIELDS
 !      P. Lopez     12-Oct-2018   Passed YDFPOS to CTL1
 !       2019-04-26, Adrien Napoly and J.M. Piriou: 933 configuration operates both "old" 931 & 932.
+!      R. El Khatib  22-Jun-2022 pruning of conf. 901
 !     ------------------------------------------------------------------
 
 USE PARKIND1        , ONLY : JPRD, JPIM, JPRB, JPIB
 USE YOMHOOK         , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE JO_TABLE_MOD    , ONLY : JO_TABLE
-USE YOMCT0          , ONLY : NCONF, LECMWF, LELAM
+USE YOMCT0          , ONLY : NCONF, LECMWF
 USE YOMCT3          , ONLY : NSTEP
 USE YOMLUN          , ONLY : NULOUT
 USE YOMMP0          , ONLY : NOUTTYPE, LSLDEBUG, NPROC, LOUTPUT, LMPOFF, MYPROC
@@ -98,6 +100,7 @@ USE DBASE_MOD       , ONLY : DBASE
 
 
 USE FULLPOS         , ONLY : TFPOS
+USE YOMCST          , ONLY : YRCST
 #ifdef WITH_ATLAS
 USE ATLAS_MODULE       , ONLY : ATLAS_LIBRARY
 #endif
@@ -107,7 +110,7 @@ USE ATLAS_MODULE       , ONLY : ATLAS_LIBRARY
 IMPLICIT NONE
 
 LOGICAL, INTENT(IN), OPTIONAL :: LDCOUPACTIVE
-INTEGER(KIND=JPIM),  OPTIONAL :: KCOMM
+INTEGER(KIND=JPIM), INTENT(IN), OPTIONAL :: KCOMM
 
 INTEGER(KIND=JPIM) ::  ICONFI
 INTEGER(KIND=JPIM) ::  ITER
@@ -133,16 +136,27 @@ TYPE(TFPOS) :: YLFPOS
 
 #include "ifs_init.intfb.h"
 #include "abor1.intfb.h"
+#include "cad1.intfb.h"
+#include "cgr1.intfb.h"
 #include "cnt1.intfb.h"
-#include "cprep1.intfb.h"
+#include "csekf1.intfb.h"
+#include "cprep3.intfb.h"
+#include "cprep4.intfb.h"
+#include "cseaice.intfb.h"
+#include "hseaice.intfb.h"
+#include "ctl1.intfb.h"
+#include "cun1.intfb.h"
+#include "cva1.intfb.h"
 #include "gstats_output_ifs.intfb.h"
+#include "incli0.intfb.h"
+#include "csstbld.intfb.h"
 #include "su0yoma.intfb.h"
 #include "su0yomb.intfb.h"
 #include "final_stats.intfb.h"
-#include "cseaice.intfb.h"
-#include "csstbld.intfb.h"
-#include "incli0.intfb.h"
-#include "cprep3.intfb.h"
+
+
+
+
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('CNT0',0,ZHOOK_HANDLE)
 !     ------------------------------------------------------------------
@@ -175,8 +189,10 @@ IF (NCONF /= 903 .AND. NCONF /= 904) THEN
 
   !*       1.2   Setups up to and including main array allocations
 
-  CALL SU0YOMA(YRGEOMETRY,YRFIELDS%YRSURF,YRMODEL)
+  CALL SU0YOMA(YRGEOMETRY,YRMODEL)
 
+  !! The next line is part of 'model_create' which is supposed to be called *after* ifs_init. REK.
+  YRMODEL%YRCST => YRCST
   !! point the YGFL pointer in self%yrgfl to that in the model passed in
   YRFIELDS%YRGFL%YGFL => YRMODEL%YRML_GCONF%YGFL
   !! point the model pointer in self to the model passed in
@@ -198,8 +214,9 @@ ELSE
     NSTEP=ITER
   ELSEIF (NCONF == 904) THEN
     ! test program for change of resolution of an object FIELDS
-    !!CALL CPREP4
-    CALL ABOR1("CPREP4 is most likely no longer used, and deprecated in preparation for deletion")
+    ! This configuration is used to validates OOPS 4DVar, so it is definitely not obsolete ;-)
+    ! REK.
+    CALL CPREP4
   ENDIF
 
 ENDIF
@@ -220,12 +237,8 @@ IF(ICONFI == 0)THEN
 !*       2.1   Variational job.
 
 ELSEIF(ICONFI == 1)THEN
-
-
-
-
-  CALL ABOR1('ICONFI==1 without OBS, DA, VARBC')
-
+  WRITE(UNIT=NULOUT,FMT='('' VARIATIONAL JOB'',2I6)')ICONFI,NCONF
+  CALL CVA1(YRGEOMETRY,YRFIELDS,YRMTRAJ,YRMODEL,YLJOT,YVARBC,YLTCV_BGC,YLODB)
 
 !*       2.2   2D integration job.
 
@@ -236,32 +249,20 @@ ELSEIF(ICONFI == 2)THEN
 !*       2.3   Kalman Filter / soil moisture analysis
 
 ELSEIF(ICONFI == 3)THEN
-
-
-
-
-    CALL ABOR1('ICONFI==3 without OBS or VARBC')
-
+  WRITE(UNIT=NULOUT,FMT='('' SEKF surface analysis'',2I6)')ICONFI,NCONF
+  CALL CSEKF1(YRGEOMETRY,YRFIELDS,YRMTRAJ,YRMODEL,YLJOT,YVARBC,YDFPOS=YLFPOS)
 
 !*       2.4   Test of the adjoint.
 
 ELSEIF(ICONFI == 4)THEN
-
-
-
-
-    CALL ABOR1('ICONFI==4 without OBS or VARBC')
-
+  WRITE(UNIT=NULOUT,FMT='('' TEST OF THE ADJOINT'',2I6)')ICONFI,NCONF
+  CALL CAD1(YRGEOMETRY,YRFIELDS,YRMTRAJ,YRMODEL,YLJOT,YVARBC)
 
 !*       2.5   Test of the tangent linear.
 
 ELSEIF(ICONFI == 5)THEN
-
-
-
-
-    CALL ABOR1('ICONFI==5 without OBS or VARBC')
-
+  WRITE(UNIT=NULOUT,FMT='('' TEST OF THE TANGENT'',2I6)')ICONFI,NCONF
+  CALL CTL1(YRGEOMETRY,YRFIELDS,YRMTRAJ,YRMODEL,YLJOT,YVARBC,YDFPOS=YLFPOS)
 
 !*       2.6   Search for most unstable modes.
 
@@ -297,12 +298,9 @@ ELSEIF (NCONF == 931) THEN
 ELSEIF (NCONF == 932) THEN
   CALL CSEAICE(YRGEOMETRY,YRMODEL%YRML_PHY_MF%YRPHY1)
 ELSEIF (NCONF == 933) THEN
-  IF (MYPROC==1) CALL CSSTBLD(YRGEOMETRY)
-  IF(.NOT.LELAM) CALL CSEAICE(YRGEOMETRY,YRMODEL%YRML_PHY_MF%YRPHY1)
-ELSEIF (NCONF == 901) THEN
-  WRITE(UNIT=NULOUT,FMT='('' SETTING UP INITIAL CONDITIONS'',2I6)')ICONFI,NCONF
-  CALL CPREP1(YRGEOMETRY,YRFIELDS%YRSURF,YRMODEL%YRML_PHY_EC%YREPHY,YRMODEL%YRML_GCONF,YRMODEL%YRML_PHY_MF%YRPHY1, &
- &                  YRMODEL%YRML_LBC%TEFRCL)
+  CALL CSEAICE(YRGEOMETRY,YRMODEL%YRML_PHY_MF%YRPHY1)
+  IF(MYPROC==1) CALL HSEAICE(YRGEOMETRY)
+  IF(MYPROC==1) CALL CSSTBLD(YRGEOMETRY)
 ELSEIF (NCONF /= 903 .AND. NCONF /= 904) THEN
   WRITE(UNIT=NULOUT,FMT='('' ERROR CNT0  JOB'',2I6)')ICONFI,NCONF
   CALL ABOR1('CALLED IN CNT0')

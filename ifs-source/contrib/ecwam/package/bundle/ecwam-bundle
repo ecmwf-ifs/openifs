@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# BOOTSTRAP ecbundle-build or ecbundle-create,
+# and pass arguments to it.
+
+ecbundle_VERSION=develop
+
+BUNDLE_DIR="$( cd $( dirname "${BASH_SOURCE[0]}" ) && pwd -P )"
+
+# Download ecbundle scripts if not already available
+command_exists () { type "$1" &> /dev/null ; }
+if ! command_exists ecbundle ; then
+    if [[ ! -d ${BUNDLE_DIR}/ecbundle ]]; then
+        git clone https://github.com/ecmwf/ecbundle ${BUNDLE_DIR}/ecbundle
+        ( cd ${BUNDLE_DIR}/ecbundle && git checkout ${ecbundle_VERSION} )
+    fi
+    export PATH=${BUNDLE_DIR}/ecbundle/bin:${PATH}
+fi
+
+{ module unload python3; module load python3; } 2>/dev/null
+
+set -e
+ecbundle "$@"

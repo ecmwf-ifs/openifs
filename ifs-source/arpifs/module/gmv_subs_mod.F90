@@ -27,6 +27,8 @@ MODULE GMV_SUBS_MOD
 !   K. Yessad (June 2017): Introduce NHQE model.
 !   K. Yessad (Feb 2018): remove deep-layer formulations.
 !   O. Jaron (Sep 2018): remove LUVDER condition for MUL/MUV pointers.
+!   R. El Khatib 01-Sep-2020 Memory saving for fullpos (conf 903)
+!   R. El Khatib (Sep 2022): Re-instate LUVDER with additional conditions for MUL/MUV pointers.
 !-------------------------------------------------------------------------
 
 USE PARKIND1  , ONLY : JPIM, JPRB
@@ -141,7 +143,7 @@ END SUBROUTINE SETUP_GMV5
 !-------------------------------------------------------------------------
 
 SUBROUTINE SETUP_T0(YDDIMF,YDDYNA,YDT0)
-USE YOMCT0 , ONLY : LECMWF
+USE YOMCT0 , ONLY : NFPOS, LECFPOS
 USE YOMDIMF, ONLY : TDIMF
 TYPE(TDIMF)  ,INTENT(INOUT):: YDDIMF
 TYPE(TDYNA)  ,INTENT(INOUT):: YDDYNA
@@ -193,7 +195,9 @@ IPT = IPT+1
 YDT0%MU = IPT
 IPT = IPT+1
 YDT0%MV = IPT
-IF ((.NOT.LECMWF).OR.LUVDER) THEN
+! Force insertion of wind derivatives in GMV if Fullpos is active, except in IFS model
+! (which is causing here a restriction on certain output fields). REK
+IF (LUVDER.OR.(NCONF==903.OR.NCONF==904).OR.(NFPOS/=0.AND..NOT.LECFPOS)) THEN
   IPT = IPT+1
   YDT0%MUL = IPT
   IPT = IPT+1
@@ -338,6 +342,7 @@ YDT9%MSVDL = NUNDEFLD
 YDT9%MSVDM = NUNDEFLD
 YDT9%MNHX = NUNDEFLD
 YDT9%MGW   = NUNDEFLD
+YDT9%MNHY = NUNDEFLD
 YDT9%MCUNL = NUNDEFLD
 YDT9%MCVNL = NUNDEFLD
 YDT9%MCTNL = NUNDEFLD
@@ -376,7 +381,7 @@ YDT9%MPREHYDS = NUNDEFLD
 IPT  = YDT0%NDIM
 IPTS = YDT0%NDIMS
 
-IF (NCONF /= 701) THEN
+IF (NCONF /= 701 .AND. NCONF /= 903) THEN
 
   IF (YDDYNA%LTWOTL) THEN
 
@@ -436,6 +441,10 @@ IF (NCONF /= 701) THEN
           IF(YDDYNA%LGWADV)THEN
             IPT    = IPT+1
             YDT9%MGW= IPT
+            IF(YDDYNA%NVDVAR==5)THEN
+              IPT = IPT+1
+              YDT9%MNHY=IPT
+            ENDIF
           ENDIF
         ENDIF
       ENDIF
@@ -490,7 +499,7 @@ IF (NCONF /= 701) THEN
             YDT9%MSPDNL_SI=IPT
           ENDIF
         ENDIF
-        IF (YDDYNA%NVDVAR==4) THEN
+        IF (YDDYNA%NVDVAR==4 .OR. YDDYNA%NVDVAR==5) THEN
           IPT = IPT+1
           YDT9%MNHX=IPT
         ENDIF
@@ -560,7 +569,7 @@ IF (NCONF /= 701) THEN
       YDT9%MSPDM = IPT
       IPT   = IPT+1
       YDT9%MSVDM = IPT
-      IF (YDDYNA%NVDVAR == 4) THEN
+      IF (YDDYNA%NVDVAR == 4 .OR. YDDYNA%NVDVAR == 5) THEN
         IPT   = IPT+1
         YDT9%MNHX= IPT
         IF(YDDYNA%LPC_FULL)THEN
@@ -664,7 +673,7 @@ IF (LLP) WRITE(NULOUT,*)' MSPDNL=',YDT9%MSPDNL,&
 IF (LLP) WRITE(NULOUT,*)' MUL=',YDT9%MUL,' MVL=',YDT9%MVL,' MSPD=',YDT9%MSPD,&
  & ' MSPDL=',YDT9%MSPDL,' MSPDM=',YDT9%MSPDM
 IF (LLP) WRITE(NULOUT,*)' MSVD=',YDT9%MSVD,' MSVDL=',YDT9%MSVDL,' MSVDM=',YDT9%MSVDM,&
- & ' MNHX=',YDT9%MNHX
+ & ' MNHX=',YDT9%MNHX,' MNHY=',YDT9%MNHY
 IF (LLP) WRITE(NULOUT,*)' MCUNL=',YDT9%MCUNL,' MCVNL=',YDT9%MCVNL,' MCTNL=',YDT9%MCTNL,&
  & ' MCSPNL=',YDT9%MCSPNL
 IF (LLP) WRITE(NULOUT,*)' MCSPNL2=',YDT9%MCSPNL2

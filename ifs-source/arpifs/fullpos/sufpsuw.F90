@@ -37,6 +37,7 @@ SUBROUTINE SUFPSUW(YDCLIMO,YDNAMFPINT,YDNAMFPSCI,YDAFN,KFPXFLD,YDFPGEOMETRY,YDFP
 !      R. El Khatib 27-Sep-2013 move fptratod inside cpclimi
 !   P.Marguinaud    01-Oct-2014 Compute weights for PREP fields interpolations
 !   R. El Khatib 27-Jul-2016 interpolations over C+I+E
+!   R. El Khatib 20-Aug-2020 Cleaning
 ! End Modifications
 !-----------------------------------------------------------------------------
 
@@ -264,12 +265,13 @@ ENDIF
 
 LLML=(NFPSURFEX == 2).OR.LFPML_LAN.OR.LFPML_SEA
 
-!$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JBLOC,IST,IEND,IOFF,J,ILSIM,IBINL,ZDLAT,ZDLO,ILAT,ILON,ILONN,ILOS,ILOSS)
+IST =1
+!$OMP PARALLEL PRIVATE(JBLOC,IEND,IOFF,J,ILSIM,IBINL,ZDLAT,ZDLO,ILAT,ILON,ILONN,ILOS,ILOSS)
+!$OMP DO SCHEDULE(DYNAMIC,1)
 DO JBLOC=1,NFPBLOCS_DEP
 
 ! 2.1  Adressing
 
-  IST =1
   IEND=NFPEND_DEP(JBLOC)
   IOFF=(JBLOC-1)*NFPROMA_DEP
 
@@ -384,7 +386,8 @@ IF (NFPSURFEX == 2) THEN
 ENDIF
 
 ENDDO
-!$OMP END PARALLEL DO
+!$OMP END DO
+!$OMP END PARALLEL
 
 ! fair load imbalance absorber
 CALL MPL_BARRIER(CDSTRING='SUFPSUW:')

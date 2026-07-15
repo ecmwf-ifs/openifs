@@ -20,7 +20,7 @@
 !        M. Damian, Villanova University, USA
 !        R. Sander, Max-Planck Institute for Chemistry, Mainz, Germany
 !     Variable naming changed to ECMWF conventions by V. Huijnen
-!
+! 
 ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -51,15 +51,15 @@ SUBROUTINE TM5_KPP_KppDecomp( PJVS, KERR )
 
   USE TM5_KPP_Parameters, only: LU_NONZERO
 !  USE TM5_KPP_JacobianSP
-  USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+  USE PARKIND1  , ONLY : JPIM     ,JPRB
   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
   IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(OUT)  :: KERR
-      REAL(kind=JPRD), INTENT(INOUT) :: PJVS(LU_NONZERO)
+      REAL(KIND=JPRB), INTENT(INOUT) :: PJVS(LU_NONZERO)
 !Local variables
-      REAL(KIND=JPRD)     :: Za
+      REAL(KIND=JPRB)     :: Za
 
       REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 
@@ -987,16 +987,16 @@ SUBROUTINE TM5_KPP_KppDecomp_ORIG( PJVS, KERR )
 
   USE TM5_KPP_Parameters, ONLY: LU_NONZERO, NVAR
   USE TM5_KPP_JacobianSP, ONLY:LU_DIAG, LU_CROW, LU_ICOL
-  USE PARKIND1, ONLY : JPIM, JPRD, JPRB
+  USE PARKIND1, ONLY : JPIM, JPRB
   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
  
   IMPLICIT NONE
 
 
   INTEGER(KIND=JPIM), INTENT(OUT) :: KERR
-  REAL(KIND=JPRD),INTENT(INOUT) :: PJVS(LU_NONZERO)
+  REAL(KIND=JPRB),INTENT(INOUT) :: PJVS(LU_NONZERO)
   ! Local
-  REAL(KIND=JPRD)     :: ZW(NVAR), Za
+  REAL(KIND=JPRB)     :: ZW(NVAR), Za
   INTEGER(KIND=JPIM)  :: Ik, Ikk, j, jj
   REAL(KIND=JPHOOK)     :: ZHOOK_HANDLE
 
@@ -1055,7 +1055,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !    DOUBLE COMPLEX,INTENT(INOUT) :: PJVS(LU_NONZERO)
 !    ! Local:
 !    DOUBLE COMPLEX ZW(NVAR), Za
-!    REAL(KIND=JPRD)   :: b = 0.0
+!    REAL(KIND=JPRB)   :: b = 0.0
 !    INTEGER(KIND=JPIM):: k, kk, j, jj
 !  
 !    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
@@ -1097,8 +1097,8 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !    USE TM5_KPP_JacobianSP
 !  
 !        INTEGER       :: IER
-!        REAL(KIND=JPRD) :: PJVSR(LU_NONZERO), PJVSI(LU_NONZERO) 
-!        REAL(KIND=JPRD) :: WR(NVAR), WI(NVAR), ar, ai, den
+!        REAL(KIND=JPRB) :: PJVSR(LU_NONZERO), PJVSI(LU_NONZERO) 
+!        REAL(KIND=JPRB) :: WR(NVAR), WI(NVAR), ar, ai, den
 !        INTEGER       :: k, kk, j, jj
 !  
 !        IER = 0
@@ -1144,7 +1144,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !    USE TM5_KPP_JacobianSP
 !  
 !        INTEGER  :: i, j
-!        REAL(KIND=JPRD) :: PJVS(LU_NONZERO), X(NVAR), sum
+!        REAL(KIND=JPRB) :: PJVS(LU_NONZERO), X(NVAR), sum
 !  
 !        DO i=1,NVAR
 !           DO j = LU_CROW(i), LU_DIAG(i)-1 
@@ -1173,7 +1173,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !    USE TM5_KPP_JacobianSP
 !  
 !        INTEGER       :: i, j
-!        REAL(KIND=JPRD) :: PJVS(LU_NONZERO), X(NVAR)
+!        REAL(KIND=JPRB) :: PJVS(LU_NONZERO), X(NVAR)
 !  
 !        DO i=1,NVAR
 !          X(i) = X(i)/JVS(LU_DIAG(i))
@@ -1232,7 +1232,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !    USE TM5_KPP_JacobianSP
 !  
 !        INTEGER       ::  i, j
-!        REAL(KIND=JPRD) ::  PJVSR(LU_NONZERO), PJVSI(LU_NONZERO), XR(NVAR), XI(NVAR), sumr, sumi, den
+!        REAL(KIND=JPRB) ::  PJVSR(LU_NONZERO), PJVSI(LU_NONZERO), XR(NVAR), XI(NVAR), sumr, sumi, den
 !  
 !        DO i=1,NVAR
 !           DO j = LU_CROW(i), LU_DIAG(i)-1 
@@ -1296,7 +1296,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !    USE TM5_KPP_JacobianSP
 !  
 !        INTEGER       ::  i, j
-!        REAL(KIND=JPRD) ::  PJVSR(LU_NONZERO), PJVSI(LU_NONZERO), XR(NVAR), XI(NVAR), den
+!        REAL(KIND=JPRB) ::  PJVSR(LU_NONZERO), PJVSI(LU_NONZERO), XR(NVAR), XI(NVAR), den
 !  
 !        DO i=1,NVAR
 !          den   = PJVSR(LU_DIAG(i))**2 + PJVSI(LU_DIAG(i))**2
@@ -1334,7 +1334,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !  USE TM5_KPP_JacobianSP
 !
 !      INTEGER  :: IP3(3), IER, IP(3,NVAR)
-!      REAL(KIND=JPRD) :: PJVS(3,3,LU_NONZERO), W(3,3,NVAR), a(3,3), E(3,3)
+!      REAL(KIND=JPRB) :: PJVS(3,3,LU_NONZERO), W(3,3,NVAR), a(3,3), E(3,3)
 !      INTEGER  :: k, kk, j, jj
 !
 !      Za = 0.0d0
@@ -1387,7 +1387,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !  USE TM5_KPP_JacobianSP
 !
 !      INTEGER  :: i, j, k, m, IP3(3), IP(3,NVAR), IER
-!      REAL(KIND=JPRD) :: PJVS(3,3,LU_NONZERO), X(3,NVAR), sum(3)
+!      REAL(KIND=JPRB) :: PJVS(3,3,LU_NONZERO), X(3,NVAR), sum(3)
 !
 !      DO i=1,NVAR
 !        DO j = LU_CROW(i), LU_DIAG(i)-1 
@@ -1430,7 +1430,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !  USE TM5_KPP_JacobianSP
 !
 !      INTEGER       :: i, j, k, m, IP(3,NVAR)
-!      REAL(KIND=JPRD) :: PJVS(3,3,LU_NONZERO), X(3,NVAR)
+!      REAL(KIND=JPRB) :: PJVS(3,3,LU_NONZERO), X(3,NVAR)
 !
 !      DO i=1,NVAR
 !        ! X(i) = X(i)/JVS(LU_DIAG(i))
@@ -1472,11 +1472,11 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !!     Remove comments to perform pivoting
 !! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !!
-!      REAL(KIND=JPRD) :: A(3,3)
+!      REAL(KIND=JPRB) :: A(3,3)
 !      INTEGER       :: IPVT(3),INFO
 !!      INTEGER       :: L
-!!      REAL(KIND=JPRD) :: t, dmax, da, TMP(3)
-!      REAL(KIND=JPRD), PARAMETER :: ZERO = 0.0, ONE = 1.0
+!!      REAL(KIND=JPRB) :: t, dmax, da, TMP(3)
+!      REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0, ONE = 1.0
 !
 !      info = 0
 !!      t = TINY(da)
@@ -1540,10 +1540,10 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 !! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !
 !      CHARACTER     :: Trans
-!      REAL(KIND=JPRD) :: a(3,3),b(3)
+!      REAL(KIND=JPRB) :: a(3,3),b(3)
 !      INTEGER       :: IPVT(3)
 !!      INTEGER       :: L
-!!      REAL(KIND=JPRD) :: TMP
+!!      REAL(KIND=JPRB) :: TMP
 !      
 !      SELECT CASE (Trans)
 !
@@ -1607,7 +1607,7 @@ END SUBROUTINE TM5_KPP_KppDecomp_ORIG
 
 SUBROUTINE TM5_KPP_KPPSOLVE ( PJVS, PX )
 
-  USE PARKIND1, ONLY : JPIM, JPRB, JPRD
+  USE PARKIND1, ONLY : JPIM, JPRB
   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
 
   USE TM5_KPP_PARAMETERS,  ONLY : NVAR, LU_NONZERO
@@ -1615,9 +1615,9 @@ SUBROUTINE TM5_KPP_KPPSOLVE ( PJVS, PX )
   IMPLICIT NONE
 
 ! PJVS - sparse Jacobian of variables
-  REAL(KIND=JPRD), INTENT(IN) :: PJVS(LU_NONZERO)
+  REAL(KIND=JPRB), INTENT(IN) :: PJVS(LU_NONZERO)
 ! PX - Vector for variables
-  REAL(KIND=JPRD), INTENT(OUT) :: PX(NVAR)
+  REAL(KIND=JPRB), INTENT(OUT) :: PX(NVAR)
 
 #ifdef WITH_COMPO_DR_HOOK
   REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE 
@@ -1814,7 +1814,7 @@ END SUBROUTINE TM5_KPP_KPPSOLVE
 
 SUBROUTINE TM5_KPP_KPPSOLVETR ( PJVS, PX, PXX )
 
-  USE PARKIND1, ONLY : JPIM,JPRD, JPRB
+  USE PARKIND1, ONLY : JPIM, JPRB
   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
 
   USE TM5_KPP_PARAMETERS,  ONLY : NVAR, LU_NONZERO
@@ -1822,11 +1822,11 @@ SUBROUTINE TM5_KPP_KPPSOLVETR ( PJVS, PX, PXX )
   IMPLICIT NONE
 
 ! PJVS - sparse Jacobian of variables
-  REAL(KIND=JPRD), INTENT(IN) :: PJVS(LU_NONZERO)
+  REAL(KIND=JPRB), INTENT(IN) :: PJVS(LU_NONZERO)
 ! PX - Vector for variables
-  REAL(KIND=JPRD), INTENT(IN) :: PX(NVAR)
+  REAL(KIND=JPRB), INTENT(IN) :: PX(NVAR)
 ! PXX - Vector for output variables
-  REAL(KIND=JPRD), INTENT(OUT) :: PXX(NVAR)
+  REAL(KIND=JPRB), INTENT(OUT) :: PXX(NVAR)
 
   REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE 
 
@@ -2078,14 +2078,14 @@ END SUBROUTINE TM5_KPP_KPPSOLVETR
 !         CALL  SCOPY(N,X,1,Y,1)   or   CALL  DCOPY(N,X,1,Y,1)
 !--------------------------------------------------------------
 !     USE TM5_KPP_Precision
-      USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+      USE PARKIND1  , ONLY : JPIM     ,JPRB
       USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
      
       IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(IN)    :: KincX,KincY,KN
-      REAL(KIND=JPRD), INTENT(IN)  :: PX(KN)
-      REAL(KIND=JPRD), INTENT(OUT) :: PY(KN)
+      REAL(KIND=JPRB), INTENT(IN)  :: PX(KN)
+      REAL(KIND=JPRB), INTENT(OUT) :: PY(KN)
       REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
       INTEGER(KIND=JPIM)    :: i,IM,IMP1
 
@@ -2140,14 +2140,14 @@ END SUBROUTINE TM5_KPP_KPPSOLVETR
 !     replace this by the function from the optimized BLAS implementation:
 !         CALL SAXPY(N,Alpha,X,1,Y,1) or  CALL DAXPY(N,Alpha,X,1,Y,1)
 !--------------------------------------------------------------
-      USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+      USE PARKIND1  , ONLY : JPIM     ,JPRB
      
       IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(IN)  :: KincX,KincY,KN
-      REAL(KIND=JPRD), INTENT(IN)  :: PX(KN),PAlpha
-      REAL(KIND=JPRD), INTENT(OUT) :: PY(KN)
-      REAL(KIND=JPRD), PARAMETER :: ZERO = 0.0_JPRB
+      REAL(KIND=JPRB), INTENT(IN)  :: PX(KN),PAlpha
+      REAL(KIND=JPRB), INTENT(OUT) :: PY(KN)
+      REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0_JPRB
       INTEGER(KIND=JPIM) :: i,IM,IMP1
 
       ! No DR_HOOK for performance
@@ -2189,15 +2189,15 @@ END SUBROUTINE TM5_KPP_KPPSOLVETR
 !     replace this by the function from the optimized BLAS implementation:
 !         CALL SSCAL(N,Alpha,X,1) or  CALL DSCAL(N,Alpha,X,1)
 !--------------------------------------------------------------
-      USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+      USE PARKIND1  , ONLY : JPIM     ,JPRB
       USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
      
       IMPLICIT NONE
 
       INTEGER(KIND=JPIM), INTENT(IN)  :: KincX,KN
-      REAL(KIND=JPRD),INTENT(INOUT)   :: PX(KN)
-      REAL(KIND=JPRD),INTENT(IN)      :: PAlpha
-      REAL(KIND=JPRD), PARAMETER      :: ZERO=0.0_JPRB, Z_ONE=1.0_JPRB
+      REAL(KIND=JPRB),INTENT(INOUT)   :: PX(KN)
+      REAL(KIND=JPRB),INTENT(IN)      :: PAlpha
+      REAL(KIND=JPRB), PARAMETER      :: ZERO=0.0_JPRB, Z_ONE=1.0_JPRB
       INTEGER(KIND=JPIM)              :: i,IM,IMP1
 
       REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE

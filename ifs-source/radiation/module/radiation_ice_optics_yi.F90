@@ -1,21 +1,28 @@
-! radiation_ice_optics_yi.F90 - Yi et al. (2013) ice optical properties
+! (C) Copyright 2017- ECMWF.
 !
-! Copyright (C) 2017 ECMWF
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+! radiation_ice_optics_yi.F90 - Yi et al. (2013) ice optical properties
 !
 ! Authors: Mark Fielding and Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! The reference for this ice optics parameterization is Yi, B.,
 ! P. Yang, B.A. Baum, T. L'Ecuyer, L. Oreopoulos, E.J. Mlawer,
 ! A.J. Heymsfield, and K. Liou, 2013: Influence of Ice Particle
 ! Surface Roughening on the Global Cloud Radiative
-! Effect. J. Atmos. Sci., 70, 2794–2807,
+! Effect. J. Atmos. Sci., 70, 2794-2807,
 ! https://doi.org/10.1175/JAS-D-13-020.1
 
 module radiation_ice_optics_yi
 
   implicit none
+  public
 
   ! The number of ice coefficients depends on the parameterization
   integer, parameter :: NIceOpticsCoeffsYiSW  = 69
@@ -54,7 +61,7 @@ contains
     integer(jpim) :: lu_idx
     real(kind=jprb), parameter    :: lu_scale  = 0.2_jprb
     real(kind=jprb), parameter    :: lu_offset = 1.0_jprb
-    !real(jprb)  :: hook_handle
+    !real(jphook) :: hook_handle
 
     !if (lhook) call dr_hook('radiation_ice_optics:calc_ice_optics_yi_sw',0,hook_handle)
 
@@ -71,9 +78,9 @@ contains
     lu_idx = floor(de_um * lu_scale - lu_offset)
     wts_2  = (de_um * lu_scale - lu_offset) - lu_idx
     wts_1  = 1.0_jprb - wts_2
-    od     = 0.001_jprb * iwp_gm_2 * & 
+    od     = 0.001_jprb * iwp_gm_2 * &
              & ( wts_1 * coeff(1:nb,lu_idx) + wts_2 * coeff(1:nb,lu_idx+1) )
-    scat_od = od * & 
+    scat_od = od * &
              & ( wts_1 * coeff(1:nb,lu_idx+NSingleCoeffs) + wts_2 * coeff(1:nb,lu_idx+NSingleCoeffs+1) )
     g = wts_1 * coeff(1:nb,lu_idx+2*NSingleCoeffs) + wts_2 * coeff(1:nb,lu_idx+2*NSingleCoeffs+1)
 
@@ -111,7 +118,7 @@ contains
     integer(jpim) :: lu_idx
     real(kind=jprb), parameter    :: lu_scale  = 0.2_jprb
     real(kind=jprb), parameter    :: lu_offset = 1.0_jprb
-    !real(jprb)  :: hook_handle
+    !real(jphook) :: hook_handle
 
     !if (lhook) call dr_hook('radiation_ice_optics:calc_ice_optics_yi_sw',0,hook_handle)
 
@@ -128,9 +135,9 @@ contains
     lu_idx = floor(de_um * lu_scale - lu_offset)
     wts_2  = (de_um * lu_scale - lu_offset) - lu_idx
     wts_1  = 1.0_jprb - wts_2
-    od     = 0.001_jprb * iwp_gm_2 * & 
+    od     = 0.001_jprb * iwp_gm_2 * &
              & ( wts_1 * coeff(1:nb,lu_idx) + wts_2 * coeff(1:nb,lu_idx+1) )
-    scat_od = od * & 
+    scat_od = od * &
              & ( wts_1 * coeff(1:nb,lu_idx+NSingleCoeffs) + wts_2 * coeff(1:nb,lu_idx+NSingleCoeffs+1) )
     g = wts_1 * coeff(1:nb,lu_idx+2*NSingleCoeffs) + wts_2 * coeff(1:nb,lu_idx+2*NSingleCoeffs+1)
 

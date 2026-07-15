@@ -44,12 +44,13 @@ function( add_ifs_test TARGET )
       ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run.py
     )
 
-    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+  execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${PROJECT_SOURCE_DIR}/bin/set_launcher.bash ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/set_launcher.bash )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${SHARE_BINARY_DIR}/ifs_env ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs_env )
 
+    ### for test_fc
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink 
       ${STATIC_DATA_PATH} ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifsdata )
 
@@ -72,10 +73,12 @@ function( add_ifs_test TARGET )
     ecbuild_add_test( TARGET ifs_scm_${TARGET}
               WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${TARGET} 
               COMMAND "./ifs-run"
+              ARGS    "--clean"
               DEPENDS ${TEST_DEPENDS}
             )
 
     set_property(TEST ifs_scm_${TARGET} APPEND PROPERTY LABELS scm)
+    set_property(TEST ifs_scm_${TARGET} APPEND PROPERTY TIMEOUT ${IFS_TEST_TIMEOUT})
 
 endfunction()
 

@@ -1,8 +1,3 @@
-SUBROUTINE SURFWS    (YDSURF,KIDIA,KFDIA,KLON, KLEVS, KLEVSN, KTILES, PSDOR, &
-                    & PLSM,    PFRTI, PMU0,                          &
-                    & PTSAM1M, PTSKIN,PALBSN,                         &
-                    & PTSNM1M, PSNM1M,                                &
-                    & PRSNM1M, PWSNM1M                                )
 
 ! (C) Copyright 2017- ECMWF.
 !
@@ -11,6 +6,51 @@ SUBROUTINE SURFWS    (YDSURF,KIDIA,KFDIA,KLON, KLEVS, KLEVSN, KTILES, PSDOR, &
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+!**   *SURFWS* - CREATES WARM START CONDITIONS FOR SURFACE VARIABLES
+
+!     PURPOSE
+!     -------
+!     REPLACE COLD STARTED VARIABLES (for instance multi-layer var
+!     initialised with single-layer values) WITH IDEALISED PROFILES.
+
+!     INTERFACE
+!     ---------
+!     *SURFWS* IS CALLED BY *CALLPAR* 
+
+!     INPUT PARAMETERS (INTEGER):
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KLEVS*       NUMBER OF SOIL LAYERS
+!     *KLEVSN*       NUMBER OF SNOW LAYERS
+
+!     INPUT PARAMETERS (REAL):
+!     *PLSM*         LAND-SEA MASK                                  (0-1)
+!     *PCIL*         LAND-ICE FRACTION                              (0-1)
+!     *PSNM1M*       SNOW MASS (per unit area)                      kg/m**2
+!     *PRSNM1M*      SNOW DENSITY                                   kg/m**3
+
+!     OUTPUT PARAMETERS (REAL):
+!     *PTSN*         SNOW TEMPERATURE WARM STARTED
+!     *PSNS*         SEA-ICE INDICATOR
+!     *PRSN*         LAKE INDICATOR
+!     *PWSN*         NORTHERN HEMISPHERE INDICATOR
+
+!     METHOD
+!     ------
+!     IT IS NOT ROCKET SCIENCE, BUT CHECK DOCUMENTATION
+
+!     Modifications
+!     G. Arduini        1 Sept 2017       Created
+!     ------------------------------------------------------------------
+
+SUBROUTINE SURFWS    (YDSURF,KIDIA,KFDIA,KLON, KLEVS, KLEVSN, KTILES, PSDOR, &
+                    & PLSM,    PFRTI, PMU0,                          &
+                    & PTSAM1M, PTSKIN,PALBSN,                         &
+                    & PTSNM1M, PSNM1M,                                &
+                    & PRSNM1M, PWSNM1M                                )
 
 !     ------------------------------------------------------------------
 !**   *SURFWS* - CREATES WARM START CONDITIONS FOR SURFACE VARIABLES

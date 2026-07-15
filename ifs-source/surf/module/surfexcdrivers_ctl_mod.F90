@@ -1,44 +1,3 @@
-MODULE SURFEXCDRIVERS_CTL_MOD
-CONTAINS
-SUBROUTINE SURFEXCDRIVERS_CTL( &
- &   KIDIA, KFDIA, KLON, KLEVS, KTILES, KSTEP &
- & , PTSTEP, PRVDIFTS &
- & , LDSURF2 &
-! input data, non-tiled
- & , KTVL, KTVH, PCVL, PCVH &
- & , PLAIL, PLAIH &
- & , PUMLEV, PVMLEV, PTMLEV, PQMLEV, PAPHMS, PGEOMLEV, PCPTGZLEV &
- & , PSST, PTSKM1M, PCHAR, PSSRFL, PTICE, PTSNOW &
- & , PWLMX &
-! input data, soil
- & , PTSAM1M, PWSAM1M, KSOTY &
-! input data, tiled
- & , PFRTI, PALBTI &
-!
- & , YDCST, YDEXC, YDVEG, YDSOIL, YDFLAKE & 
-! updated data, tiled
- & , PUSTRTI, PVSTRTI, PAHFSTI, PEVAPTI, PTSKTI &
-! updated data, non-tiled
- & , PZ0M, PZ0H &
-! output data, tiled
- & , PSSRFLTI, PQSTI, PDQSTI, PCPTSTI, PCFHTI, PCFQTI, PCSATTI, PCAIRTI &
-! output data, non-tiled
- & , PCFMLEV, PKMFL, PKHFL, PKQFL, PEVAPSNW &
- & , PZ0MW, PZ0HW, PZ0QW, PCPTSPP, PQSAPP, PBUOMPP &
- & )
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_THF  , ONLY : R4LES, R5LES, R2ES, R4IES, R3LES, R3IES, R5IES
-USE YOS_CST  , ONLY : TCST
-USE YOS_EXC  , ONLY : TEXC
-USE YOS_VEG  , ONLY : TVEG
-USE YOS_SOIL , ONLY : TSOIL
-USE YOS_FLAKE, ONLY : TFLAKE
-USE VUPDZ0S_MOD
-USE VSURFS_MOD
-USE VEXCSS_MOD
-USE VEVAPS_MOD
 
 ! (C) Copyright 2005- ECMWF.
 !
@@ -75,6 +34,8 @@ USE VEVAPS_MOD
 !    S. Boussetta/G.Balsamo May 2009 Add lai
 !    M. Janiskova     July 2011->2013  modified computation of snow evaporation
 !    M. Janiskova     Jan 2015   use previous time step fluxes for heat&momentum
+!    J. McNorton      24/08/2022 urban tile
+!    P. Lopez         July 2025 Added ocean currents
 
 !  INTERFACE: 
 
@@ -104,6 +65,188 @@ USE VEVAPS_MOD
 !    Reals independent of tiles (In):
 !      PCVL     :    LOW VEGETATION COVER                             -  
 !      PCVH     :    HIGH VEGETATION COVER                            -  
+!      PCUR     :    URBAN COVER                                      - 
+!      PLAIL    :    LOW VEGETATION LAI
+!      PLAIH    :    HIGH VEGETATION LAI
+
+!  Logical:
+!      LDSURF2  :    TRUE when simplified surface scheme called
+
+!      PUMLEV   :    X-VELOCITY COMPONENT, lowest atmospheric level   m/s
+!      PVMLEV   :    Y-VELOCITY COMPONENT, lowest atmospheric level   m/s
+!      PTMLEV   :    TEMPERATURE,   lowest atmospheric level          K
+!      PQMLEV   :    SPECIFIC HUMIDITY                                kg/kg
+!      PAPHMS   :    Surface pressure                                 Pa
+!      PGEOMLEV :    Geopotential, lowest atmospehric level           m2/s2
+!      PCPTGZLEV:    Geopotential, lowest atmospehric level           J/kg
+!      PSST     :    (OPEN) SEA SURFACE TEMPERATURE                   K
+!      PTSKM1M  :    SKIN TEMPERATURE                                 K
+!      PCHAR    :    "EQUIVALENT" CHARNOCK PARAMETER                  -
+!      PSSRFL   :    NET SHORTWAVE RADIATION FLUX AT SURFACE          W/m2
+!      PTSAM1M  :    SURFACE TEMPERATURE                              K
+!      PWSAM1M  :    SOIL MOISTURE ALL LAYERS                         m**3/m**3
+!      PTICE    :    Ice temperature, top slab                        K
+!      PTSNOW   :    Snow temperature                                 K
+!      PWLMX    :    Maximum interception layer capacity              kg/m**2
+!      PUCURR   :    Ocean current U-component                        m/s
+!      PVCURR   :    Ocean current V-component                        m/s
+
+!    Reals with tile index (In/Out):
+!      PUSTRTI  :    SURFACE U-STRESS                                 N/m2 
+!      PVSTRTI  :    SURFACE V-STRESS                                 N/m2
+!      PAHFSTI  :    SURFACE SENSIBLE HEAT FLUX                       W/m2
+!      PEVAPTI  :    SURFACE MOISTURE FLUX                            KG/m2/s
+!      PTSKTI   :    SKIN TEMPERATURE                                 K
+
+!    Reals independent of tiles (In/Out):
+!      PZ0M     :    AERODYNAMIC ROUGHNESS LENGTH                     m
+!      PZ0H     :    ROUGHNESS LENGTH FOR HEAT                        m
+
+!    Reals with tile index (Out):
+!      PSSRFLTI :    Tiled NET SHORTWAVE RADIATION FLUX AT SURFACE    W/m2
+!      PQSTI    :    Tiled SATURATION Q AT SURFACE                    kg/kg
+!      PDQSTI   :    Tiled DERIVATIVE OF SATURATION Q-CURVE           kg/kg/K
+!      PCPTSTI  :    Tiled DRY STATIC ENERGY AT SURFACE               J/kg
+!      PCFHTI   :    Tiled EXCHANGE COEFFICIENT AT THE SURFACE        ????
+!      PCFQTI   :    Tiled EXCHANGE COEFFICIENT AT THE SURFACE        ????
+!      PCSATTI  :    MULTIPLICATION FACTOR FOR QS AT SURFACE          -
+!                      FOR SURFACE FLUX COMPUTATION
+!      PCAIRTI  :    MULTIPLICATION FACTOR FOR Q AT  LOWEST MODEL     - 
+!                      LEVEL FOR SURFACE FLUX COMPUTATION
+
+!    Reals independent of tiles (Out):
+!      PCFMLEV  :    PROP. TO EXCH. COEFF. FOR MOMENTUM               ????
+!                     (C-STAR IN DOC.) (SURFACE LAYER ONLY)
+!      PKMFL    :    Kinematic momentum flux                          ????
+!      PKHFL    :    Kinematic heat flux                              ????
+!      PKQFL    :    Kinematic moisture flux                          ????
+!      PEVAPSNW :    Evaporation from snow under forest               kgm-2s-1
+!      PZ0MW    :    Roughness length for momentum, WMO station       m
+!      PZ0HW    :    Roughness length for heat, WMO station           m
+!      PZ0QW    :    Roughness length for moisture, WMO station       m
+!      PCPTSPP  :    Cp*Ts for post-processing of weather parameters  J/kg
+!      PQSAPP   :    Apparent surface humidity for post-processing    kg/kg
+!                     of weather parameters
+!      PBUOMPP  :    Buoyancy flux, for post-processing of gustiness  ???? 
+
+
+!     EXTERNALS.
+!     ----------
+
+!     ** SURFEXCDRIVERS_CTL CALLS SUCCESSIVELY:
+!         *VUPDZ0S*
+!         *VSURFS*
+!         *VEXCSS*
+!         *VEVAPS*
+
+!  DOCUMENTATION:
+!    See Physics Volume of IFS documentation
+
+!------------------------------------------------------------------------
+
+MODULE SURFEXCDRIVERS_CTL_MOD
+CONTAINS
+SUBROUTINE SURFEXCDRIVERS_CTL( &
+ &   KIDIA, KFDIA, KLON, KLEVS, KTILES, KSTEP &
+ & , PTSTEP, PRVDIFTS &
+ & , LDSURF2 &
+! input data, non-tiled
+ & , KTVL, KTVH, PCVL, PCVH, PCUR &
+ & , PLAIL, PLAIH &
+ & , PSNM , PRSN &
+ & , PUMLEV, PVMLEV, PTMLEV, PQMLEV, PAPHMS, PGEOMLEV, PCPTGZLEV &
+ & , PSST, PTSKM1M, PCHAR, PSSRFL, PTICE, PTSNOW &
+ & , PWLMX &
+! input data, soil
+ & , PTSAM1M, PWSAM1M, KSOTY &
+! input data, tiled
+ & , PFRTI, PALBTI &
+!
+ & , YDCST, YDEXC, YDVEG, YDSOIL, YDFLAKE, YDURB & 
+! updated data, tiled
+ & , PUSTRTI, PVSTRTI, PAHFSTI, PEVAPTI, PTSKTI &
+! updated data, non-tiled
+ & , PZ0M, PZ0H &
+! output data, tiled
+ & , PSSRFLTI, PQSTI, PDQSTI, PCPTSTI, PCFHTI, PCFQTI, PCSATTI, PCAIRTI &
+ & , PZ0MTIW, PZ0HTIW, PZ0QTIW, PQSAPPTI, PCPTSPPTI, PBUOMTI &
+! output data, non-tiled
+ & , PCFMLEV, PKMFL, PKHFL, PKQFL, PEVAPSNW &
+ & , PZ0MW, PZ0HW, PZ0QW, PCPTSPP, PQSAPP, PBUOMPP &
+ & )
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF  , ONLY : R4LES, R5LES, R2ES, R4IES, R3LES, R3IES, R5IES
+USE YOS_CST  , ONLY : TCST
+USE YOS_EXC  , ONLY : TEXC
+USE YOS_VEG  , ONLY : TVEG
+USE YOS_SOIL , ONLY : TSOIL
+USE YOS_FLAKE, ONLY : TFLAKE
+USE YOS_URB  , ONLY : TURB
+USE VUPDZ0S_MOD
+USE VSURFS_MOD
+USE VEXCSS_MOD
+USE VEVAPS_MOD
+
+!------------------------------------------------------------------------
+
+!  PURPOSE:
+!    Routine SURFEXCDRIVERS controls the ensemble of routines that prepare
+!    the surface exchange coefficients and associated surface quantities
+!    needed for the solution of the vertical diffusion equations. 
+
+!  SURFEXCDRIVERS is called by VDFMAINS
+
+!  METHOD:
+!    This routine is only a shell needed by the surface library
+!    externalisation.
+
+!  AUTHOR:
+!    P. Viterbo       ECMWF May 2005   
+
+!  REVISION HISTORY:
+!    M. Janiskova     27/06/2005 removed option for MASS vector functions
+!                                not use in correcsponding TL/AD
+!    A.Beljaars       10/12/2005 TOFD
+!    M. Janiskova     10/03/2006 call for simplified routines (suffix s)
+!                                instead of full NL routines
+!    G. Balsamo       03/07/2006 Add soil type
+!    M. Janiskova     21/05/2007 clean-up of roughness length initialization
+!    S. Boussetta/G.Balsamo May 2009 Add lai
+!    M. Janiskova     July 2011->2013  modified computation of snow evaporation
+!    M. Janiskova     Jan 2015   use previous time step fluxes for heat&momentum
+!    J. McNorton      24/08/2022 urban tile
+
+!  INTERFACE: 
+
+!    Integers (In):
+!      KIDIA    :    Begin point in arrays
+!      KFDIA    :    End point in arrays
+!      KLON     :    Length of arrays
+!      KLEVS    :    Number of soil layers
+!      KTILES   :    Number of tiles
+!      KSTEP    :    Time step index
+!      KTVL     :    Dominant low vegetation type
+!      KTVH     :    Dominant high vegetation type
+!      KSOTY    :    SOIL TYPE                                        (1-7)
+
+!    Reals (In):
+!      PTSTEP   :    Timestep
+!      PRVDIFTS :    Semi-implicit factor for vertical diffusion discretization
+
+!    Reals with tile index (In): 
+!      PFRTI    :    TILE FRACTIONS                                   (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!      PALBTI   :    Tile albedo                                      (0-1)
+
+!    Reals independent of tiles (In):
+!      PCVL     :    LOW VEGETATION COVER                             -  
+!      PCVH     :    HIGH VEGETATION COVER                            -  
+!      PCUR     :    URBAN COVER                                      - 
 !      PLAIL    :    LOW VEGETATION LAI
 !      PLAIH    :    HIGH VEGETATION LAI
 
@@ -199,8 +342,11 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KTVH(:)
 INTEGER(KIND=JPIM),INTENT(IN)    :: KSOTY(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVL(KLON) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVH(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCUR(KLON)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PLAIL(KLON) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PLAIH(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PSNM(:,:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRSN(:,:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PUMLEV(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVMLEV(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTMLEV(:)
@@ -224,6 +370,7 @@ TYPE(TEXC)        ,INTENT(IN)    :: YDEXC
 TYPE(TVEG)        ,INTENT(IN)    :: YDVEG
 TYPE(TSOIL)       ,INTENT(IN)    :: YDSOIL
 TYPE(TFLAKE)      ,INTENT(IN)    :: YDFLAKE
+TYPE(TURB)        ,INTENT(IN)    :: YDURB
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PUSTRTI(:,:) 
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PVSTRTI(:,:) 
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PAHFSTI(:,:) 
@@ -250,30 +397,41 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZ0QW(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCPTSPP(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQSAPP(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBUOMPP(:)
+! Tile dependent pp
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZ0MTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZ0HTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZ0QTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQSAPPTI(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCPTSPPTI(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBUOMTI(:,:)
+
 
 ! Local variables
 
-INTEGER(KIND=JPIM) :: IFRMAX(KLON)
+INTEGER(KIND=JPIM) :: IFRMAX(KLON),IFRLMAX(KLON)
 
 REAL(KIND=JPRB) :: ZZ0MTI(KLON,KTILES) , ZZ0HTI(KLON,KTILES) ,&
                  & ZZ0QTI(KLON,KTILES) , ZBUOMTI(KLON,KTILES),&
                  & ZZDLTI(KLON,KTILES) , ZRAQTI(KLON,KTILES) ,&
                  & ZQSATI(KLON,KTILES) , ZCFMTI(KLON,KTILES) ,&
                  & ZKMFLTI(KLON,KTILES), ZKHFLTI(KLON,KTILES),&
-                 & ZKQFLTI(KLON,KTILES), ZZQSATI(KLON,KTILES)
+                 & ZKQFLTI(KLON,KTILES), ZZQSATI(KLON,KTILES),&
+                 & ZDSN(KLON)
 
 REAL(KIND=JPRB) :: ZFRMAX(KLON)   , ZALB(KLON)     , ZSSRFL1(KLON)  , &
                  & ZSRFD(KLON)    , ZWETL(KLON)    , ZWETH(KLON)    , &
                  & ZWETHS(KLON)   , ZWETB(KLON)    , &
                  & ZTSA(KLON)     , ZCSNW(KLON)
+REAL(KIND=JPRB) :: ZFRLMAX(KLON)
 
 INTEGER(KIND=JPIM) :: JL, JTILE, KTILE
 
 REAL(KIND=JPRB) :: ZQSSN, ZCOR, ZCONS1, ZZ0MWMO, ZZ0HWMO, ZCDRO 
 REAL(KIND=JPRB) :: ZDIV1, ZDIV2, Z3S, Z4S
 REAL(KIND=JPRB) :: ZCONS2
+REAL(KIND=JPRB) :: ZBLENDZ0
+REAL(KIND=JPRB) :: ZCBLENDM(KLON), ZCBLENDH(KLON)
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
 LOGICAL         :: LLAND, LLSICE, LLHISSR(KLON)
 
 #include "fcsttre.h"
@@ -286,7 +444,7 @@ ASSOCIATE(RCPD=>YDCST%RCPD, RD=>YDCST%RD, RETV=>YDCST%RETV, RG=>YDCST%RG, &
  & RSIGMA=>YDCST%RSIGMA, RTT=>YDCST%RTT, &
  & REPDU2=>YDEXC%REPDU2, RKAP=>YDEXC%RKAP, RZ0ICE=>YDEXC%RZ0ICE, &
  & RALFMAXSN=>YDSOIL%RALFMAXSN, &
- & RVTRSR=>YDVEG%RVTRSR, RVZ0M=>YDVEG%RVZ0M)
+ & RVTRSR=>YDVEG%RVTRSR, RVZ0M=>YDVEG%RVZ0M,LEURBAN=>YDURB%LEURBAN)
 
 ZCONS1=1./(RG*PTSTEP)
 
@@ -304,34 +462,87 @@ IF ( KSTEP == 0) THEN
   ENDDO
 ENDIF
 
+! Total snow depth (m) 
+ZDSN(KIDIA:KFDIA) = SUM( PSNM(KIDIA:KFDIA,:) / PRSN(KIDIA:KFDIA,:),DIM=2) 
+
 !*         1.2  UPDATE Z0
 
 CALL VUPDZ0S(KIDIA,KFDIA,KLON,KTILES,KSTEP,&
-     & KTVL,KTVH,PCVL,PCVH,PUMLEV, PVMLEV,&
-     & PTMLEV,PQMLEV,PAPHMS,PGEOMLEV,&
+     & KTVL,KTVH,PCVL,PCVH,PCUR,PUMLEV, PVMLEV,&
+     & PTMLEV,PQMLEV,PAPHMS,PGEOMLEV,ZDSN,&
      & PUSTRTI,PVSTRTI,PAHFSTI,PEVAPTI,&
      & PTSKTI,PCHAR,PFRTI, &
-     & YDCST,YDEXC,YDVEG,YDFLAKE, &
+     & YDCST,YDEXC,YDVEG,YDFLAKE,YDURB, &
      & ZZ0MTI,ZZ0HTI,ZZ0QTI,ZBUOMTI,ZZDLTI,ZRAQTI)
 
 !*         1.3  FIND DOMINANT SURFACE TYPE parameters for postprocessing
 
 ZFRMAX(KIDIA:KFDIA)=PFRTI(KIDIA:KFDIA,1)
+ZFRLMAX(KIDIA:KFDIA)=PFRTI(KIDIA:KFDIA,1)
 IFRMAX(KIDIA:KFDIA)=1
+IFRLMAX(KIDIA:KFDIA)=1
 DO JTILE=2,KTILES
   DO JL=KIDIA,KFDIA
     IF (PFRTI(JL,JTILE)  >  ZFRMAX(JL)) THEN
       ZFRMAX(JL)=PFRTI(JL,JTILE)
       IFRMAX(JL)=JTILE
     ENDIF
+    IF (PFRTI(JL,JTILE)  >  ZFRLMAX(JL) .AND. &
+      JTILE.NE.6 .AND. JTILE.NE.7) THEN
+      ZFRLMAX(JL)=PFRTI(JL,JTILE)
+      IFRLMAX(JL)=JTILE
+      IF (JTILE.EQ.3.OR.JTILE.EQ.9) THEN
+!* for tiles wet-skin or lakes attribute if present
+!* low-vegetation (4) if present or bare soil (8) 
+         IF (PFRTI(JL,8).GT.0.0_JPRB) IFRLMAX(JL)=8
+         IF (PFRTI(JL,4).GT.0.0_JPRB) IFRLMAX(JL)=4
+      ENDIF
+    ENDIF
+  ENDDO
+ENDDO
+
+!*         Use tile average (log) Z0 for M and H, consistent with non-linear
+ZBLENDZ0=10._JPRB
+ZCBLENDM(KIDIA:KFDIA)=PFRTI(KIDIA:KFDIA,1)&
+           &/(LOG(ZBLENDZ0/ZZ0MTI(KIDIA:KFDIA,1)))**2
+ZCBLENDH(KIDIA:KFDIA)=PFRTI(KIDIA:KFDIA,1)&
+           &/(LOG(ZBLENDZ0/ZZ0HTI(KIDIA:KFDIA,1)))**2
+
+DO JTILE=2,KTILES
+  DO JL=KIDIA,KFDIA
+    ZCBLENDM(JL)=ZCBLENDM(JL)&
+           &+PFRTI(JL,JTILE)/(LOG(ZBLENDZ0/ZZ0MTI(JL,JTILE)))**2
+    ZCBLENDH(JL)=ZCBLENDH(JL)&
+           &+PFRTI(JL,JTILE)/(LOG(ZBLENDZ0/ZZ0HTI(JL,JTILE)))**2
   ENDDO
 ENDDO
 
 DO JL=KIDIA,KFDIA
-  JTILE=IFRMAX(JL)
-  PZ0M(JL)=ZZ0MTI(JL,JTILE)
-  PZ0H(JL)=ZZ0HTI(JL,JTILE)
+  PZ0M(JL)=ZBLENDZ0*EXP(-1._JPRB/SQRT(ZCBLENDM(JL)))
+  PZ0H(JL)=ZBLENDZ0*EXP(-1._JPRB/SQRT(ZCBLENDH(JL)))
 ENDDO
+
+! Because of z0m avg below, this must be placed here.
+! It can go with other z0*tiw parameters if z0m avg is removed.
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+      PZ0MTIW(JL,JTILE)=ZZ0MTI(JL,JTILE)
+  ENDDO
+ENDDO
+
+!*         Put tile average Z0M on all tiles
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+    ZZ0MTI(JL,JTILE)=PZ0M(JL)
+  ENDDO
+ENDDO
+
+!*         Put dominant tile Z0M on all tiles
+!**DO JL=KIDIA,KFDIA
+!**  JTILE=IFRMAX(JL)
+!**  PZ0M(JL)=ZZ0MTI(JL,JTILE)
+!**  PZ0H(JL)=ZZ0HTI(JL,JTILE)
+!**ENDDO
 
 
 !     ------------------------------------------------------------------
@@ -350,6 +561,10 @@ ZALB(KIDIA:KFDIA)=&
  & +PFRTI(KIDIA:KFDIA,6)*PALBTI(KIDIA:KFDIA,6)&
  & +PFRTI(KIDIA:KFDIA,7)*PALBTI(KIDIA:KFDIA,7)&
  & +PFRTI(KIDIA:KFDIA,8)*PALBTI(KIDIA:KFDIA,8)  
+
+IF (LEURBAN) THEN
+ZALB(KIDIA:KFDIA)=ZALB(KIDIA:KFDIA) + PFRTI(KIDIA:KFDIA,10)*PALBTI(KIDIA:KFDIA,10)
+ENDIF
 
 ZSSRFL1(KIDIA:KFDIA)=0._JPRB
 
@@ -506,16 +721,19 @@ ENDDO
 
 ZZ0MWMO=0.03_JPRB
 ZZ0HWMO=0.003_JPRB
+!* similar to non-linear:
 DO JL=KIDIA,KFDIA
-  JTILE=IFRMAX(JL)
-  IF (JTILE  >  2.AND. ZZ0MTI(JL,JTILE)  >  ZZ0MWMO) THEN
+  !*JTILE=IFRMAX(JL)
+  !*IF (JTILE  >  2.AND. ZZ0MTI(JL,JTILE)  >  ZZ0MWMO) THEN
+  IF (PZ0M(JL)  >  ZZ0MWMO) THEN
     PZ0MW(JL)=ZZ0MWMO
-    PZ0HW(JL)=ZZ0HWMO
-    PZ0QW(JL)=ZZ0HWMO
+    !*PZ0HW(JL)=ZZ0HWMO
+    !*PZ0QW(JL)=ZZ0HWMO
   ELSE
-    PZ0MW(JL)=ZZ0MTI(JL,JTILE)
-    PZ0HW(JL)=ZZ0HTI(JL,JTILE)
-    PZ0QW(JL)=ZZ0QTI(JL,JTILE)
+    PZ0MW(JL)=PZ0M(JL)
+    !*PZ0MW(JL)=ZZ0MTI(JL,JTILE)
+    !*PZ0HW(JL)=ZZ0HTI(JL,JTILE)
+    !*PZ0QW(JL)=ZZ0QTI(JL,JTILE)
   ENDIF
 ENDDO
 
@@ -528,11 +746,25 @@ DO JTILE=1,KTILES
 ENDDO
 
 DO JL=KIDIA,KFDIA
-  JTILE=IFRMAX(JL)
+  JTILE=IFRLMAX(JL)
+  PZ0HW(JL)=ZZ0HTI(JL,JTILE)
+  PZ0QW(JL)=ZZ0QTI(JL,JTILE)
   PCPTSPP(JL)=PCPTSTI(JL,JTILE)
   PQSAPP(JL)=ZZQSATI(JL,JTILE)
   PBUOMPP(JL)=ZBUOMTI(JL,JTILE)
 ENDDO
+!          PP: STORE TILE-DEPENDENT QUANTITIES FOR T2M/D2M per TILE CALCULATION 
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+    PZ0HTIW(JL,JTILE)=ZZ0HTI(JL,JTILE)
+    PZ0QTIW(JL,JTILE)=ZZ0QTI(JL,JTILE)
+    PBUOMTI(JL,JTILE)=ZBUOMTI(JL,JTILE)
+    PQSAPPTI(JL,JTILE)=ZZQSATI(JL,JTILE)
+    PCPTSPPTI(JL,JTILE)=PCPTSTI(JL,JTILE)
+  ENDDO
+ENDDO
+
+
 
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('SURFEXCDRIVERS_CTL_MOD:SURFEXCDRIVERS_CTL',1,ZHOOK_HANDLE)

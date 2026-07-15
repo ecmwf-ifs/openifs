@@ -79,6 +79,8 @@ SAVE
 !                   tendency in split physics (if LSLPHY=.T. only). 
 !     * MSLB1GFLP9: pointer for unified_treatment grid-point fields
 !                   tendency in split physics (if LSLPHY=.T. only). 
+!     * MSLB1SPPTCLEARP9  : pointer for clear sky radiation tendency to be interpolated at O:
+!                   tendency in split physics and SPPT (if LSLPHY=.T. only).
 !     * MSLB1[X]9_SI: cf. MSLB1[X]9 ([X]=U,V,T,PD,VD,C) for cases where linear
 !                   terms must be separately interpolated (contain separate
 !                   linear terms).
@@ -133,6 +135,7 @@ INTEGER(KIND=JPIM) :: MSLB1VP9
 INTEGER(KIND=JPIM) :: MSLB1ZP9
 INTEGER(KIND=JPIM) :: MSLB1TP9
 INTEGER(KIND=JPIM) :: MSLB1GFLP9
+INTEGER(KIND=JPIM) :: MSLB1SPPTCLEARP9
 INTEGER(KIND=JPIM) :: MSLB1U9_SI
 INTEGER(KIND=JPIM) :: MSLB1V9_SI
 INTEGER(KIND=JPIM) :: MSLB1T9_SI
@@ -212,6 +215,7 @@ SUBROUTINE PRINT_CONFIGURATION(SELF, KDEPTH, KOUTNO)
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1ZP9 = ', SELF%MSLB1ZP9
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1TP9 = ', SELF%MSLB1TP9
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1GFLP9 = ', SELF%MSLB1GFLP9
+  WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1SPPTCLEARP9 = ', SELF%MSLB1SPPTCLEARP9
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1U9_SI = ', SELF%MSLB1U9_SI
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1V9_SI = ', SELF%MSLB1V9_SI
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'MSLB1T9_SI = ', SELF%MSLB1T9_SI

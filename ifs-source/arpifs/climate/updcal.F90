@@ -1,13 +1,46 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 1991- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
+!**** *UPDCAL*
+
+!     PURPOSE.
+!     --------
+
+!     Updates the calendar values.
+
+!**   INTERFACE.
+!     ----------
+
+!     CALL UPDCAL(KD0,KM0,KY0,KINC,KD1,KM1,KY1,KLMO,KULOUT)
+!          KD0,KM0,KY0 : initial date
+!          KINC        : number of days to increment
+!          KD1,KM1,KY1 : final date
+!          KLMO        : length of the 12 months
+!          KULOUT      : output unit (If negative, does not write)
+
+!     METHOD.
+!     -------
+
+!     Increases day by day the date, updates if necessary the month and the
+!     year.
+
+!     EXTERNALS.
+!     ----------
+
+!         NONE
+
+!     AUTHORS.
+!     --------
+
+!         M. DEQUE  JAN 91 .
+!         Modified 96-07 M. DEQUE Backward increment. of date (Nudging)
+!         Modified 99-10 P. VITERBO Control of printing, 2100 compatible
+
 SUBROUTINE UPDCAL(KD0,KM0,KY0,KINC,KD1,KM1,KY1,KLMO,KULOUT)
 
 !**** *UPDCAL*

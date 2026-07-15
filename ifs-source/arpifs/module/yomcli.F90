@@ -27,6 +27,7 @@ SAVE
 !  LGLOBE : if global dataset
 !  NDATX  : x-size of the dataset (longitude) 
 !  NDATY  : y-size of the dataset (longitude) 
+!  NAEROF : index of aerosol file 0=tegen,1=camsaod,2=camsmmr 
 !  ELONSW , ELATSW , ELONNE , ELATNE : for local datasets (parts 5, 7 or LAM)
 !           latitudes and longitudes of the SW and NE corners (in degrees) 
 !  - local, set directly by INCLI0 from namelist -
@@ -63,12 +64,14 @@ SAVE
 !  SZZ0N,SZZ0M,SZZ0B,SZZ0U,SZZ0D : roughness length
 !  (minimum,sea,sea-ice,urban areas,desert)
 
+TYPE TCLI
 LOGICAL :: LIEEE
 LOGICAL :: LGLOBE
 LOGICAL :: LZ0THER
 INTEGER(KIND=JPIM) :: NPINT
 INTEGER(KIND=JPIM) :: NDATX
 INTEGER(KIND=JPIM) :: NDATY
+INTEGER(KIND=JPIM) :: NAEROF
 INTEGER(KIND=JPIM) :: NGLOBX
 INTEGER(KIND=JPIM) :: NGLOBY
 INTEGER(KIND=JPIM) :: NTPMER
@@ -118,5 +121,8 @@ REAL(KIND=JPRB) :: SZZ0M
 REAL(KIND=JPRB) :: SZZ0B
 REAL(KIND=JPRB) :: SZZ0U
 REAL(KIND=JPRB) :: SZZ0D
+END TYPE TCLI
+
+TYPE (TCLI), TARGET :: YRCLI 
 
 END MODULE YOMCLI

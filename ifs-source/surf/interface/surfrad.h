@@ -1,18 +1,3 @@
-INTERFACE
-SUBROUTINE SURFRAD    (YDSURF,KDD,KMM,KMON,KSECO,&
- & KIDIA,KFDIA,KLON,KTILES,KSW,KLW,&
- & LDNH,&
- & PALBF,PALBICEF,PTVH,&
- & PALCOEFF, PCURC,PCVH,&
- & PASN,PMU0,PTS,PWND,&
- & PWS1,KSOTY,PFRTI,PHLICE,PTLICE,&  
- & PALBD,PALBP,PALB,&
- & PSPECTRALEMISS,PEMIT,&
- & PALBTI,PCCNL,PCCNO,&
- & LNEMOLIMALB)
-
-USE PARKIND1, ONLY : JPIM, JPRB
-USE, INTRINSIC :: ISO_C_BINDING
 
 ! (C) Copyright 1991- ECMWF.
 !
@@ -38,10 +23,110 @@ USE, INTRINSIC :: ISO_C_BINDING
 ! KMON   : length of the 12 months
 ! KSECO  : Number of seconds since 00 UTC on the initial day of the forecast
 ! LDNH   : LOGICAL  : .TRUE. FOR Northern Hemisphere
+! LDLAND : LOGICAL  : .TRUE. FOR Land 
 ! PALBF  : REAL     : FIXED BACKGROUND SURFACE SHORTWAVE ALBEDO
 ! PALBICEF REAL     : FIXED SEA-ICE ALBEDO (FROM COUPLER)
 ! PALCOEFF : REAL   : MODIS albedo coefficients
-! PCURC  : REAL     : URBAN COVER (PASSIVE)
+! PCUR   : REAL     : URBAN COVER (PASSIVE)
+! PCVH   : REAL     : HIGH VEGETATION COVER
+! PASN   : REAL     : ALBEDO OF EXPOSED SNOW (TYPE 5)
+! PMU0   : REAL     : COSINE OF SOLAR ZENITH ANGLE
+! PTS    : REAL     : SURFACE TEMPERATURE
+! PWND   : REAL     : WIND INTENSITY AT LOWEST LEVEL
+! PWS1   : REAL     : TOP LAYER SOIL MOISTURE CONTENT
+! KSOTY  : INTEGER  : SOIL TYPE                           (1-7)
+! PFRTI  : REAL     : TILE FRACTIONS                      (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+! PHLICE : REAL     : LAKE ICE THICKNESS (m)
+! PTLICE : REAL     : LAKE ICE TEMPERATURE (K)
+
+!     ==== OUTPUTS ===
+! PALBD  : REAL     : SURFACE ALBEDO FOR DIFFUSE RADIATION
+! PALBP  : REAL     : SURFACE ALBEDO FOR PARALLEL RADIATION
+! PALB   : REAL     : AVERAGE SW ALBEDO (DIAGNOSTIC ONLY)
+! PSPECTRALEMISS : REAL : SURFACE LONGWAVE SPECTRAL EMISSIVITY
+! PEMIT  : REAL     : SURFACE LONGWAVE EMISSIVITY
+! PALBTI : REAL     : BROADBAND ALBEDO FOR TILE FRACTIONS
+! PCCNL  : REAL     : CCN CONCENTRATION OVER LAND
+! PCCNO  : REAL     : CCN CONCENTRATION OVER OCEAN
+
+!     ==== OUTPUTS ===
+
+!        IMPLICIT ARGUMENTS :   NONE
+!        --------------------
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+!          NONE
+
+!     REFERENCE.
+!     ----------
+
+!        SEE RADIATION'S PART OF THE MODEL'S DOCUMENTATION AND
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE "I.F.S"
+
+!     AUTHOR.
+!     -------
+!     J.-J. MORCRETTE  E.C.M.W.F.    91/03/15
+
+!     MODIFICATIONS.
+!     --------------
+!     J.-J. MORCRETTE  ECMWF 94/11/15  DIRECT/DIFFUSE ALBEDOS
+!     J.-J. MORCRETTE 96/06/07  moisture dep. emissiv. / spectral alb.  
+!     PJANSSEN/JJMORCRETTE ECMWF     96/11/07  WIND DEPENDENT SEA ALBEDO
+!     PViterbo         ECMWF 99/03/03  Albedo for tile fractions
+!     J.-J. Morcrette ECMWF 00/10/24 Spectral albedo for all surfaces
+!     JJMorcrette     01-10-08  CCNs concentration over ocean
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     G.Balsamo     03-Jul-2006 Add soil type
+!     JJMorcrette ECMWF 2006-05-10 MODIS albedo
+!     E.Dutra/G.Balsamo 2008-05-01 Add lake tile 
+!     Linus Magnusson   10-09-28 Sea-ice 
+!-----------------------------------------------------------------------
+
+INTERFACE
+SUBROUTINE SURFRAD    (YDSURF,KDD,KMM,KMON,KSECO,&
+ & KIDIA,KFDIA,KLON,KTILES,KSW,KLW,&
+ & LDNH,&
+ & PALBF,PALBICEF,PTVH,&
+ & PALCOEFF, PCUR,PCVH,&
+ & PASN,PMU0,PTS,PWND,&
+ & PWS1,KSOTY,PFRTI,PHLICE,PTLICE,&  
+ & PALBD,PALBP,PALB,&
+ & PSPECTRALEMISS,PEMIT,&
+ & PALBTI,PCCNL,PCCNO,&
+ & LNEMOLIMALB)
+
+USE PARKIND1, ONLY : JPIM, JPRB
+USE, INTRINSIC :: ISO_C_BINDING
+
+!**** *SURFRAD - COMPUTES RADIATIVE PROPERTIES OF SURFACE
+
+!     PURPOSE.
+!     --------
+
+!**   INTERFACE.
+!     ----------
+!        CALL *SURFRAD* FROM *CALLPAR*
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!     ==== INPUTS ===
+! KDD,KMM : final date
+! KMON   : length of the 12 months
+! KSECO  : Number of seconds since 00 UTC on the initial day of the forecast
+! LDNH   : LOGICAL  : .TRUE. FOR Northern Hemisphere
+! PALBF  : REAL     : FIXED BACKGROUND SURFACE SHORTWAVE ALBEDO
+! PALBICEF REAL     : FIXED SEA-ICE ALBEDO (FROM COUPLER)
+! PALCOEFF : REAL   : MODIS albedo coefficients
+! PCUR   : REAL     : URBAN COVER (PASSIVE)
 ! PCVH   : REAL     : HIGH VEGETATION COVER
 ! PASN   : REAL     : ALBEDO OF EXPOSED SNOW (TYPE 5)
 ! PMU0   : REAL     : COSINE OF SOLAR ZENITH ANGLE
@@ -126,7 +211,7 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PALBF(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PALBICEF(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTVH(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PALCOEFF(:,:)
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PCURC(:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCUR(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCVH(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PASN(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PMU0(:) 

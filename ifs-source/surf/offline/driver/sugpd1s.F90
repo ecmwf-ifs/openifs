@@ -1,3 +1,52 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUGPD1S*   - Routine to initialize soil and vegetation properties
+
+!     Purpose.
+!     --------
+!           Initialize surface properties
+
+!***  Interface.
+!     ----------
+!        *CALL* *SUGPD1S(NCID)
+
+!     Explicit arguments :
+!     --------------------
+!        NCID : NETCDF INPUT FILE UNIT
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by SUINIF1S.
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-21
+!        Bart vd HURK (KNMI) Multi-column input from netCDF
+!        Gianpaolo Balsamo (ECMWF) add grib interface
+!        Y. Takaya (ECMWF) add ocean mixed layer variables
+!        E. Dutra (U.Lisbon) add Flake variables
+!        G. Balsamo (ECMWF) add LAI
+!        I. Ayan-Miguez (BSC) add Spatially distributed parameters group
+
 SUBROUTINE SUGPD1S(NCID)
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -58,13 +107,6 @@ USE YOMDPHY  , ONLY : NVSF    ,NVPD     ,NGCC     ,NPOI     ,&
 USE YOEPHY   , ONLY : LEOCML, LECLIM10D
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUGPD1S*   - Routine to initialize soil and vegetation properties
 

@@ -1,3 +1,127 @@
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!     ------------------------------------------------------------------
+
+!**   *VDFDIFH* - DOES THE IMPLICIT CALCULATION FOR DIFFUSION OF S. L.
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.    10-11-89
+
+!     OBUKHOV-L UPDATE      ACMB          26/03/90.
+!     SKIN T CLEANING       P. VITERBO    15-11-96.
+!     TILE BOUNDARY COND.   ACMB          20-11-98.
+!     Surface DDH for TILES P. Viterbo    17-05-2000.
+!     New tile coupling, 
+!     DDH moved to VDFMAIN  A. Beljaars   2-05-2003.
+!     Mass flux terms,
+!     Flux b.c. for SCM,
+!     Moist generalization  A. Beljaars/M. Ko"hler 3-12-2004. 
+!     Removed option for linearized    P. Lopez  02/06/2005
+!     physics (now called separately)   
+
+!     PURPOSE
+!     -------
+
+!     SOLVE TRIDIAGONAL MATRICES FOR DIFFUSION OF DRY STATIC ENERGY
+!     AND MOISTURE; IN SO DOING, IT ALSO SOLVES THE SKIN TEMPERATURE
+!     EQUATION.
+
+!     INTERFACE
+!     ---------
+
+!     *VDFDIFH* IS CALLED BY *VDFMAIN*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLEV*         NUMBER OF LEVELS
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTOP*         INDEX FOR BOUNDARY LAYER TOP
+!     *KTVL*         DOMINANT LOW VEGETATION TYPE
+!     *KTVH*         DOMINANT HIGH VEGETATION TYPE
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        DOUBLE TIME STEP (SINGLE AT 1TH STEP)
+!     *PFRTI*        FRACTION OF SURFACE AREA COVERED BY TILES
+!     *PSLM1*        GENERALIZED LIQUID WATER STATIC ENERGY    AT T-1
+!                    (NOTE: In lin/adj physics = Dry static energy)
+!     *PTM1*         TEMPERATURE AT T-1
+!     *PQM1*         SPECIFIC HUMIDITY      AT T-1
+!     *PQTM1*        SPECIFIC TOTAL WATER   AT T-1
+!     *PAPHM1*       PRESSURE AT T-1
+!     *PCFH*         PROP. TO EXCH. COEFF. FOR HEAT (C,K-STAR IN DOC.)
+!     *PCFHTI*       IDEM FOR HEAT (SURFACE LAYER ONLY)
+!     *PCFQTI*       IDEM FOR MOISTURE (SURFACE LAYER ONLY)
+!     *PMFLX*        MASSFLUX
+!     *PSLUH*        UPDRAFT GENERALIZED LIQUID WATER STATIC ENERGY AT HALF LEVEL
+!     *PQTUH*        UPDRAFT SPECIFIC TOTAL WATER AT HALF LEVEL
+!     *PCPTSTI*      DRY STATIC ENRGY AT SURFACE
+!     *PQSTI*        SATURATION Q AT SURFACE
+!     *PCAIRTI*      MULTIPLICATION FACTOR FOR Q AT LOWEST MODEL LEVEL
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCSATTI*      MULTIPLICATION FACTOR FOR QS AT SURFACE
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCPTSTIU*     AS PCPTSTI FOR UNSTRESSED EVAPORARTION FROM LOW VEGET.
+!     *PCAIRTIU*     AS PCAIRTI FOR UNSTRESSED EVAPORARTION FROM LOW VEGET.
+!     *PCSATTIU*     AS PCSATTI FOR UNSTRESSED EVAPORARTION FROM LOW VEGET.
+!     *PDQSTI*       D/DT (PQS)
+!     *PSSRFLTI*     NET SOLAR RADIATION AT THE SURFACE, FOR EACH TILE
+!     *PSLRFL*       NET THERMAL RADIATION AT THE SURFACE
+!     *PEMIS*        MODEL SURFACE LONGWAVE EMISSIVITY
+!     *PEVAPSNW*     EVAPORATION FROM SNOW UNDER FOREST
+!     *PTSKTI*       SKIN TEMPERATURE AT T-1
+!     *PTSKRAD*      SKIN TEMPERATURE OF LATEST FULL RADIATION TIMESTEP
+!     *PTSM1M*       TOP SOIL LAYER TEMPERATURE
+!     *PTSNOW*       SNOW TEMPERATURE   
+!     *PTICE*        ICE TEMPERATURE (TOP SLAB)
+!     *PSST*         (OPEN) SEA SURFACE TEMPERATURE
+!     *PSLGE*        GENERALIZED DRY STATIC ENERGY TENDENCY
+!                    (NOTE: In lin/adj physics = Temperature tendency)
+!     *PQTE*         TOTAL WATER TENDENCY
+!                    (NOTE: In lin/adj physics = Humidity tendency)
+!     *ZTSRF*        Surface temperature under each tile
+!     *ZLAMSK*       Skin layer conductivity for each tile 
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PTDIF*        SLG-DOUBLE-TILDE DEVIDED BY ALFA
+!     *PQDIF*        QT-DOUBLE-TILDE DEVIDED BY ALFA
+!     *PTSKTIP1*     SKIN TEMPERATURE AT T+1
+!     *PJQ*          Surface moisture flux                      (kg/m2s)
+!     *PSSH*         Surface sensible heat flux                 (W/m2)
+!     *PSLH*         Surface latent heat flux                   (W/m2)
+!     *PSTR*         Surface net thermal radiation              (W/m2)
+!     *PG0*          Surface ground heat flux (solar radiation  (W/m2)
+!                    leakage is not included in this term)
+!     *PJQU*         Surface moisture flux unstressed low veg   (kg/m2s)
+
+!     Additional parameters for flux boundary condtion (in 1D model):
+
+!     *LDFLUX1D*     If .TRUE. flux boundary condtion is used 
+!     *PFSH1D*       Specified sensible heat flux (W/m2)
+!     *PFLH1D*       Specified latent heat flux (W/m2)
+
+!     METHOD
+!     ------
+
+!     *LU*-DECOMPOSITION (DOWNWARD SCAN), FOLLOWED BY SKIN-TEMPERATURE
+!     SOLVER, AND BACK SUBSTITUTION (UPWARD SCAN).
+
+!     EXTERNALS.
+!     ----------
+
+!     *VDFDIFH* CALLS:
+!         *SURFSEB*
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE VDFDIFH1S(&
  & KIDIA  , KFDIA  , KLON   , KLEV   , KTOP   , KTILES , KTVL   , KTVH , KLEVSN,&
  & PTMST  , PFSH1D , PFLH1D , LDFLUX1D, &
@@ -11,13 +135,6 @@ SUBROUTINE VDFDIFH1S(&
  & PTSNOW , PTICE  , PSST, &
  & PTSKTIP1, PSLGE  , PTE    , PQTE, &
  & PJQ,PSSH,PSLH,PSTR,PG0,PJQU)  
-! (C) Copyright 1989- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !     ------------------------------------------------------------------
 
 !**   *VDFDIFH* - DOES THE IMPLICIT CALCULATION FOR DIFFUSION OF S. L.

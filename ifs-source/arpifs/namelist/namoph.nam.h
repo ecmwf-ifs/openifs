@@ -11,5 +11,5 @@
 
 !     ------------------------------------------------------------------
 
-NAMELIST/NAMOPH/LINC,CFNHWF,NCADFORM,CEFNLSH,LBCINC,NTIMEFMT,CFPATH,CFNCLIMIN,CFNCLIMOUT,CCLIMINC,CFPEXTSFX
+NAMELIST/NAMOPH/LINC,CFNHWF,CEFNLSH,LBCINC,NTIMEFMT,CFPATH,CFNCLIMIN,CFNCLIMOUT,CCLIMINC,CFPEXTSFX
 !     ------------------------------------------------------------------

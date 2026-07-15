@@ -46,9 +46,10 @@ SUBROUTINE GPRT(LDSPRT,KPROMA,KSTART,KEND,KLEV,PRD,PRV,PR,&
 !     Modifications
 !     -------------
 !           Original: 97/06/06
-!        C. Fischer 02-06-27 : cdlock
-!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     C. Fischer 02-06-27 : cdlock
+!     M.Hamrud      01-Oct-2003 CY28 Cleaning
 !     K. Yessad (Dec 2008): remove dummy CDLOCK
+!     H Petithomme (Dec 2020): tests simplification and hoisting
 !----------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
@@ -80,35 +81,41 @@ REAL(KIND=JPRB),OPTIONAL  ,INTENT(IN)    :: PRM(KPROMA,KLEV)
 !----------------------------------------------------------
 
 INTEGER(KIND=JPIM) :: JLEV, JLH
-LOGICAL :: LLRDERS
+REAL(KIND=JPRB) :: ZR
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !----------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('GPRT',0,ZHOOK_HANDLE)
-!----------------------------------------------------------
+
 !---------------------------------------------------------------
 !*       1. Compute RT and its derivatives
-LLRDERS = .FALSE.
-IF(PRESENT(PRL)) LLRDERS = .TRUE.
-DO JLEV=1,KLEV
-  DO JLH=KSTART,KEND
-    PRT(JLH,JLEV)=PR(JLH,JLEV)*PT(JLH,JLEV)
-    IF (LDSPRT) THEN
+
+PRT(KSTART:KEND,1:KLEV)=PR(KSTART:KEND,1:KLEV)*PT(KSTART:KEND,1:KLEV)
+
+IF (LDSPRT) THEN
+  DO JLEV=1,KLEV
+    DO JLH=KSTART,KEND
       PRTL(JLH,JLEV)=PRD*PTL(JLH,JLEV)
       PRTM(JLH,JLEV)=PRD*PTM(JLH,JLEV)
-    ELSEIF(LLRDERS) THEN
-      PRTL(JLH,JLEV) = PRL(JLH,JLEV)*PT(JLH,JLEV) &
-      & +PR(JLH,JLEV)*PTL(JLH,JLEV)  
-      PRTM(JLH,JLEV) = PRM(JLH,JLEV)*PT(JLH,JLEV) &
-      & +PR(JLH,JLEV)*PTM(JLH,JLEV)  
-    ELSE
-      PRTL(JLH,JLEV)=(PRV-PRD)*PT(JLH,JLEV)*PQL(JLH,JLEV)&
-       & +PR(JLH,JLEV)*PTL(JLH,JLEV)  
-      PRTM(JLH,JLEV)=(PRV-PRD)*PT(JLH,JLEV)*PQM(JLH,JLEV)&
-       & +PR(JLH,JLEV)*PTM(JLH,JLEV)  
-    ENDIF
+    ENDDO
   ENDDO
-ENDDO
+ELSEIF (PRESENT(PRL)) THEN
+  DO JLEV=1,KLEV
+    DO JLH=KSTART,KEND
+      PRTL(JLH,JLEV)=PRL(JLH,JLEV)*PT(JLH,JLEV)+PR(JLH,JLEV)*PTL(JLH,JLEV)
+      PRTM(JLH,JLEV)=PRM(JLH,JLEV)*PT(JLH,JLEV)+PR(JLH,JLEV)*PTM(JLH,JLEV)
+    ENDDO
+  ENDDO
+ELSE
+  ZR = PRV-PRD
+
+  DO JLEV=1,KLEV
+    DO JLH=KSTART,KEND
+      PRTL(JLH,JLEV)=ZR*PT(JLH,JLEV)*PQL(JLH,JLEV)+PR(JLH,JLEV)*PTL(JLH,JLEV)
+      PRTM(JLH,JLEV)=ZR*PT(JLH,JLEV)*PQM(JLH,JLEV)+PR(JLH,JLEV)*PTM(JLH,JLEV)
+    ENDDO
+  ENDDO
+ENDIF
 
 !----------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('GPRT',1,ZHOOK_HANDLE)

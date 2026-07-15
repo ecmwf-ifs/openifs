@@ -28,13 +28,12 @@ USE MPL_MODULE, ONLY : LMPLUSERCOMM, MPLUSERCOMM, LTHSAFEMPI, LINITMPI_VIA_MPL
 #if defined(WITH_OASIS) || defined(WITH_NEMO)
 USE COUPLING
 #endif
-
 IMPLICIT NONE
 
 ! P. Marguinaud : 01-Jan-2001 : Support for IO server
 ! R. El Khatib  : 22-Mar-2011 : conditional support for IBM high perf monitoring
 ! P. Marguinaud : 10-Oct-2013 : Change IO server init & exit routines
-
+! F. Suzat      : 14-Avr-2020 : print pid in output file
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 LOGICAL :: LLHOOK_SAVE
 INTEGER (KIND=JPIM) :: ICOMM_IFS_PLUS_IFS_IO_SERV
@@ -43,6 +42,8 @@ INTEGER (KIND=JPIM) :: ICOMM_IFS_PLUS_NEMO_IO_SERV
 LOGICAL :: LLINIT, LLSERV, LLCOUPACTIVE, LLMPI1, LLSTARTUPCOST
 INTEGER :: IERR, ICOL, INUM, IREQUIRED,IPROVIDED,IME
 
+INTEGER(KIND=JPIM), EXTERNAL :: GETPID
+
 LOGICAL :: LLNEMOIO, LLNEMOIOSERVER
 CHARACTER(LEN=512) :: CLIOSERV_LOGFILE
 #ifdef WITH_FCKIT
@@ -50,6 +51,7 @@ PROCEDURE(FCKIT_EXCEPTION_HANDLER), POINTER :: FUNPTR
 #endif
 INTEGER(KIND=JPIM) :: IER
 CHARACTER(LEN=20) :: CL_MPI_EPOCH ! 10-digits in seconds + dot + 9-digits nanosecs
+CHARACTER(LEN=32)  :: CLENV
 REAL(KIND=JPRD) :: ZMPI_INIT(2)
 
 #include "abor1.intfb.h"
@@ -65,6 +67,7 @@ REAL(KIND=JPRD) :: ZMPI_INIT(2)
 #include "fp_serv_exit.intfb.h"
 #include "ininemoio.intfb.h"
 #include "ininemoio2.intfb.h"
+#include "endnemoio.intfb.h"
 #include "ec_meminfo.intfb.h"
 
 LLHOOK_SAVE = LHOOK
@@ -76,19 +79,15 @@ IME = -1
 LLSTARTUPCOST = .FALSE. ! If true, then display MPI startup cost (only ever to happen on the global master task IME == 0)
 ZMPI_INIT(:) = 0
 
-! XIOS and MPI initialization
-! #ifdef 1
-! #ifdef WITH_XIOS
-! CALL SUXIOS_INI
-! #elif WITH_CPLNG
-! CALL CPLNG_INIT
-! #endif
-! #endif
-
 ! OASIS3 or OASIS4 interface must be initialized before any DR_HOOK call.
 
 #if defined(WITH_OASIS)
 CALL CPL_INIT(LLCOUPACTIVE)
+#else
+#ifdef CPLOASIS
+!! Setup OASIS for coupling through SURFEX
+CALL INI_OASIS3_SFX
+#endif
 #endif
 
 #ifdef WITH_NEMO
@@ -215,8 +214,9 @@ ELSE
   ICOL = 1
   CALL MPI_COMM_RANK (MPI_COMM_WORLD, INUM, IERR)
 ENDIF
+#ifndef CPLOASIS
 CALL MPI_COMM_SPLIT (MPI_COMM_WORLD, ICOL, INUM, ICOMM_IFS_PLUS_NEMO_IO_SERV, IERR)
-
+#endif
 IF (.NOT.LLSERV .AND. LLNEMOIO) THEN
 #ifdef WITH_NEMO
   CALL ININEMOIO2 (ICOMM_IFS_PLUS_NEMO_IO_SERV)
@@ -248,7 +248,17 @@ ELSE
   CALL INIT_STACK(1)
 
   CALL EC_MEMINFO(-1,"master:computation",ICOMM_IFS_PLUS_IFS_IO_SERV,KBARR=1,KIOTASK=0,KCALL=0)
+
+  CALL GET_ENVIRONMENT_VARIABLE('EC_DISPLAY_PID',CLENV)
+  IF (CLENV == '1' .OR. CLENV == 'true' .OR. CLENV == 'TRUE') THEN
+    WRITE (0, *) __FILE__, ':', __LINE__ , '######### PID',GETPID()
+  ENDIF
+
+#ifdef CPLOASIS
+  CALL CNT0(LDCOUPACTIVE=LLCOUPACTIVE,KCOMM=ICOMM_IFS_PLUS_IFS_IO_SERV)
+#else
   CALL CNT0(LDCOUPACTIVE=LLCOUPACTIVE,KCOMM=ICOMM_IFS_PLUS_NEMO_IO_SERV)
+#endif
 
   IF (LHOOK) CALL DR_HOOK('MASTER',1,ZHOOK_HANDLE)
 
@@ -262,6 +272,11 @@ CALL FCKIT_MAIN%FINALISE()
 ! OASIS3 or OASIS4 interface must be finalised after last DR_HOOK call.
 #if defined(WITH_OASIS)
 CALL CPL_FINALIZE(LLCOUPACTIVE)
+#else
+#ifdef CPLOASIS
+!! end coupling with OASIS through SURFEX
+  CALL END_OASIS3_SFX
+#endif
 #endif
 
 !  CALL COUPLO4_ENDMPI
@@ -271,15 +286,6 @@ CALL MPL_END(KERROR=IER) ! Does not fail
 #ifdef WITH_NEMO
 IF (LLNEMOIO) CALL ENDNEMOIO()
 #endif
-
-!#ifdef 1
-! XIOS and MPI finalization
-! #ifdef WITH_XIOS
-! CALL SUXIOS_FIN
-! #elif WITH_CPLNG
-! CALL CPLNG_FINALIZE
-! #endif
-!#endif
 
 ENDIF
 

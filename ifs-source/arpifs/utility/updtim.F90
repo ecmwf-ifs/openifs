@@ -94,6 +94,8 @@ SUBROUTINE UPDTIM(YDGEOMETRY,YDSURF,YDMODEL,KSTEP,PTDT,PTSTEP,LDCLUPD,LDUPDECAEC
 !        R Hogan (Nov 2017) Call UPDRGAS every timestep for correct solar irradiance
 !        A Bozzo (Jan 2018) Support for 3D aerosol climatology in input
 !        R Hogan (Jan 2019) Removed stuff for old cycle 15 radiation scheme
+!        S. Bielli, S. Malardel (Dec. 2020) Coupling OASIS/SURFEX
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 USE TYPE_MODEL         , ONLY : MODEL
@@ -105,9 +107,7 @@ USE YOMMP0             , ONLY : LSCMEC
 USE YOMCT0             , ONLY : NFRCO, L_OOPS
 USE YOMLUN             , ONLY : NULOUT
 USE YOMRIP0            , ONLY : NINDAT, NSSSSS, RTIMST, LASTRF
-USE YOMCST             , ONLY : RPI, RDAY, RHOUR, REA, REPSM, RA, RI0, RV, RCPV, RETV,&
- &                              RCW, RCS, RLVTT, RLSTT, RTT, RALPW, RBETW, RGAMW, RALPS, RBETS, RGAMS,&
- &                              RALPD, RBETD, RGAMD
+USE YOMCST             , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMNUD             , ONLY : NFNUDG, NFRNUDG, LNUDG, LWNUDG, NTOTFNUDG2, NTOTFNUDG3
 USE YOMSNU             , ONLY : XPNUDG, XWNUDG
 USE YOMRLX             , ONLY : NFRLXG, NFRLXU, LRLXG
@@ -151,7 +151,6 @@ INTEGER(KIND=JPIM) :: IRLXI   ! number of intervals between two reference fields
 
 REAL(KIND=JPRB) :: ZUNIT
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-LOGICAL :: LLFIRSTCALL = .TRUE.
 LOGICAL :: LLUPDECAEC
 
 !     ------------------------------------------------------------------
@@ -169,7 +168,12 @@ LOGICAL :: LLUPDECAEC
 #include "updcli_mse.intfb.h"
 #include "updclie.intfb.h"
 #include "updclie_oasis.intfb.h"
+#ifdef CPLOASIS
+#include "send_oasis3_sfx.h"
+#include "update_sfx.intfb.h"
+#else
 #include "updcpl.intfb.h"
+#endif
 #include "updmoon.intfb.h"
 #include "updnud.intfb.h"
 #include "updrlxref.intfb.h"
@@ -205,12 +209,12 @@ ASSOCIATE(NAERO=>YGFL%NAERO, &
  & LMANNERSSWUPDATE=>YDERAD%LMANNERSSWUPDATE, &
  & LCENTREDTIMESZA=>YDERAD%LCENTREDTIMESZA, LECO2VAR=>YDERAD%LECO2VAR, &
  & LERAD1H=>YDERAD%LERAD1H, LESO4HIS=>YDERAD%LESO4HIS, LHGHG=>YDERAD%LHGHG, &
- & LHVOLCA=>YDERAD%LHVOLCA, LNEWAER=>YDERAD%LNEWAER, LPERPET=>YDERAD%LPERPET, &
+ & LHVOLCA=>YDERAD%LHVOLCA, LPERPET=>YDERAD%LPERPET, &
  & NAERMACC=>YDERAD%NAERMACC, NGHGRAD=>YDERAD%NGHGRAD, &
  & NHINCSOL=>YDERAD%NHINCSOL, NLNGR1H=>YDERAD%NLNGR1H, NOZOCL=>YDERAD%NOZOCL, &
  & NRADE1H=>YDERAD%NRADE1H, NRADE3H=>YDERAD%NRADE3H, NRADELG=>YDERAD%NRADELG, &
  & NRADFR=>YDERAD%NRADFR, NRADNFR=>YDERAD%NRADNFR, NRADSFR=>YDERAD%NRADSFR, &
- & NUV=>YDERAD%NUV, LAER3D=>YDERAD%LAER3D, &
+ & NUV=>YDERAD%NUV, &
  & RCARDI=>YDERDI%RCARDI, RSOLINC=>YDERDI%RSOLINC, &
  & LUVPROC=>YDEUVRAD%LUVPROC, RSUVB=>YDEUVRAD%RSUVB, RSUVB0=>YDEUVRAD%RSUVB0, &
  & NGPTOT=>YDGEM%NGPTOT, &
@@ -233,7 +237,14 @@ ASSOCIATE(NAERO=>YGFL%NAERO, &
  & RSIVSR=>YDRIP%RSIVSR, RSIVSRF=>YDRIP%RSIVSRF, RSIVSRLU=>YDRIP%RSIVSRLU, &
  & RSIVSRN=>YDRIP%RSIVSRN, RSOVR=>YDRIP%RSOVR, RSTATI=>YDRIP%RSTATI, &
  & RTDT=>YDRIP%RTDT, RTIMTR=>YDRIP%RTIMTR, RTMOLT=>YDRIP%RTMOLT, &
+ & NSTOP=>YDRIP%NSTOP, &
  & RWSOVR=>YDRIP%RWSOVR, TSTEP=>YDRIP%TSTEP, &
+ & RPI=>YDCST%RPI, RDAY=>YDCST%RDAY, RHOUR=>YDCST%RHOUR, REA=>YDCST%REA, REPSM=>YDCST%REPSM, &
+ & RA=>YDCST%RA, RI0=>YDCST%RI0, RCPV=>YDCST%RCPV, RETV=>YDCST%RETV, RCW=>YDCST%RCW, &
+ & RCS=>YDCST%RCS, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, &
+ & RALPW=>YDCST%RALPW, RBETW=>YDCST%RBETW, RGAMW=>YDCST%RGAMW, RALPS=>YDCST%RALPS, &
+ & RBETS=>YDCST%RBETS, RGAMS=>YDCST%RGAMS, RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, &
+ & RGAMD=>YDCST%RGAMD, RV=>YDCST%RV, &
  & YSD_VAD=>YDSURF%YSD_VAD, YSD_VFD=>YDSURF%YSD_VFD, YSD_VPD=>YDSURF%YSD_VPD, &
  & YSD_VVD=>YDSURF%YSD_VVD, LMPA=>YDARPHY%LMPA, LMSE=>YDARPHY%LMSE, &
  & LMPHYS=>YDPHY%LMPHYS, LSIMPH=>YDSIMPHL%LSIMPH, LOZONE=>YDPHY%LOZONE, &
@@ -247,6 +258,13 @@ IF (PRESENT(LDUPDECAEC)) LLUPDECAEC=LDUPDECAEC
 
 ! Time-step length (seconds)
 ITIME=NINT(PTSTEP)
+
+#ifdef CPLOASIS
+!! Call the mse level routine to send surfex fields to an other model through OASIS
+IF (LMSE.AND.KSTEP>0.AND.KSTEP<=NSTOP) THEN 
+CALL SEND_OASIS3_SFX(YDGEOMETRY,PTSTEP*REAL(KSTEP,JPRB),TSTEP)
+ENDIF
+#endif
 
 IF (YDDYNA%LTWOTL) THEN
   ! In the two-level timestepping scheme, the solar zenith angle
@@ -740,14 +758,12 @@ IF (LEPHYS.OR.((LMPHYS.OR.LSIMPH).AND.LRAYFM)) THEN
 
 ! Aerosol climatology Tegen et al. / GISS Volcanic aerosol climatology
 ! and  O.Boucher sulphate history (obs 1920-1990, A1B scenario 2000-2100)
-  IF (LHVOLCA .OR. LNEWAER) THEN
-    IF ((L_OOPS .AND. LLUPDECAEC) .OR. .NOT.LPHYLIN) THEN
-      IF(MOD(KSTEP,NRADFR) == 0) THEN
-        IMINUT=NINT((ZSTATI + REAL(NSSSSS,JPRB))/60._JPRB)
-        CALL UPDECAEC(YDGEOMETRY,YDERAD,YDRIP,NINDAT,IMINUT)
-        IF (LESO4HIS) THEN
-          CALL SUECSO4 ( YDRIP%RAERSO4, YDRIP%YRECMIP%NCMIPFIXYR,NINDAT, IMINUT )
-        ENDIF
+  IF ((L_OOPS .AND. LLUPDECAEC) .OR. .NOT.LPHYLIN) THEN
+    IF(MOD(KSTEP,NRADFR) == 0) THEN
+      IMINUT=NINT((ZSTATI + REAL(NSSSSS,JPRB))/60._JPRB)
+      CALL UPDECAEC(YDGEOMETRY,YDERAD,YDRIP,NINDAT,IMINUT)
+      IF (LESO4HIS) THEN
+        CALL SUECSO4 ( YDRIP%RAERSO4, YDRIP%YRECMIP%NCMIPFIXYR,NINDAT, IMINUT )
       ENDIF
     ENDIF
   ENDIF
@@ -859,6 +875,13 @@ IF(.NOT.LSCMEC) THEN
     ENDIF
   ENDIF
 
+#ifdef CPLOASIS
+  IF (LMSE) THEN
+    IF (((KSTEP == 0).AND.(.NOT.LDCLUPD)).OR.(KSTEP>0.AND.KSTEP<NSTOP)) THEN
+      CALL UPDATE_SFX(YDGEOMETRY,YDMODEL,PTSTEP*REAL(KSTEP,JPRB),TSTEP)
+    ENDIF
+  ENDIF
+#else
   IF (NFRCPL>0) THEN
     IF ((LMCC03.OR.LMCC05).AND.MOD(KSTEP,NFRCPL) == 0) THEN
       IF(LMCC03)THEN
@@ -869,6 +892,7 @@ IF(.NOT.LSCMEC) THEN
       CALL UPDCPL(YDGEOMETRY,YDSURF,YDMODEL%YRML_AOC,YDRIP,YDMODEL%YRML_PHY_MF%YRPHY1,IGP)
     ENDIF
   ENDIF
+#endif
 
 #ifdef WITH_OASIS
 
@@ -935,6 +959,18 @@ IF(ISTASS < ITIME)THEN
     CALL UPDRGAS(YDDYNA,YDERAD,YDERDI,YDRIP,PI05)
   ENDIF
 
+ENDIF
+
+! When the IFS restarts, UPDTIM is first called with LDCLUPD=false to
+! setup instantaneous fluxes, and in this case UPDCLIE is not called
+! and so this variable must not be set. Do not understand why this was
+! moved here but presumably to support chemistry-related
+! updclie_compo. Need to decide how updclie_compo behaves in restarts,
+! and how best to support this in a way that does no break restarts
+! for ordinary model runs. It would be much safer to revert this
+! change and set this logical to false from within updclie.
+IF(LDCLUPD) THEN
+  YDMCC%LFIRSTUPD=.FALSE.
 ENDIF
 
 !     ------------------------------------------------------------------

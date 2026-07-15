@@ -41,12 +41,12 @@ SUBROUTINE UPDRGAS(YDDYNA,YDERAD,YDERDI,YDRIP,PSOLINC)
 !       R. Hogan    2017-11-29  INTENT(IN) where appropriate
 !       S. Massart   19-Feb-2019 Solar constant optimisation
 !       R. Hogan    2019-03-11  Read GHG/TSI timeseries from NetCDF file
+!       R.Forbes    2023-01-15  Added time-varying methox option as fn of ch4 
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB, JPRD
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
-
-USE YOMCST   , ONLY : RDAY,  RI0, RMD, RMCO2, RMCH4, RMN2O, RMNO2, RMCFC11, RMCFC12, RMHCFC22, RMCCL4
+USE YOMCST   , ONLY : RI0, RMD, RMV, RMCO2, RMCH4, RMN2O, RMNO2, RMCFC11, RMCFC12, RMHCFC22, RMCCL4
 USE YOMLUN   , ONLY : NULOUT 
 USE YOMRIP0  , ONLY : NINDAT
 USE YOMDYNA  , ONLY : TDYNA
@@ -55,22 +55,26 @@ USE YOERAD   , ONLY : TERAD
 USE YOERDI   , ONLY : TERDI
 USE YOMGHGTIMESERIES,ONLY   : YGHGTIMESERIES   ! GHG multi-annual timeseries
 USE YOMSOLARIRRADIANCE,ONLY : YSOLARIRRADIANCE ! TSI multi-annual timeseries
-
+USE YOEMETH  , ONLY : LMETHOX_TIMEVAR, RCH4_REFYR, RQLIM_REFYR, RQLIM
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
 
 TYPE(TDYNA),     INTENT(IN)           :: YDDYNA
-TYPE(TERAD),     INTENT(IN)           :: YDERAD ! Configuration information
-TYPE(TERDI),     INTENT(INOUT)        :: YDERDI ! Output gas concentrations
-TYPE(TRIP),      INTENT(IN)           :: YDRIP  ! Time information
-REAL(KIND=JPRB), INTENT(IN), OPTIONAL :: PSOLINC ! Solar contant
+TYPE(TERAD),     INTENT(IN)           :: YDERAD  ! Configuration information
+TYPE(TERDI),     INTENT(INOUT)        :: YDERDI  ! Output gas concentrations
+TYPE(TRIP),      INTENT(IN)           :: YDRIP   ! Time information
+REAL(KIND=JPRB), INTENT(IN), OPTIONAL :: PSOLINC ! Total solar irradiance
 
 REAL(KIND=JPRB) :: ZCO2    , ZCH4    , ZN2O    , ZNO2    , ZCFC11    , ZCFC12,     ZHCFC22,     ZCCL4
 REAL(KIND=JPRB) :: ZCO2RMWG, ZCH4RMWG, ZN2ORMWG, ZNO2RMWG, ZCFC11RMWG, ZCFC12RMWG, ZHCFC22RMWG, ZCCL4RMWG
+REAL(KIND=JPRB) :: ZQLIM_VMR, ZQLIM_VMR_REFYR, ZCH4_VMR_REFYR
 
 ! Year as a real number
 REAL(KIND=JPRB) :: ZYEAR
+
+! Solar cycle number, where whole numbers are solar minima
+REAL(KIND=JPRB) :: ZSOLARCYCLENUM
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -80,7 +84,8 @@ ASSOCIATE(NHINCSOL=>YDERAD%NHINCSOL, NSCEN=>YDERAD%NSCEN, &
  & RCARDI=>YDERDI%RCARDI, RCFC11=>YDERDI%RCFC11, RCFC12=>YDERDI%RCFC12, &
  & RCH4=>YDERDI%RCH4, RN2O=>YDERDI%RN2O, RNO2=>YDERDI%RNO2, &
  & RHCFC22=>YDERDI%RCFC22, RCCL4=>YDERDI%RCCL4, &
- & RSOLINC=>YDERDI%RSOLINC, YDECMIP=>YDRIP%YRECMIP)
+ & RSOLINC=>YDERDI%RSOLINC, YDECMIP=>YDRIP%YRECMIP, &
+ & RSOLARCYCLEMULT=>YDERDI%RSOLARCYCLEMULT)
 !     ------------------------------------------------------------------
 
 ! Get time in decimal years
@@ -89,7 +94,7 @@ IF (YDECMIP%NCMIPFIXYR > 0) THEN
   ZYEAR = REAL(YDECMIP%NCMIPFIXYR,JPRB) + 0.5_JPRB
 ELSE
   ! Get current time
-  ZYEAR = GET_YEAR(YDRIP)
+  ZYEAR = YDRIP%GET_YEAR(YDDYNA%LTWOTL)
 ENDIF
 
 
@@ -131,6 +136,25 @@ RHCFC22 = ZHCFC22 * ZHCFC22RMWG
 RCCL4   = ZCCL4   * ZCCL4RMWG
 RNO2    = ZNO2    * ZNO2RMWG
 
+! Methane Oxidation as a source of stratospheric water vapour
+!  Calculate time-varying water vapour limit in upper stratosphere (RQLIM) (kg/kg)
+!  for methox calculation due to time-varying methane (see methox)
+!  Assumes the tropospheric methane is well mixed.
+!  QLIM at current time = reference year QLIM + 
+!   (current global mean surface CH4 [RCH4] - reference year CH4 value [RCH4_REFYR] )
+!   * 2.0 as 2 water molecules produced for every 1 methane molecule
+!  otherwise RQLIM is a constant set in sumethox
+IF(LMETHOX_TIMEVAR) THEN
+  ! Do calculation in volume mixing ratio
+  ZQLIM_VMR_REFYR = RQLIM_REFYR*RMD/RMV
+  ZCH4_VMR_REFYR  = RCH4_REFYR/ZCH4RMWG
+  ZQLIM_VMR = ZQLIM_VMR_REFYR + (ZCH4 - ZCH4_VMR_REFYR)*2.0_JPRB
+  ! Convert to kg/kg
+  RQLIM = ZQLIM_VMR*RMV/RMD
+  WRITE(NULOUT,'(A,E12.5,A,F6.3,A)') 'UPDRGAS: Time-varying stratospheric water vapour relaxation limit RQLIM=',RQLIM, &
+     & ' kg kg-1 (',ZQLIM_VMR*1.E6,' ppmv )'
+ENDIF
+
 
 !*         2     SOLAR IRRADIANCE
 !                ----------------
@@ -145,8 +169,13 @@ ELSE
     IF (.NOT. ASSOCIATED(YSOLARIRRADIANCE)) THEN
       CALL ABOR1('UPDRGAS: Must call SUECRAD first so that YSOLARIRRADIANCE is allocated')
     ENDIF
-    CALL YSOLARIRRADIANCE%GET(ZYEAR, RSOLINC)
-    WRITE(NULOUT,'(a,f0.3,a)') 'UPDRGAS:   Total Solar Irradiance: ', RSOLINC, ' W m-2'
+    CALL YSOLARIRRADIANCE%GET(ZYEAR, RSOLINC, PSOLARCYCLENUM =ZSOLARCYCLENUM, &
+         &                                    PSOLARCYCLEMULT=RSOLARCYCLEMULT)
+    WRITE(NULOUT,'(a,f0.3,a)') 'UPDRGAS:   Total Solar Irradiance = ', RSOLINC, ' W m-2'
+    IF (ZSOLARCYCLENUM >= 0.0_JPRB) THEN
+      WRITE(NULOUT,'(a,f0.3,a,f0.3)') 'UPDRGAS:   Solar cycle number = ', ZSOLARCYCLENUM, &
+           &                          ' -> spectral solar cycle multiplier = ', RSOLARCYCLEMULT
+    ENDIF
   ENDIF
 ENDIF
 
@@ -155,63 +184,5 @@ ENDIF
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('UPDRGAS',1,ZHOOK_HANDLE)
 
-
-CONTAINS
-
-  ! ------------------------------------------------------------------
-  ! Get the current year as a real number, accurate to the nearest day
-  FUNCTION GET_YEAR(YDRIP)
-
-    USE YOMRIP0  , ONLY : NINDAT
-    USE YOMCT2   , ONLY : NSTAR2
-    USE YOMCT0   , ONLY : LNF 
-
-    ! For time functions NCCAA and NMM
-#include "fcttim.func.h"
-
-    TYPE(TRIP),  INTENT(IN)    :: YDRIP  ! Time information
-    REAL(KIND=JPRB)            :: GET_YEAR
-
-    ! Integrated number of days through the year at the end of each month
-    REAL(KIND=JPRB), PARAMETER :: PP_DAY(*) = &
-         & [0.0_JPRB,     31.00_JPRB,  59.25_JPRB,  90.25_JPRB, 120.25_JPRB, 151.25_JPRB, &
-         &  181.25_JPRB, 212.25_JPRB, 243.25_JPRB, 273.25_JPRB, 304.25_JPRB, 334.25_JPRB]
-
-    INTEGER(KIND=JPIM) :: ISTADD ! Days since start of forecast
-    INTEGER(KIND=JPIM) :: ITIMESTEP, IZT
-    INTEGER(KIND=JPIM) :: IYEAR, IMONTH, IDAY
-
-    ! Days since start of year
-    REAL(KIND=JPRB) :: ZDAY
-
-    REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-    IF (LHOOK) CALL DR_HOOK('UPDRGAS:GET_YEAR',0,ZHOOK_HANDLE)
-
-    IF (.NOT.LNF.AND.YDRIP%NSTADD == 0) THEN
-      ! IN CASE OF RESTART:
-      ITIMESTEP=NINT(YDRIP%TSTEP)
-      IF (YDDYNA%LTWOTL) THEN
-        IZT=NINT(YDRIP%TSTEP*(REAL(NSTAR2,JPRB)+0.5_JPRB))
-      ELSE
-        IZT=ITIMESTEP*NSTAR2
-      ENDIF
-      ISTADD=IZT/NINT(RDAY)
-    ELSE
-      ISTADD=YDRIP%NSTADD
-    ENDIF
-
-    ! Obtain integer year, month and day of start of forecast
-    IYEAR  = NCCAA(NINDAT)
-    IMONTH = NMM(NINDAT)
-    IDAY   = NDD(NINDAT)
-
-    ZDAY = REAL(IDAY,JPRB) - 1.0_JPRB + PP_DAY(IMONTH) + REAL(ISTADD,JPRB)
-
-    GET_YEAR = REAL(IYEAR,JPRB) + ZDAY / 365.25_JPRB
-
-    IF (LHOOK) CALL DR_HOOK('UPDRGAS:GET_YEAR',1,ZHOOK_HANDLE)
-
-  END FUNCTION GET_YEAR
 
 END SUBROUTINE UPDRGAS

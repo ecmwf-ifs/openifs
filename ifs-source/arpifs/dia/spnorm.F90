@@ -51,6 +51,7 @@ SUBROUTINE SPNORM(YDGEOMETRY,YDML_GCONF,YDDYNA,YDSP,LDSPOR)
 !   K. Yessad (Dec 2016): Prune obsolete options.
 !   K. Yessad (Feb 2018): remove deep-layer formulations.
 !   S. Massart (Aug 2020): Option for orography
+!   F. Suzat  (Jun 2021): fix artificial NaN print.
 !     ------------------------------------------------------------------
 
 USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
@@ -487,6 +488,8 @@ IF (MYPROC == IOMASTER) THEN
       CLSVD='  VERT  DIVERGENCE   '
     ELSEIF (YDDYNA%NVDVAR == 4) THEN
       CLSVD='  d4 = VERT DIV + X  '
+    ELSEIF (YDDYNA%NVDVAR == 5) THEN
+      CLSVD='  d5 = VERT DIV + XS '
     ENDIF
 
     AVNRMPD=ZTHEAVE(ISPD)
@@ -757,6 +760,8 @@ IF (MYPROC == IOMASTER) THEN
           CLNSVD=' VERT DIVERGENCE SPECTRUM     '
         ELSEIF (YDDYNA%NVDVAR == 4) THEN
           CLNSVD=' (d4 = VERT DIV + X) SPECTRUM '
+        ELSEIF (YDDYNA%NVDVAR == 5) THEN
+          CLNSVD=' (d5 = VERT DIV + XS) SPECTRUM'
         ENDIF
         WRITE(NULOUT,'(A)') CLNSVD
         CLVAR='NSVD'
@@ -819,6 +824,8 @@ IF (MYPROC == IOMASTER) THEN
           CLNSVD=' VERT DIVERGENCE SPECTRUM     '
         ELSEIF (YDDYNA%NVDVAR == 4) THEN
           CLNSVD=' (d4 = VERT DIV + X) SPECTRUM '
+        ELSEIF (YDDYNA%NVDVAR == 5) THEN
+          CLNSVD=' (d5 = VERT DIV + XS) SPECTRUM' 
         ENDIF
         WRITE(NULOUT,'(A)') CLNSVD
         CLVAR='MSVD'

@@ -140,6 +140,7 @@ SAVE
 !     Store bg fields from the reference and the perturbed runs
 !     ---------------------------------------------------------
 !     VOL_SM_FG  :     Volumetric soil moisture from the fg & pert. runs
+!     SM_BIAS  :       Estimated surface soil moisture observation bias
 !     T2M_FG     :     Temperature at 2 m from the fg & pert. runs
 !     TD2M_FG    :     Dew point temperature at 2 m from the fg & pert. runs
 !                               *FG are global 5D (NPROMA, NSLAY, NBLOCK, NSTEP, N_SEKF_CV+1)
@@ -179,6 +180,11 @@ SAVE
 !     COVAR_SSM_CV_SEKF : covariance of EDA soil moisture and surface soil moisture (for each time slot and for each layer)
 !     VAR_CV_SEKF    : variance of EDA soil moisture 
 
+!     ASCAT/SMOS adaptive bias correction initialization
+!     -----------------------------------------------------
+!     ASCAT_ADAPTIVE_BC_START : 1 (read from last cycle or ecfs), 2 (warm start), 3 (cold start) 
+!     SMOS_ADAPTIVE_BC_START : 1 (read from last cycle or ecfs), 2 (warm start), 3 (cold start) 
+
 !     Output from the EKF soil moisture analysis
 !     ------------------------------------------
 !     NSEKFQ         : Quality flag
@@ -205,9 +211,17 @@ SAVE
 !                      (nconf = 302)
 !     LUSE_T2M       : True if analysed 2 m temperature data are used for the SEKF
 !     LUSE_RH2M      : True if analysed 2 m relativ humidity data are used for the SEKF
+!     LUSE_EDA_B     : True if EDA data are used for B matrix in the SEKF
 !     LUSE_ASCAT     : True if ASCAT soil moisture is used for the SEKF
 !     LUSE_SMOS_TB   : True if SMOS brightness temperature is used for the SEKF
 !     LUSE_SMOS_SM   : True if SMOS neural network soil moisture is used for the SEKF
+!     LASCAT_ADAPTIVE_BC : True if ASCAT adaptive SM bias correction is on
+!     LSMOS_ADAPTIVE_BC : True if SMOS adaptive SM bias correction is on
+!     LUPDATE_ADAPTIVE_BC : True if adaptive SM bias correction updating is on (LWDA only)
+!     LCONSTRAIN_ADAPTIVE_BC : True if adaptive BC is constrained by innovation magnitude 
+!     LASCAT_CDF : Perform ASCAT SSM CDF matching
+!     GAMMA_BC : Soil moisture bias-correction parameter
+
 !     LUSE_JATM      : True is J computed from full 3D perturbed run
 !     LUSE_EDA_JACOB : True is H computed from EDA spread
 !     LREAD_EDA_COV_SSA : True to use variance and covariance fields from EDA postprocessing
@@ -222,6 +236,7 @@ SAVE
 !     2017-12-19 - Patricia de Rosnay - EDA Jacobians
 !     2018-04-14 - Patricia de Rosnay - EDA Jacobians, add the EDA post processing to archive var and covar needed for the EDA Jacobians
 !     2018-05-   - Patricia de Rosnay - introduce SMOS soil moisture variables
+!     2011-11-21 - David Fairbairn - introduce ASCAT and SMOS soil moisture bias correction variables
 
 !     ------------------------------------------------------------------
 
@@ -258,6 +273,9 @@ INTEGER(KIND=JPIM), ALLOCATABLE :: NANA_TSTEP(:)
 
 INTEGER(KIND=JPIM), ALLOCATABLE :: STYPE(:,:)
 
+INTEGER(KIND=JPIM) :: ASCAT_ADAPTIVE_BC_START
+INTEGER(KIND=JPIM) :: SMOS_ADAPTIVE_BC_START
+
 REAL(KIND=JPRB)    :: VSM_PERT_INC(N_SOILM_MAX)
 
 REAL(KIND=JPRB)    :: MOD_ERR
@@ -274,6 +292,8 @@ REAL(KIND=JPRB)    :: SMOS_SM_COEF_ERR
 REAL(KIND=JPRB)    :: SMOS_SM_MAX_RFI
 REAL(KIND=JPRB)    :: EDAH_TAPER
 REAL(KIND=JPRB)    :: SMOS_SM_MIN_VOL_ERR
+REAL(KIND=JPRB)    :: GAMMA_BC 
+
 
 ! For coupled Jacobians: save trajectories
 REAL(KIND=JPRB), ALLOCATABLE :: FKF_TENT(:,:,:,:)
@@ -396,6 +416,8 @@ REAL(KIND=JPRB), ALLOCATABLE :: SKF_PSOE1(:,:,:,:)
 
 
 ! SEKF variables
+REAL(KIND=JPRB), ALLOCATABLE :: ASCAT_BIAS(:,:)
+REAL(KIND=JPRB), ALLOCATABLE :: SMOS_BIAS(:,:)
 REAL(KIND=JPRB), ALLOCATABLE :: VOL_SM_FG(:,:,:,:,:)
 REAL(KIND=JPRB), ALLOCATABLE :: T2M_FG(:,:,:,:)
 REAL(KIND=JPRB), ALLOCATABLE :: TD2M_FG(:,:,:,:)
@@ -429,7 +451,10 @@ REAL(KIND=JPRB), ALLOCATABLE :: SEKF_G(:,:,:)
 REAL(KIND=JPRB), ALLOCATABLE :: SEKF_J(:,:,:)
 
 LOGICAL :: LUSEKF_REF
-LOGICAL :: LUSE_T2M, LUSE_RH2M, LUSE_ASCAT, LUSE_SMOS_TB, LUSE_SMOS_SM
+LOGICAL :: LUSE_T2M, LUSE_RH2M, LUSE_ASCAT, LUSE_SMOS_TB, LUSE_SMOS_SM, LUSE_EDA_B
+LOGICAL :: LASCAT_ADAPTIVE_BC, LSMOS_ADAPTIVE_BC, LUPDATE_ADAPTIVE_BC 
+LOGICAL :: LCONSTRAIN_ADAPTIVE_BC
+LOGICAL :: LASCAT_CDF
 LOGICAL :: LUSE_JATM  ! switch for offline jacobians
 LOGICAL :: PERT_CHESS
 LOGICAL :: LUSE_EDA_JACOB ! use the EDA to compute the SEKF Jacobians

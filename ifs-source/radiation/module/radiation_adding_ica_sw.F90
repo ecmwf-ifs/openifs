@@ -1,15 +1,23 @@
-! radiation_adding_ica_sw.f90 - Shortwave adding method in independent column approximation
+! radiation_adding_ica_sw.F90 - Shortwave adding method in independent column approximation
 !
-! Copyright (C) 2015-2017 ECMWF
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-10-23  R. Hogan  Renamed single-character variables
 
 module radiation_adding_ica_sw
+
+  public
 
 contains
 
@@ -20,6 +28,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     implicit none
 
     ! Inputs
@@ -88,6 +97,8 @@ contains
     ! the entire earth/atmosphere system below that half-level, and
     ! also the "source", which is the upwelling flux due to direct
     ! radiation that is scattered below that level
+! Added for DWD (2020)
+!NEC$ outerloop_unroll(8)
     do jlev = nlev,1,-1
       ! Next loop over columns. We could do this by indexing the
       ! entire inner dimension as follows, e.g. for the first line:
@@ -118,6 +129,8 @@ contains
 
     ! Work back down through the atmosphere computing the fluxes at
     ! each half-level
+! Added for DWD (2020)
+!NEC$ outerloop_unroll(8)
     do jlev = 1,nlev
       do jcol = 1,ncol
         ! Shonk & Hogan (2008) Eq 14 (after simplification):

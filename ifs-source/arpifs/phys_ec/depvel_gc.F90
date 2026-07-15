@@ -6,12 +6,12 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE DEPVEL_GC (YDMODEL, KIDIA, KFDIA, KLON, KTRAC, KCHEM,  KTILES, PFRTI , PGLAT, &
+SUBROUTINE DEPVEL_GC (YDMODEL, KIDIA, KFDIA, KLON, KTRAC, KCHEM,  KTILES, PFRTI , PGLAT, PSNS, &
                                   &  PCVL , PCVH ,PLAIL, PLAIH,  KTVL, KTVH, &
                                   &  PCRB, PCRL, PCRLU , PCRH, PCRHS, &
-                                  &  PMU0, PCFRAC, PRSF,PGEOM1,PGEOH,PHFLUX, &
-                                  &  PTS, PFRSO, PRAQTI, PKCLEV, &  
-                                  &  PUSTAR,  PZ0M, PDEPVELCLIM, PDEPVEL )
+                                  &  PMU0, PRSF,PGEOM1,PGEOH,PHFLUX, &
+                                  &  PTS, PT2M, PD2M, PFRSO, PRAQTI, PKCLEV, &  
+                                  &  PUSTAR, PUSTARGUST,  PZ0M, PDEPVELCLIM, PDEPVEL )
 !!    PURPOSE
 !!    -------
 !!    The purpose of this routine is to cumpute the deposition velocities of 
@@ -42,16 +42,17 @@ SUBROUTINE DEPVEL_GC (YDMODEL, KIDIA, KFDIA, KLON, KTRAC, KCHEM,  KTILES, PFRTI 
 !!
 !!    MODIFICATIONS
 !!    -------------
-!!
+!!    SR 07/2022  Integrate aerosol species
 !!
 !-------------------------------------------------------------------------------
 !
 !*       0.    DECLARATIONS
 !              ------------
 !
-USE DRYDEP_PAR, ONLY : RSMAX
+USE DRYDEP_PAR, ONLY : RSMAX 
  
 USE PARKIND1  ,ONLY : JPIM, JPRB, JPRD
+USE YOMRIP0   ,ONLY : NINDAT
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 USE TYPE_MODEL , ONLY : MODEL
 ! USE YOMLUN, ONLY: NULERR
@@ -78,8 +79,9 @@ REAL(KIND=JPRB) , DIMENSION (KLON,KTILES), INTENT(IN)   ::   PRAQTI
 REAL(KIND=JPRB) , DIMENSION (KLON), INTENT(IN)   ::   PKCLEV 
 
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PTS   ! surface temperature
+REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PT2M   ! 2m temperature
+REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PD2M   ! 2m dew point
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PMU0  ! COS of SZA
-REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PCFRAC ! Cloud fraction
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PRSF  ! Pressure at middle of bottom model level
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PGEOM1 ! Geopotential height at middle of bottom model level.
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PGEOH  ! Geopotential height at bottom of bottom model level.
@@ -106,8 +108,10 @@ REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PFRSO
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PGLAT  !  Latidtude rad
 ! REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PGLAM  !  LONGITUDE rad
 
+REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PSNS    ! SNOW
 REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PUSTAR  ! friction velocity
-REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     ::  PZ0M   ! iRoughness length for momentum M
+REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PUSTARGUST  ! friction velocity with gusts
+REAL(KIND=JPRB) , DIMENSION (KLON),INTENT(IN)     :: PZ0M    ! Roughness length for momentum M
 REAL(KIND=JPRB), DIMENSION (KLON, KTRAC), INTENT(IN)     :: PDEPVELCLIM
 
 ! Output 
@@ -115,7 +119,7 @@ REAL(KIND=JPRB), DIMENSION (KLON, KTRAC), INTENT(OUT)     :: PDEPVEL
 
 ! local 
 REAL(KIND=JPRB) , DIMENSION (KLON)      :: ZVEG0 ! vegetation cover 
-REAL(KIND=JPRB) , DIMENSION (KLON)      :: ZITM   ! simple land sea mask   
+REAL(KIND=JPRB) , DIMENSION (KLON)      :: ZRHCL   ! relative humidity
 REAL(KIND=JPRB)                         :: ZRSTO1  ! stomatal resistances for water vapor from ifs/surf
 REAL(KIND=JPRB)                         :: ZRAERO ! aerodynamic resistances
 REAL(KIND=JPRB)                         :: ZWRB   ! laminar resistances
@@ -126,19 +130,24 @@ REAL(KIND=JPRB) , DIMENSION (KLON)      :: ZDEW   ! soil wet or not with dew
 
 ! not KVTYPES seems to be 2 not 20 ???
 REAL(KIND=JPRB), DIMENSION (0:20)        :: ZRSMIN_MOD ! Minimum stomatal resistances according to yom_veg rsmin
+REAL(KIND=JPRB), DIMENSION (12)          :: ZRHOP, ZWETD  ! Aerosol density and wet diameter
 REAL(KIND=JPRB)                          :: ZRES_TILE ! Temporary resistances
 REAL(KIND=JPRB)                          :: ZDEPTILE ! Proportion of veg on tile
 REAL(KIND=JPRB)                          :: ZLAI ! Leaf area index as input for surface resistance mod
 REAL(KIND=JPRB)                          :: ZXM ! Molecular weight
 REAL(KIND=JPRB)                          :: ZAIRDEN ! Air density [kg/m3]
 REAL(KIND=JPRB)                          :: ZHEIGHT ! Height  [m]
-
+REAL(KIND=JPRB)                          :: ZSIGMA, ZTMP1, ZTMP2
+REAL(KIND=JPRB), DIMENSION (12)          :: ZVFRAC  ! Volume fraction
 
 INTEGER(KIND=JPIM) , DIMENSION (20)      :: IVEG_GC_TYPES! Reference table to map iveg to GEOS-Chem types
+INTEGER(KIND=JPIM) :: IVEG_ZH, ISEASON_WE
+INTEGER(KIND=JPIM) :: IRH(KLON)
 INTEGER(KIND=JPIM)                       :: ILOW_VEG_NUM, IHIGH_VEG_NUM ! Reference number for veg types
 INTEGER(KIND=JPIM)                       :: IVEG_GC   ! type of vegetation in reference to GEOS-Chem
 INTEGER(KIND=JPIM)                       :: ID_NOWET  ! Reconstructed dry tile 
-INTEGER(KIND=JPIM)  :: ITR,  ITR1, JL,  ID , ITILE , IDEBUG
+INTEGER(KIND=JPIM)                       :: IVEGI ! TYPE OF VEGETATION IN IFS  1... 20
+INTEGER(KIND=JPIM)  :: ITRCHEM,  ITR1, ITRAERO, JL,  ID , ITILE , IDEBUG, JTAB, IMM, IBIN, ITYP
 REAL(KIND=JPHOOK) ::  ZHOOK_HANDLE 
 
 !
@@ -149,11 +158,49 @@ REAL(KIND=JPHOOK) ::  ZHOOK_HANDLE
 #include "ddr_laminar_res_gc.intfb.h"
 #include "ddr_surf_res_gc.intfb.h"
 #include "ddr_surf_res_gc_v2.intfb.h"
+#include "aer_drydepvel.intfb.h"
+#include "aer_drydepvelzh14.intfb.h"
+#include "aer_drydepvelem20.intfb.h"
+#include "ddr_zh_seasonone.intfb.h"
+
 
 IF (LHOOK) CALL DR_HOOK('DEPVEL_GC',0,ZHOOK_HANDLE)
 
 ASSOCIATE(YGFL=>YDMODEL%YRML_GCONF%YGFL, YCHEM=>YDMODEL%YRML_GCONF%YGFL%YCHEM, &
-   & KCHEM_DRYDEP=>YDMODEL%YRML_CHEM%YRCHEM%KCHEM_DRYDEP,YDRYDEP=>YDMODEL%YRML_CHEM%YRDRYDEP)
+   & KCHEM_DRYDEP=>YDMODEL%YRML_CHEM%YRCHEM%KCHEM_DRYDEP, &
+   & YDEAERSNK=>YDMODEL%YRML_PHY_AER%YREAERSNK, &
+   & YDEAERATM=>YDMODEL%YRML_PHY_RAD%YREAERATM)
+ASSOCIATE(YAERO_DESC=>YDEAERATM%YAERO_DESC, &
+          & NDRYDEPVEL_DYN => YDEAERSNK%NDRYDEPVEL_DYN, &
+          & YDRYDEP => YDMODEL%YRML_CHEM%YRDRYDEP, &
+          & RRHTAB=>YDEAERSNK%RRHTAB,                               &
+          & LAERDUST_NEWBIN=>YDEAERATM%LAERDUST_NEWBIN, &
+          & RSSDENS_RHTAB=>YDEAERSNK%RSSDENS_RHTAB,                 &
+           & RRHO_DD=>YDEAERSNK%RRHO_DD, RRHO_SS=>YDEAERSNK%RRHO_SS, &
+          & RSSGROWTH_RHTAB=>YDEAERSNK%RSSGROWTH_RHTAB,             &
+          & RSOAGROWTH_RHTAB=>YDEAERSNK%RSOAGROWTH_RHTAB,             &
+          & RSO4GROWTH_RHTAB=>YDEAERSNK%RSO4GROWTH_RHTAB,             &
+          & ROMGROWTH_RHTAB=>YDEAERSNK%ROMGROWTH_RHTAB,             &
+          & RNIGROWTH_RHTAB=>YDEAERSNK%RNIGROWTH_RHTAB,             &
+          & RAMGROWTH_RHTAB=>YDEAERSNK%RAMGROWTH_RHTAB,             &
+          & RRHO_WAT=>YDEAERSNK%RHO_WAT, &
+          & RRHO_SO4=>YDEAERSNK%RRHO_SO4, &
+          & RRHO_SOA=>YDEAERSNK%RRHO_SOA, &
+          & RRHO_NI=>YDEAERSNK%RRHO_NI, &
+          & RRHO_AM=>YDEAERSNK%RRHO_AM, &
+          & RRHO_ASH=>YDEAERSNK%RRHO_ASH, &
+          & RRHO_BC=>YDEAERSNK%RRHO_BC, &
+          & RRHO_OM=>YDEAERSNK%RRHO_OM, &
+          & RMMD_SO4=>YDEAERSNK%RMMD_SO4, &
+          & RMMD_SOA=>YDEAERSNK%RMMD_SOA, &
+          & RMMD_NI=>YDEAERSNK%RMMD_NI, &
+          & RMMD_AM=>YDEAERSNK%RMMD_AM, &
+          & RMMD_ASH=>YDEAERSNK%RMMD_ASH, &
+          & RMMD_BC=>YDEAERSNK%RMMD_BC, &
+          & RMMD_OM=>YDEAERSNK%RMMD_OM, &
+          & RMMD_DD=>YDEAERSNK%RMMD_DD, &
+          & RMMD_SS=>YDEAERSNK%RMMD_SS, &
+          & RAERDUST_REBOUND=>YDEAERATM%RAERDUST_REBOUND)
 
 !KCHEM_DRYDEP: Switch between dry deposition options:
 !KCHEM_DRYDEP=0: no online dry deposition velocities
@@ -161,7 +208,6 @@ ASSOCIATE(YGFL=>YDMODEL%YRML_GCONF%YGFL, YCHEM=>YDMODEL%YRML_GCONF%YGFL%YCHEM, &
 !KCHEM_DRYDEP=2: New GEOS-Chem-type mapping of land-use clases, but more standard configuration
 !KCHEM_DRYDEP=3: Following GEOS-Chem type parameterization in ddr_surf_res_gc_V2, 
 !KCHEM_DRYDEP=4: Same as '3', but use the stomatal resitance from CTESSEL, rather than GEOS-Chem type parameterization
-
 
 
 !RVRSMIN(2)=110._JPRB    ! Short Grass
@@ -227,8 +273,16 @@ IVEG_GC_TYPES = (/4,5,3,3,2,6,5,8,7,4,5,1,9,11,11,5,5,2,2,9/)
 
 ZRAIN(:)=0.0_JPRB
 ZDEW(:)=0.0_JPRB
-DO ITR = 1, KCHEM
-    IF (YCHEM(ITR)%IGRIBDV <= 0 ) CYCLE
+IRH(:)=1
+IMM=NMM(NINDAT)
+ZSIGMA=2.0_JPRB
+
+! Trace gas dry deposition
+DO ITRCHEM = 1, KCHEM
+    IF (YCHEM(ITRCHEM)%IGRIBDV <= 0 ) CYCLE
+
+    ! find postion in KTRAC array
+    ITR1=YGFL%NGHG+YGFL%NAERO+ITRCHEM
     DO JL=KIDIA, KFDIA
 
     ! Debug output
@@ -243,33 +297,31 @@ DO ITR = 1, KCHEM
     !Antarctic     &  ((ABS(ZLON - (   0.0) ) < 0.4 ) .AND. (ABS(ZLAT - (-74.) ) < 0.4)) .OR. &
     !Australian    &  ((ABS(ZLON - ( 130.0) ) < 0.4 ) .AND. (ABS(ZLAT - (-22.) ) < 0.4))) &
     !     &  THEN 
-    !      IF (YCHEM(ITR)%CNAME == "O3") THEN
+    !      IF (YCHEM(ITRCHEM)%CNAME == "O3") THEN
     !        IDEBUG=1
     !        WRITE(NULERR,"(a30,f8.2, f8.2)")'DEBUG O3 DDEP LON/LAT',ZLON,ZLAT
     !      ENDIF
     !    ENDIF
 
-    ! find postion in KTRAC array (perhaps improve on that by checking CLNAME)
-    ITR1=YGFL%NGHG+YGFL%NAERO+ITR
+    ! Initialize deposition velocity
     PDEPVEL(JL, ITR1) = 0.0_JPRB 
 
 
     !*    Compute aerodynamic resistance
     ! aerodynamic resistance from reverse exchange coefficient
-
     ZRAERO = 1.0_JPRB/ PKCLEV(JL)
+
     !! Resistances limited to a maximum value
     ! IF (ZRAERO > PPRMAX) ZRAERO = PPRMAX
     
     ZAIRDEN =PRSF(JL)/(RD*PTS(JL))  ! Air density, kg/m3
     ZHEIGHT =  (PGEOM1(JL)-PGEOH(JL))/RG ! Height of middle (?) of lowest model level [m]
-    ZXM = YCHEM(ITR)%RMOLMASS * 1E-3 ! molar mass, in units kg/mole
+    ZXM = YCHEM(ITRCHEM)%RMOLMASS * 1E-3 ! molar mass, in units kg/mole
 
     !*          Compute laminar resistances based on temp,press & molecular weight
-    CALL DDR_LAMINAR_RES_GC(PTS(JL), PRSF(JL),ZXM, PUSTAR(JL), YDRYDEP%RDIMO(ITR), ZWRB)
+    CALL DDR_LAMINAR_RES_GC(PTS(JL), PRSF(JL),ZXM, PUSTAR(JL), YDRYDEP%RDIMO(ITRCHEM), ZWRB)
     ! Resistances limited to a maximum value
     ZVEG0(JL)=PCVL(JL) + PCVH(JL) ! Get vegetation cover
-    ZITM(JL)=1.0 ! Simple land/sea mask
 
     ! IF (IDEBUG==1) WRITE(NULERR,'(a10,es12.5)')'ZSWRB=',ZWRB
 
@@ -303,17 +355,17 @@ DO ITR = 1, KCHEM
                 ! IF WET SKIN MORE/LESS THAN 50% THEN ASSIGN TO LOW VEG/BARE SOIL
                 ! THIS CURRENTLY DOESN'T MAKE SENSE WITH THE TILE FRACTION ITERATIONS
                 IF ( ZVEG0(JL) < 0.5 ) THEN
-                    IVEG_GC = 8_JPIM   ! re-assign to bare ground
-                    ID_NOWET = 8_JPIM   ! re-assign to bare ground
+                  IVEG_GC = 8_JPIM   ! re-assign to bare ground
+                  ID_NOWET = 8_JPIM   ! re-assign to bare ground
                 ELSE
-                    IF(ILOW_VEG_NUM > 0) IVEG_GC = IVEG_GC_TYPES(ILOW_VEG_NUM) ! re-assign to low veg
-                    ZLAI = PLAIL(JL)
-                    ID_NOWET = 4_JPIM   ! re-assign to low veg
-                IF ( PCVL(JL) <=  PCVH(JL) ) THEN
+                  IF(ILOW_VEG_NUM > 0) IVEG_GC = IVEG_GC_TYPES(ILOW_VEG_NUM) ! re-assign to low veg
+                  ZLAI = PLAIL(JL)
+                  ID_NOWET = 4_JPIM   ! re-assign to low veg
+                  IF ( PCVL(JL) <=  PCVH(JL) ) THEN
                     IVEG_GC = IVEG_GC_TYPES(IHIGH_VEG_NUM) ! re-assign to high veg
                     ZLAI = PLAIH(JL)
                     ID_NOWET = 6_JPIM   ! re-assign to high veg
-                ENDIF
+                  ENDIF
                 ENDIF
             CASE(4) ! LOW VEG, NO SNOW
                 IVEG_GC = IVEG_GC_TYPES(ILOW_VEG_NUM)
@@ -325,19 +377,15 @@ DO ITR = 1, KCHEM
                 ZLAI = PLAIH(JL)
             CASE(7) ! HIGH VEG SNOW COVERED
                 IVEG_GC = 1_JPIM
-            CASE(8) ! BARE SOIL
+            CASE(8,10) ! BARE SOIL
                 IVEG_GC = 8_JPIM
         END SELECT
-
-       !    IF (IDEBUG==1) WRITE(NULERR,'(a10,5i5)')'ID, IDVEG_GC=',ID,IVEG_GC
-       !    IF (IDEBUG==1) WRITE(NULERR,'(a10,es12.5)')'LAI=',ZLAI
-
 
         ! map IFS stomatal resistance according to dominant tile
 
         ZRSTO1=0.0_JPRB
-    !  using RSMAX gives changes but on places with no vegetation
-    !   ZRSTO1(JL)=RSMAX
+        !  using RSMAX gives changes but on places with no vegetation
+        !   ZRSTO1(JL)=RSMAX
         ITILE = ID
         IF (ID_NOWET == 4) THEN
           ZRSTO1=PCRL(JL)
@@ -345,41 +393,38 @@ DO ITR = 1, KCHEM
           ZRSTO1=PCRH(JL)
         ELSEIF (ID_NOWET == 7) THEN
           ZRSTO1=PCRHS(JL)
-    !    ELSEIF (ITILE == 8) THEN
-    !      ZRSTO1(JL)=PCRB(JL)
+        ! ELSEIF (ITILE == 8) THEN
+        !   ZRSTO1(JL)=PCRB(JL)
         ENDIF
         ZRSTO1 = MIN( ZRSTO1, RSMAX)
 
-      !*       Compute surface and canopy resistances, either for (2) original SUMO type, 
-      !*       or (3 & 4) Geos-Chem type parameterization.
-      IF (KCHEM_DRYDEP == 2) THEN
-      CALL  DDR_SURF_RES_GC (    PTS(JL), ZITM(JL), PFRSO(JL), &
+        !*       Compute surface and canopy resistances, either for (2) original SUMO type, 
+        !*       or (3 & 4) Geos-Chem type parameterization.
+        IF (KCHEM_DRYDEP == 2) THEN
+          CALL  DDR_SURF_RES_GC (    PTS(JL), PFRSO(JL), &
                            &   ZRSTO1, ID, ID_NOWET, IVEG_GC,  ZLAI,  &
-                           &   YCHEM(ITR)%CNAME, YDRYDEP%RCHEN(ITR), YDRYDEP%RCHENXP(ITR), YDRYDEP%RDIMO(ITR), YDRYDEP%RCF0(ITR), &
+                           &   YCHEM(ITRCHEM)%CNAME, YDRYDEP%RCHEN(ITRCHEM), &
+                           &   YDRYDEP%RCHENXP(ITRCHEM), YDRYDEP%RDIMO(ITRCHEM), &
+                           &   YDRYDEP%RCF0(ITRCHEM), &
                            &   ZWRC)
-      ELSEIF (KCHEM_DRYDEP == 3 .OR. KCHEM_DRYDEP == 4) THEN
-      CALL  DDR_SURF_RES_GC_V2 (KCHEM_DRYDEP,  PTS(JL), ZITM(JL), PFRSO(JL), &
+        ELSEIF (KCHEM_DRYDEP == 3 .OR. KCHEM_DRYDEP == 4) THEN
+          CALL  DDR_SURF_RES_GC_V2 (KCHEM_DRYDEP,  PTS(JL), PFRSO(JL), &
                            &   ZRSTO1, ID, ID_NOWET,  IVEG_GC,  ZLAI,  &
-                           &   YCHEM(ITR)%CNAME, YDRYDEP%RCHEN(ITR), YDRYDEP%RCHENXP(ITR), YDRYDEP%RDIMO(ITR), YDRYDEP%RCF0(ITR), &
-                           &   PMU0(JL),PCFRAC(JL),ZXM, PRSF(JL),IDEBUG, &
+                           &   YCHEM(ITRCHEM)%CNAME, YDRYDEP%RCHEN(ITRCHEM), &
+                           &   YDRYDEP%RCHENXP(ITRCHEM), YDRYDEP%RDIMO(ITRCHEM), &
+                           &   YDRYDEP%RCF0(ITRCHEM), &
+                           &   PMU0(JL),ZXM, PRSF(JL),IDEBUG, &
                            &   ZWRC)
-      ENDIF
+        ENDIF
 
+        !*         Compute Deposition Velocities
+        !	        -----------------------------
 
-      ! IF (IDEBUG==1) WRITE(NULERR,'(a10,1es12.5)')'ZRSTO1=',ZRSTO1
-      ! IF (IDEBUG==1) WRITE(NULERR,'(a10,2es12.5)')'T,rad=',PTS(JL),PFRSO(JL)
-      ! IF (IDEBUG==1) WRITE(NULERR,'(a10,es12.5)')'ZWRC',ZWRC
+        ZRES_TILE = (ZWRC+ZWRB+ZRAERO)  ! Sum of tile-specific laminar, aerodynamic and surface resistance 
+        ! IF (IDEBUG==1) WRITE(NULERR,'(a20,2es12.5)')'ZRES_TILE  and tile frac',ZRES_TILE, ZDEPTILE
 
-
-    !*         Compute Deposition Velocities
-    !	        -----------------------------
-
-    ZRES_TILE = (ZWRC+ZWRB+ZRAERO)  ! Sum of (laminar resistance and surface resistance) * tile fraction
-    ! IF (IDEBUG==1) WRITE(NULERR,'(a20,2es12.5)')'ZRES_TILE  and tile frac',ZRES_TILE, ZDEPTILE
-
-
-    ! add fraction to sum of deposition velocity.
-    PDEPVEL(JL, ITR1) = PDEPVEL(JL, ITR1) + ZDEPTILE/(ZRES_TILE)
+        ! add fraction to sum of deposition velocity.
+        PDEPVEL(JL, ITR1) = PDEPVEL(JL, ITR1) + ZDEPTILE/(ZRES_TILE)
 
     ENDDO ! KTILES
     ! IF (IDEBUG==1) WRITE(NULERR,'(a10,2es12.5)')'-----------'
@@ -387,9 +432,172 @@ DO ITR = 1, KCHEM
     ! IF (IDEBUG==1) WRITE(NULERR,'(a10,2es12.5)')'-----------'
 
 
-    ENDDO !KIDIA, KFDIA loop
-ENDDO ! Chemical species loop (KCHEM)
+  ENDDO !KIDIA, KFDIA loop
+ENDDO ! Chemical species loop (ITRCHEM)
 
+! aerosol dry deposition
+IF (NDRYDEPVEL_DYN > 0) THEN
+    
+  ! First identify relative humidity class
+  DO JL=KIDIA, KFDIA
+    ZRHCL(JL)= EXP((17.625_JPRB*(PD2M(JL)-273.15_JPRB))/(PD2M(JL)-30.15_JPRB)) / &
+  	     & EXP((17.625_JPRB*(PT2M(JL)-273.15_JPRB))/(PT2M(JL)-30.15_JPRB))
+    ZTMP1=(17.625_JPRB*(PD2M(JL)-273.15_JPRB))/(PD2M(JL)-30.15_JPRB)
+    ZTMP2=(17.625_JPRB*(PT2M(JL)-273.15_JPRB))/(PT2M(JL)-30.15_JPRB)
+    DO JTAB=1,12
+      IF (ZRHCL(JL)*100._JPRB > RRHTAB(JTAB)) THEN
+  	IRH(JL)=JTAB
+      ENDIF
+    ENDDO
+  ENDDO !KIDIA, KFDIA loop
+
+  DO ITRAERO = 1, YGFL%NACTAERO
+    IF (YAERO_DESC(ITRAERO)%RDDEPVSEA == 0._JPRB .AND. YAERO_DESC(ITRAERO)%RDDEPVLIC == 0._JPRB) CYCLE
+
+    ! find postion in KTRAC array
+    ITR1=YGFL%NGHG+ITRAERO
+
+    ! aerosol size and density for each species
+    IBIN=YAERO_DESC(ITRAERO)%NBIN
+    ITYP=YAERO_DESC(ITRAERO)%NTYP
+    SELECT CASE (ITYP)
+       CASE(1)
+    	 ZRHOP(:)=RSSDENS_RHTAB(:)
+    	 ZWETD(:)=RMMD_SS(IBIN)*1.E-6_JPRB*RSSGROWTH_RHTAB(:)
+       CASE(2)
+    	 ZRHOP(:)=RRHO_DD(IBIN)
+    	 ZWETD(:)=RMMD_DD(IBIN)*1.E-6_JPRB
+       CASE(3)
+    	 ZWETD(:)=RMMD_OM*1.E-6_JPRB*ROMGROWTH_RHTAB(:)
+    	 ZVFRAC(:) = 1.0_JPRB / ROMGROWTH_RHTAB(:)**3
+    	 ZRHOP(:) = RRHO_WAT*(1.0_JPRB-ZVFRAC(:)) + ZVFRAC(:)*RRHO_OM
+       CASE(4)
+    	 ZWETD(:)=RMMD_BC*1.E-6_JPRB
+    	 ZRHOP(:) = RRHO_BC
+       CASE(5)
+    	 ZWETD(:)=RMMD_SO4*1.E-6_JPRB*RSO4GROWTH_RHTAB(:)
+    	 ZVFRAC(:) = 1.0_JPRB / RSO4GROWTH_RHTAB(:)**3
+    	 ZRHOP(:) = RRHO_WAT*(1.0_JPRB-ZVFRAC(:)) + ZVFRAC(:)*RRHO_SO4
+       CASE(6)
+    	 ZWETD(:)=RMMD_NI(IBIN)*1.E-6_JPRB*RNIGROWTH_RHTAB(:)
+    	 ZVFRAC(:) = 1.0_JPRB / RNIGROWTH_RHTAB(:)**3
+    	 ZRHOP(:) = RRHO_WAT*(1.0_JPRB-ZVFRAC(:)) + ZVFRAC(:)*RRHO_NI(IBIN)
+       CASE(7)
+    	 ZWETD(:)=RMMD_AM*1.E-6_JPRB*RAMGROWTH_RHTAB(:)
+    	 ZVFRAC(:) = 1.0_JPRB / RAMGROWTH_RHTAB(:)**3
+    	 ZRHOP(:) = RRHO_WAT*(1.0_JPRB-ZVFRAC(:)) + ZVFRAC(:)*RRHO_AM
+       CASE(8)
+    	 ZWETD(:)=RMMD_SOA*1.E-6_JPRB*RSOAGROWTH_RHTAB(:)
+    	 ZVFRAC(:) = 1.0_JPRB / RSOAGROWTH_RHTAB(:)**3
+    	 ZRHOP(:) = RRHO_WAT*(1.0_JPRB-ZVFRAC(:)) + ZVFRAC(:)*RRHO_SOA
+       CASE(9)
+    	 ZWETD(:)= RMMD_ASH*1.E-6_JPRB
+    	 ZRHOP(:) = RRHO_ASH
+       CASE(10)
+    	 ZWETD(:)=RMMD_SO4*1.E-6_JPRB*RSO4GROWTH_RHTAB(:)
+    	 ZVFRAC(:) = 1.0_JPRB / RSO4GROWTH_RHTAB(:)**3
+    	 ZRHOP(:) = RRHO_WAT*(1.0_JPRB-ZVFRAC(:)) + ZVFRAC(:)*RRHO_SO4
+    	CASE DEFAULT
+    	  CALL ABOR1('DEPVEL_GC: unsupported aerosol type')
+    END SELECT
+
+    DO JL=KIDIA, KFDIA
+      ! Initialize deposition velocity
+      PDEPVEL(JL, ITR1) = 0.0_JPRB 
+
+      !*    Compute aerodynamic resistance
+      ! aerodynamic resistance from reverse exchange coefficient
+      ZRAERO = 1.0_JPRB/ PKCLEV(JL)
+
+      !! Resistances limited to a maximum value
+      ! IF (ZRAERO > PPRMAX) ZRAERO = PPRMAX
+
+      ZAIRDEN =PRSF(JL)/(RD*PTS(JL))  ! Air density, kg/m3
+      ZVEG0(JL)=PCVL(JL) + PCVH(JL) ! Get vegetation cover
+
+      DO ID = 1, KTILES ! Loop over the number of tiles in each grid box (8)
+
+        ZDEPTILE = PFRTI(JL,ID) ! Get the tile fraction land cover
+        ! IF THE FRACTION OF TILE TYPE IS LOW (<0.01) THEN INGORE FOR EFFICIENCY
+        IF (ZDEPTILE < 0.01) CYCLE
+
+        ID_NOWET=ID
+        IVEGI=0
+        ZLAI=0.0_JPRB
+        SELECT CASE (ID)
+           CASE(1,9,0) ! WATER / Lakes
+             IVEGI=15
+           CASE(2) ! ICE
+             IVEGI=12
+           CASE(3) ! WET SKIN
+             IF ( ZVEG0(JL) < 0.5 ) THEN
+               ! re-assign to bare ground
+               IVEGI = 8_JPIM	  
+               ID_NOWET = 8_JPIM  
+             ELSE
+               ! re-assign to low veg
+               ID_NOWET = 4_JPIM   
+               ZLAI = PLAIL(JL)    
+               IVEGI=KTVL(JL)
+               IF ( PCVL(JL) <=  PCVH(JL) ) THEN
+             	 ! re-assign to high veg
+             	 ID_NOWET = 6 
+             	 ZLAI = PLAIH(JL)
+             	 IVEGI=KTVH(JL)
+               ENDIF
+             ENDIF
+           CASE (4) ! LOW VEG, NO SNOW
+             ZLAI= PLAIL(JL)
+             IVEGI=KTVL(JL)
+           CASE (5) ! LOW VEG, SNOW ON
+            ! assign ifs snow on low tile to arpege ice land cover
+            IVEGI=8
+           CASE (6,7) ! HIGH VEG NO SNOW (6) and SNOW COVERED (7)
+             ZLAI= PLAIH(JL)
+             IVEGI=KTVH(JL)
+           CASE (8,10) ! BARE SOIL
+             IVEGI=8
+           CASE DEFAULT
+             CALL ABOR1('DEPVEL_GC: unsupported land class')
+        END SELECT
+
+        !  Determines Wesely type 
+        CALL DDR_ZH_SEASONONE(IMM, PGLAT(JL), ID_NOWET, IVEGI,ISEASON_WE, IVEG_ZH )
+ 
+        SELECT CASE (NDRYDEPVEL_DYN) 
+          CASE(1)
+            ! compute deposition velocity following Zhang et al 2001
+            CALL AER_DRYDEPVEL(ISEASON_WE, IVEG_ZH, ZRHOP(IRH(JL)),ZWETD(IRH(JL)),ZSIGMA,&
+            & PZ0M(JL),PUSTARGUST(JL),PTS(JL),ZAIRDEN,RAERDUST_REBOUND,ZWRC)
+          CASE(2)
+            CALL AER_DRYDEPVELZH14(ISEASON_WE,IVEGI, IVEG_ZH, ZLAI, ZWETD(IRH(JL)), &
+            & ZSIGMA,ZRHOP(IRH(JL)),&
+            & PZ0M(JL),PUSTARGUST(JL),PTS(JL),RAERDUST_REBOUND,ZWRC)
+          CASE(3)
+            CALL AER_DRYDEPVELEM20(ISEASON_WE, IVEG_ZH,ZRHOP(IRH(JL)),ZWETD(IRH(JL)),ZSIGMA, &
+            & PZ0M(JL),PUSTARGUST(JL),PTS(JL),ZAIRDEN,ZWRC)
+        END SELECT
+        ZRES_TILE = (ZWRC+ZRAERO)  ! Sum of tile-specific surface and aerodynamic resistance
+
+        !write (*,*) "DEPVELFINALCHEM",ITRAERO,ITR1,ID,ZRES_TILE,ZRAERO,ZWRC,ZDEPTILE
+
+        ! add fraction to sum of deposition velocity
+        PDEPVEL(JL, ITR1) = PDEPVEL(JL, ITR1) + ZDEPTILE/(ZRES_TILE)
+        !   SR 03/2018 reduce dry deposition over smoother snow surfaces
+        IF (PSNS(JL) > 1.E-3_JPRB ) THEN
+          PDEPVEL(JL, ITR1)=PDEPVEL(JL, ITR1)/2.5_JPRB
+          PDEPVEL(JL, ITR1)=MIN(PDEPVEL(JL, ITR1),3.E-4_JPRB)
+        ENDIF
+
+      ENDDO ! KTILES
+
+    ENDDO !KIDIA, KFDIA loop
+  ENDDO ! Aerosol tracers loop (ITRAERO)
+ENDIF ! (NDRYDEPVEL_DYN > 0)
+
+
+
+END ASSOCIATE
 END ASSOCIATE
 
 IF (LHOOK) CALL DR_HOOK('DEPVEL_GC',1,ZHOOK_HANDLE)

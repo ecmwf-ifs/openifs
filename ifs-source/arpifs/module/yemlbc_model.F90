@@ -53,6 +53,7 @@ MODULE YEMLBC_MODEL
 ! solution is to correct swapping of LBC buffers, otherwise the code will
 ! remain difficult to understand.
 ! H. Dhouioui (Sep 2017) renamed from elbc0b_mod.F90
+! O. Vignes (Feb 2020): Upper boundary relaxation fixes
 ! M. Hamrud (Oct 2021) incorporated YEMLBC_INIT. Forced by move of YOMDYNA
 ! into model object
 !-----------------------------------------------------------------------------
@@ -65,7 +66,7 @@ USE YOMCT0   , ONLY : LRPLANE, LALLOPR, LCANARI,NCONF,LELAM
 USE YOMGMV   , ONLY : TGMV
 USE YOMINI   , ONLY : LDFI
 USE YOMLUN   , ONLY : NULOUT, NULNAM
-USE YOMMP0   , ONLY : MYSETB, MYSETV, MY_REGION_EW, LOUTPUT
+USE YOMMP0   , ONLY : MYSETB, MYSETV, LOUTPUT
 
 IMPLICIT NONE
 SAVE
@@ -270,9 +271,9 @@ REAL(KIND=JPRB),ALLOCATABLE:: EALFA_GMV(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: EALFA_GMVS(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: EALFA_GFL(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: EALFA_TENC(:,:)
-REAL(KIND=JPRB),ALLOCATABLE:: EALFAGT3GMV(:,:)
-REAL(KIND=JPRB),ALLOCATABLE:: EALFAGT3GMVS(:,:)
-REAL(KIND=JPRB),ALLOCATABLE:: EALFAGT3GFL(:,:)
+REAL(KIND=JPRB),ALLOCATABLE:: EALFAGT3GMV(:,:,:)
+REAL(KIND=JPRB),ALLOCATABLE:: EALFAGT3GMVS(:,:,:)
+REAL(KIND=JPRB),ALLOCATABLE:: EALFAGT3GFL(:,:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: EALFAU_GMV(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: EALFAU_GFL(:,:)
 
@@ -286,7 +287,7 @@ REAL(KIND=JPRB),ALLOCATABLE:: EALFAU_GFL(:,:)
 ! RTENC        : multiplier of EALFA in the tendency coupling scheme
 !                for stability reasons (RTENC<=1. close to 1)
 
-REAL(KIND=JPRB),ALLOCATABLE:: GMGT3(:)
+REAL(KIND=JPRB),ALLOCATABLE:: GMGT3(:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: GMGT4(:)
 REAL(KIND=JPRB),ALLOCATABLE:: EWB(:,:,:)
 REAL(KIND=JPRB),ALLOCATABLE:: EWBDFIFW(:,:,:,:)
@@ -295,7 +296,7 @@ REAL(KIND=JPRB) :: RTENC
 
 !      2.5   Other variables for spectral nudging.
 
-! LSPNUSPDL  : .TRUE. if spectral nudging on Ps is relevent on this MPI task
+! LSPNUSPDL  : .TRUE. if spectral nudging on Ps is relevant on this MPI task
 ! RNUDTFRAC  : Time fraction for spectral nudging
 ! NEFRSPCPL  : frequency of spectral nudging
 ! NEK0,NEK1  : lower and upper limits for total wavenumber for spectral nudging

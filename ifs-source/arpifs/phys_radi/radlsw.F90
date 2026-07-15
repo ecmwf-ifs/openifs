@@ -18,7 +18,8 @@ SUBROUTINE RADLSW&
  & PFRSOD,PSUDU , PUVDF, PPARF, PPARCF, PTINCF,&
  & PSFSWDIR, PSFSWDIF,PFSDNN,PFSDNV,&
  & LDDUST,PPIZA_DST,PCGA_DST,PTAUREL_DST,&
- & PAERINDS)
+ & PAERINDS,&
+ & PRSWINHF,PRLWINHF)
 
 !**** *RADLSW* - INTERFACE TO ECMWF LW AND SW RADIATION SCHEMES
 
@@ -115,6 +116,8 @@ SUBROUTINE RADLSW&
 !                             for computational optimization.
 !      P. Lopez     2015-02-11 Added security in cloud top definition
 !                              when computational optimization is on.
+!      U. Andrae    2012-12 : Introduce SPP for HARMONIE-AROME
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !-----------------------------------------------------------------------
 
 USE MODEL_PHYSICS_RADIATION_MOD , ONLY : MODEL_PHYSICS_RADIATION_TYPE
@@ -163,8 +166,8 @@ IMPLICIT NONE
 TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
 TYPE(TECLD)       ,INTENT(IN)    :: YDECLD
 TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
-TYPE(MODEL_PHYSICS_RADIATION_TYPE),INTENT(INOUT):: YDML_PHY_RAD
-TYPE(TPHNC)       ,INTENT(INOUT) :: YDPHNC
+TYPE(MODEL_PHYSICS_RADIATION_TYPE),INTENT(IN):: YDML_PHY_RAD
+TYPE(TPHNC)       ,INTENT(IN)    :: YDPHNC
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -215,6 +218,8 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSFSWDIR(KLON,YDML_PHY_RAD%YRERAD%NSW)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSFSWDIF(KLON,YDML_PHY_RAD%YRERAD%NSW) 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFSDNN(KLON) 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFSDNV(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN), OPTIONAL :: PRSWINHF(KLON) 
+REAL(KIND=JPRB)   ,INTENT(IN), OPTIONAL :: PRLWINHF(KLON) 
 
 !     -----------------------------------------------------------------
 
@@ -274,6 +279,7 @@ REAL(KIND=JPRB) :: ZALND, ZASEA, ZD, ZDEN, ZNTOT, ZNUM, ZRATIO, Z1RADI,&
 
 !REAL(KIND=JPRB) :: ZAVDP(KLON), ZAVTO(KLON), ZSQTO(KLON)
 REAL(KIND=JPRB) :: ZAVTO(KLON), ZSQTO(KLON)
+REAL(KIND=JPRB) :: ZRSWINHF(KLON), ZRLWINHF(KLON)
 REAL(KIND=JPRB) :: ZSQUAR(KLON,KLEV), ZVARIA(KLON,KLEV)
 INTEGER(KIND=JPIM) :: IKI, JKI, JEXPLR, JXPLDN
 INTEGER(KIND=JPIM) :: IUAER, ITOPC, ILEV(KLON), ILEVR
@@ -301,7 +307,7 @@ IF (LHOOK) CALL DR_HOOK('RADLSW',0,ZHOOK_HANDLE)
 ASSOCIATE(LWLCLHR=>YDML_PHY_RAD%YRELWRAD%LWLCLHR, NLEVLWC=>YDML_PHY_RAD%YRELWRAD%NLEVLWC, &
  & LPHYLIN=>YDEPHLI%LPHYLIN, &
  & LCCNL=>YDML_PHY_RAD%YRERAD%LCCNL, LCCNO=>YDML_PHY_RAD%YRERAD%LCCNO, LDIFFC=>YDML_PHY_RAD%YRERAD%LDIFFC, &
- & LEDBUG=>YDML_PHY_RAD%YRERAD%LEDBUG, LNEWAER=>YDML_PHY_RAD%YRERAD%LNEWAER, LRRTM=>YDML_PHY_RAD%YRERAD%LRRTM, &
+ & LEDBUG=>YDML_PHY_RAD%YRERAD%LEDBUG, LRRTM=>YDML_PHY_RAD%YRERAD%LRRTM, &
  & NICEOPT=>YDML_PHY_RAD%YRERAD%NICEOPT, NINHOM=>YDML_PHY_RAD%YRERAD%NINHOM, NLAYINH=>YDML_PHY_RAD%YRERAD%NLAYINH, &
  & NLIQOPT=>YDML_PHY_RAD%YRERAD%NLIQOPT, NRADIP=>YDML_PHY_RAD%YRERAD%NRADIP, NRADLP=>YDML_PHY_RAD%YRERAD%NRADLP, &
  & NSW=>YDML_PHY_RAD%YRERAD%NSW, RCCNLND=>YDML_PHY_RAD%YRERAD%RCCNLND, RCCNSEA=>YDML_PHY_RAD%YRERAD%RCCNSEA, &
@@ -419,6 +425,27 @@ DO JL=KIDIA,KFDIA
   ZTL(JL,KLEV+1)= PTH(JL,1)
   ZPMB(JL,KLEV+1) = PAPH(JL,1)/100.0_JPRB
 ENDDO
+
+! Inhomogeniety factors
+IF (PRESENT(PRSWINHF)) THEN
+ DO JL=KIDIA,KFDIA
+  ZRSWINHF(JL)= PRSWINHF(JL)
+ ENDDO
+ELSE
+ DO JL=KIDIA,KFDIA
+  ZRSWINHF(JL)= RSWINHF
+ ENDDO
+ENDIF
+
+IF (PRESENT(PRLWINHF)) THEN
+ DO JL=KIDIA,KFDIA
+  ZRLWINHF(JL)= PRLWINHF(JL)
+ ENDDO
+ELSE
+ DO JL=KIDIA,KFDIA
+  ZRLWINHF(JL)= RLWINHF
+ ENDDO
+ENDIF
 !***
 
 !     ------------------------------------------------------------------
@@ -537,38 +564,35 @@ DO JK = 1 , KLEV
       ENDIF
 ! Parametrisation pour l'effet indirect des aerosols sulfates      
     ELSEIF(NRADLP == 3) THEN
-      IF (.NOT. LNEWAER) THEN
-       CALL ABOR1('RADLSW: CASE NOT CODED NRADLP=3/LNEWAER=.T.')
-      ELSE
 ! --- EFFECTIVE RADIUS FOR WATER AND ICE PARTICLES
 
-        ZTAUTAER=PAERINDS(JL,IKL)
+      ZTAUTAER=PAERINDS(JL,IKL)
 
 !+    for indirect effect of aerosols, HRM, Nov.24, 1998.
 
-        ZALPHAER=5.0_JPRB
-        ZCOEFRFH=1.7_JPRB
-        ZDZHT(JL,IKL)=RD*PT(JL,IKL)*PDP(JL,IKL)/(PAP(JL,IKL)*RG)
-        ZMAER(JL,IKL)=1.0E6_JPRB*ZTAUTAER/(ZALPHAER*ZCOEFRFH*ZDZHT(JL,IKL))
+      ZALPHAER=5.0_JPRB
+      ZCOEFRFH=1.7_JPRB
+      ZDZHT(JL,IKL)=RD*PT(JL,IKL)*PDP(JL,IKL)/(PAP(JL,IKL)*RG)
+      ZMAER(JL,IKL)=1.0E6_JPRB*ZTAUTAER/(ZALPHAER*ZCOEFRFH*ZDZHT(JL,IKL))
 !
 ! .. This is to avoid a problem when taking the log as CDNC is
 ! computed. Has no influence on CDNC even if ZMAER<1e-10, as 
 ! CDNC is taken to be MAX(CDNC,20) afterwards.
 !
-        ZMAER(JL,IKL)=MAX(ZMAER(JL,IKL),1.0E-10_JPRB)
+      ZMAER(JL,IKL)=MAX(ZMAER(JL,IKL),1.0E-10_JPRB)
 !
 ! .. Modification of Boucher(1994)'s formula giving the number of 
 ! condensation nuclei. The coefficients were obtained from a calibration
 ! on POLDER measurements (J. Quaas, personal communication).
 !
-        ZCCDNC(JL,IKL)=10.0_JPRB**(1.7_JPRB+0.2_JPRB*LOG10(ZMAER(JL,IKL)))
+      ZCCDNC(JL,IKL)=10.0_JPRB**(1.7_JPRB+0.2_JPRB*LOG10(ZMAER(JL,IKL)))
 !
 ! .. Threshold on the number of droplets (O. Boucher, J. Quaas, personal
 ! communication)
 !
-        ZCCDNC(JL,IKL)=MAX(ZCCDNC(JL,IKL),20.0_JPRB)
-        ZCDNC(JL,IKL)=4.0_JPRB*3.14159_JPRB*ZCCDNC(JL,IKL)*1.0E6_JPRB
-        ZRAVRG(JL,IKL)=3.0_JPRB*ZFLWP(JL)/ZDZHT(JL,IKL)/ZCDNC(JL,IKL)
+      ZCCDNC(JL,IKL)=MAX(ZCCDNC(JL,IKL),20.0_JPRB)
+      ZCDNC(JL,IKL)=4.0_JPRB*3.14159_JPRB*ZCCDNC(JL,IKL)*1.0E6_JPRB
+      ZRAVRG(JL,IKL)=3.0_JPRB*ZFLWP(JL)/ZDZHT(JL,IKL)/ZCDNC(JL,IKL)
 !
 ! .. Calibrate parameterization due to the low modeled liquid water
 ! content in the model (O. Boucher, personal communication)
@@ -577,13 +601,12 @@ DO JK = 1 , KLEV
 ! radii of these droplets used to be:
 !    10 + 0.035*(1000.-P), P=pressure in hPa.
 !
-        ZRADLP(JL)=1.1_JPRB*ZRAVRG(JL,IKL)**(1.0_JPRB/3.0_JPRB)*1.0E4_JPRB
+      ZRADLP(JL)=1.1_JPRB*ZRAVRG(JL,IKL)**(1.0_JPRB/3.0_JPRB)*1.0E4_JPRB
 ! Keep min as in previous case
 ! Keep max as in previous case
-        ZRADLP(JL)=MAX(ZRADLP(JL),4.0_JPRB)
-        ZRADLP(JL)=MIN(ZRADLP(JL),16.0_JPRB)
+      ZRADLP(JL)=MAX(ZRADLP(JL),4.0_JPRB)
+      ZRADLP(JL)=MIN(ZRADLP(JL),16.0_JPRB)
 
-      ENDIF
     ENDIF
 
 
@@ -681,7 +704,7 @@ DO JK = 1 , KLEV
 !            ZOL  = RYFWCC(JSW)-RYFWCD(JSW)*EXP(-RYFWCE(JSW)*ZTOL)
 !-- NB: RSWINHF is there simply for making the CY29R2 branch bit compatible with 
 ! the previous. Should be cleaned when RRTM_SW becomes active
-            ZOL  = RYFWCC(JSW)-RYFWCD(JSW)*EXP(-RYFWCE(JSW)*ZTOL*RSWINHF)
+            ZOL  = RYFWCC(JSW)-RYFWCD(JSW)*EXP(-RYFWCE(JSW)*ZTOL*ZRSWINHF(JL))
           ELSE IF (NSWLIQOPT == 3) THEN
 !-- SW: Nielsen, 2013
             ZTOL = ZFLWP(JL)*RKPNWCA(JSW)*ZRADLP(JL)**(-RKPNWCB(JSW))
@@ -869,8 +892,8 @@ DO JK = 1 , KLEV
         ENDIF 
        
         IF (NINHOM == 1) THEN
-          ZZFLWP= ZFLWP(JL) * RLWINHF
-          ZZFIWP= ZFIWP(JL) * RLWINHF
+          ZZFLWP= ZFLWP(JL) * ZRLWINHF(JL)
+          ZZFIWP= ZFIWP(JL) * ZRLWINHF(JL)
         ELSE
           ZZFLWP= ZFLWP(JL)
           ZZFIWP= ZFIWP(JL)
@@ -1265,7 +1288,7 @@ IF (NINHOM == 1) THEN
   DO JSW=1,NSW
     DO JK=1,KLEV
       DO JL=KIDIA,KFDIA
-        ZTAU(JL,JSW,JK)=ZTAU(JL,JSW,JK) * RSWINHF
+        ZTAU(JL,JSW,JK)=ZTAU(JL,JSW,JK) * ZRSWINHF(JL)
       ENDDO
     ENDDO
   ENDDO
@@ -1273,7 +1296,7 @@ IF (NINHOM == 1) THEN
   DO JRTM=1,16
     DO JK=1,KLEV
       DO JL=KIDIA,KFDIA
-        ZTAUCLD(JL,JK,JRTM)=ZTAUCLD(JL,JK,JRTM) * RLWINHF
+        ZTAUCLD(JL,JK,JRTM)=ZTAUCLD(JL,JK,JRTM) * ZRLWINHF(JL)
       ENDDO
     ENDDO
   ENDDO
@@ -1572,14 +1595,18 @@ IF (NSTEP == 0 .AND. LEDBUG .AND. ZMU0(KIDIA) > 0.0_JPRB) THEN
   WRITE(NULOUT,'("ZFSUP ",10E12.5)') (ZFSUP (KIDIA,JK),JK=1,KLEV)
   WRITE(NULOUT,'("ZFCDWN",10E12.5)') (ZFCDWN(KIDIA,JK),JK=1,KLEV)
   WRITE(NULOUT,'("ZFCUP ",10E12.5)') (ZFCUP (KIDIA,JK),JK=1,KLEV)
-  LEDBUG=.FALSE. 
+! Fixme. The following line should be moved elsewhere because the structure it belongs must be intent(IN)
+! LEDBUG=.FALSE. 
+  CALL ABOR1('RADLSW: FIXME LEDBUG')
 ENDIF
 IF (NSTEP == 0 .AND. LEDBUG .AND. ZMU0(KIDIA) > 0.0_JPRB) THEN
   WRITE(NULOUT,'("ZFSDWN",10E12.5)') (ZFSDWN(KIDIA,JK),JK=1,KLEV)
   WRITE(NULOUT,'("ZFSUP ",10E12.5)') (ZFSUP (KIDIA,JK),JK=1,KLEV)
   WRITE(NULOUT,'("ZFCDWN",10E12.5)') (ZFCDWN(KIDIA,JK),JK=1,KLEV)
   WRITE(NULOUT,'("ZFCUP ",10E12.5)') (ZFCUP (KIDIA,JK),JK=1,KLEV)
-  LEDBUG=.FALSE. 
+! Fixme. The following line should be moved elsewhere because the structure it belongs must be intent(IN)
+! LEDBUG=.FALSE. 
+  CALL ABOR1('RADLSW: FIXME LEDBUG')
 ENDIF
 !     ------------------------------------------------------------------
 

@@ -8,8 +8,9 @@
 
  SUBROUTINE CHEM_TM5&
  &   (YDVAB,YDDIMV,YDMODEL,KSTEP, KIDIA  , KFDIA , KLON, KLEV ,KVCLIS,KAERO,&
- &    PTSTEP ,PDELP, PRS1, PRSF1, PGEOH, PQP, PTP,&
- &    PLP, PIP, PAP,  PPTROPO, PALB, PWND, PLSM, PCSZA, PGELAT,&
+ &    PTSTEP ,PDELP, PRS1, PRSF1, PGEOH, PQP, PTP, PCLOUDPH, PRAINPH, PCHEMPH, PCHEMPHR,&
+ &    PLP, PRP, PSP, PIP, PAP, PPRCOV, &
+ &    PFLXR, PFLXS, PFLXRC, PFLXSC,  PPTROPO, PALB, PWND, PLSM, PCSZA, PGELAT,&
  &    PGELAM, PGEMU,  PKOZO, KLEVTROP, PDV, PCEN , PTENC1, PBUDR, PBUDJ, PBUDX, POUT,&
  &    PAEROP,PWETDIAM, PWETVOL,PND,PAERAOT, PAERAAOT, PAERASY,PSOGTOSOA, & 
  &    PCHEM2GHG) 
@@ -71,7 +72,8 @@
 ! PBUDR (KLON,KLEV,NCHEM)     : TENDENCIES DUE TO GAS-PHASE REACTIONS WITH OH (kg/kg/s)
 ! PBUDJ (KLON,KLEV,NPHOTO+NSOA_BUDG)     : TENDENCIES (loss) DUE TO PHOTOLYSIS (kg/kg/s)
 ! PBUDX(KLON,KLEV,NBUD_EXTRA) : Extra chemical TENDENCIES (kg/kg/s)
-! POUT (KLON,KLEV,5)         : additiional output, e.g. UBC contribution , Photolysis rates O3 , NO2, tau for output 
+! POUT (KLON,0:KLEV,5)        : additiional output, e.g. UBC contribution , Photolysis rates O3 , NO2, tau for output
+!                               Extra zeroth level for additional boundary conditions in some schemes
 ! PSOGTOSOA(KLON,KLEV,2)     : SOG to SOA conversion tendency
 ! PCHEM2GHG(KLON,KLEV,NCHEM2GHG): Information from chemistry to GHG. 
 !                                   1. atmospheric CH4 loss rate              [s-1] 
@@ -112,27 +114,27 @@
 !        TM5-implementation of CBM-IV scheme               : 2009-09-23
 !        Further code cleaning                             : 2011-10-25
 !        K. Yessad (July 2014): Move some variables.
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !-----------------------------------------------------------------------
 
-
-
-USE TYPE_MODEL , ONLY : MODEL
-USE YOMVERT  , ONLY : TVAB
-USE YOMDIMV  , ONLY : TDIMV
-USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
-USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-USE YOMLUN    ,ONLY : NULERR, NULOUT
+USE TYPE_MODEL, ONLY : MODEL
+USE YOMVERT,    ONLY : TVAB
+USE YOMDIMV,    ONLY : TDIMV
+USE PARKIND1,   ONLY : JPIM, JPRB, JPRD
+USE YOMHOOK ,   ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN,     ONLY : NULERR, NULOUT
+USE YOMCST,     ONLY : YRCST
+USE YOETHF,     ONLY : YRTHF
+USE YOMRIP0,    ONLY : NINDAT 
 ! NCHEM : number of chemical species
 ! YCHEM : Data structure with Chemistry meta data 
-USE TM5_CHEM_MODULE, ONLY : NREAC, IO3, ICH4, IHNO3, &
- & XMH2O, IACID, IAIR, IH2O, IO3S, INO, INO2, IPSC, &
- & INO3_A, ISO4, INH3 , INH4, IMSA, IHO2, IOH, ICO, NBUD_EXTRA,&
- & ISOG1,ISOG2A,ISOG2B, NSOA_BUDG, &
- & KCOOH, KHO2L, KHO2_AER, &
- & NCHEM2GHG
+USE TM5_TRACERS, ONLY : IO3, ICH4, IHNO3, &
+ & IACID, IAIR, IH2O, IO3S, INO, INO2, IPSC, &
+ & INO3_A, ISO4, INH3 , INH4, IMSA, IHO2, IOH, ICO, &
+ & ISOG1,ISOG2A,ISOG2B, ISO2, IVSO2
+USE TM5_CHEM_MODULE, ONLY: NREAC, NBUD_EXTRA, NSOA_BUDG, KCOOH, KHO2L, KHO2_AER, &
+ & XMH2O, NCHEM2GHG
 USE TM5_PHOTOLYSIS , ONLY : NPHOTO,NBANDS_TROP,NGRID, JNO2
-USE YOMCST   , ONLY : RD, RMD, RG , RPI, RMCO2
-USE YOMRIP0  , ONLY : NINDAT 
 
 ! TM5 chemistry ...
 USE TM5_KPP_Parameters, ONLY : NREACT, NVAR
@@ -160,9 +162,20 @@ REAL(KIND=JPRB)   ,INTENT(IN) :: PRS1(KLON,0:KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PGEOH(KLON,0:KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PQP(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PTP(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCLOUDPH(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PRAINPH(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT):: PCHEMPH(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT):: PCHEMPHR(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PLP(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PRP(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PSP(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PFLXR(KLON,KLEV+1)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PFLXS(KLON,KLEV+1)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PFLXRC(KLON,KLEV+1)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PFLXSC(KLON,KLEV+1)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PIP(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PAP(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN) :: PPRCOV(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(OUT):: PTENC1(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PCEN(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM) 
 REAL(KIND=JPRB)   ,INTENT(IN) :: PCSZA(KLON)                  
@@ -179,7 +192,7 @@ INTEGER(KIND=JPIM),INTENT(IN) :: KLEVTROP(KLON)
 REAL(KIND=JPRB)   ,INTENT(OUT):: PBUDJ(KLON,KLEV,NPHOTO+NSOA_BUDG) 
 REAL(KIND=JPRB)   ,INTENT(OUT):: PBUDR(KLON,KLEV,YDMODEL%YRML_GCONF%YGFL%NCHEM) 
 REAL(KIND=JPRB)   ,INTENT(OUT):: PBUDX(KLON,KLEV,NBUD_EXTRA)  
-REAL(KIND=JPRB)   ,INTENT(OUT):: POUT(KLON,KLEV,5)  
+REAL(KIND=JPRB)   ,INTENT(OUT):: POUT(KLON,0:KLEV,5)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PAEROP(KLON,KLEV,KAERO)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PWETDIAM(KLON,KLEV,NMODES)
 REAL(KIND=JPRB)   ,INTENT(IN) :: PWETVOL(KLON,KLEV,NMODES)
@@ -216,7 +229,7 @@ REAL(KIND=JPRB) , DIMENSION(KLON,KLEV)   :: ZCC
 REAL(KIND=JPRB) , DIMENSION(KLON)        :: ZTCTAUC 
 REAL(KIND=JPRB) , DIMENSION(KLON,KLEV)   :: ZPCO3
 REAL(KIND=JPRB)                          :: ZCOLO3(KLON,0:KLEV)
-REAL(KIND=JPRB) , DIMENSION(KLON)        :: ZHPLUS
+REAL(KIND=JPRB) , DIMENSION(KLON)        :: ZHPLUS, ZHPLUSR
 
 REAL(KIND=JPRB) , DIMENSION(KLON,KLEV,NBANDS_TROP,NGRID) ::&
       &                                       ZTAUA_AER, ZTAUS_AER, ZPMAER   
@@ -263,10 +276,10 @@ INTEGER(KIND=JPIM)                        :: ILEVMIN_GAS(KLON)
 
 !KPP related
 INTEGER(KIND=JPIM),DIMENSION(20)          :: ICNTRL, ISTATUS
-REAL(KIND=JPRD),   DIMENSION(20)          :: ZCNTRL, ZCNTRL_P, ZSTATE
+REAL(KIND=JPRB),   DIMENSION(20)          :: ZCNTRL, ZCNTRL_P, ZSTATE
 ! Troposphere...
-REAL(KIND=JPRD),   DIMENSION(NREACT)      :: ZRCONST
-REAL(KIND=JPRD),   DIMENSION(NVAR)        :: ZVAR
+REAL(KIND=JPRB),   DIMENSION(NREACT)      :: ZRCONST
+REAL(KIND=JPRB),   DIMENSION(NVAR)        :: ZVAR
 INTEGER(KIND=JPIM)                        :: IERR, IFLAG
 
 INTEGER(KIND=JPIM), DIMENSION(3)          :: JAER_TRACER
@@ -275,7 +288,6 @@ INTEGER(KIND=JPIM), DIMENSION(2)          :: JRATE_TRACER
 
 REAL(KIND=JPRB)                           :: ZTAU_NUDGE
 REAL(KIND=JPRB)                           :: ZRGI, ZDELP, ZT0NO, ZT0NO2, ZCONC_HO2 
-LOGICAL                                   :: LLCOD_TM5
 ! Switch for selection of aerosol parameterization for photolysis
 INTEGER(KIND=JPIM), PARAMETER             :: ITAU_MACC=0
 ! Switch for selection of HNO3 BC parameterization. 1=updated
@@ -287,13 +299,14 @@ REAL(KIND=JPRB)                           :: ZFAC
 ! Variables needed for SOA computation
 INTEGER(KIND=JPIM), PARAMETER             :: INSOG=3
 INTEGER(KIND=JPIM), PARAMETER             :: INSOA=2
-REAL(KIND=JPRB)                           :: ZORGAERO, ZRHO
+REAL(KIND=JPRB)                           :: ZORGAERO, ZRHO(KLON), ZDZ(KLON)
 REAL(KIND=JPRB), DIMENSION(INSOG)         :: ZSOG
 REAL(KIND=JPRB), DIMENSION(INSOA)         :: ZSOGH, ZSOA
 INTEGER(KIND=JPIM)                        :: INBDU,INBOM
 REAL(KIND=JPRB)                           :: ZTSCALI,ZXLSOA,ZSOA_TMP,ZJSOA
 INTEGER(KIND=JPIM), DIMENSION(INSOG)      :: JSOG_TRACER
 INTEGER(KIND=JPIM), DIMENSION(INSOA)      :: JSOA_TRACER
+REAL(KIND=JPRB)                           :: ZVSO2, ZRAT_VSO2, ZDELTA_SO2
 ! ------------------------------------------------------------------
 #include "fcttim.func.h"
 !-------------------------------------------------------------------
@@ -312,7 +325,6 @@ INTEGER(KIND=JPIM), DIMENSION(INSOA)      :: JSOA_TRACER
 #include "tm5_photo_flux.intfb.h"
 #include "tm5_rbud.intfb.h"
 #include "tm5_soa.intfb.h"
-#include "tm5_slingo.intfb.h"
 #include "tm5_stratbc_ch4.intfb.h"
 #include "tm5_sundis.intfb.h"
 #include "tm5_wetchem.intfb.h"
@@ -335,11 +347,14 @@ ASSOCIATE(NACTAERO=>YGFL%NACTAERO, NCHEM=>YGFL%NCHEM, NCHEM_DV=>YGFL%NCHEM_DV, &
  & YCHEM=>YGFL%YCHEM, LAERCHEM=>YGFL%LAERCHEM,LAERSOA=>YDCOMPO%LAERSOA, &
  & LAERSOA_COUPLED=>YDCOMPO%LAERSOA_COUPLED, &
  & NTYPAER=>YDEAERATM%NTYPAER, &
+ & RMD=>YRCST%RMD, RG=>YRCST%RG, RPI=>YRCST%RPI, RD=>YRCST%RD, RMCO2=>YRCST%RMCO2, &
  & LAERNITRATE => YDCOMPO%LAERNITRATE, &
- & KCHEM_SOLVE=>YDCHEM%KCHEM_SOLVE, LCHEM_0NOX=>YDCHEM%LCHEM_0NOX, LCHEM_ANACH4=>YDCHEM%LCHEM_ANACH4, &
+ & LCHEM_EQSAM4CLIMPH => YDCOMPO%LCHEM_EQSAM4CLIMPH, &
+ & KCHEM_SOLVE=>YDCHEM%KCHEM_SOLVE, LCHEM_ANACH4=>YDCHEM%LCHEM_ANACH4, &
  & LCHEM_WEAK_CH4_RELAXATION=>YDCHEM%LCHEM_WEAK_CH4_RELAXATION, &
  & LCHEM_DIAC=>YDCHEM%LCHEM_DIAC, LCHEM_JOUT=>YDCHEM%LCHEM_JOUT,LCHEM_AEROI=>YDCHEM%LCHEM_AEROI, &
- & LCHEM_REVCHEM=>YDCHEM%LCHEM_REVCHEM, REPSEC=>YDECLD%REPSEC, &
+ & LCHEM_VSO2_COUPLE=>YDCHEM%LCHEM_VSO2_COUPLE, &
+ & REPSEC=>YDECLD%REPSEC, &
  & REPCLC=>YDERDI%REPCLC,AERO_SCHEME=>YDCOMPO%AERO_SCHEME) 
 !-----------------------------------------------------------------------
 ! chemistry scheme name - this will later also come from external input
@@ -455,7 +470,7 @@ ENDDO
 
 ! Compute Qsat
 IFLAG=2
-CALL SATUR (KIDIA , KFDIA , KLON  , 1 , KLEV , LPHYLIN,&
+CALL SATUR (YRTHF, YRCST, KIDIA , KFDIA , KLON  , 1 , KLEV , LPHYLIN,&
   & PRSF1, PTP    , ZQSAT , IFLAG)
 
 ! Relative humidity
@@ -467,26 +482,17 @@ ENDDO
 
 ! 1.3 Initialize tendencies and budget accumulation...
 PTENC1(KIDIA:KFDIA,:,:)   = 0.0_JPRB
+PBUDR(KIDIA:KFDIA,:,:)    = 0.0_JPRB
 IF (LCHEM_DIAC) THEN
   PBUDJ(KIDIA:KFDIA,:,:) = 0.0_JPRB 
-  PBUDR(KIDIA:KFDIA,:,:) = 0.0_JPRB 
   PBUDX(KIDIA:KFDIA,:,:) = 0.0_JPRB
 ENDIF
 
 ! 1.4 calculate cloud optical depth 
 ! please note that the arguments to cod_op range from 0:KLEV 
-
-LLCOD_TM5=.TRUE.
-IF ( LLCOD_TM5 ) THEN
 ! * IFS scheme - modified (optimized) for TM5 format...
   CALL COD_OP_TM5(YDDIMV,YDMODEL%YRML_PHY_RAD%YRERAD,KIDIA,KFDIA, KLON,KLEV, 1,PQP, PTP, PAP, PRS1, PRSF1 , PLSM, PWND, PLP, PIP,&
      &     ZCLOUD_REFF, ZTCTAUC,ZTAUS_CLD, ZTAUA_CLD, ZPMCLD)
-ELSE
-!* Use New Photolysis scheme 
-!* new cloud optical depth routine
-  CALL TM5_SLINGO(KIDIA,KFDIA,KLON,KLEV,PIP,PLP,PAP,PGEOH,PRS1,PTP,&
-     & ZTAUA_CLD,ZTAUS_CLD,ZPMCLD,ZCLOUD_REFF)
-ENDIF
 
 ! * calculate the aerosol scattering/absorption 
 
@@ -638,6 +644,15 @@ DO JK=ILEVMIN,KLEV
      ZCVM1(JL,1:NCHEM) = ZCVM0(JL,1:NCHEM)
    ENDDO
 
+!Couple VSO2 tracer with SO2 chemistry: add its contribution to existing (chemical) SO2
+  IF (LCHEM_VSO2_COUPLE) THEN
+    ZVSO2=MAX(PCEN(JL,JK,IVSO2) / YCHEM(IVSO2)%RMOLMASS *ZAIRDM(JL) ,0._JPRB)
+    ZCVM(JL,ISO2) =ZCVM(JL,ISO2)+ZVSO2
+    ZCVM1(JL,ISO2)=ZCVM(JL,ISO2)
+    ZCVM0(JL,ISO2)=ZCVM(JL,ISO2)
+  ENDIF
+
+
 !2.4 Treatment of dry deposition within chemistry:
    ZVD(KIDIA:KFDIA,:) = 0.0_JPRB
 ! see new routine CHEM_DRYDEP 
@@ -673,25 +688,26 @@ IF ( KCHEM_SOLVE == 1_JPIM) THEN
 !  3.0 Perform iterations for chemical solver
    ITEREBI=MAX(1_JPIM,NINT(PTSTEP/1350_JPIM))  !needed if PTSTEP > 2400
    ZDT_EBI=PTSTEP/ITEREBI
+   ZRHO(:)=PRSF1(:,JK)/(RD*PTP(:,JK))
+   ZDZ(KIDIA:KFDIA)=PDELP(KIDIA:KFDIA,JK)/(ZRHO(KIDIA:KFDIA)*RG)
    DO IB=1_JPIM,ITEREBI  
 
 
 !3.1  wet sulphur/ammonia chemistry
-      CALL TM5_WETCHEM(YGFL,KIDIA,KFDIA,KLON,ZDT_EBI,PTP(:,JK),PAP(:,JK),PRSF1(:,JK),PLP(:,JK),ZCVM1,ZHPLUS,ZCVM)
+      ZHPLUS(:)=0._JPRB
+      ZHPLUSR(:)=0._JPRB
+      CALL TM5_WETCHEM(YDCOMPO,YGFL,KIDIA,KFDIA,KLON,ZDT_EBI,PTP(:,JK),PAP(:,JK),PPRCOV(:,JK),PRSF1(:,JK),&
+               & PLP(:,JK), PFLXR(:,JK), PFLXS(:,JK), PFLXRC(:,JK), PFLXSC(:,JK), ZDZ(:), &
+               & PCLOUDPH(:,JK),PRAINPH(:,JK),ZCVM1,ZHPLUS,ZHPLUSR,ZCVM)
+
 
       IMAXIT=8_JPIM ! maximum EBI iterations
       IF(KLEV+1-JK<=4) IMAXIT = IMAXIT*2   ! surface layers more iterations
 
 !3.2  Call 'euler backward integration' - solver for individual levels
-      IF (LCHEM_REVCHEM) THEN
-        ! Troposphierc Chemistry version 'tc02b':
-        ! Updated isoprene chemistry - depreciated. No longer maintained
-        !VH CALL TM5_DO_EBI_TC02B(YGFL,KIDIA,KFDIA,KLON,IMAXIT,ZDT_EBI,ZRR,ZRJ_IN,ZCVM1,ZCVM,ZVD,PRSF1(:,JK))
-      ELSE
-        ! Troposphierc Chemistry version 'tc02a':
-        ! Standard chemistry
-        CALL TM5_DO_EBI(YGFL,KIDIA,KFDIA,KLON,IMAXIT,ZDT_EBI,ZRR,ZRJ_IN,ZCVM1,ZCVM,ZVD,PRSF1(:,JK))
-      ENDIF
+      ! Tropospheric Chemistry version 'tc02a':
+      ! Standard chemistry
+      CALL TM5_DO_EBI(YGFL,KIDIA,KFDIA,KLON,IMAXIT,ZDT_EBI,ZRR,ZRJ_IN,ZCVM1,ZCVM,ZVD,PRSF1(:,JK))
 
 !      ZCVM(KIDIA:KFDIA,1:NREAC) =ZCVM1(KIDIA:KFDIA,1:NREAC)
 
@@ -706,6 +722,29 @@ IF ( KCHEM_SOLVE == 1_JPIM) THEN
 
 !3.5 Update initial concentrations in solver
       DO JL=KIDIA,KFDIA
+         IF (ZHPLUS(JL) > 0._JPRB) THEN
+            PCHEMPH(JL,JK)=-LOG10(ZHPLUS(JL))
+          ELSE
+            PCHEMPH(JL,JK)=0._JPRB
+          ENDIF
+          IF (ZHPLUSR(JL) > 0._JPRB) THEN
+            PCHEMPHR(JL,JK)=-LOG10(ZHPLUSR(JL))
+          ELSE
+            PCHEMPHR(JL,JK)=0._JPRB
+          ENDIF
+          IF (LCHEM_EQSAM4CLIMPH .AND. PCLOUDPH(JL,JK) < 0.1_JPRB) THEN
+            PCHEMPH(JL,JK)=0._JPRB
+          ENDIF
+          IF (LCHEM_EQSAM4CLIMPH .AND. PRAINPH(JL,JK) < 0.1_JPRB) THEN
+            PCHEMPHR(JL,JK)=0._JPRB
+          ENDIF
+          IF (PCHEMPH(JL,JK) < 2._JPRB) THEN
+            PCHEMPH(JL,JK)=0._JPRB
+          ENDIF
+          IF (PCHEMPHR(JL,JK) < 2._JPRB) THEN
+            PCHEMPHR(JL,JK)=0._JPRB
+          ENDIF
+
         DO JT=1,NCHEM 
           ZCVM1(JL,JT) = ZCVM(JL,JT)
         ENDDO
@@ -717,7 +756,14 @@ ELSEIF( KCHEM_SOLVE == 2_JPIM) THEN
    ITEREBI = 1_JPIM
    ! select KPP...
 !3.1  wet sulphur/ammonia chemistry
-      CALL TM5_WETCHEM(YGFL, KIDIA, KFDIA, KLON,PTSTEP,PTP(:,JK),PAP(:,JK),PRSF1(:,JK),PLP(:,JK),ZCVM1,ZHPLUS,ZCVM)
+      ZRHO(:)=PRSF1(:,JK)/(RD*PTP(:,JK))
+      ZDZ(KIDIA:KFDIA)=PDELP(KIDIA:KFDIA,JK)/(ZRHO(KIDIA:KFDIA)*RG)
+      ZHPLUS(:)=0._JPRB
+      ZHPLUSR(:)=0._JPRB
+      CALL TM5_WETCHEM(YDCOMPO,YGFL,KIDIA,KFDIA,KLON,PTSTEP,PTP(:,JK),PAP(:,JK),PPRCOV(:,JK),PRSF1(:,JK), &
+                & PLP(:,JK), PFLXR(:,JK), PFLXS(:,JK), PFLXRC(:,JK), PFLXSC(:,JK), ZDZ(:), &
+                & PCLOUDPH(:,JK),PRAINPH(:,JK),ZCVM1,ZHPLUS,ZHPLUSR,ZCVM)
+
 
 !3.2  Call selected kpp solver 
 DO JL=KIDIA,KFDIA
@@ -751,7 +797,7 @@ DO JL=KIDIA,KFDIA
           CALL TM5_V0_KPP_INITIALIZE(YGFL,ZCVM(JL,1:NCHEM),ZVAR(1:NVAR),LAERSOA_COUPLED)
 
           ! Call kpp integrator...
-          CALL TM5_KPP_INTEGRATOR(0._JPRD, PTSTEP, ICNTRL,ZCNTRL_P, ISTATUS,ZSTATE,IERR,ZVAR,ZRCONST,ZCVM(JL,iair) )
+          CALL TM5_KPP_INTEGRATOR(0._JPRB, PTSTEP, ICNTRL,ZCNTRL_P, ISTATUS,ZSTATE,IERR,ZVAR,ZRCONST,ZCVM(JL,iair) )
 
           ! update new preferred time step...
           ! ZHSAVE_KPP(JL,JLEV) = ZSTATE(Nhnew)
@@ -786,6 +832,29 @@ DO JL=KIDIA,KFDIA
 
 !3.5 Update initial concentrations in solver
         DO JL=KIDIA,KFDIA
+           IF (ZHPLUS(JL) > 0._JPRB) THEN
+            PCHEMPH(JL,JK)=-LOG10(ZHPLUS(JL))
+          ELSE
+            PCHEMPH(JL,JK)=0._JPRB
+          ENDIF
+          IF (ZHPLUSR(JL) > 0._JPRB) THEN
+            PCHEMPHR(JL,JK)=-LOG10(ZHPLUSR(JL))
+          ELSE
+            PCHEMPHR(JL,JK)=0._JPRB
+          ENDIF
+          IF (LCHEM_EQSAM4CLIMPH .AND. PCLOUDPH(JL,JK) < 0.1_JPRB) THEN
+            PCHEMPH(JL,JK)=0._JPRB
+          ENDIF
+          IF (LCHEM_EQSAM4CLIMPH .AND. PRAINPH(JL,JK) < 0.1_JPRB) THEN
+            PCHEMPHR(JL,JK)=0._JPRB
+          ENDIF
+          IF (PCHEMPH(JL,JK) < 2._JPRB) THEN
+            PCHEMPH(JL,JK)=0._JPRB
+          ENDIF
+          IF (PCHEMPHR(JL,JK) < 2._JPRB) THEN
+            PCHEMPHR(JL,JK)=0._JPRB
+          ENDIF
+
           DO JT=1,NCHEM 
             ZCVM1(JL,JT) = ZCVM(JL,JT)
           ENDDO
@@ -841,7 +910,7 @@ DO JL=KIDIA,KFDIA
      INBOM=NTYPAER(1)+NTYPAER(2)+NTYPAER(3)
      DO JL=KIDIA,KFDIA
        IF (JK > ILEVMIN_GAS(JL)) THEN
-         ZRHO=PRSF1(JL,JK)/(RD*PTP(JL,JK))
+         ZRHO(JL)=PRSF1(JL,JK)/(RD*PTP(JL,JK))
   
          ! Call to simple SOG-solver, based on Euler Backward Integrator
          ! No longer required, as SOG production is now integral part of KPP-solver..
@@ -853,7 +922,7 @@ DO JL=KIDIA,KFDIA
          ENDDO
          DO JT = 1,INSOA
            ! SOA: conversion from kg/kg to ug/m3
-           ZSOA(JT)=PAEROP(JL,JK,JSOA_TRACER(JT))*ZRHO* 1E9_JPRB  
+           ZSOA(JT)=PAEROP(JL,JK,JSOA_TRACER(JT))*ZRHO(JL)* 1E9_JPRB  
          ENDDO
          ! Input SOG for SOA/SOG equilibrium: Only first (biogenic) and third (anthro, low volatility) arrays
          ZSOGH(1)=ZSOG(1)
@@ -862,7 +931,7 @@ DO JL=KIDIA,KFDIA
          ! compute total pre-existing aerosol , so far only organic aerosol
          ZORGAERO=0._JPRB
          DO JT=INBDU+1,INBOM
-           ZORGAERO=ZORGAERO+PAEROP(JL,JK,JT)*ZRHO*1E9_JPRB ! kg/kg -> ug/m3
+           ZORGAERO=ZORGAERO+PAEROP(JL,JK,JT)*ZRHO(JL)*1E9_JPRB ! kg/kg -> ug/m3
          ENDDO
   
          ! Call to simple SOA-solver for two SOG/SOA tracers
@@ -879,7 +948,7 @@ DO JL=KIDIA,KFDIA
          ENDDO
          DO JT=1,INSOA  
            !conversion back to kg/kg 
-           ZSOA(JT)=ZSOA(JT)/(ZRHO*1E9_JPRB) 
+           ZSOA(JT)=ZSOA(JT)/(ZRHO(JL)*1E9_JPRB) 
 
            ZSOA_TMP=ZSOA(JT)
            ! Apply photolytic loss, Hodzic et al. (2016)
@@ -923,6 +992,23 @@ DO JL=KIDIA,KFDIA
    ENDDO
 
 
+!de-couple VSO2 tracer with SO2 chemistry: split contribution between existing (chemical) SO2 and VSO2
+    IF (LCHEM_VSO2_COUPLE) THEN
+      DO JL=KIDIA,KFDIA
+        ZDELTA_SO2=ZCVM(JL,ISO2)-ZCVM0(JL,ISO2)
+        IF (ZDELTA_SO2 < -1.E-24_JPRB .AND. (PCEN(JL,JK,ISO2)+PCEN(JL,JK,IVSO2)) > 1.E-18_JPRB ) THEN
+          ! In case of SO2 net loss, redistribute over VSO2 and SO2
+          ZRAT_VSO2=MAX(0._JPRB,MIN(1._JPRB,(PCEN(JL,JK,IVSO2)) /(PCEN(JL,JK,ISO2)+PCEN(JL,JK,IVSO2))))
+          ZCVM(JL,IVSO2)=MAX(0._JPRB,ZCVM0(JL,IVSO2)+ZDELTA_SO2*ZRAT_VSO2)
+          ZCVM(JL,ISO2)=ZCVM(JL,ISO2)-ZDELTA_SO2*ZRAT_VSO2
+        ELSE
+          !nothing to to..
+          ZCVM(JL,IVSO2) = ZCVM0(JL,IVSO2)
+        ENDIF
+      ENDDO
+    ENDIF
+
+
 !4.9: O3S handling
 
   DO JL=KIDIA,KFDIA
@@ -943,18 +1029,6 @@ DO JL=KIDIA,KFDIA
        ENDIF  
      ENDDO
    ENDDO
-
-! check for large values 
-!   IF (LLCHECKMAX) THEN
-!     DO JL=KIDIA,KFDIA
-!       IF ( PTENC1(JL,JK,IHNO3) * PTSTEP > 1.0e-4 ) THEN 
-!          print*, ' HNO3 large after ebi ', ZCVM(JL,IHNO3) , PTENC1(JL,JK,IHNO3) * PTSTEP, ZCVM0(JL,IHNO3) , JL, JK 
-!        ENDIF
-!        IF ( PTENC1(JL,JK,INO2) * PTSTEP > 1.0e-4 ) THEN 
-!           print*, ' NO2 large after ebi ', ZCVM(JL,INO2) , PTENC1(JL,JK,INO2) * PTSTEP, ZCVM0(JL,INO2) , JL, JK 
-!        ENDIF  
-!     ENDDO
-!   ENDIF   
 
 ENDDO ! loop over levels
 
@@ -1162,51 +1236,6 @@ IF (IMODE_HNO3BC > 0) THEN
       PTENC1(JL,JK,INO)  = PTENC1(JL,JK,INO)   - PCEN(JL,JK,INO) * (1._JPRB - EXP(-PTSTEP / (ZTAU_NUDGE))) / PTSTEP
     ENDDO
   ENDDO
-ENDIF
-
-
-! check for large values 
-!   IF (LLCHECKMAX) THEN
-!     DO JL=KIDIA,KFDIA
-!       IF ( PTENC1(JL,JK,IHNO3) * PTSTEP > 1.0e-4 ) THEN 
-!          print*, ' HNO3 large after bc ', ZCVM(JL,IHNO3) , PTENC1(JL,JK,IHNO3) * PTSTEP, ZCVM0(JL,IHNO3) , JL, JK 
-!        ENDIF
-!        IF ( PTENC1(JL,JK,INO2) * PTSTEP > 1.0e-4 ) THEN 
-!           print*, ' NO2 large after bc ', ZCVM(JL,INO2) , PTENC1(JL,JK,INO2) * PTSTEP, ZCVM0(JL,INO2) , JL, JK 
-!        ENDIF  
-!     ENDDO
-!   ENDIF   
-
-!6.4 set NO2 and NO tendencies to ensure zero NOx in Stratopshere
-IF (LCHEM_0NOX) THEN
- DO JK=1,KLEV
-   DO JL=KIDIA,KFDIA
-     ZPMAXO3CAR=PPTROPO(JL) 
-     ZPMINO3CAR=ZPMAXO3CAR-4000_JPRB
-     ZT0NO= -1.0_JPRB *  ( PCEN(JL,JK,INO) / PTSTEP )
-     ZT0NO2= -1.0_JPRB *  ( PCEN(JL,JK,INO2) / PTSTEP )
-
-     IF (PRSF1(JL,JK)<= ZPMAXO3CAR)  THEN
-         ! At least partialy stratospheric tendencies
-      IF (PRSF1(JL,JK)> ZPMINO3CAR)  THEN
-         ! Transition region ZPMAX > P > ZPMIN
-         ZPO3CAR_RATIO=(PRSF1(JL,JK)-ZPMINO3CAR)/(ZPMAXO3CAR-ZPMINO3CAR)
-         PTENC1(JL,JK,INO) =  ZPO3CAR_RATIO* PTENC1(JL,JK,INO) +(1_JPRB-ZPO3CAR_RATIO)* ZT0NO  
-         PTENC1(JL,JK,INO2) =  ZPO3CAR_RATIO* PTENC1(JL,JK,INO2) +(1_JPRB-ZPO3CAR_RATIO)* ZT0NO2  
-      ELSE
-        ! completely stratospheric region: P < ZPMIN
-        PTENC1(JL,JK,INO) =  ZT0NO  
-        PTENC1(JL,JK,INO2) =  ZT0NO2  
-      ENDIF
-
-    ENDIF
-    
-!    IF (PRSF1(JL,JK) <= ZPMAXO3CAR) THEN 
-!      IF ( ZTENO3COR(JL,JK)*3600.0_JPRB > PCEN(JL,JK,IO3) * 0.01_JPRB )  & 
-!   &  WRITE(NULOUT,*) ' O3Chem high tend ', JL, JK,  ZTENO3COR(JL,JK)*3600.0_JPRB, PCEN(JL,JK,IO3)  
-!    ENDIF
-   ENDDO
- ENDDO
 ENDIF
 
 !-----------------------------------------------------------------------

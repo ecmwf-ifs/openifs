@@ -62,7 +62,6 @@ USE YOMSP                  , ONLY : SPVOR_FLT, SPDIV_FLT
 USE YOMSP5                 , ONLY : SPA5
 USE YOMDYNA                , ONLY : TDYNA
 USE SPECTRAL_FIELDS_MOD
-USE YOMLUN                 , ONLY : NULOUT !JARON
 
 
 !     ------------------------------------------------------------------
@@ -120,7 +119,6 @@ LLFSCOMP = LLDERR .AND. (LDRFRIC.AND.YDDYNA%LSLAG.AND.(NCONF == 1.OR.NCONF == 30
 IF (PRESENT(LDFPOS)) THEN
   LLVOR = LDFPOS .OR. (LVOR .AND. LLDERR)
   LLUVDER = (LDFPOS .AND. .NOT. LECMWF) .OR. LUVDER 
-  !rek WRITE(UNIT=NULOUT,FMT='(''LDFPOS  = '',L2,'' LLUVDER  = '',L2)') LDFPOS,LLUVDER !TEST
 ELSE
   LLVOR = (LVOR .AND. LLDERR)
   LLUVDER = LUVDER

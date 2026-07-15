@@ -30,7 +30,7 @@ MODULE SURFACE_VARIABLES_MOD
 
 USE PARKIND1, ONLY: JPIM, JPRB
 USE VARIABLE_MODULE, ONLY: VARIABLE_2D, VARIABLE_3D
-USE FIELD_MODULE, ONLY: FIELD_3D, FIELD_4D
+USE FIELD_MODULE, ONLY: FIELD_3RB, FIELD_4RB
 
 IMPLICIT NONE
 
@@ -44,7 +44,7 @@ TYPE SURFACE_VARIABLE_GROUP_${group.name}$
 #:endfor
 
   ! Store a field encapsualting the entire group array for backward compatibility
-  TYPE(FIELD_${group.dimension+1}$D) :: F_GROUP
+  CLASS(FIELD_${group.dimension+1}$RB), POINTER :: F_GROUP
 END TYPE SURFACE_VARIABLE_GROUP_${group.name}$
 
 #:endfor
@@ -59,7 +59,7 @@ TYPE SURFACE_VARIABLE_GROUP_${group.name}$
 #:endfor
 
   ! Store a field encapsualting the entire group array for backward compatibility
-  TYPE(FIELD_${group.dimension+1}$D) :: F_GROUP
+  CLASS(FIELD_${group.dimension+1}$RB), POINTER :: F_GROUP
 END TYPE SURFACE_VARIABLE_GROUP_${group.name}$
 
 #:endfor

@@ -1,3 +1,80 @@
+
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFWNG* -  COMPUTES CORRECTIONS TO AVOID NEGATIVE SOIL MOISTURE.
+
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES CORRECTIONS IN THE SOIL MOISTURE OF
+!     THE SKIN, SURFACE AND DEEP RESERVOIR AND RUN-OFF TO AVOID NEGATIVE
+!     SOIL MOISTURE VALUES.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFWNG* IS CALLED FROM *SURF*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KCWS        Number of layers to merge at the end for the soil water profile (for > 4layers)
+!    *KSOTY*      SOIL TYPE                                     (1-7)
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP FOR THE PHYSICS                       S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 (ACCUMULATED,REAL):
+
+!     INPUT/OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PWL*        SKIN RESERVOIR WATER CONTENT                   kg/m**2
+!    *PWLMX*      MAXIMUM SKIN RESERVOIR CONTENT                 kg/m**2
+!    *PWSA*       SOIL MOISTURE                                M**3/M**3
+
+!     INPUT/OUTPUT PARAMETERS (REAL):
+!    *PROS*       RUN-OFF FOR THE SURFACE LAYER                 kg/m**2
+!    *PROD*       RUN-OFF FOR DEEPER LAYERS (EXCEPT DRAINAGE)   kg/m**2
+!    *PWFSD*      WATER FLUX BETWEEN SURFACE AND DEEP LAYER     kg/m**2/s
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHWLS*     Diagnostic array for soil water (see module yomcdh)
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original    P.VITERBO      E.C.M.W.F.     16/01/89
+!     Modified    P.VITERBO    99-03-26     Tiling of the land surface
+!     Modified    J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo    24-05-2004      Change surface units
+!     G. Balsamo    03-07-2006      Add soil type
+!     G. Balsamo    18-08-2015      Rewritten for soil multi-layer
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP3 object for spatially distributed parameters
+!     ------------------------------------------------------------------
+
 MODULE SRFWNG_MOD
 CONTAINS
 SUBROUTINE SRFWNG(KIDIA,KFDIA,KLEVS,PTMST,KSOTY,&
@@ -10,14 +87,6 @@ USE PARKIND1  , ONLY : JPIM, JPRB
 USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_THF   , ONLY : RHOH2O
 USE YOS_SOIL  , ONLY : TSOIL
-
-! (C) Copyright 1989- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFWNG* -  COMPUTES CORRECTIONS TO AVOID NEGATIVE SOIL MOISTURE.
 

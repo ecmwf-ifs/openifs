@@ -48,6 +48,7 @@ SUBROUTINE GPNORM_TRANS_CTL(PGP,KFIELDS,KPROMA,PAVE,PMIN,PMAX,LDAVE_ONLY,PW)
 !        Original : 19th Sept 2008
 !        R. El Khatib 07-08-2009 Optimisation directive for NEC
 !        R. El Khatib 16-Sep-2019 merge with LAM code
+!        R. El Khatib 02-Jun-2022 Optimization/Cleaning
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
@@ -154,6 +155,7 @@ DO J=1,KFIELDS
 ENDDO
 
 ALLOCATE(ZGTF(IF_FS,D%NLENGTF))
+IF (SIZE(ZGTF) > 0) ZGTF(1,1)=0._JPRB ! force allocation right here, not inside an omp region below
 LGPNORM=.TRUE.
 CALL TRGTOL(ZGTF,IF_FS,IF_GP,IF_SCALARS_G,IVSET,PGP=PGP)
 LGPNORM=.FALSE.

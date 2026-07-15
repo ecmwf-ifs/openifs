@@ -1,3 +1,41 @@
+
+! (C) Copyright 2001- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**   *SURF_INQ*  Extract information from the surface package
+
+!     Purpose.
+!     --------
+!     Interface routine for extracting information from the surf pack.
+
+!**   Interface.
+!     ----------
+!     CALL SURF_INQ(...)
+!     Explicit arguments : All arguments are optional.
+!     --------------------
+
+!     Method.
+!     -------
+
+!     Externals: none
+
+!     Author.
+!     -------
+!        JF Estrade *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 03-10-01
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        G.Balsamo     01-Sep-2006 Add soil type related information
+!I. Sandu    24-02-2014  Lambda skin values by vegetation type instead of tile
+!        R. El Khatib 09-Sep-2016 PRVRSMIN
+!     ------------------------------------------------------------------
+
 SUBROUTINE SURF_INQ(YDSURF,&
                   & KNVTYPES,KNSOTY,PRRCSOIL,PRWSAT,PRWCAP,PRWPWP,PRQWEVAP,PRQWSBCR,&
                   & PRQSNCR,PRWLMAX,PRWSATM,PRWCAPM,PRWPWPM,PRTF1,PRTF2,PRTF3,PRTF4,&
@@ -9,13 +47,6 @@ SUBROUTINE SURF_INQ(YDSURF,&
                   & LD_LESNML, RLEVSNMIN, RLEVSNMAX,&
                   & RLEVSNMIN_GL, RLEVSNMAX_GL)
 
-! (C) Copyright 2001- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**   *SURF_INQ*  Extract information from the surface package
 
 !     Purpose.

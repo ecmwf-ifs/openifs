@@ -1,3 +1,68 @@
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFIS* - Computes temperature changes in soil.
+
+!     PURPOSE.
+!     --------
+!**   Computes temperature evolution of sea ice
+!**   INTERFACE.
+!     ----------
+!          *SRFIS* IS CALLED FROM *SURFS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF SURFACE TILES
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDICE*      ICE MASK (TRUE for sea ice)
+!    *LDNH*       TRUE FOR NORTHERN HEMISPHERE
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTIAM1M*    SEA ICE TEMPERATURE                            K
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PAHFSTI*    TILE SURFACE SENSIBLE HEAT FLUX                W/M2
+!    *PEVAPTI*    TILE SURFACE MOISTURE FLUX                     KG/M2/S
+!    *PSSRFLTI*   TILE NET SHORTWAVE RADIATION FLUX AT SURFACE   W/M2
+
+!     UPDATED PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PTIA*       SOIL TEMPERATURE                               K
+
+!     METHOD.
+!     -------
+!          Parameters are set and the tridiagonal solver is called.
+
+!     EXTERNALS.
+!     ----------
+!     *SRFWDIFS*
+
+!     REFERENCE.
+!     ----------
+!          See documentation.
+
+!     Original
+!     --------
+!            Simplified version based on SRFI
+!       M. Janiskova              E.C.M.W.F.     25-07-2011  
+
+!     Modifications
+!     -------------
+
+!     ------------------------------------------------------------------
+
 MODULE SRFIS_MOD
 CONTAINS
 SUBROUTINE SRFIS(KIDIA , KFDIA  , KLON  , KLEVS ,&
@@ -13,14 +78,6 @@ USE YOS_SOIL  , ONLY : TSOIL
 USE SRFWDIFS_MOD
 
 #ifdef DOC
-! (C) Copyright 2011- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !**** *SRFIS* - Computes temperature changes in soil.
 
 !     PURPOSE.

@@ -7,7 +7,7 @@
 ! nor does it submit to any jurisdiction
 
       SUBROUTINE AER_DRYDEPVEL(KSEASON_WE,KVEG_ZH,PRHOP,PWETD,PSIGMA, &
-      &    PZ0M,PCI,PUSTR,PDZ,PT, PRHO, PDUST_REBOUND, PVDEP)
+      &    PZ0M,PUSTR,PT, PRHO, PDUST_REBOUND, PVRES)
 
 !**** *AER_DRYDEPVEL* -  ROUTINE FOR PARAMETRIZATION OF DRY DEPOSITION VELOCITY
 
@@ -75,15 +75,13 @@
 ! PWETD      : PARTICLE WET DIAMETER   (m)
 ! PSIGMA     : PARTICLE DISTRIBUTION STDEV 
 ! PZ0M       : ROUGHNESS LENGTH         (m)
-! PCI        : SEA-ICE MASK
 ! PUST       : FRICTION VELOCITY        (m.s-1)
-! PDZ        : DELTA Z                  (m)
 ! PT         : TEMPERATURE              (K)
 ! PRHO       : AIR DENSITY              (kg m-3)
 
 ! OUTPUTS:
 ! --------
-! PVDEP      : DRY DEPOSITION VELOCITY  (m.s-1)
+! PVDEP      : DRY DEPOSITION RESISTANCE  (s.m-1)
 
 ! LOCAL VARIABLES:
 ! ---------------
@@ -98,7 +96,6 @@
 ! ZEB_AV_3    : 3rd moment avg collection eff. for Brownian diffusion
 ! ZEIM_AV_3   : 3rd moment avg collection eff. for impaction
 ! ZEIN        : Collection eff. for interception
-! ZAR         : Aerodynamic resistance
 ! ZCR,ZY,ZALPHA: aerosol deposition coefficients
 !     [vary with land category & input via DATA statements]
 ! ZCR        : Characteristic radius of collectors (m)
@@ -142,13 +139,11 @@ REAL(KIND=JPRB), INTENT(IN) :: PRHOP
 REAL(KIND=JPRB), INTENT(IN) :: PWETD
 REAL(KIND=JPRB), INTENT(IN) :: PSIGMA
 REAL(KIND=JPRB), INTENT(IN) :: PZ0M
-REAL(KIND=JPRB), INTENT(IN) :: PCI
 REAL(KIND=JPRB), INTENT(IN) :: PUSTR
-REAL(KIND=JPRB), INTENT(IN) :: PDZ
 REAL(KIND=JPRB), INTENT(IN) :: PT
 REAL(KIND=JPRB), INTENT(IN) :: PRHO
 REAL(KIND=JPRB), INTENT(IN) :: PDUST_REBOUND
-REAL(KIND=JPRB), INTENT(OUT) :: PVDEP
+REAL(KIND=JPRB), INTENT(OUT) :: PVRES
 !
 !    Local Variables
 REAL(KIND=JPRB)    :: ZPS_AV_3
@@ -159,7 +154,6 @@ REAL(KIND=JPRB)    :: ZEB_AV_3
 REAL(KIND=JPRB)    :: ZEIM_AV_3
 REAL(KIND=JPRB)    :: ZEIN
 REAL(KIND=JPRB)    :: ZSN_AV_3
-REAL(KIND=JPRB)    :: ZAR
 REAL(KIND=JPRB)    :: ZSR_AV_3,ZREBOUND
 REAL(KIND=JPRB), PARAMETER :: ZYR(15)    = (/0.56_JPRB,0.58_JPRB,0.56_JPRB,0.56_JPRB,0.56_JPRB,         &
                    & 0.54_JPRB,0.54_JPRB,0.54_JPRB,0.54_JPRB,0.54_JPRB,0.54_JPRB,0.54_JPRB, &
@@ -202,7 +196,7 @@ ZCR(:,5)=(/8E-4_JPRB,2e-3_JPRB,8E-4_JPRB,2E-3_JPRB,2E-3_JPRB,8E-4_JPRB,8E-4_JPRB
 !         & 4E-3_JPRB,4E-3_JPRB,4E-3_JPRB,1E-2_JPRB/)
 
 
-PVDEP=0.0_JPRB
+PVRES=0.0_JPRB
 ! dynamic viscosity of air (kg m^-1 s^-1)
 ZVISC = 1.83E-5_JPRB*(416.16_JPRB/(PT+120.0_JPRB))*(SQRT(PT/296.16_JPRB)**3.0_JPRB)
 ! mean free speed of air molecules
@@ -211,8 +205,6 @@ ZVBA  = SQRT(8.0_JPRB*RKBOL*PT)/(RPI*ZIMA)
 ZMFPA   = 2.0_JPRB*ZVISC/(PRHO*ZVBA)
 
 ZKARMN=0.4_JPRB
-! .. Calculate aerodynamic resistance
-ZAR=LOG(PDZ/PZ0M)/(ZKARMN*PUSTR)
 
 !       Calculate 3rd moment avg. grav. settling velocities
 CALL AER_VGRAV(3,PWETD,PSIGMA,ZVISC,ZMFPA,PRHOP,ZVGRAV_AV_3)
@@ -258,8 +250,8 @@ ENDIF
 ZSR_AV_3=ZSR_AV_3/ZREBOUND
 
 
-!       Calculate deposition velocity
-PVDEP=1.0_JPRB/(ZAR+ZSR_AV_3)
+!       Calculate surface resistance
+PVRES=ZSR_AV_3
 
 IF (LHOOK) CALL DR_HOOK('AER_DRYDEPVEL',1,ZHOOK_HANDLE)
 END SUBROUTINE AER_DRYDEPVEL

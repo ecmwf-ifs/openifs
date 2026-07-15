@@ -1,0 +1,65 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE FIELD_${RANK}$${SUFF}$_ACCESS_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList (ranks=[RANK], kinds=['JP' + SUFF])
+#:set dumsize = '1'
+
+USE FIELD_MODULE
+${fieldType.useParkind1 ()}$
+
+IMPLICIT NONE
+
+PRIVATE
+
+#:for mode in ['RDONLY', 'RDWR']
+#:for what in ['DEVICE', 'HOST']
+
+INTERFACE GET_${what}$_DATA_${mode}$
+#:for ft in fieldTypeList
+  MODULE PROCEDURE :: GET_${what}$_DATA_${mode}$_${ft.name}$
+#:endfor
+END INTERFACE GET_${what}$_DATA_${mode}$
+
+PUBLIC :: GET_${what}$_DATA_${mode}$
+
+#:endfor
+#:endfor
+
+#:for ft in fieldTypeList
+${ft.type}$, TARGET, SAVE :: DUMMY_${ft.name}$ (${ ', '.join ([dumsize] * (ft.rank-1) + ['1']) }$)
+!$acc declare create (DUMMY_${ft.name}$)
+
+#:endfor
+
+CONTAINS
+
+#:for mode in ['RDONLY', 'RDWR']
+#:for what in ['DEVICE', 'HOST']
+
+#:for ft in fieldTypeList
+  FUNCTION GET_${what}$_DATA_${mode}$_${ft.name}$ (FIELD_PTR) RESULT (PTR)
+    CLASS (${ft.name}$), POINTER :: FIELD_PTR
+    ${ft.type}$, POINTER :: PTR(${ft.shape}$)
+
+    IF (ASSOCIATED (FIELD_PTR)) THEN
+      CALL FIELD_PTR%GET_${what}$_DATA_${mode}$ (PTR)
+    ELSE
+      PTR => DUMMY_${ft.name}$
+    ENDIF
+
+  END FUNCTION GET_${what}$_DATA_${mode}$_${ft.name}$
+
+#:endfor
+
+#:endfor
+#:endfor
+
+END MODULE FIELD_${RANK}$${SUFF}$_ACCESS_MODULE

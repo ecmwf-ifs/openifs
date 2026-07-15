@@ -78,14 +78,10 @@ REAL(KIND=JPHOOK)               :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('TM5_CHEM_INI',0,ZHOOK_HANDLE)
 
-! Some checking
+ ! Some checking
  CALL TRACER_IDX_CHECK(YGFL,YDCHEM,YDCOMPO)
 
- IF (YDCHEM%LCHEM_REVCHEM .AND. YDCHEM%KCHEM_SOLVE==2) THEN
-   CALL ABOR1('tm5_chem_ini: LCHEM_REVCHEM=.true. not supported in combination with KPP-solver')
- ENDIF
-
-  ! Prepare / READ in photolysis table
+ ! Prepare / READ in photolysis table
  CALL PHOTOLYSIS_INI
 
  ! initialize table needed for budget evaluation
@@ -108,7 +104,7 @@ CONTAINS
 SUBROUTINE TRACER_IDX_CHECK(YGFL,YDCHEM, YDCOMPO)
 
 
-USE TM5_CHEM_MODULE    , ONLY : &
+USE TM5_TRACERS    , ONLY : &
  &  IO3,      IH2O2,    ICH4,    ICO,     INOX,  INO3_A,   IPSC,   IPB210,    &
  &  IHNO3,    ICH3O2H,  ICH2O,   IPAR,    IETH,  IOLE,     IALD2,  IPAN,      &
  &  IROOH,    ICH3O2NO2,IORGNTR, IISOP,   ISO2,  IDMS,     INH3,   ISO4,      &
@@ -118,7 +114,7 @@ USE TM5_CHEM_MODULE    , ONLY : &
  &  IETHOH,   IC3H8,    IC3H6,   ITERP,   IISPD, IACET,    IACO2,  IHYPROPO2, &
  &  IIC3H7O2, ISO3,     IHCN,    ICH3CN,  IXYL,  ITOL,     IAROO2, IHPALD1,   &
  &  IHPALD2,  IISOPOOH, IGLY,    IGLYALD, IHYAC, IISOPBO2, IISOPDO2, &
- &  ISOG1, ISOG2A, ISOG2B
+ &  ISOG1,    ISOG2A,   ISOG2B,  IVSO2
 
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
@@ -224,7 +220,9 @@ ASSOCIATE(NCHEM=>YGFL%NCHEM, YCHEM=>YGFL%YCHEM)
        CASE ('CO_A_25') ; LLFOUND = .TRUE. 
        CASE ('PM10')    ; LLFOUND = .TRUE. 
        CASE ('PM25')    ; LLFOUND = .TRUE. 
-       CASE ('VSO2')    ; LLFOUND = .TRUE.
+       CASE ('VSO2') 
+         LLFOUND = .TRUE.
+         IVSO2 = JL
        CASE DEFAULT
          WRITE(NULOUT,*) 'ERROR tm5_chem_ini: no matching tracer name for '//TRIM(YCHEM(JL)%CNAME)
          CALL ABOR1('tm5_chem_ini: No matching tracer name available')
@@ -271,6 +269,15 @@ ASSOCIATE(NCHEM=>YGFL%NCHEM, YCHEM=>YGFL%YCHEM)
      ENDIF   
     IF (.NOT. LLFOUND_C ) THEN
       CALL ABOR1('ERROR tm5_chem_ini: SOG2B not defined in table-file, while LAERSOA=true')
+    ENDIF   
+  ENDIF
+
+! VSO2 tracer checking: Make sure to set the efold-time to zero, if running with CB05-chemistry
+  IF (YDCHEM%LCHEM_VSO2_COUPLE ) THEN
+    IF (IVSO2 > 0) THEN
+      YCHEM(IVSO2)%REFOLD=0.0_JPRB
+    ELSE
+      CALL ABOR1('ERROR tm5_chem_ini: VSO2 coupling activated but no VSO2 tracer defined')
     ENDIF   
   ENDIF
 
@@ -549,7 +556,7 @@ SUBROUTINE IFS_INI_BUDGET(YGFL,YDCHEM)
 !     ----------
 !          *IFS_INI_BUDGET* IS CALLED FROM *TM5_CHEM_INI*.
 !
-USE TM5_CHEM_MODULE    , ONLY : NRR, NRJ, NREAC,  IACID,     IAIR,     IH2O,      &
+USE TM5_TRACERS    , ONLY :      IACID,     IAIR,     IH2O,      &
  &  IO3,      IH2O2,   ICH4,     ICO,    IHNO3,   ICH3O2H,   ICH2O,    IPAR,      &
  &  IETH,     IOLE,    IALD2,    IPAN,   IROOH,   ICH3O2NO2, IORGNTR,  IISOP,     &
  &  ISO2,     IDMS,    INH3,     IMGLY,  IRN222,  INO,       IHO2,     IHONO,     &
@@ -559,6 +566,7 @@ USE TM5_CHEM_MODULE    , ONLY : NRR, NRJ, NREAC,  IACID,     IAIR,     IH2O,    
  &  IIC3H7O2, IO2,     ISO3,     IHCN,   ICH3CN,  IXYL,      ITOL,     IAROO2,    &
  &  IHPALD1,  IHPALD2, IISOPOOH, IGLY,   IGLYALD, IHYAC,     IISOPBO2, IISOPDO2,  &
  &  ISOG2A
+USE TM5_CHEM_MODULE    , ONLY : NRR, NRJ, NREAC 
 
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
@@ -771,7 +779,7 @@ SUBROUTINE RATES
 !      
 !      reference
 !      ---------
-!      Williams et al., ACP 2013
+!      Williams et al., GMD 2022
 !
 !------------------------------------------------------------------
 USE TM5_CHEM_MODULE, ONLY :   KNOO3,      KHO2NO,     KMO2NO,     KNO2O3,       KNONO3,     KNO3HO2,     KN2O5A,     &
@@ -793,10 +801,12 @@ USE TM5_CHEM_MODULE, ONLY :   KNOO3,      KHO2NO,     KMO2NO,     KNO2O3,       
   &  KCXYLO3A,   KCXYLO3B,    KAROO2NO,   K2AROO2,    KAROO2HO2,  KAROO2XO2,    KISOPBO2A,  KISOPBO2B,   KISOPDO2A,  &
   &  KISOPDO2B,  KISOPBO2HO2, KISOPBO2NO, KISOPDO2HO2,KISOPDO2NO, KHPALD1OH,    KHPALD2OH,  KGLYOH,     &
   &  KGLYALDOH,  KHYACOH, KISOPOOHOH, &
-  &  HENRY,      RATES_LUT,   NTEMP, &
-  &  NTLOW, &
+  &  RATES_LUT,   NTEMP, &
+  &  NTLOW
+USE TM5_TRACERS, ONLY: &  
   &  IH2O2, IHNO3, ICH3O2H, ICH2O, IROOH, IORGNTR, ISO4, INH4, IMSA, ISO2, INH3, IO3, IMGLY, IALD2, & 
-  &  IHCOOH, ICH3OH, IMCOOH, IETHOH, IO3S, IACET, IHCN, ICH3CN, IGLY, IHPALD1, IHPALD2, IHYAC  
+  &  IHCOOH, ICH3OH, IMCOOH, IETHOH, IO3S, IACET, IHCN, ICH3CN, IGLY, IHPALD1, IHPALD2, IHYAC, &
+  &  HENRY  
   
   
 USE PARKIND1  ,ONLY : JPIM,JPRB, JPRM, JPRD

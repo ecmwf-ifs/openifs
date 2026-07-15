@@ -1,3 +1,104 @@
+
+! (C) Copyright 1990- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VEXCS* - DETERMINES THE EXCHANGE COEFFICIENTS BETWEEN THE
+!                 SURFACE AND THE LOWEST MODEL LEVEL WITH HELP OF
+!                 STABILITY AS FUNCTION OF OBUKHOV-L.
+
+!     Original A.C.M. BELJAARS       E.C.M.W.F.    26/03/90.
+!     Modified A.C.M. BELJAARS   26/03/99 Tiling of the land surface.
+!     Modified J. HAGUE          13/01/03 MASS Vector Functions       
+!     Modified   P. Viterbo ECMWF 12/05/2005 Externalize SURF
+!                                   (based on vdfexcs)
+!     Modified A. Beljaars       30/10/2013 Change scaling of transfer coeff.
+!     Modified A. Beljaars       02/02/2017 Introduction of tracer transfer coeff.
+!     Modified M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+
+!     PURPOSE
+!     -------
+
+!     DETERMINE EXCHANGE COEFFICIENTS BETWEEN THE SURFACE AND THE
+!     LOWEST MODEL LEVEL
+
+!     INTERFACE
+!     ---------
+
+!     *VEXCS* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KITT*         NUMBER OF ITERATIONS (BACK SUBST. IS ALWAYS DONE) [#]
+!     *K_VMASS*      Controls the use of vector functions in the IBM scientific
+!                     library. Set K_VMASS=0 to use standard functions
+
+!     INPUT PARAMETER (LOGICAL):
+
+!     *LDINIT*       IF .T. : ROUTINE GENERATES ITS OWN INITIAL GUESS  [#]
+!                    IF .F. : ROUTINE STARTS WITH PZDL  AS INITIAL GUESS
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PUMLEV*      X-VELOCITY COMPONENT AT T-1, lowest model level
+!     *PVMLEV*      Y-VELOCITY COMPONENT AT T-1, lowest model level
+!     *PTMLEV*      TEMPERATURE AT T-1, lowest model level
+!     *PQMLEV*      SPECIFIC HUMUDITY AT T-1, lowest model level
+!     *PAPHMS*      PRESSURE AT T-1, surface
+!     *PGEOMLEV*    GEOPOTENTIAL AT T-1, lowest model level
+!     *PCPTGZLEV*    DRY STATIC ENERGY, LOWEST MODEL LEVEL
+!     *PCPTS*        DRY STATIC ENERGY AT THE SURFACE
+!     *PQSAM*        SPECIFIC HUMIDITY AT THE SURFACE
+!     *PZ0MM*        AERODYNAMIC ROUGHNESS LENGTH
+!     *PZ0HM*        ROUGHNESS LENGTH FOR TEMPERATURE
+!     *PZ0QM*        ROUGHNESS LENGTH FOR MOISTURE
+!     *PZDL*         ZNLEV DEVIDED BY OBUKHOV LENGTH                 [#]
+!     *PBUOM*        BUOYANCE FLUX AT THE SURFACE
+!     *PUCURR*       OCEAN CURRENT X-COMPONENT
+!     *PVCURR*       OCEAN CURRENT Y-COMPONENT
+!     *PI10FGCV*     CONVECTIVE GUST VELOCITY
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PCFM*         Scaled Transfer Coeff. momentum Rho*Cm*U      [kgm-2s-1]
+!     *PCFH*         Scaled Transfer Coeff. heat     Rho*Ch*U      [kgm-2s-1] 
+!     *PCFQ*         Scaled Transfer Coeff. moisture Rho*Cq*U      [kgm-2s-1] 
+!     *PKH*          Scaled Transfer Coeff. heat         Ch*U      [m/s]
+!     *PKC*          Scaled Transfer Coeff. tracer       Cc*U      [m/s]
+!                    (for tracers, the coefficient describes the transfer 
+!                     between the lowest model level and the roughness length
+!                     for momentum, so it does not include the quasi-laminar 
+!                     resistance)
+
+!     REMARK: [#] UNUSED PARAMETERS IN TANGENT LINEAR AND ADJOINT VERSIONS
+!     ------
+
+!     METHOD
+!     ------
+
+!     THE ALGEBRAIC RELATION BETWEEN Z/L AND THE RICHARDSON NUMBER
+!     IS SOLVED ITERATIVELY. THE STABILITY FUNCTIONS ARE THE SO-CALLED
+!     PROFILE PSI-FUNCTIONS.
+!     THE INITIAL GUESS (E.G. FROM PREVIOUS TIMESTEP) IS BACK-
+!     SUBSTITUTED TO OBTAIN A SECOND APPROXIMATION. FURTHER ITERATION
+!     IS DONE BY LINEAR INTER(EXTRA)POLATION (NEWTON'S  METHOD WITH
+!     THE DERIVATIVE FROM SUCCESSIVE APPROXIMATIONS). IF NO INITIAL
+!     GUESS IS PROVIDED, THE ROUTINE CAN PRODUCE ITS OWN. IN THE LATTER
+!     CASE LDINIT=.T. HAS TO BE SPECIFIED AND IT IS RECOMMENDED TO
+!     CHOOSE KITT=3. WITH INITIAL GUESSES FROM THE PREVIOUS TIME STEP
+!     0 OR 1 ITERATION SHOULD BE SUFFICIENT.
+
+!     ------------------------------------------------------------------
+
 MODULE VEXCS_MOD
 CONTAINS
 
@@ -15,13 +116,6 @@ USE YOS_EXCS  , ONLY : RCHBCD, DRITBL, RCHBBCD, RCHBB, RCHB23A, RITBL, &
 USE YOS_CST   , ONLY : TCST
 USE YOS_EXC   , ONLY : TEXC
 
-! (C) Copyright 1990- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 

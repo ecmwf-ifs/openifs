@@ -1,3 +1,51 @@
+                  
+                  
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!------------------------------------------------------------------------------
+!
+! Description:
+!
+!  The FLAKE_DRIVER is a communication routine between HTESSEL
+!  and a FLake routines.
+!  It assigns the FLake variables at the previous time step 
+!  to their input values given by the driving model,
+!  calls a routine FLAKE_RADFLUX to compute the radiation fluxes,
+!  calls FLAKE_ENE,
+!  and returns the updated FLake variables to the driving model.
+!  The FLAKE_DRIVER does not contain any Flake physics. 
+!  It only serves as a convenient means to organize calls of Flake routines.
+
+! Current Code Owner: DWD, Dmitrii Mironov
+!  Phone:  +49-69-8062 2705
+!  Fax:    +49-69-8062 3721
+!  E-mail: dmitrii.mironov@dwd.de
+!
+! History:
+! Version    Date       Name
+! ---------- ---------- ----
+! 1.00       2005/11/17 Dmitrii Mironov 
+!  Initial release
+! 1.01T      2008/03/10 Victor Stepanenko
+!  The code is accomodated to be used in HTESSEL model
+!      F. Vana  05-Mar-2015  Support for single precision
+!
+! Code Description:
+! Language: Fortran 90.
+! Software Standards: "European Standards for Writing and
+! Documenting Exchangeable Fortran 90 Code".
+!==============================================================================
+!
+! Declarations:
+!
+! Modules used:
+
 ! File %M% from Library %Q%
 ! Version %I% from %G% extracted: %H%
 !------------------------------------------------------------------------------
@@ -18,13 +66,6 @@ SUBROUTINE FLAKE_DRIVER( KIDIA, KFDIA, KLON,         &
                   
                   
 
-! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !------------------------------------------------------------------------------
 !
 ! Description:

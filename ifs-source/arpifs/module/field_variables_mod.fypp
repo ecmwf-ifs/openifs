@@ -1,4 +1,15 @@
 #! Read variable and field configurations from file
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
 #:set config_file = os.path.dirname(_THIS_FILE_) + '/field_config.yaml'
 #:set config = field_config.VariableConfiguration(config_file)
 #:set gmv = config.groups['GMV']
@@ -19,35 +30,37 @@ MODULE FIELD_VARIABLES_MOD
 
 USE PARKIND1, ONLY: JPIM, JPRB
 USE VARIABLE_MODULE, ONLY: VARIABLE_2D, VARIABLE_3D, VARIABLE_4D
+#ifdef PARKIND1_SINGLE
+USE VARIABLE_MODULE, ONLY: VARIABLE_D2D, VARIABLE_D3D, VARIABLE_D4D
+#endif
 USE YOMGMV, ONLY : TGMV
 USE YOMGFL, ONLY : TGFL
-
 
 IMPLICIT NONE
 
 TYPE GEOMETRY_VARIABLES
+#:set geometry_variables_s = ['RCORI', 'RCORIC', 'GEMU', 'GSQM2', 'GELAM', 'GELAT', &
+& 'GECLO', 'GESLO', 'GM', 'GMAPPA', 'GOMVRL', 'GOMVRM', 'GNORDL', 'GNORDM', 'GNORDLCL', &
+& 'GNORDMCL', 'GNORDMCM', 'GAW', 'OROG', 'OROGL', 'OROGM', 'RINDX', 'RINDY', 'RATATH',  &
+& 'RATATX']
+#:set geometry_variables_d = ['RCOLON', 'RSILON']
+#:set geometry_variables = geometry_variables_s + geometry_variables_d
+
   ! Variables for arrays specific to the geometry
-  TYPE(VARIABLE_2D) :: RCORI
-  TYPE(VARIABLE_2D) :: RCORIC
-  TYPE(VARIABLE_2D) :: GEMU
-  TYPE(VARIABLE_2D) :: GSQM2
-  TYPE(VARIABLE_2D) :: GELAM
-  TYPE(VARIABLE_2D) :: GELAT
-  TYPE(VARIABLE_2D) :: GECLO
-  TYPE(VARIABLE_2D) :: GESLO
-  TYPE(VARIABLE_2D) :: GM
-  TYPE(VARIABLE_2D) :: GMAPPA
-  TYPE(VARIABLE_2D) :: GOMVRL
-  TYPE(VARIABLE_2D) :: GOMVRM
-  TYPE(VARIABLE_2D) :: GNORDL
-  TYPE(VARIABLE_2D) :: GNORDM
-  TYPE(VARIABLE_2D) :: GNORDLCL
-  TYPE(VARIABLE_2D) :: GNORDMCL
-  TYPE(VARIABLE_2D) :: GNORDMCM
-  TYPE(VARIABLE_2D) :: GAW
-  TYPE(VARIABLE_2D) :: OROG
-  TYPE(VARIABLE_2D) :: OROGL
-  TYPE(VARIABLE_2D) :: OROGM
+#:for var in geometry_variables_s
+  TYPE(VARIABLE_2D) :: ${var}$
+#:endfor
+#:for var in geometry_variables_d
+#ifdef PARKIND1_SINGLE
+  TYPE(VARIABLE_D2D) :: ${var}$
+#else
+  TYPE(VARIABLE_2D) :: ${var}$
+#endif
+#:endfor
+
+CONTAINS
+  PROCEDURE :: UPDATE_VIEW => GEOMETRY_VARIABLES_UPDATE_VIEW
+  PROCEDURE :: FINAL => GEOMETRY_VARIABLES_FINAL
 END TYPE GEOMETRY_VARIABLES
 
 TYPE ECPHYS_VARIABLES
@@ -188,6 +201,9 @@ CONTAINS
     CALL SELF%ECPHYS%AHFSTI%UPDATE_VIEW(BLOCK_INDEX)
     CALL SELF%ECPHYS%EVAPTI%UPDATE_VIEW(BLOCK_INDEX)
     CALL SELF%ECPHYS%TSKTI%UPDATE_VIEW(BLOCK_INDEX)
+
+    CALL SELF%GEOMETRY%UPDATE_VIEW (BLOCK_INDEX)
+
   END SUBROUTINE FIELD_VARIABLES_UPDATE_VIEW
 
   SUBROUTINE FIELD_VARIABLES_FINAL(SELF)
@@ -283,4 +299,19 @@ CONTAINS
     IF(ASSOCIATED(SELF%TKE%FPH9))SELF%TKE%FPH9%PTR => YDGFL%GFL(:,:,YDGFL%YGFL%YTKE%MP9_PH,:)
   END SUBROUTINE FIELD_VARIABLES_GMV_RESET_PH9
 
+  SUBROUTINE GEOMETRY_VARIABLES_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    CLASS (GEOMETRY_VARIABLES) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+#:for var in geometry_variables
+    CALL SELF%${var}$%UPDATE_VIEW (BLOCK_INDEX)
+#:endfor
+  END SUBROUTINE GEOMETRY_VARIABLES_UPDATE_VIEW
+  
+  SUBROUTINE GEOMETRY_VARIABLES_FINAL (SELF)
+    CLASS (GEOMETRY_VARIABLES) :: SELF
+#:for var in geometry_variables
+    CALL SELF%${var}$%FINAL
+#:endfor
+  END SUBROUTINE GEOMETRY_VARIABLES_FINAL
+  
 END MODULE FIELD_VARIABLES_MOD

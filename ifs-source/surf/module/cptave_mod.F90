@@ -1,3 +1,63 @@
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!     Purpose.
+!     --------
+!**** *CPTAVE * - COMPUTES AVERAGE SOIL PROPERTIES 
+!                 FOR THREE BROAD CLASSES OF SOIL
+!           COARSE
+!           MEDIUM
+!           FINE
+
+!     THE PROPERTIES TO BE DERIVED FOR EACH OF THE THREE SOIL TYPES ARE:
+!           SOIL WETNESS AT SATURATION                  (PTHESAT)
+!           SOIL WETNESS AT FIELD CAPACITY              (PTHECAP)
+!           SOIL WETNESS AT PERMANENT WILTING POINT     (PTHEPWP)
+!           CONDUCTIVITY AT SATURATION                  (PCKSAT)
+!           SOIL WATER POTENTIAL AT SATURATION          (PSISAT)
+!           B EXPONENT FOR CH FORMULA                   (PB)
+
+!     ASSUMPTIONS:
+!        1) CLAPP AND HORNBERGER (1978, CH) TYPE OF DEPENDENCY OF PSI AND
+!           K ON SOIL WETNESS
+!        2) SATURATION SOIL WETNESSES (POROSITY) FROM CH
+!        3) PWP AND CAP SOIL WETNESSES FROM PATTERSON (1990, PAT)
+
+!     METHOD:
+!        1) GET ZWSAT FROM CH, ZWCAP AND ZWPWP FROM PAT FOR THE 11
+!           USDA TEXTURAL CLASSES
+!        2) AVERAGE (1) VALUES FOR EACH OF THE 3 CLASSES
+!              COARSE        1,2,3,6
+!              MEDIUM        4,5,7,8
+!              FINE          9,10,11
+!        3) GET ZKSAT FROM CH FOR EACH OF THE TEXTURAL CLASSES
+!        4) AVERAGE (3) FOR THE CLASSES DEFINED IN (2)
+!        5) DETERMINE PSISAT, B FOR EACH OF THE 3 CLASSES BY SOLVING
+!           SIMULTANEOUSLY
+!              PSI(PTHEPWP)=-15 BAR
+!              PSI(PTHECAP)=-0.33 BAR
+!        Explicit arguments :
+!        --------------------
+
+!        Implicit arguments :
+!        --------------------
+!     Externals.
+!     ----------
+!         AVECLA
+!     Author.
+!     -------
+
+!     Modifications.
+!     --------------
+!        Original :
+!        MODIFICATION  : J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+
 MODULE CPTAVE_MOD
 CONTAINS
 SUBROUTINE CPTAVE(PTHESAT,PTHECAP,PTHEPWP,PCKSAT,PSISAT,PB)
@@ -7,13 +67,6 @@ USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
 USE YOS_DIM   , ONLY : JPSOILTY, JPTEXT
 
-! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !     Purpose.
 !     --------
 !**** *CPTAVE * - COMPUTES AVERAGE SOIL PROPERTIES 

@@ -8,49 +8,33 @@
 
 ecbuild_info("[ifsaux]")
 
-if (NOT HAVE_FORECAST_ONLY)
-  ecbuild_list_add_pattern(LIST ifsaux.${PREC}_src GLOB
-
-    ifsaux/module/*
-    ifsaux/bufr_io/*
-    ifsaux/cma/*
-    ifsaux/fi_libc/*
-    ifsaux/ddh/*  
-    ifsaux/support/*
-    ifsaux/utilities/*
-
-)
-else()
-  ecbuild_list_add_pattern(LIST ifsaux.${PREC}_src GLOB
-
-    ifsaux/module/*
-    ifsaux/fi_libc/*
-    ifsaux/ddh/*  
-    ifsaux/support/*
-    ifsaux/utilities/*
-
-)
-endif()
-
 ecbuild_add_library( TARGET ifsaux.${PREC}
   DEFINITIONS ${IFS_DEFINITIONS}
   LINKER_LANGUAGE Fortran
 
-  SOURCES ${ifsaux.${PREC}_src}
-    
+  SOURCES_GLOB
+    ifsaux/module/*
+    ifsaux/fi_libc/*
+    ifsaux/ddh/*
+    ifsaux/support/*
+    ifsaux/utilities/*
+
   PUBLIC_INCLUDES
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ifsaux/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ifsaux/fa>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ifsaux/ddh>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ifsaux/misc>
     $<BUILD_INTERFACE:${CMAKE_Fortran_MODULE_DIRECTORY}>
     ${MPI_Fortran_INCLUDE_PATH}
 
   PRIVATE_INCLUDES
     ifsaux/fi_libc
+    ifsaux/lfi
+    ifsaux/lfi_alt
 
   PUBLIC_LIBS
     ${IFS_OMP_Fortran_LIBRARIES}
-    ${LIBEMOS_LIBRARIES} ${ECCODES_LIBRARIES}
+    ${ECCODES_LIBRARIES}
     fiat parkind_${prec}
     ifsdummy
 

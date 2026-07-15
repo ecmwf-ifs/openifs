@@ -27,10 +27,7 @@ SAVE
 ! M2DGGP : array containing field codes for 2-D gaussian grid fields
 ! NO3DGGM: number of 3-D gaussian grid fields requested
 ! M3DGGM : array containing field codes for 3-D gaussian grid fields
-! NO2DSPE: number of 2-D ECV spectral fields requested
-! M2DSPE : array containing field codes for 2-D ECV spectral fields
-! NO3DSPE: number of 3-D ECV spectral fields requested
-! M3DSPE : array containing field codes for 3-D ECV spectral fields
+! NO2DGGE: number of 2-D ECV gaussian grid fields requested
 ! NO3DSPM: number of spherical harmonic fields requested (model level pp.)
 ! M3DSPM : array containing field codes for 3-D and 2-D fields (model lev. pp.)
 ! NO2DGGL: number of gaussian grid fields requested (pp. in lagged mode)
@@ -44,28 +41,19 @@ SAVE
 !     NFPPHY : useful dimension of CFPPHY
 
 INTEGER(KIND=JPIM), PARAMETER :: JPOPLEV=200
-INTEGER(KIND=JPIM), PARAMETER :: JPO2DGG=187
+INTEGER(KIND=JPIM), PARAMETER :: JPO2DGG=188
 INTEGER(KIND=JPIM), PARAMETER :: JPO3DSPM=35
 INTEGER(KIND=JPIM), PARAMETER :: JPO3DGG=38
-INTEGER(KIND=JPIM), PARAMETER :: JPO2DSPA=30
-INTEGER(KIND=JPIM), PARAMETER :: JPO3DSPA=10
-INTEGER(KIND=JPIM), PARAMETER :: JPO3DGGA=10
 
 INTEGER(KIND=JPIM) :: M2DGGP(JPO2DGG)
 INTEGER(KIND=JPIM) :: M3DSPM(JPO3DSPM)
 INTEGER(KIND=JPIM) :: M2DGGPL(JPO2DGG)
 INTEGER(KIND=JPIM) :: M3DGGM(JPO3DGG)
-INTEGER(KIND=JPIM) :: M2DSPE(JPO2DSPA)
-INTEGER(KIND=JPIM) :: M3DSPE(JPO3DSPA)
-INTEGER(KIND=JPIM) :: M3DGGE(JPO3DGGA)
 
 INTEGER(KIND=JPIM) :: NO2DGG
 INTEGER(KIND=JPIM) :: NO3DSPM
 INTEGER(KIND=JPIM) :: NO2DGGL
 INTEGER(KIND=JPIM) :: NO3DGGM
-INTEGER(KIND=JPIM) :: NO2DSPE
-INTEGER(KIND=JPIM) :: NO3DSPE
-INTEGER(KIND=JPIM) :: NO3DGGE
 
 LOGICAL :: LRSUP
 LOGICAL :: LRSACC

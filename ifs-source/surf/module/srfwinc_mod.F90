@@ -1,3 +1,78 @@
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFWINC* -  COMPUTES THE T+1 VALUES OF SOIL MOISTURE
+
+!     PURPOSE.
+!     --------
+!          COMPUTES THE T+1 VALUES OF SOIL MOISTURE BASED ON THE VALUES
+!     OBTAINED BY SOLVING THE SYSTEM OF EQUATIONS. IT SHOULD BE
+!     PRECEDED BY A CALL TO *SRFWEXC* AND *SRFWDIF*.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFWINC* IS CALLED FROM *SURFTSTP*
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SURFACE LAYERS
+!    *KCWS        Number of layers to merge at the end for the soil water profile (for > 4layers)
+!    *KDHVWLS*    Number of variables for soil water budget
+!    *KDHFWLS*    Number of fluxes for soil water budget
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 (REAL):
+!    *PWSAM1M*    MULTI-LAYER SOIL MOISTURE                  M**3/M**3
+!    *PWSADIF*    (W *)                     DIVIDED BY ALFA  M**3/M**3
+!    *PCFW*       MODIFIED DIFFUSIVITIES                         M
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PWSA*       UNFILTERED VALUE AT T+1                    M**3/M**3
+!    *PSAWGFL*    GRAVITY PART OF WATER FLUX (AT INPUT)
+!                 DRAINAGE + WATER DIFFUSIVITY (OUTPUT)       KG/M**2/S
+!                   (positive downwards, at layer bottom)
+!    *PWFSD*      WATER FLUX BETWEEN LAYER 1 AND 2            KG/M**2/S
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHWLS*     Diagnostic array for soil water (see module yomcdh)
+
+!     METHOD.
+!     -------
+!     TRIVIAL.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!      Original :
+!     P.VITERBO      E.C.M.W.F.      9/02/93
+!     P.VITERBO      E.C.M.W.F.      17-05-2000
+!        (Surface DDH for TILES)
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo    24-05-2004      Change surface units
+!     ------------------------------------------------------------------
+
 MODULE SRFWINC_MOD
 CONTAINS
 SUBROUTINE SRFWINC(KIDIA,KFDIA,KLEVS,&
@@ -9,14 +84,6 @@ USE PARKIND1  , ONLY : JPIM, JPRB
 USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_THF   , ONLY : RHOH2O
 USE YOS_SOIL  , ONLY : TSOIL
-
-! (C) Copyright 1993- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFWINC* -  COMPUTES THE T+1 VALUES OF SOIL MOISTURE
 

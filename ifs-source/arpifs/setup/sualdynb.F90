@@ -101,7 +101,8 @@ LLP = NPRINTLEV >= 1.OR. LALLOPR
 IU = NULOUT
 
 ! * Semi-Lagrangian departure point saving to be used at next timestep
-IF (LSLDP_XYZ.AND.LSLDP_SAVE) THEN
+!   Must be allocated for safe argument passing even if LSLDP_SAVE = .FALSE.
+IF (LSLDP_XYZ) THEN
   ALLOCATE(YDDYN%RSAVEDP(NPROMA,NFLEVG,3,NGPBLKS))
   IF(LLP)WRITE(IU,9) 'RSAVEDP    ',SIZE(YDDYN%RSAVEDP),SHAPE(YDDYN%RSAVEDP)
 ENDIF

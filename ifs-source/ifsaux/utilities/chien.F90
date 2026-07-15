@@ -123,6 +123,8 @@ SUBROUTINE CHIEN(CDNAMC,KTYPTR,PSLAPO,PLOCEN,&
 !        R El Khatib : 05-03-01  Cleanups
 !        O. Marsden  : May 2016  Moved the KINF==1 case to a new routine (RIEN) 
 !                                and changed argument intents to IN wherever possible
+!      R. El Khatib 21-Sep-2020 Harmonize with LAM version of the code by enhancing the 
+!                               accuracy of check for VALH : normalize by geometric mean of reference pressure
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -166,7 +168,7 @@ INTEGER(KIND=JPIM) :: IDGL, IDGNH, IERR, IERRA, IHTYP, INIVER, INLATI, &
  & INXLON, IQUADF, ISTROW, ITRONC, ITYPTR, JFLEV, JL, JLAT, JLEV, IMAXLEV, &
  & IMAXGL, IMAXLON, IMAXTRUNC 
 
-REAL(KIND=JPRB) :: ZCLOPO, ZCODIL, ZEPS, ZMUNPOL, ZREF, ZSLAPO, ZSLOPO, ZX1
+REAL(KIND=JPRB) :: ZCLOPO, ZCODIL, ZMUNPOL, ZREF, ZSLAPO, ZSLOPO, ZX1
 REAL(KIND=JPRB) :: ZX2
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -390,10 +392,9 @@ IF ((KINF == 0).OR.(KINF == -1)) THEN
        & ,'FILE = ',INIVER, ' ; ARGUMENT = ',KFLEV  
       IERR=1
     ELSE
-      ZEPS=PEPS*10._JPRB*MAX(ZREF,PREF)
       IERRA=0
       DO JFLEV = 0,KFLEV
-        IF(ABS(ZVALH(JFLEV)*ZREF-PVALH(JFLEV)*PREF) > ZEPS) THEN
+        IF(ABS(ZVALH(JFLEV)*ZREF-PVALH(JFLEV)*PREF)/SQRT(ZREF*PREF) > PEPS) THEN
           WRITE(KULOUT,*) ' VERTICAL FUNCTION *A* MISMATCH ON ',&
            & 'LEVEL ',JFLEV,' : ',&
            & 'FILE = ',ZVALH(JFLEV), ' ; ARGUMENT = ',PVALH(JFLEV)  

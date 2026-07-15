@@ -31,4 +31,4 @@ if( HAVE_SINGLE_PRECISION )
   target_compile_definitions( dwarf_sladv.${PREC} PRIVATE "-DHAVE_SINGLE_PRECISION" )
 endif()
 
-target_compile_definitions_FILENAME( dwarf_sladv.${PREC} )
+ifs_target_compile_definitions_FILENAME( dwarf_sladv.${PREC} )

@@ -105,21 +105,21 @@ IF(PSTATI < 3600.) THEN
 !-------------------------------------------------
 !
         ZECH=PSTATI/60. ; CLZUE='mn'
-;ELSEIF(PSTATI < 259200.) THEN
+ELSEIF(PSTATI < 259200.) THEN
 !
 !-------------------------------------------------
 ! Echéance en heures.
 !-------------------------------------------------
 !
         ZECH=PSTATI/3600. ; CLZUE='h'
-;ELSE
+ELSE
 !
 !-------------------------------------------------
 ! Echéance en jours.
 !-------------------------------------------------
 !
         ZECH=PSTATI/86400. ; CLZUE='j'
-;ENDIF
+ENDIF
 !
 ! Affichage de l'echeance avec deux chiffres apres la virgule.
 !

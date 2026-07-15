@@ -61,8 +61,8 @@ USE YOMGT1C0 , ONLY : UT0      ,VT0      ,TT0      ,QT0      ,&
                      &WT0      ,ST0      ,AT0      ,SPT0
 USE YOMGP1C0 , ONLY : TSA0     ,WSA0     ,SNS0     ,TL0      ,WL0
 USE YOMLOG1C , ONLY : NPOSASC
-USE YOETHF
-USE YOMCST
+USE YOETHF   , ONLY : RHOH2O   ,YDTHF=>YRTHF      ! Rename for fcttre.func.h
+USE YOMCST   , ONLY : RETV     ,YDCST=>YRCST      ! Rename for fcttre.func.h
 USE SURFACE_FIELDS_MIX, ONLY : TSURF
 
 IMPLICIT NONE

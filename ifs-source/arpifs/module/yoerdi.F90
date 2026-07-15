@@ -1,13 +1,12 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2003- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
 MODULE YOERDI
 
 USE PARKIND1  ,ONLY : JPRB
@@ -36,10 +35,11 @@ REAL(KIND=JPRB) :: RCFC22
 REAL(KIND=JPRB) :: REPCLC
 REAL(KIND=JPRB) :: REPH2O
 REAL(KIND=JPRB) :: RCCO2, RCCH4, RCN2O, RCNO2, RCCFC11, RCCFC12, RCCFC22, RCCCL4
-REAL(KIND=JPRB) :: RSOLINC
+REAL(KIND=JPRB) :: RSOLINC         ! Total solar irradiance (W m-2)
+REAL(KIND=JPRB) :: RSOLARCYCLEMULT ! Solar cycle multiplier (1=solar max, -1=min, 0=mean)
 !----------------------------------------------------------------------------
 CONTAINS
-  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION 
+  PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION
 END TYPE TERDI
 !============================================================================
 
@@ -113,6 +113,7 @@ WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RCCFC12 = ', SELF%RCCFC12
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RCCFC22 = ', SELF%RCCFC22
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RCCCL4 = ', SELF%RCCCL4
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RSOLINC = ', SELF%RSOLINC
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RSOLARCYCLEMULT = ', SELF%RSOLARCYCLEMULT
 IF (LHOOK) CALL DR_HOOK('YOERDI:PRINT_CONFIGURATION',1,ZHOOK_HANDLE)
 
 END SUBROUTINE PRINT_CONFIGURATION

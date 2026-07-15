@@ -1,8 +1,5 @@
-MODULE CANALB_MOD
-CONTAINS
-SUBROUTINE CANALB(KIDIA,KFDIA,YDURB,PMU0,PCANALB)
 
-    ! (C) Copyright 2010- ECMWF.
+! (C) Copyright 2010- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -28,6 +25,37 @@ SUBROUTINE CANALB(KIDIA,KFDIA,YDURB,PMU0,PCANALB)
 !     REFERENCE.
 !     Albedo scheme based Masson 2000 shadowing, Harman 2004 matrix exchanges 
 !     and Porson 2010 formulation
+!     Original    J. McNorton      Aug 2022
+
+!     MODIFICATIONS
+!     -------------
+!==============================================================================
+
+! Modules used : 
+
+MODULE CANALB_MOD
+CONTAINS
+SUBROUTINE CANALB(KIDIA,KFDIA,YDURB,PMU0,PCANALB)
+
+!     PURPOSE
+!     -------
+!     THIS ROUTINE CALCULATES LOCAL URBAN ALBEDO AS A FUNCTION OF SOLAR ZENITH ANGLE
+
+!     INTERFACE.
+!     ----------
+!     CALLLED FROM *Surfrad*
+
+!     METHOD.
+!     canyon albedo is calculated at each timestep to account for 
+!     solar zenith angle
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     Albedo scheme based Masson 2000 shadowing, Harman 2004 matrix exchanges 
+!     and Porson 2010 formulation
+!     Original    J. McNorton      Aug 2022
 
 !     MODIFICATIONS
 !     -------------
@@ -176,7 +204,7 @@ DO JL=KIDIA,KFDIA
  IF(PCANALB(JL) < 0.0_JPRB) THEN
  PCANALB(JL) = 0.0_JPRB
  ENDIF
- 
+
 ENDDO
 
 END ASSOCIATE

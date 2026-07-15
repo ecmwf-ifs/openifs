@@ -1,4 +1,3 @@
-SUBROUTINE SUVDF
 ! (C) Copyright 1989- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,42 @@ SUBROUTINE SUVDF
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *SUVDF* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOEVDF*
+
+!     A.C.M. BELJAARS         E.C.M.W.F.       2/11/89
+
+!     PURPOSE
+!     -------
+
+!          THIS ROUTINE INITIALIZES THE CONSTANTS IN COMMON BLOCK
+!     *YOEVDF*
+
+!     INTERFACE.
+!     ----------
+
+!     CALL *SUVDF* FROM *SUPHEC*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     NONE.
+
+!     REFERENCE.
+!     ----------
+
+!     MODIFICATIONS
+!     -------------
+!     J.-J. MORCRETTE         E.C.M.W.F.      91/07/14
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     ------------------------------------------------------------------
+
+SUBROUTINE SUVDF
 
 !     ------------------------------------------------------------------
 

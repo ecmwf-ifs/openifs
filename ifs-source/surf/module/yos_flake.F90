@@ -1,16 +1,48 @@
-! File %M% from Library %Q%
-! Version %I% from %G% extracted: %H%
-!------------------------------------------------------------------------------
 
-MODULE YOS_FLAKE
-
-    ! (C) Copyright 2005- ECMWF.
+! (C) Copyright 2005- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!------------------------------------------------------------------------------
+!
+! Description:
+!
+!  Values of empirical constants of the lake model FLake 
+!  and of several thermodynamic parameters are set.
+!
+!
+! Current Code Owner: DWD, Dmitrii Mironov
+!  Phone:  +49-69-8062 2705
+!  Fax:    +49-69-8062 3721
+!  E-mail: dmitrii.mironov@dwd.de
+!
+! History:
+! Version    Date       Name
+! ---------- ---------- ----
+! 1.00       2005/11/17 Dmitrii Mironov 
+!  Initial release 
+! !VERSION!  !DATE!     <Your name>
+!  <Modification comments>
+!
+! Code Description:
+! Language: Fortran 90.
+! Software Standards: "European Standards for Writing and
+! Documenting Exchangeable Fortran 90 Code".
+!==============================================================================
+!
+! Declarations:
+!
+! Modules used:
+
+! File %M% from Library %Q%
+! Version %I% from %G% extracted: %H%
+!------------------------------------------------------------------------------
+
+MODULE YOS_FLAKE
 
 !------------------------------------------------------------------------------
 !

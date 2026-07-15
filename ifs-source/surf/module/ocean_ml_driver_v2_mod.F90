@@ -1,3 +1,93 @@
+!
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+! -------
+!   THIS ROUTINE IS THE MAIN DRIVER FOR THE OCEAN MIXED LAYER MODEL.
+
+!     ORIGINAL P. A. E. M. JANSSEN   E.C.M.W.F.         21-07-2011
+!     BASED ON INFRASTRUCTURE DEVELOPED BY Y. TAKAYA
+!
+!     PURPOSE
+!     -------
+
+!     SOLVES FOR OCEAN SURFACE TEMPERATURE IN THE SURFACE LAYER
+
+
+!     INTERFACE
+!     ---------
+
+!     *OCEAN_ML_DRIVER_V2 IS CALLED BY *SURFPP*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KLEVO*        NUMBER OF VERTICAL LAYERS
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTSPHY*       PHYSICS TIME STEP
+!     *PGEMU*        THE SINE OF LATITUDE
+!     *PSSRFL*       NET SOLAR RADIATION AT THE SURFACE
+!     *PSLRFL*       NET THERMAL RADIATION AT THE SURFACE
+!     *PAHFS*        SURFACE SENSIBLE HEAT FLUX
+!     *PEVAP*        MOISTURE FLUX
+!     *PUSTOKES*     SURFACE STOKES VELOCITY X-DIRECTION
+!     *PVSTOKES*     SURFACE STOKES VELOCITY Y-DIRECTION
+!     *PTAUOCX*      SURFACE MOMENTUM FLUX TO OCEANS X-DIRECTION
+!     *PTAUOCY*      SURFACE MOMENTUM FLUX TO OCEANS Y-DIRECTION
+!     *PPHIOC*       ENERGY FLUX FROM WAVES TO OCEANS (DIMENSIONAL)
+!     *PWSEMEAN*     WINDSEA VARIANCE
+!     *PWSFMEAN*     WINDSEA MEAN FREQUENCY
+
+
+!     *PUO0*         X-COMPONENT OF OCEAN VELOCITY
+!     *PVO0*         Y-COMPONENT OF OCEAN VELOCITY
+!     *PTO0*         TEMPERATURE PROFILE !!! in degree C !!!
+!     *PSO0*         SALINITY PROFILE
+
+!     OUTPUT PARAMETERS (REAL):
+!     *POTKE*        UPDATED TURBULENT KINETIC ENERGY IN THE OCEAN MIXED LAYER
+!     *PUOE1*        TENDENCY X-COMPONENT OF OCEAN VELOCITY IN TIMESTEP PTSPHY
+!     *PVOE1*        TENDENCY Y-COMPONENT OF OCEAN VELOCITY
+!     *PTOE1*        TENDENCY TEMPERATURE PROFILE
+!     *PSOE1*        TENDENCY SALINITY PROFILE (not used)
+
+ 
+!     METHOD
+!     ------
+!     THE MIXED LAYER MODEL HAS AS PROGNOSTIC VARIABLES THE TEMPERATURE 
+!     AND CURRENT AT KLEVO LEVELS. THE EQUATIONS FOR MOMENTUM AND 
+!     TEMPERATURE ARE SOLVED WITH A SEMI-IMPLICIT SCHEME. SEA STATE 
+!     EFFECTS, SUCH AS MIXING BY WAVE BREAKING AND LANGMUIR TURBULENCE AND ALSO 
+!     STOKES-CORIOLIS FORCING ARE INCLUDED FOLLOWING THE WORK OF 
+!     JANSSEN (2010) BY OBTAINING THE TURBULENT VELOCITY FROM THE SOLUTION OF 
+!     THE KINETIC ENERGY BALANCE EQUATION.
+! 
+
+! EXTERNALS 
+! ---------
+!     OC_MLM
+!     
+
+! REFERENCE
+! ---------
+!   P A E M JANSSEN, OCEAN WAVE EFFECTS ON THE DAILY CYCLE IN SST,
+!   ECMWF TECHNICAL MEMORANDUM, 2010
+
+! MODIFICATIONS
+! -------------
+!   
+! 
+!
+!---------------------------------------------------------------------
+
 MODULE OCEAN_ML_DRIVER_V2_MOD
 
 CONTAINS
@@ -11,13 +101,6 @@ SUBROUTINE OCEAN_ML_DRIVER_V2 &
  &   YDCST    ,YDEXC    ,YDMLM    ,&
  &   POTKE    ,PUOE1    ,PVOE1    ,PTOE1    ,PSOE1    )
 !
-! (C) Copyright 2011- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 ! -------
 !   THIS ROUTINE IS THE MAIN DRIVER FOR THE OCEAN MIXED LAYER MODEL.
 

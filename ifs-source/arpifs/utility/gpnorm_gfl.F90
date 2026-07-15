@@ -42,6 +42,7 @@ SUBROUTINE GPNORM_GFL(YDGEOMETRY,YDGFL,LDPRINT_TL)
 !     --------------
 !     A.Bogatchev: 12 Jun 2009 , call to egpnorm_trans
 !     T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
+!     R. El Khatib 01-Jun-2022 Reinstate omp parallelization
 !     -----------------------------------------------------------------
 
 USE GEOMETRY_MOD , ONLY : GEOMETRY
@@ -130,6 +131,7 @@ ELSE
   IFIELDS=IFLD
 
   ALLOCATE(ZGP(NPROMA,IFIELDS,NGPBLKS))
+  IF (SIZE(ZGP) > 0) ZGP(1,1,1)=0._JPRB ! force allocation right here, not in the omp region below
 
   ALLOCATE(ZAVE(IFIELDS))
   ALLOCATE(ZMIN(IFIELDS))
@@ -151,7 +153,7 @@ ELSE
         ZMAXBLK(IFLD,:)=GFL(1,1,JGFL,1)
 
         CALL GSTATS(1427,0)
-!!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JKGLO,IST,IEND,IBL,JF,JL)
+!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JKGLO,IST,IEND,IBL,JF,JL)
         DO JKGLO=1,NGPTOT,NPROMA
           IST=1
           IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
@@ -160,6 +162,7 @@ ELSE
             ZGP(JL,IFLD,IBL) = 0.0_JPRB
           ENDDO
           DO JF=1,NFLEVG
+!NEC$ ivdep
             DO JL=IST,IEND
               ZGP(JL,IFLD,IBL) = ZGP(JL,IFLD,IBL)+GFL(JL,JF,JGFL,IBL)
               ZMINBLK(IFLD,IBL) = MIN(ZMINBLK(IFLD,IBL),GFL(JL,JF,JGFL,IBL))
@@ -167,7 +170,7 @@ ELSE
             ENDDO
           ENDDO
         ENDDO
-!!$OMP END PARALLEL DO
+!$OMP END PARALLEL DO
         CALL GSTATS(1427,1)
         ZMIN(IFLD)=MINVAL(ZMINBLK(IFLD,1:NGPBLKS))
         ZMAX(IFLD)=MAXVAL(ZMAXBLK(IFLD,1:NGPBLKS))

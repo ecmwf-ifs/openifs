@@ -60,6 +60,7 @@ SUBROUTINE CPFPFILTER(YDGEOMETRY,CDDILA,CDCONT,KFPDOM,KFPCMAX,PSEL,KFMAX,PBED,PL
 !      R. El Khatib 20-jan-2016 Redo B-level distribution over the vertical levels communicator
 !                               + computation of Legendre polynomials on the fly
 !      P. Marguinaud 04-Oct-2016 Port to single precision
+!      R. El Khatib 15-Dec-2020 change print ICMAX (is NFPCMAX in namelist) to ease debugging
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
@@ -219,7 +220,8 @@ ELSE
   CALL TRANS_INQ(KRESOL=IRESOLS,KUMPP=IUMPP, &
    & KALLMS=IALLMS(:),KPTRMS=IPTRMS(:))
   WRITE(NULOUT,'('' IDGLG = '',I6)') IDGLG
-  WRITE(NULOUT,'('' IDGNH = '',I6,'' ICMAX = '',I8)') IDGNH,ICMAX
+  ! ICMAX is NFPCMAX in namelist :
+  WRITE(NULOUT,'('' IDGNH = '',I6,'' NFPCMAX = '',I8)') IDGNH,ICMAX
   IF (IDGL /= IDGLG) THEN
     WRITE(NULOUT,*) 'ERROR ON IDGL, PROBABLY BECAUSE IDGNH IS ODD.'
     CALL ABOR1('CPFPFILTER : NUMBER OF LATITUDES HAS BEEN REDEFINED.')

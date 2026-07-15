@@ -6,7 +6,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction
 
-ecbuild_find_python(VERSION 3.6 REQUIRED NO_LIBS)
+ecbuild_find_python(VERSION 3.10 REQUIRED NO_LIBS)
 
 # Loop over all python packages and install them
 file( GLOB python_packages RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/python python/* )

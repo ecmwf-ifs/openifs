@@ -15,6 +15,8 @@ set( fiat_VERSION_STR @fiat_VERSION_STR@ )
 set( fiat_HAVE_MPI    @fiat_HAVE_MPI@ )
 set( fiat_HAVE_OMP    @fiat_HAVE_OMP@ )
 set( fiat_HAVE_FCKIT  @fckit_HAVE_FCKIT@ )
+set( fiat_HAVE_SINGLE_PRECISION   @fiat_HAVE_SINGLE_PRECISION@ )
+set( fiat_HAVE_DOUBLE_PRECISION   @fiat_HAVE_DOUBLE_PRECISION@ )
 set( fiat_SOURCE_FILENAMES      @fiat_SOURCE_FILENAMES@ )
 
 if( fiat_HAVE_OMP AND NOT TARGET OpenMP::OpenMP_Fortran )
@@ -36,3 +38,15 @@ else()
   set(_no_whole_archive "-Wl,--no-whole-archive")
 endif()
 set(MPI_SERIAL_LIBRARIES ${_whole_archive} mpi_serial ${_no_whole_archive})
+
+##################################################################
+## Handle components
+
+set( ${CMAKE_FIND_PACKAGE_NAME}_single_FOUND ${fiat_HAVE_SINGLE_PRECISION} )
+set( ${CMAKE_FIND_PACKAGE_NAME}_double_FOUND ${fiat_HAVE_DOUBLE_PRECISION} )
+
+foreach( _component ${${CMAKE_FIND_PACKAGE_NAME}_FIND_COMPONENTS} )
+  if( NOT ${CMAKE_FIND_PACKAGE_NAME}_${_component}_FOUND AND ${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED )
+    message( SEND_ERROR "fiat was not build with support for COMPONENT ${_component}" )
+  endif()
+endforeach()

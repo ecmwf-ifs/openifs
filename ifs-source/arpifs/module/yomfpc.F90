@@ -13,6 +13,7 @@ MODULE YOMFPC
 
 USE PARKIND1  , ONLY : JPIM     ,JPRB
 USE YOMCT0    , ONLY : JPNPST
+USE TYPES_FPCAT, ONLY : ALL_FPCAT_TYPES
 
 USE PARFPOS, ONLY : JPOSDIR, JPOSLEN  ,JPOSDOM, JPOS2DF  ,JPOS3DF  ,JPOS3H   ,JPOS3P   ,JPOS3PV  , &
  & JPOS3S   ,JPOS3TH  ,JPOSCFU  ,JPOSSGP  ,JPOSXFU  ,JPOS3I   ,JPOS3F
@@ -27,6 +28,8 @@ SAVE
 
 !     LTRACEFP: trace for Full-POS computations
 !     LALLOFP : trace for Full-POS allocations/deallocations
+!     NSTACK_MEMORY_FP : 0 = prefer heap for communication buffers in data transposition ; 1 = prefer stack
+!     NFP_SYNC_LEVEL   : 1 = prefer non-blocking recv ; -1 = prefer blocking recv ; 0 = defined dynamically
 !     LFPMOIS: Month contolled against climatology :
 !     L_READ_MODEL_DATE: if: .TRUE. read date from the model
 !               .F. => month of the model (forecast)
@@ -49,9 +52,7 @@ SAVE
 !                0 : no packing at all
 !                1 : standard GRIB-0 encoding
 !                2 : modified GRIB-0 encoding
-!                3 : standard GRIB-1 encoding
-!                4 : hollow fields GRIB-1 encoding
-!              181 : GRIB-2 encoding
+!              1** : GRIB-2 encoding
 !     NFPOSTS    : array containing postprocessing steps
 !     NFPOSTSMIN : array containing postprocessing steps in minutes for sub-hour outputs
 !     NFRFPOS    : frequency of post-processing events
@@ -86,8 +87,8 @@ SAVE
 !     RFP3TH : post-processing potential temperature levels
 !     RFP3PV : post-processing potential vorticity levels
 !     RFP3I  : post-processing temperature levels
-!     RFP3F  : post-processing height (above sea) levels
-!     NRFP3S : post-processing eta levels (CONF. 927 only)
+!     RFP3F  : post-processing altitude (above sea) levels ("flight levels")
+!     NRFP3S : post-processing eta levels
 
 !     NFP3DFS: useful dimension of MFP3DFS
 !     NFP3DFH: useful dimension of MFP3DFH
@@ -99,8 +100,11 @@ SAVE
 !     NFP2DF : useful dimension of CFP2DF
 !     NFPPHY : useful dimension of CFPPHY
 
-!     LFPLOSP : .TRUE. = Fill Ps array with Log(Ps)
 !     LFPRH100 : .TRUE. to convert relative humidity in percent
+
+!     NMAXFPHOLD : Max dimension for FPHOLD cache, should correspond to the
+!     number of different data streams. > 0 avoids readind the namelists over
+!     and over again
 
 ! === SCIENTIFIC VARIABLES ===
 
@@ -119,7 +123,7 @@ SAVE
 !     NSPFIL*  : kind of generic spectral filter on post-processing levels
 !              =1 : no filter
 !              =2 : classic (gaussian filter)
-!              =3 : for stretched geometry (applied one the spectrum of homogenous resolution
+!              =3 : low-pass filter for stretched geometry (applied one the spectrum of homogenous resolution)
 !     NSPFILP  : P levels
 !     NSPFILT  : THETA levels
 !     NSPFILV  : PV levels
@@ -133,13 +137,6 @@ SAVE
 !                   which was implicitly done in the old 927 configuration.
 !     LSATURCAP : Cap humididy to saturation between horizontal and lagged vertical interpolation
 !                 which was done for ECMWF in the old 927 configuration.
-
-!     NFPCLI : usage level for climatology
-!              =0 no climatology
-!              =1 orography and land-sea mask of output only
-!              =2 all available climatological fields of the current month
-!              =3 shifting mean from the climatological fields of the current
-!                 month to the ones of the closest month
 
 !     LCLIMALBEDOS : to read albedos in clim file (for compatibility with old clim files without them)
 !     LCLIMAEROSOL : to read aerosols in clim file (for compatibility with old clim files without them)
@@ -163,19 +160,14 @@ SAVE
 !     NITERPV : Nb of vertical iter (1, 2 or 3) used in iso-PV level computing
 !     NFPLAKE : To overwrite created lakes or islands by specific data :
 !               0 => do not overwrite
-!              -1 => overwrite with rhoughly interpolated data
 !              +1 => overwrite with climatology
+!              -1 => same as NFPLAKE=+1 but use the interpolated surface temperature instead of the climatology one
 !     NFPCAPE : Kind of computation for CAPE & CIN :
 !               1 => from bottom model layer
 !               2 => from the most unstable layer
 !               3 => from mto standart height (2 meters) as recomputed values
 !               4 => from mto standart height (2 meters) out of fluxes
 !                    (used for analysis)
-!     LFPCAPEX : if true XFU fields used for CAPE&CIN computation (with NFPCAPE)
-!     NFPSURFEX : Subcontract surface fields to SURFEX
-!               0 => no subcontract
-!               1 => transform native arp/ald surface fields to surfex fields
-!                    and write out by surfex
 !     LPUTZS    : if true "atmospheric" orography is imposed to surfex
 !     NFPMASK   : number of masks for the interpolation of surface fields
 !                 0 => no mask
@@ -183,6 +175,7 @@ SAVE
 !                 2 => land mask, sea mask
 !     RENTRA     : entrainement coefficient, if 0, (default) no entrainement is performed,
 !                  allows to have an even more complicated choice of options for cape computation
+!     RMLDEP     : Mean Layer DEPth for FPCINCAPE MLCAPE computation.
 !     FPRHMIN,FPRHMAX: min and max allowed values for relative humidity in pp.
 !     LFPML_STD  : multi-linear interpolations if T for interpolations using weights WSTD...
 !     LFPML_LAN  : multi-linear interpolations if T for interpolations using weights WLAN...
@@ -194,6 +187,8 @@ SAVE
 !     LISOT_ABOVEG: Set K[TB][NNN]ISOT_ALTIT to missing value when below the
 !                   orography
 !
+!     RSTRMMH : Upper boundary of the vertical integral (lower is the ground) in the computation of the storm motion.
+!     RSRHH   : Upper boundary of the vertical integral (lower is the ground) in the computation of the storm relative helicity.
 !
 ! Options for Boyd biperiodization (daand, 02/2012)
 !     NFPBOYD    : periodization with Boyd's windowing method
@@ -209,6 +204,25 @@ SAVE
 !     TSRESERV2  : Icing temperature for deep    soil frost
 !     TDELTA1    : Threshold of icing temperature for surface soil frost
 !     TDELTA2    : Threshold of icing temperature for deep    soil frost
+!
+! Options for ocean post processing
+!     LOCEDELAY  : Output ocean fields after WAM/NEMO has been called.
+!
+
+! Options for Interoperability SURFEX -> ISBA
+!    RWPITPN : minimum deep soil temperature for melting of frozen water
+!    RWPITPX : maximum deep soil temperature for melting of frozen water
+!    RSNSTPN : minimum deep soil temperature for melting of snow
+!    RSNSTPX : minimum deep soil temperature for melting of snow
+!    RSNSMOD : Reference snow depth for normalization
+
+! Model physics support variables (may have a different value in Fullpos and Model) ::
+!     NFPCLI : usage level for climatology
+!              =0 no climatology
+!              =1 orography and land-sea mask of output only
+!              =2 all available climatological fields of the current month
+!              =3 shifting mean from the climatological fields of the current
+!                 month to the ones of the closest month
 !     NFPSWI     : Soil water or frost interpolation method for interoperability (from TESSEL to ISBA)
 !                  0 = Interpolate relative soil water content
 !                      Interpolate frost from soil water, according to the following formula :
@@ -227,18 +241,19 @@ SAVE
 !                      Tlue  = temperature of the layer (surface or deep soil) 
 !                      T0    = Icing temperature of the layer (resp. TSRESERV1 or TSRESERV2)
 !                      delta = threshold of T0 (resp. TDELTA1 or TDELTA2)
-!
-! Options for ocean post processing
-!     LOCEDELAY  : Output ocean fields after WAM/NEMO has been called.
-!
+!     NFPSURFEX : Subcontract surface fields to SURFEX
+!               0 => no subcontract
+!               1 => transform native arp/ald surface fields to surfex fields
+!                    and write out by surfex
+!     LFPCAPEX : if true XFU fields used for CAPE&CIN computation (with NFPCAPE)
 
-! Options for Interoperability SURFEX -> ISBA
-!    RWPITPN : minimum deep soil temperature for melting of frozen water
-!    RWPITPX : maximum deep soil temperature for melting of frozen water
-!    RSNSTPN : minimum deep soil temperature for melting of snow
-!    RSNSTPX : minimum deep soil temperature for melting of snow
-!    RSNSMOD : Reference snow depth for normalization
+! Handling of simulated satellite images (former yommts)
+!     (Cles d'activation de la production de temperatures de brillance)
+!     LUBIQUITAIRE : To have the satellite at the vertical of all the grid points
+!     LISP_HYBRID : MSG simulated data in 'real' conditions over the MSG domain, ubiquitaire computation elsewhere
 
+! LFPCLSTOGMV : to Copy CLS fields of T and Q into the bottom level of the model T and Q (used for varpack when
+! the bottom model level correspond approximatively to 2m height.
 
 LOGICAL :: LTRACEFP = .TRUE.
 LOGICAL :: LALLOFP = .FALSE.
@@ -249,6 +264,13 @@ LOGICAL :: LOCEDELAY = .FALSE.
 LOGICAL :: LWIDER_DOM = .FALSE.
 INTEGER(KIND=JPIM) :: NFPCHKDAT = 1
 INTEGER(KIND=JPIM) :: NFPSFXWRT = 0
+INTEGER(KIND=JPIM) :: NSTACK_MEMORY_FP = 1
+INTEGER(KIND=JPIM) :: NFP_SYNC_LEVEL = 0
+INTEGER(KIND=JPIM) :: NMAXFPHOLD
+INTEGER(KIND=JPIM) :: NFP_HARDCODED_CLIM_FAFIELDNAME = 1
+CHARACTER (LEN = 16) :: CNAME_CLIM_ST = 'SURFTEMPERATURE '
+CHARACTER (LEN = 16) :: CNAME_CLIM_DT = 'PROFTEMPERATURE '
+CHARACTER (LEN = 16) :: CNAME_CLIM_SD = 'SURFRESERV.NEIGE'
 REAL(KIND=JPRB) :: RWIDOM
 
 
@@ -317,26 +339,22 @@ LOGICAL            :: LCRITSNOWTEMP
 LOGICAL            :: LISOT_ABOVEG
 LOGICAL            :: LFPRH100
 
-INTEGER(KIND=JPIM) :: NFPSURFEX = 0
 INTEGER(KIND=JPIM) :: NFPBOYD = 0
 REAL(KIND=JPRB)    :: RFPBSCAL = 3._JPRB
-LOGICAL            :: LFPCAPEX = .FALSE.
-INTEGER(KIND=JPIM) :: NFPCLI = 0
 LOGICAL            :: LCLIMALBEDOS = .TRUE.
 LOGICAL            :: LCLIMAEROSOL = .TRUE.
 LOGICAL            :: LCLIMOZONE = .TRUE.
 INTEGER(KIND=JPIM) :: NFPLAKE = 0
 INTEGER(KIND=JPIM) :: NFPMASK = 1
-INTEGER(KIND=JPIM) :: NFPSWI = 0
 INTEGER(KIND=JPIM) :: NFPCAPE = 2
 LOGICAL            :: LFPISOPV = .TRUE.
 INTEGER(KIND=JPIM) :: NITERPV = 3
 REAL(KIND=JPRB)    :: RENTRA = 0.0_JPRB
+REAL(KIND=JPRB)    :: RMLDEP = 10000.0_JPRB
 REAL(KIND=JPRB)    :: FPRHMIN = 0.0_JPRB
 LOGICAL            :: LSATURCAP = .FALSE.
 LOGICAL            :: LFITBETWEEN = .FALSE.
 LOGICAL            :: LFPQ = .FALSE.
-LOGICAL            :: LFPLOSP = .FALSE.
 LOGICAL            :: LPUTZS = .TRUE.
 LOGICAL            :: LFPCLSTOGMV = .FALSE.
 REAL(KIND=JPRB)    :: TSRESERV1 = 272.15_JPRB ! as used in operation (2016)
@@ -354,6 +372,8 @@ REAL(KIND=JPRB)    :: RFPCD2 = 0.001_JPRB
 
 REAL(KIND=JPRB)    :: RSTRMMH=6000._JPRB
 REAL(KIND=JPRB)    :: RSRHH=3000._JPRB
+REAL(KIND=JPRB)    :: RUH_UPPER_LIMIT=5000._JPRB
+REAL(KIND=JPRB)    :: RUH_LOWER_LIMIT=2000._JPRB
 
 INTEGER(KIND=JPIM) :: NFITP
 INTEGER(KIND=JPIM) :: NFITT
@@ -370,6 +390,14 @@ INTEGER(KIND=JPIM) :: NSPFILF
 INTEGER(KIND=JPIM) :: NSPFILH
 INTEGER(KIND=JPIM) :: NSPFILS
 INTEGER(KIND=JPIM) :: NSPFIL2
+INTEGER(KIND=JPIM) :: NFPCLI = 0
+INTEGER(KIND=JPIM) :: NFPSWI = 0
+INTEGER(KIND=JPIM) :: NFPSURFEX = 0
+LOGICAL            :: LFPCAPEX = .FALSE.
+TYPE(ALL_FPCAT_TYPES) :: CATIDX
+
+LOGICAL :: LUBIQUITAIRE = .FALSE.
+LOGICAL :: LISP_HYBRID = .FALSE.
 
 END TYPE TNAMFPSCI
 

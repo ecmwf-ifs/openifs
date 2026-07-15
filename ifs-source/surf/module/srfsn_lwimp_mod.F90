@@ -1,3 +1,115 @@
+
+! (C) Copyright 1999- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**** *SRFSN_LWIMP* - CONTAINS SNOW PARAMETRIZATION 
+!
+!     PURPOSE.
+!     --------
+!          COMPUTES CHANGES IN SNOW TEMPERATURE, DEPTH, DENSITY AND 
+!          ALBEDO
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_LWIMP* IS CALLED FROM *SURFTSTP*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KTILES*     NUMBER OF SURFACE TILES
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg/m**2/s
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PASNM1M*    SNOW ALBEDO                                    -
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PTIAM1M*    ICE  TEMPERATURE                               K
+!    *PHLICEM1M*  LAKE ICE THICKNESS                             m 
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFLTI*   NET LONGWAVE  RADIATION AT THE SURFACE  W/M**2
+!                  For earch tile   
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION                             KG/M**2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+!    *PTSFC*      Convective Throughfall at the surface        KG/M**2/S
+!    *PTSFL*      Large Scale Throughfall at the surface       KG/M**2/S
+!    *PUSRF*      X-COMPONENT OF WIND (LAST LEVEL)             M/S
+!    *PVSRF*      Y-COMPONENT OF WIND.(LAST LEVEL)             M/S
+!    *PTSRF*      TEMPERATURE (LAST LEVEL)                     K
+
+!     PARAMETERS AT T+1 :
+!    *PSSN*       SNOW MASS (per unit area)                    kg/m**2
+!    *PTSN*       SNOW TEMPERATURE                               K
+!    *PASN*       SNOW ALBEDO                                    -
+!    *PRSN*       SNOW DENSITY                               KG/M**3
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+!    *PMSN*       FLUX OF MELT WATER FROM SNOW TO SOIL       KG/M**2/S (#)
+!    *PEMSSN*     EVAPORATIVE MISMATCH RESULTING FROM
+!                  CLIPPING THE SNOW TO ZERO (AFTER P-E)     KG/M**2/S
+!    *PTSFCIN*   Intercepted convective throughfall          KG/M**2/S
+!    *PTSFLIN*   Intercepted large scale throughfall          KG/M**2/S
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+
+! (#) THOSE TWO QUANTITIES REPRESENT THE WHOLE GRID-BOX. IN RELATION
+!       TO THE DOCUMENTATION, THEY ARE PGSN=Fr_s*G_s, PMSN=Fr_s*M_s
+
+!     METHOD.
+!     -------
+!     Based on the original snow (as in ERA-40) with the following updates: 
+!     - Liquid water as a diagnostics
+!     - Interception of rainfall 
+!     - New snow density (Anderson 1976)
+!     - New snow albedo evolution 
+!        See Dutra et al 2009 JH for details 
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     ORIGINAL :
+!     P.VITERBO/A.BELJAARS      E.C.M.W.F.     20/02/1999
+!     MODIFIED BY
+!     P. Viterbo    Surface DDH for TILES      17/05/2000
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo     24-05-2004     Change surface units
+!     P. Viterbo     24-05-2004     Change surface units
+!     E. Dutra       03-2008        Add snow liquid water content as a new diagnostic 
+!                                   New snow density parametrization 
+!     E. Dutra       10-2009        Cleanning 
+!     E. Dutra       10/10/2014    net longwave tiled 
+!     F. Vana        17-Dec-2015    Support for single precision
+!     M. Kelbling, R. Schweppe and S. Thober (UFZ) 11/2/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     J. McNorton    24/08/2022     urban tile
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_LWIMP_MOD
 CONTAINS
 SUBROUTINE SRFSN_LWIMP(KIDIA  ,KFDIA  ,KLON   ,KTILES   ,PTMST,LDLAND,  &
@@ -5,7 +117,7 @@ SUBROUTINE SRFSN_LWIMP(KIDIA  ,KFDIA  ,KLON   ,KTILES   ,PTMST,LDLAND,  &
  & PSLRFLTI,PSSRFLTI,PFRTI   ,PAHFSTI ,PEVAPTI,               &
  & PSSFC   ,PSSFL   ,PEVAPSNW,                                &
  & PTSFC   ,PTSFL   ,PUSRF   ,PVSRF   ,PTSRF,                 & 
- & YDCST   ,YDVEG   ,YDSOIL  ,YDFLAKE ,YDEXC,                 &
+ & YDCST   ,YDVEG   ,YDSOIL  ,YDFLAKE ,YDURB  ,YDEXC,         &
  & PSSN    ,PTSN    ,PASN    ,PRSN    ,PGSN   ,PMSN,          &
  & PEMSSN  ,PTSFCIN ,PTSFLIN ,                                &
  & PDHTSS , PDHSSS)
@@ -17,15 +129,9 @@ USE YOS_CST  , ONLY : TCST
 USE YOS_VEG  , ONLY : TVEG
 USE YOS_SOIL , ONLY : TSOIL
 USE YOS_FLAKE, ONLY : TFLAKE
+USE YOS_URB  , ONLY : TURB
 USE YOS_EXC  , ONLY : TEXC
 
-! (C) Copyright 1999- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**** *SRFSN_LWIMP* - CONTAINS SNOW PARAMETRIZATION 
 !
 !     PURPOSE.
@@ -124,6 +230,7 @@ USE YOS_EXC  , ONLY : TEXC
 !     E. Dutra       10-2009        Cleanning 
 !     E. Dutra       10/10/2014    net longwave tiled 
 !     F. Vana        17-Dec-2015    Support for single precision
+!     J. McNorton    24/08/2022     urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -160,6 +267,7 @@ TYPE(TCST),         INTENT(IN)   :: YDCST
 TYPE(TVEG),         INTENT(IN)   :: YDVEG
 TYPE(TSOIL),        INTENT(IN)   :: YDSOIL
 TYPE(TFLAKE),       INTENT(IN)   :: YDFLAKE
+TYPE(TURB),         INTENT(IN)   :: YDURB
 TYPE(TEXC),         INTENT(IN)   :: YDEXC
 REAL(KIND=JPRB),    INTENT(OUT)  :: PSSN(:)
 REAL(KIND=JPRB),    INTENT(OUT)  :: PTSN(:)
@@ -213,7 +321,7 @@ ASSOCIATE(RSNPER=>YDSOIL%RSNPER, RSNDTDESTROI=>YDSOIL%RSNDTDESTROI, &
  & RTAUA=>YDSOIL%RTAUA, RHOMAXSN_NEW=>YDSOIL%RHOMAXSN_NEW, &
  & RSNDTDESTB=>YDSOIL%RSNDTDESTB, RSFRESH=>YDSOIL%RSFRESH, &
  & RSNDTOVERA=>YDSOIL%RSNDTOVERA, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & RG=>YDCST%RG, RDAY=>YDCST%RDAY, RLVTT=>YDCST%RLVTT, RTT=>YDCST%RTT, &
  & RPI=>YDCST%RPI, RLSTT=>YDCST%RLSTT, RLMLT=>YDCST%RLMLT, &
  & RVLAMSK=>YDVEG%RVLAMSK, LELWTL=>YDEXC%LELWTL)
@@ -244,7 +352,7 @@ ENDDO
 DO JL=KIDIA,KFDIA
   ZFRSNGP=PFRTI(JL,5)+PFRTI(JL,7) ! snow fraction of the grid-box 
   ZFRLDGP=ZFRSNGP+PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8) ! land fraction of the grib-box 
-  IF ( KTILES .GT. 9 ) THEN
+  IF ( LEURBAN ) THEN
    ZFRLDGP=ZFRSNGP+PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)+PFRTI(JL,10)
   ENDIF
   IF (LDLAND(JL)) THEN

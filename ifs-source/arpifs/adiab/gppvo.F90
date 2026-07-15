@@ -12,7 +12,7 @@
 !OCL  NOEVAL
 SUBROUTINE GPPVO(YDVAB,KPROMA,KSTART,KPROF,KFLEV,&
  & PRESF,PRDELP,PKAP,PRCORI,&
- & PVOR,PU,PV,PT,PTM,PTL,PSPM,PSPL,PVO,PTETA)
+ & PVOR,PU,PV,PT,PTM,PTL,PSPM,PSPL,PVO,PTETA,PTETAL,PTETAM)
 
 !**** *GPPVO* - COMPUTES POTENTIAL VORTICITY AND POTENTIAL TEMPERATURE.
 
@@ -98,6 +98,8 @@ SUBROUTINE GPPVO(YDVAB,KPROMA,KSTART,KPROF,KFLEV,&
 !        * OUTPUT:
 !          PVO             : potential vorticity "PV" at full levels
 !          PTETA           : potential temperature "pteta" at full levels
+!          PTETAL          : zonal gradient of pteta                                      |
+!          PTETAM          : meridional gradient of pteta 
 
 !        IMPLICIT ARGUMENTS :
 !        --------------------
@@ -155,6 +157,8 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PSPM(KPROMA)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PSPL(KPROMA) 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PVO(KPROMA,KFLEV) 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTETA(KPROMA,KFLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT), OPTIONAL   :: PTETAL(KPROMA,KFLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT), OPTIONAL   :: PTETAM(KPROMA,KFLEV) 
 
 !     ------------------------------------------------------------------
 
@@ -202,6 +206,21 @@ DO JLEV=1,KFLEV
      & (PTL(JROF,JLEV)*ZUSPT-ZKSPRES*ZPRESL(JROF,JLEV))  
   ENDDO
 ENDDO
+
+IF (PRESENT(PTETAL)) THEN
+  DO JLEV=1,KFLEV
+    DO JROF=KSTART,KPROF
+      PTETAL(JROF,JLEV)=ZTETAL(JROF,JLEV)
+    ENDDO
+  ENDDO
+ENDIF
+IF (PRESENT(PTETAM)) THEN
+  DO JLEV=1,KFLEV
+    DO JROF=KSTART,KPROF
+      PTETAM(JROF,JLEV)=ZTETAM(JROF,JLEV)
+    ENDDO
+  ENDDO
+ENDIF
 
 !     ------------------------------------------------------------------
 

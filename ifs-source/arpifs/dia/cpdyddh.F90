@@ -9,9 +9,10 @@ SUBROUTINE CPDYDDH(YDVAB,YDCVER,YDGMV,&
  & PKENE, PRTL, PRTM, PORL, PORM,&
  & PSPL, PSPM, PAPRSF, PAPRS,&
  & PNHPREF,PNHPREH,PQCHAL,PQCHAM,&
- & PCTY, POMEGA, PFPLCL, PFPLCN, PFPLSL, PFPLSN,&
+ & PCTY, POMEGA,&
+ & PFPLCL, PFPLCN, PFPLCG, PFPLSL, PFPLSN, PFPLSG,&
  & PQVS, PTSFC, PRH,&
- & PNEB,PQL,PQI,PQR,PQS,PEXT,PCOVPTOT,PGFL,PGMV,&
+ & PNEB,PQL,PQI,PQR,PQS,PQG,PEXT,PCOVPTOT,PGFL,PGMV,&
  & PGMVTNDSI,PGMVTNDHD,PGFLTNDHD,PATND,&
  !     OUTPUT .
  & PUZ, PVM, PDHCV, PENTRA, PENTRV,YDDDH)
@@ -97,6 +98,7 @@ SUBROUTINE CPDYDDH(YDVAB,YDCVER,YDGMV,&
 !      * X = qi (glace)                  |  * X = qi (ice)
 !      * X = qr (pluie)                  |  * X = qr (rain)
 !      * X = qs (neige)                  |  * X = qs (snow)
+!      * X = qg (gresil)                 |  * X = qg (graupel)
 !      * X = S (entropie)                |  * X = S (entropy)
 !     Pour l'energie cinetique,          |  For kinetic energy,
 !     "(D (0.5*vec(V)*vec(V))/Dt)_adiab" |  "(D (0.5*vec(V)*vec(V))/Dt)_adiab"
@@ -178,9 +180,11 @@ SUBROUTINE CPDYDDH(YDVAB,YDCVER,YDGMV,&
 !      PCTY           : contains vertical velocities, vertical integral of divergence.
 !      POMEGA         : "omega" at full levels, including the "lrubc" and "delta m=1" effects.
 !      PFPLCL         : convective liquid rainfall flux, at half levels.
-!      PFPLCN         : convective solid rainfall flux, at half levels.
+!      PFPLCN         : convective snow rainfall flux, at half levels.
+!      PFPLCG         : convective graupel rainfall flux, at half levels.
 !      PFPLSL         : stratiform liquid rainfall flux, at half levels.
-!      PFPLSN         : stratiform solid rainfall flux, at half levels.
+!      PFPLSN         : stratiform snow rainfall flux, at half levels.
+!      PFPLSG         : stratiform graupel rainfall flux, at half levels.
 !      PQVS           : surface vapour specific humidity "q[surf]".
 !      PTSFC          : surface temperature "T[surf]".
 !      PRH            : relative humidity "RH" at full levels.
@@ -189,6 +193,7 @@ SUBROUTINE CPDYDDH(YDVAB,YDCVER,YDGMV,&
 !      PQI            : ice water "q_i" at full levels.
 !      PQR            : rain "q_r" at full levels.
 !      PQS            : snow "q_s" at full levels.
+!      PQG            : graupel "q_g" at full levels.
 !      PEXT           : extra GFL at full levels.
 !      PCOVPTOT       : precip fraction 
 !      PGFL           : GFL variables (note that PQL to PEXT may differ from PGFL content).
@@ -238,6 +243,7 @@ SUBROUTINE CPDYDDH(YDVAB,YDCVER,YDGMV,&
 !   K. Yessad (Feb 2018): remove deep-layer formulations.
 !   M. Hrastinski Sep-2019: TKE and TTE terms for ALARO DDH (tendencies,
 !                           horiz. and vert. fluxes, upper and bottom BC)
+!   D. Nemec (July 2021): Add graupel (variables: PQG, PFPLSG and PFPLCG)
 !     ------------------------------------------------------------------
 
 USE MODEL_DIAGNOSTICS_MOD  , ONLY : MODEL_DIAGNOSTICS_TYPE
@@ -301,8 +307,10 @@ REAL(KIND=JPRB)              , INTENT(IN)    :: PCTY(KPROMA,0:KFLEV,YYTCTY0%NDIM
 REAL(KIND=JPRB)              , INTENT(IN)    :: POMEGA(KPROMA,KFLEV) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PFPLCL(KPROMA,0:KFLEV) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PFPLCN(KPROMA,0:KFLEV) 
+REAL(KIND=JPRB)              , INTENT(IN)    :: PFPLCG(KPROMA,0:KFLEV) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PFPLSL(KPROMA,0:KFLEV) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PFPLSN(KPROMA,0:KFLEV) 
+REAL(KIND=JPRB)              , INTENT(IN)    :: PFPLSG(KPROMA,0:KFLEV) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PQVS(KPROMA) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PTSFC(KPROMA) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PRH(KPROMA,KFLEV) 
@@ -311,6 +319,7 @@ REAL(KIND=JPRB)              , INTENT(IN)    :: PQL(KPROMA,KFLEV)
 REAL(KIND=JPRB)              , INTENT(IN)    :: PQI(KPROMA,KFLEV) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PQR(KPROMA,KFLEV)
 REAL(KIND=JPRB)              , INTENT(IN)    :: PQS(KPROMA,KFLEV)
+REAL(KIND=JPRB)              , INTENT(IN)    :: PQG(KPROMA,KFLEV)
 REAL(KIND=JPRB)              , INTENT(IN)    :: PEXT(KPROMA,KFLEV,YDDPHY%NVEXTR)
 REAL(KIND=JPRB)              , INTENT(IN)    :: PCOVPTOT(KPROMA,KFLEV,1) 
 REAL(KIND=JPRB)              , INTENT(IN)    :: PGFL(KPROMA,KFLEV,YDML_GCONF%YGFL%NDIM)
@@ -359,13 +368,13 @@ REAL(KIND=JPRB) :: ZTMPAF(KPROMA,KFLEV)
 
 INTEGER(KIND=JPIM) :: IDHCV, JLEV, JROF, JEXT
 INTEGER(KIND=JPIM) :: IPTR_S, IPTR_SL, IPTR_SM, IPTR_R, IPTR_RL, IPTR_RM, IPTR_Q, IPTR_QL, IPTR_QM
-INTEGER(KIND=JPIM) :: IPTR_G, IPTR_H, IPTR_LL, IPTR_LM, IPTR_IL, IPTR_IM
+INTEGER(KIND=JPIM) :: IPTR_G, IPTR_GL, IPTR_GM, IPTR_H, IPTR_LL, IPTR_LM, IPTR_IL, IPTR_IM
 INTEGER(KIND=JPIM) :: IPTR_V, IPTR_U, IPTR_VL, IPTR_UL, IPTR_T, IPTR_TL, IPTR_TM
 INTEGER(KIND=JPIM) :: IPTR_CP, IPTR_RD
 INTEGER(KIND=JPIM) :: IPTR_TKE,IPTR_TTE,IPTR_TKEM,IPTR_TKEL,IPTR_TTEM,IPTR_TTEL
 
 REAL(KIND=JPRB) :: ZADPHI, ZADVLNT, ZADVP,&
- & ZADVQL, ZADVQI, ZADVQR, ZADVQS, ZADVQV,&
+ & ZADVQL, ZADVQI, ZADVQR, ZADVQS, ZADVQG, ZADVQV,&
  & ZADVT, ZCVMCD, &
  & ZDPREM, ZDPREZ, ZDPSFI, ZENTRA,&
  & ZENTRA0, ZENTRA00, ZENTRAS, ZENTRL0, ZENTRL00,&
@@ -404,7 +413,7 @@ ASSOCIATE(NDIM=>YDML_GCONF%YGFL%NDIM, YG=>YDML_GCONF%YGFL%YG, YH=>YDML_GCONF%YGF
  & RSTATI=>YDML_GCONF%YRRIP%RSTATI, &
  & LHDPAS=>YDML_DIAG%YRSDDH%LHDPAS, LHDQLN=>YDML_DIAG%YRSDDH%LHDQLN, NHDPASVA=>YDML_DIAG%YRSDDH%NHDPASVA, &
  & NHDQLNVA=>YDML_DIAG%YRSDDH%NHDQLNVA, L3MT=>YDPHY%L3MT, LSTRAPRO=>YDPHY%LSTRAPRO, &
- & NDPSFI=>YDPHY%NDPSFI, NPHY=>YDPHY%NPHY, LPTKE=>YDPHY%LPTKE, &
+ & NDPSFI=>YDPHY%NDPSFI, NPHY=>YDPHY%NPHY, LPTKE=>YDPHY%LPTKE, LGRAPRO=>YDPHY%LGRAPRO, &
  & LCOEFK_PTTE=>YDPHY%LCOEFK_PTTE)
 !     ------------------------------------------------------------------
 
@@ -421,6 +430,8 @@ IPTR_R=YR%MP
 IPTR_RL=YR%MPL
 IPTR_RM=YR%MPM
 IPTR_G=YG%MP
+IPTR_GL=YG%MPL
+IPTR_GM=YG%MPM
 IPTR_H=YH%MP
 IPTR_TKE=YTKE%MP
 IPTR_TKEL=YTKE%MPL
@@ -634,8 +645,8 @@ IF ( LHDENT ) THEN
 ! * TOTAL FLUX OF PRECIPITATIONS
   DO JLEV=0, KFLEV
     DO JROF=KSTART,KPROF
-      ZFPTOT(JROF,JLEV) = PFPLCL(JROF,JLEV) + PFPLCN(JROF,JLEV) +&
-       & PFPLSL(JROF,JLEV) + PFPLSN(JROF,JLEV)  
+      ZFPTOT(JROF,JLEV) = PFPLCL(JROF,JLEV) + PFPLCN(JROF,JLEV) + PFPLCG(JROF,JLEV) + &
+       &                  PFPLSL(JROF,JLEV) + PFPLSN(JROF,JLEV) + PFPLSG(JROF,JLEV) 
     ENDDO
   ENDDO
 ENDIF
@@ -857,15 +868,23 @@ IF ( LHDHKS ) THEN
             ZTMPAF(KSTART:KPROF,1:KFLEV)=&
             &ZDELPREV(KSTART:KPROF,1:KFLEV)*PGFL(KSTART:KPROF,1:KFLEV,IPTR_S)
             CALL NEW_ADD_FIELD_3D(YDML_DIAG%YRMDDH,ZTMPAF,'VQS',YDDDH)
+            !VQG
+            ZTMPAF(KSTART:KPROF,1:KFLEV)=&
+            &ZDELPREV(KSTART:KPROF,1:KFLEV)*PGFL(KSTART:KPROF,1:KFLEV,IPTR_G)
+            CALL NEW_ADD_FIELD_3D(YDML_DIAG%YRMDDH,ZTMPAF,'VQG',YDDDH)
           ELSE 
             !VQR
             ZTMPAF(KSTART:KPROF,1:KFLEV)=&
-             &ZDELPREV(KSTART:KPROF,1:KFLEV)*PGFL(KSTART:KPROF,1:KFLEV,IPTR_R)
+            &ZDELPREV(KSTART:KPROF,1:KFLEV)*PGFL(KSTART:KPROF,1:KFLEV,IPTR_R)
             CALL ADD_FIELD_3D(YDML_DIAG%YRLDDH,ZTMPAF,'VQR','V','ARP',.TRUE.,.TRUE.)
             !VQS
             ZTMPAF(KSTART:KPROF,1:KFLEV)=&
             &ZDELPREV(KSTART:KPROF,1:KFLEV)*PGFL(KSTART:KPROF,1:KFLEV,IPTR_S)
             CALL ADD_FIELD_3D(YDML_DIAG%YRLDDH,ZTMPAF,'VQS','V','ARP',.TRUE.,.TRUE.)
+            !VQG
+            ZTMPAF(KSTART:KPROF,1:KFLEV)=&
+            &ZDELPREV(KSTART:KPROF,1:KFLEV)*PGFL(KSTART:KPROF,1:KFLEV,IPTR_G)
+            CALL ADD_FIELD_3D(YDML_DIAG%YRLDDH,ZTMPAF,'VQG','V','ARP',.TRUE.,.TRUE.)
           ENDIF  
         ENDIF
         IF (LDDH_OMP) THEN
@@ -890,12 +909,15 @@ IF ( LHDHKS ) THEN
               PDHCV(JROF,JLEV,IDHCV+10)=PQI(JROF,JLEV)*ZDELPREV(JROF,JLEV)
             ENDDO
           ENDDO
-!         VQR and VQS
+!         VQR, VQS and VQG
           IF ( L3MT.OR.LSTRAPRO )THEN
             DO JLEV = 1, KFLEV
               DO JROF=KSTART,KPROF
                 PDHCV(JROF,JLEV,IDHCV+11)=PGFL(JROF,JLEV,IPTR_R)*ZDELPREV(JROF,JLEV)
                 PDHCV(JROF,JLEV,IDHCV+12)=PGFL(JROF,JLEV,IPTR_S)*ZDELPREV(JROF,JLEV)
+                IF(LGRAPRO) THEN
+                  PDHCV(JROF,JLEV,IDHCV+13)=PGFL(JROF,JLEV,IPTR_G)*ZDELPREV(JROF,JLEV)
+                ENDIF
               ENDDO
             ENDDO
           ELSE
@@ -1001,8 +1023,8 @@ IF(NDPSFI == 1)THEN
   DO JLEV = 0, KFLEV
     DO JROF=KSTART,KPROF
       ZFPSUM(JROF,JLEV) =&
-       & ( PFPLCL(JROF,JLEV) + PFPLCN(JROF,JLEV)&
-       & + PFPLSL(JROF,JLEV) + PFPLSN(JROF,JLEV) )  
+       & ( PFPLCL(JROF,JLEV) + PFPLCN(JROF,JLEV) + PFPLCG(JROF,JLEV)&
+       & + PFPLSL(JROF,JLEV) + PFPLSN(JROF,JLEV) + PFPLSG(JROF,JLEV) )  
     ENDDO
   ENDDO
 ELSE
@@ -1297,10 +1319,35 @@ IF ( LHDHKS ) THEN
     ENDIF
   ENDIF
 
+! 2.3.1.3.l/ "X"= qg.
+
+  IF(LHDQLN) THEN
+!       TQGDIVFLUHOR
+    IF(YG%LCDERS) THEN
+      DO JLEV = 1, KFLEV
+        DO JROF=KSTART,KPROF
+          ZADVQG =  PGMV(JROF,JLEV,IPTR_U)*PGFL(JROF,JLEV,IPTR_GL)+&
+           & PGMV(JROF,JLEV,IPTR_V)*PGFL(JROF,JLEV,IPTR_GM)
+          PDHCV(JROF,JLEV,IDHCV+18) = ZUSRG*(PQG(JROF,JLEV)*&
+           & (-ZT_DIVDP(JROF,JLEV))-ZT_DELP(JROF,JLEV)*ZADVQG)  
+        ENDDO
+      ENDDO
+    ELSE
+      DO JLEV = 1, KFLEV
+        DO JROF=KSTART,KPROF
+          ZADVQG=0.0_JPRB
+          PDHCV(JROF,JLEV,IDHCV+18) = ZUSRG*(PQG(JROF,JLEV)*&
+           & (-ZT_DIVDP(JROF,JLEV))-ZT_DELP(JROF,JLEV)*ZADVQG)  
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+
+
   ! TKE + TTE 
   IF (LPTKE) THEN
 
-!   2.3.1.3.l/ "X"=tke
+!   2.3.1.3.m/ "X"=tke
 
     DO JLEV = 1, KFLEV
       DO JROF=KSTART,KPROF
@@ -1318,7 +1365,7 @@ IF ( LHDHKS ) THEN
 
     IF (LCOEFK_PTTE) THEN 
 
-!   2.3.1.3.m/ "X"=tte
+!   2.3.1.3.n/ "X"=tte
 
       DO JLEV = 1, KFLEV
         DO JROF=KSTART,KPROF
@@ -1493,14 +1540,16 @@ IF ( LHDHKS ) THEN
       PDHCV(JROF,KFLEV,IDHCV+13) = 0.0_JPRB
 !     FQSFLUVERTDYN
       PDHCV(JROF,KFLEV,IDHCV+14) = 0.0_JPRB
+!     FQGFLUVERTDYN
+      PDHCV(JROF,KFLEV,IDHCV+15) = 0.0_JPRB
     ENDIF
     ! TKE + TTE
     IF (LPTKE) THEN
 !     FTKFLUVERTDYN    
-      PDHCV(JROF,KFLEV,IDHCV+15) = 0.0_JPRB
+      PDHCV(JROF,KFLEV,IDHCV+16) = 0.0_JPRB
       IF (LCOEFK_PTTE) THEN
 !       FTTFLUVERTDYN
-        PDHCV(JROF,KFLEV,IDHCV+16) = 0.0_JPRB
+        PDHCV(JROF,KFLEV,IDHCV+17) = 0.0_JPRB
       ENDIF
     ENDIF
   ENDDO
@@ -1560,6 +1609,9 @@ IF ( LHDHKS ) THEN
 !       FQSFLUVERTDYN
         PDHCV(JROF,JLEV,IDHCV+14) = ZUS2RG*( PQS(JROF,JLEV)+&
          & PQS(JROF,JLEV+1) )*ZEVELH(JROF,JLEV)
+!       FQGFLUVERTDYN
+        PDHCV(JROF,JLEV,IDHCV+15) = ZUS2RG*( PQG(JROF,JLEV)+&
+         & PQG(JROF,JLEV+1) )*ZEVELH(JROF,JLEV)
       ENDDO
     ENDDO
   ENDIF
@@ -1568,7 +1620,7 @@ IF ( LHDHKS ) THEN
     DO JLEV=1,KFLEV-1
       DO JROF=KSTART,KPROF
 !       FTKFLUVERTDYN
-        PDHCV(JROF,JLEV,IDHCV+15) = ZUS2RG*( PGFL(JROF,JLEV,IPTR_TKE)+&
+        PDHCV(JROF,JLEV,IDHCV+16) = ZUS2RG*( PGFL(JROF,JLEV,IPTR_TKE)+&
          & PGFL(JROF,JLEV+1,IPTR_TKE) )*ZEVELH(JROF,JLEV)
       ENDDO
     ENDDO
@@ -1576,7 +1628,7 @@ IF ( LHDHKS ) THEN
       DO JLEV=1,KFLEV-1
         DO JROF=KSTART,KPROF
 !         FTTFLUVERTDYN
-          PDHCV(JROF,JLEV,IDHCV+16) = ZUS2RG*( PGFL(JROF,JLEV,IPTR_TTE)+&
+          PDHCV(JROF,JLEV,IDHCV+17) = ZUS2RG*( PGFL(JROF,JLEV,IPTR_TTE)+&
            & PGFL(JROF,JLEV+1,IPTR_TTE) )*ZEVELH(JROF,JLEV)
         ENDDO
       ENDDO
@@ -1621,14 +1673,16 @@ IF ( LHDHKS ) THEN
       PDHCV(JROF,0,IDHCV+13) = 0.0_JPRB
 !     FQSFLUVERTDYN
       PDHCV(JROF,0,IDHCV+14) = 0.0_JPRB
+!     FQGFLUVERTDYN
+      PDHCV(JROF,0,IDHCV+15) = 0.0_JPRB
     ENDIF
     ! TKE + TTE
     IF (LPTKE) THEN
 !     FTKFLUVERTDYN    
-      PDHCV(JROF,0,IDHCV+15) = 0.0_JPRB
+      PDHCV(JROF,0,IDHCV+16) = 0.0_JPRB
       IF (LCOEFK_PTTE) THEN
 !       FTTFLUVERTDYN
-        PDHCV(JROF,0,IDHCV+16) = 0.0_JPRB
+        PDHCV(JROF,0,IDHCV+17) = 0.0_JPRB
       ENDIF
     ENDIF
   ENDDO
@@ -1758,7 +1812,8 @@ IF ( LHDENT ) THEN
 !   FSSPRECISS
     PDHCV(JROF,KFLEV,IDHCV+2) =&
      & ZENTRL(JROF,KFLEV)*(PFPLCL(JROF,KFLEV)+PFPLSL(JROF,KFLEV)) +&
-     & ZENTRS(JROF,KFLEV)*(PFPLCN(JROF,KFLEV)+PFPLSN(JROF,KFLEV))  
+     & ZENTRS(JROF,KFLEV)*(PFPLCN(JROF,KFLEV)+PFPLSN(JROF,KFLEV) + &
+     &                     PFPLCG(JROF,KFLEV)+PFPLSG(JROF,KFLEV))
   ENDDO
 
 ! * INTERNIVEAUX NORMAUX / HALF LEVELS
@@ -1772,7 +1827,8 @@ IF ( LHDENT ) THEN
 !     FSSPRECISS
       PDHCV(JROF,JLEV,IDHCV+2) =&
        & ZENTRL(JROF,JLEV)*(PFPLCL(JROF,JLEV)+PFPLSL(JROF,JLEV)) +&
-       & ZENTRS(JROF,JLEV)*(PFPLCN(JROF,JLEV)+PFPLSN(JROF,JLEV))  
+       & ZENTRS(JROF,JLEV)*(PFPLCN(JROF,JLEV)+PFPLSN(JROF,JLEV) + &
+       &                    PFPLCG(JROF,JLEV)+PFPLSG(JROF,JLEV))  
     ENDDO
   ENDDO
 

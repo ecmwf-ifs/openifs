@@ -6,8 +6,6 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction
 
-include( target_compile_definitions_FILENAME )
-
 add_subdirectory( dwarf_util )
 add_subdirectory( dwarf_sladv )
 add_subdirectory( dwarf_mpdata )

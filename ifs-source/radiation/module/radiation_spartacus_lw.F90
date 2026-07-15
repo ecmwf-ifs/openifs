@@ -1,10 +1,16 @@
 ! radiation_spartacus_lw.F90 - SPARTACUS longwave solver
 !
-! Copyright (C) 2014-2019 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive emission/albedo rather than planck/emissivity
@@ -14,6 +20,8 @@
 !   2019-01-12  R. Hogan  Use inv_inhom_effective_size if allocated
 
 module radiation_spartacus_lw
+
+  public
 
 contains
 
@@ -46,7 +54,8 @@ contains
        &  flux)
 
     use parkind1,                 only : jprb
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,                  only : lhook, dr_hook, jphook
+
     use radiation_io,             only : nulout
     use radiation_config,         only : config_type, IPdfShapeGamma
     use radiation_thermodynamics, only : thermodynamics_type
@@ -56,7 +65,7 @@ contains
     use radiation_flux,           only : flux_type, indexed_sum
     use radiation_matrix
     use radiation_two_stream,     only : calc_two_stream_gammas_lw, &
-         calc_reflectance_transmittance_lw, LwDiffusivity
+         calc_reflectance_transmittance_lw, LwDiffusivityWP
     use radiation_lw_derivatives, only : calc_lw_derivatives_matrix
     use radiation_constants,      only : Pi, GasConstantDryAir, &
          AccelDueToGravity
@@ -605,12 +614,12 @@ contains
             ! parts of the matrix ODE
             planck_top(1:ng3D,nreg+jreg) = od_region(1:ng3D,jreg) &
                  &  *(1.0_jprb-ssa_region(1:ng3D,jreg))*region_fracs(jreg,jlev,jcol) &
-                 &  *planck_hl(1:ng3D,jlev,jcol)*LwDiffusivity
+                 &  *planck_hl(1:ng3D,jlev,jcol)*LwDiffusivityWP
             planck_top(1:ng3D,jreg) = -planck_top(1:ng3D,nreg+jreg)
             planck_diff(1:ng3D,nreg+jreg) = od_region(1:ng3D,jreg) &
                  &  * (1.0_jprb-ssa_region(1:ng3D,jreg))*region_fracs(jreg,jlev,jcol) &
                  &  * (planck_hl(1:ng3D,jlev+1,jcol) &
-                 &  -planck_hl(1:ng3D,jlev,jcol))*LwDiffusivity
+                 &  -planck_hl(1:ng3D,jlev,jcol))*LwDiffusivityWP
             planck_diff(1:ng3D,jreg) = -planck_diff(1:ng3D,nreg+jreg)
           end do
 

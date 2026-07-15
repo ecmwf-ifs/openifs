@@ -1,0 +1,984 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#:mute
+#:set config_file = os.path.dirname(_THIS_FILE_) + '/field_config.yaml'
+#:set config = field_config.VariableConfiguration(config_file)
+#:set gfl = config.groups['GFL'] 
+#:include "cpg_macros.fypp"
+
+#:set USE_STACK = False
+
+#:set AS_void                 = []
+#:set AS_0_nflevg             = [ [ '0', 'NLEV' ] ]
+#:set AS_1_nflevg             = [ [ '1', 'NLEV' ] ]
+#:set AS_1_KFLEVG             = [ [ '1', 'YDCPG_OPTS%KFLEVG' ] ]
+#:set AS_1_nflevg_2           = [ [ '1', 'NLEV' ], [ '1', '2' ] ]
+#:set AS_0_KFLEVG_6           = [ [ '0', 'YDCPG_OPTS%KFLEVG' ], [ '1', '6' ] ]
+#:set AS_1_KFLEVG_NVCLIS      = [ [ '0', 'YDCPG_OPTS%KFLEVG' ], [ '1', 'YDCPG_OPTS%KVCLIS' ] ]
+#:set AS_4D                   = [ [], [] ]
+#:set AS_1_NSW                = [ [ '1', 'YDCPG_OPTS%KSW' ] ]
+
+#:set vars_cpg_gp_t_tmp = { &
+& "GDW"            : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN"                       ], &
+& "GWHT"           : [False, False, AS_0_nflevg,        None,                 None                           ], &
+& "OROGLL"         : [False, False, AS_void,            None,                 "YDDYNA%LNHDYN.AND.LLT0"              ], &
+& "OROGMM"         : [False, False, AS_void,            None,                 "YDDYNA%LNHDYN.AND.LLT0"              ], &
+& "OROGLM"         : [False, False, AS_void,            None,                 "YDDYNA%LNHDYN.AND.LLT0"              ], &
+& "DELNHPRE"       : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHEE"                        ], &
+& "DPHYCTY"        : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.(.NOT.YDDYNA%LNHDYN)"       ], &
+& "DVER"           : [False, False, AS_1_nflevg,        None,                 None                           ], &
+& "DVERL"          : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "DVERM"          : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "DVERW"          : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHEE"                        ], &
+& "EIQCHAF"        : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHQE"               ], &
+& "EQCHAF"         : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHQE"               ], &
+& "EQCHAH"         : [False, False, AS_0_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHQE"               ], &
+& "GPHL"           : [False, False, AS_0_nflevg,        None,                 "LLT0"                         ], &
+& "GPHM"           : [False, False, AS_0_nflevg,        None,                 "LLT0"                         ], &
+& "GWHL"           : [False, False, AS_0_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "GWHM"           : [False, False, AS_0_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "KAPH"           : [False, False, AS_0_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHQE"               ], &
+& "LNNHPREFL"      : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "LNNHPREFM"      : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "NHPPI"          : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHEE"                        ], &
+& "NHPREL"         : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "NHPREM"         : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "NHXD_T"         : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHQE"                        ], &
+& "NHXS"           : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "NHXS_T"         : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHQE"                        ], &
+& "NHXT"           : [False, False, AS_1_nflevg,        None,                 "(.NOT.YDDYNA%LNHDYN)"                ], &
+& "PDEP"           : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHEE"                        ], &
+& "PDEPS"          : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "PSGRTL"         : [False, False, AS_1_nflevg,        None,                 "LLT0"                         ], &
+& "PSGRTM"         : [False, False, AS_1_nflevg,        None,                 "LLT0"                         ], &
+& "R0T"            : [False, False, AS_1_nflevg,        None,                 ".NOT.LLT0"                    ], &
+& "R9T"            : [False, False, AS_1_nflevg,        None,                 "(.NOT.LLT0).AND.YDDYNA%LNHQE"        ], &
+& "RDT"            : [False, False, AS_1_nflevg,        None,                 "(.NOT.YDDYNA%LNHDYN).OR.YDDYNA%LNHEE"       ], &
+& "RDTL"           : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "RDTM"           : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "RNHPPI"         : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHEE"                        ], &
+& "RPREF"          : [False, False, AS_1_nflevg,        None,                 "LLT0"                         ], &
+& "RRED"           : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHEE"                        ], &
+& "RT"             : [False, False, AS_1_nflevg,        None,                 "LLT0"                         ], &
+& "RTR"            : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "SGRTL"          : [False, False, AS_1_nflevg,        None,                 "LLT0"                         ], &
+& "SGRTM"          : [False, False, AS_1_nflevg,        None,                 "LLT0"                         ], &
+& "SGRTSL"         : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "SGRTSM"         : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "SVDINCR13"      : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "TNDGWF_LAP"     : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "TNDGWF_OTH"     : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "TNDGWH_LAP"     : [False, False, AS_0_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "TNDGWH_OTH"     : [False, False, AS_0_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "TNDUS"          : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "TNDVS"          : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "US"             : [False, False, AS_void,            None,                 None                           ], &
+& "US_L"           : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "US_M"           : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "VS"             : [False, False, AS_void,            None,                 None                           ], &
+& "VS_L"           : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "VS_M"           : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHDYN"              ], &
+& "Z3DIVG"         : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "WH2F"           : [False, False, AS_1_nflevg_2,      None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "ZERO"           : [False, False, AS_void,            None,                 "LLT0.AND.YDDYNA%LNHEE"               ], &
+& "ONE"            : [False, False, AS_1_nflevg,        None,                 "LLT0.AND.YDDYNA%LNHQE"               ], &
+& "XYBDER"         : [False, False, AS_4D,              "CPG_XYBDER_TYPE",    "LLT0"               , "YLTXYBDER"  ], &
+& "UVH"            : [False, False, AS_4D,              "CPG_HWIND_TYPE",     ".NOT.LLT0"          , "YLTHW"      ], &
+& }
+
+#:set vars_cpg_gp_tmp = { &
+& "T0"             : [False, False, AS_void,            "CPG_GP_T_TMP_TYPE",  None                 ], &
+& "T9"             : [False, False, AS_void,            "CPG_GP_T_TMP_TYPE",  None                 ], &
+& }
+
+#:set vars_cpg_dyn = { &                                                                                         
+& "OROGL"          : [False, False, AS_void,            None,                 "LLT0"               ], &
+& "OROGM"          : [False, False, AS_void,            None,                 "LLT0"               ], &
+& "PHI"            : [False, False, AS_0_nflevg,        None,                 None                 ], &
+& "PRE"            : [False, False, AS_0_nflevg,        None,                 None                 ], &
+& "PHIF"           : [True,  True,  AS_1_nflevg,        None,                 None                 ], &
+& "PREF"           : [True,  True,  AS_1_nflevg,        None,                 None                 ], &
+& "WRL"            : [True,  False, AS_1_nflevg,        None,                 None                 ], &
+& "PREL"           : [False, False, AS_void,            None,                 None                 ], &
+& "PREM"           : [False, False, AS_void,            None,                 None                 ], &
+& "NHY"            : [False, False, AS_0_nflevg,        None,                 None                 ], &
+& "GWFT"           : [False, False, AS_1_nflevg,        None,                 None                 ], &
+& "KENE"           : [False, False, AS_1_nflevg,        None,                 "LLT0"               ], &
+& "NHX"            : [False, False, AS_1_nflevg,        None,                 None                 ], &
+& "PHIFL"          : [False, False, AS_1_nflevg,        None,                 "LLT0"               ], &
+& "PHIFM"          : [False, False, AS_1_nflevg,        None,                 "LLT0"               ], &
+& "RTL"            : [False, False, AS_1_nflevg,        None,                 "LLT0"               ], &
+& "RTM"            : [False, False, AS_1_nflevg,        None,                 "LLT0"               ], &
+& "RCP"            : [True,  True,  AS_4D,              "CPG_RCP_TYPE",       None                 , "YLTRCP"     ], &
+& "CTY"            : [True,  False, AS_4D,              "CPG_CTY_TYPE",       "LLT0"               , "YLTCTY"     ], &
+& "UVH"            : [False, False, AS_4D,              "CPG_HWIND_TYPE",     "LLT0"               , "YLTHW"      ], &
+& "XYB"            : [False, False, AS_4D,              "CPG_XYB_TYPE",       None                 , "YLTXYB"     ], &
+& "DBBC"           : [False, False, AS_void,            None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& "GWS"            : [False, False, AS_void,            None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& "GWFL"           : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& "GWFM"           : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& "GWT"            : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN"             ], &
+& "NHPREF"         : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN"             ], &
+& "NHPREH"         : [False, False, AS_0_nflevg,        None,                 "YDDYNA%LNHDYN"             ], &
+& "QCHAL"          : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& "QCHAM"          : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& "RDPHI"          : [False, False, AS_1_nflevg,        None,                 "YDDYNA%LNHDYN .AND. LLT0"  ], &
+& }
+
+#:set vars_cpg_phy = { &                                                                                           
+& "PRE"            : [False, False, AS_0_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "PREF"           : [False, False, AS_1_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "PREHYD"         : [False, False, AS_0_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "PREHYDF"        : [False, False, AS_1_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "WL"             : [False, False, AS_1_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "WM"             : [False, False, AS_1_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "W"              : [False, False, AS_1_nflevg,        None,                 "LLMF_PHYS"          ], &
+& "XYB"            : [False, False, AS_4D,              "CPG_XYB_TYPE",       "LLMF_PHYS"          , "YLTXYB_PHY" ], &
+& }
+
+#:set vars_cpg_gpar = { &
+& "INPRR"          : [False, False, AS_void,            None,                 None                 ], &
+& "INPRS"          : [False, False, AS_void,            None,                 None                 ], &
+& "INPRG"          : [False, False, AS_void,            None,                 None                 ], &
+& "ACPRR"          : [False, False, AS_void,            None,                 None                 ], &
+& "ACPRS"          : [False, False, AS_void,            None,                 None                 ], &
+& "ACPRG"          : [False, False, AS_void,            None,                 None                 ], &
+& "ALBDIR"         : [False, False, AS_1_NSW,           None,                 None                 ], &
+& "ALBSCA"         : [False, False, AS_1_NSW,           None,                 None                 ], &
+& "RAIN"           : [False, False, AS_void,            None,                 None                 ], &
+& "SNOW"           : [False, False, AS_void,            None,                 None                 ], &
+& "GZ0"            : [False, False, AS_void,            None,                 None                 ], &
+& "GZ0H"           : [False, False, AS_void,            None,                 None                 ], &
+& "VQS"            : [False, False, AS_void,            None,                 None                 ], &
+& "VTS"            : [False, False, AS_void,            None,                 None                 ], &
+& "VEMIS"          : [False, False, AS_void,            None,                 None                 ], &
+& "SWDIR"          : [False, False, AS_1_NSW,           None,                 None                 ], &
+& "SWDIF"          : [False, False, AS_1_NSW,           None,                 None                 ], &
+& "LSM"            : [False, False, AS_void,            None,                 None                 ], &
+& "CD"             : [False, False, AS_void,            None,                 None                 ], &
+& }
+
+#:set vars_cpg_misc = { &
+& "NEB"            : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "QLI"            : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "QICE"           : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "QRAIN"          : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "QSNOW"          : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "QGRAUPEL"       : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "RH"             : [False, False, AS_1_KFLEVG,        None,                 None                 ], &
+& "QS"             : [False, False, AS_void,            None,                 None                 ], &
+& "QSOL"           : [False, False, AS_void,            None,                 None                 ], &
+& "DHSF"           : [False, False, AS_void,            None,                 None                 ], &
+& "CLCT"           : [False, False, AS_void,            None,                 None                 ], &
+& "LSM"            : [False, False, AS_void,            None,                 None                 ], &
+& "TSOL"           : [False, False, AS_void,            None,                 None                 ], &
+& "FTCNS"          : [False, False, AS_0_KFLEVG_6,      None,                 None                 ], &
+& "KOZO"           : [False, False, AS_1_KFLEVG_NVCLIS, None,                 None                 ], &
+& }
+
+
+#:set vars_cpg_dyn_xybder = { &
+& "LNPRL"          : [False, False,  AS_1_nflevg,  ], &
+& "LNPRM"          : [False, False,  AS_1_nflevg,  ], &
+& "ALPHL"          : [False, False,  AS_1_nflevg,  ], &
+& "ALPHM"          : [False, False,  AS_1_nflevg,  ], &
+& "ALPHPLL"        : [False, False,  AS_1_nflevg,  ], &
+& "ALPHPLM"        : [False, False,  AS_1_nflevg,  ], &
+& "COEFD"          : [False, False,  AS_1_nflevg,  ], &
+& "COEFA"          : [False, False,  AS_1_nflevg,  ], &
+& "COEFAPL"        : [False, False,  AS_1_nflevg,  ], &
+& }
+
+#:set vars_cpg_dyn_xyb = { &
+& "DELP"           : [False, False, AS_1_nflevg,   ], & 
+& "RDELP"          : [False, False, AS_1_nflevg,   ], &
+& "LNPR"           : [False, False, AS_1_nflevg,   ], &
+& "ALPH"           : [False, False, AS_1_nflevg,   ], &
+& "RTGR"           : [False, False, AS_1_nflevg,   ], &
+& "RPRE"           : [False, False, AS_1_nflevg,   ], &
+& "RPP"            : [False, False, AS_1_nflevg,   ], &
+& }
+
+#:set vars_cpg_dyn_hwind = { &
+& "UH"             : [False, False, AS_0_nflevg,   ], &
+& "VH"             : [False, False, AS_0_nflevg,   ], &
+& "WWI"            : [False, False, AS_0_nflevg,   ], &
+& }
+
+#:set vars_cpg_dyn_rcp = { &
+& "CP"             : [False, False, AS_1_nflevg,   ], &
+& "R"              : [False, False, AS_1_nflevg,   ], &
+& "KAP"            : [False, False, AS_1_nflevg,   ], &
+& }
+
+#:set vars_cpg_dyn_cty = { &
+& "EVEL"           : [False, False, AS_0_nflevg,   ], &
+& "VVEL"           : [False, False, AS_0_nflevg,   ], &
+& "PSDIV"          : [False, False, AS_0_nflevg,   ], &
+& "PSDVBC"         : [False, False, AS_0_nflevg,   ], &
+& "DIVDP"          : [False, False, AS_0_nflevg,   ], &
+& }
+
+#:set vars_cpg_dyn_tnd = { &
+& "TNDU"           : [False, False, AS_1_nflevg,   ], &
+& "TNDV"           : [False, False, AS_1_nflevg,   ], &
+& "TNDU_NOC"       : [False, False, AS_1_nflevg,   ], &
+& "TNDV_NOC"       : [False, False, AS_1_nflevg,   ], &
+& "TNDT"           : [False, False, AS_1_nflevg,   ], &
+& "TNDPD"          : [False, False, AS_1_nflevg,   ], &
+& "TNDVD"          : [False, False, AS_1_nflevg,   ], &
+& "TNDGW"          : [False, False, AS_1_nflevg,   ], &
+& }
+
+#:endmute
+MODULE CPG_TYPE_MOD
+
+USE FIELD_MODULE
+USE FIELD_FACTORY_MODULE, ONLY : FIELD_NEW 
+USE FIELD_REGISTRY_MOD
+USE PARKIND1, ONLY : JPRB, JPIM, JPIB
+
+IMPLICIT NONE
+
+$:pcpg_intdyn_definition ("CPG_XYBDER_TYPE"  ,vars_cpg_dyn_xybder, use_stack=USE_STACK)
+
+$:pcpg_intdyn_definition ("CPG_XYB_TYPE"     ,vars_cpg_dyn_xyb   , use_stack=USE_STACK)
+
+$:pcpg_intdyn_definition ("CPG_HWIND_TYPE"   ,vars_cpg_dyn_hwind , use_stack=USE_STACK)
+
+$:pcpg_intdyn_definition ("CPG_RCP_TYPE"     ,vars_cpg_dyn_rcp   , use_stack=USE_STACK)
+
+$:pcpg_intdyn_definition ("CPG_CTY_TYPE"     ,vars_cpg_dyn_cty   , use_stack=USE_STACK)
+
+$:pcpg_intdyn_definition ("CPG_TND_TYPE"     ,vars_cpg_dyn_tnd   , use_stack=USE_STACK)
+
+$:pcpg_struct1_definition ("CPG_GPAR_TYPE"  , vars_cpg_gpar     )
+
+$:pcpg_type_definition ("CPG_GP_T_TMP_TYPE" , vars_cpg_gp_t_tmp , use_stack=USE_STACK)
+
+$:pcpg_type_definition ("CPG_GP_TMP_TYPE"   , vars_cpg_gp_tmp   , use_stack=USE_STACK)
+
+$:pcpg_type_definition ("CPG_DYN_TYPE"      , vars_cpg_dyn      , use_stack=USE_STACK)
+
+$:pcpg_type_definition ("CPG_PHY_TYPE"      , vars_cpg_phy      , use_stack=USE_STACK)
+
+
+$:pcpg_type_definition ("CPG_MISC_TYPE"     , vars_cpg_misc     , use_stack=USE_STACK)
+
+TYPE CPG_TMP_TYPE
+  TYPE (CPG_GP_TMP_TYPE) :: CPG_GP
+CONTAINS
+  PROCEDURE :: INIT => CPG_TMP_TYPE_INIT
+  PROCEDURE :: UPDATE_VIEW => CPG_TMP_TYPE_UPDATE_VIEW
+#:if USE_STACK
+  PROCEDURE :: INIT_STACK => CPG_TMP_TYPE_INIT_STACK
+  PROCEDURE :: ALLOC_STACK => CPG_TMP_TYPE_ALLOC_STACK
+  PROCEDURE :: UPDATE_VIEW_STACK => CPG_TMP_TYPE_UPDATE_VIEW_STACK
+  PROCEDURE :: SIZE_STACK => CPG_TMP_TYPE_SIZE_STACK
+#:endif
+  PROCEDURE :: FINAL => CPG_TMP_TYPE_FINAL
+END TYPE CPG_TMP_TYPE
+
+TYPE CPG_DDH_TYPE
+  REAL(KIND=JPRB), POINTER, CONTIGUOUS :: AUX3D (:,:,:) => NULL ()
+  CLASS (FIELD_4RB), POINTER :: F_AUX3D => NULL ()
+  
+  REAL(KIND=JPRB), POINTER, CONTIGUOUS :: AUX2D (:,:) => NULL ()
+  CLASS (FIELD_3RB), POINTER :: F_AUX2D => NULL ()
+
+  REAL(KIND=JPRB), POINTER, CONTIGUOUS :: DHCV  (:,:,:) => NULL ()
+  CLASS (FIELD_4RB), POINTER :: F_DHCV => NULL ()
+  REAL(KIND=JPRB), POINTER, CONTIGUOUS :: AUXSM (:,:,:,:) => NULL ()
+  CLASS (FIELD_5RB), POINTER :: F_AUXSM => NULL ()
+  INTEGER(KIND=JPIM), POINTER, CONTIGUOUS :: DDHI (:) => NULL ()
+  CLASS (FIELD_2IM), POINTER :: F_DDHI => NULL ()
+CONTAINS
+  PROCEDURE :: INIT => CPG_DDH_TYPE_INIT
+  PROCEDURE :: UPDATE_VIEW => CPG_DDH_TYPE_UPDATE_VIEW
+  PROCEDURE :: FINAL => CPG_DDH_TYPE_FINAL
+END TYPE CPG_DDH_TYPE
+
+#:set N3D = 0
+#:set pb1_vars = { &
+& 'U9'         : [ True   ],  'V9'         : [ True   ], &
+& 'T9'         : [ True   ],  'PD9'        : [ True   ], &
+& 'VD9'        : [ True   ],  'NHX9'       : [ True   ], &
+& 'UR0'        : [ True   ],  'VR0'        : [ True   ], &
+& 'ZR0'        : [ True   ],  'WR0'        : [ True   ], &
+& 'UR00'       : [ True   ],  'VR00'       : [ True   ], &
+& 'ZR00'       : [ True   ],  'WR00'       : [ True   ], &
+& 'WRA'        : [ True   ],  'UR9'        : [ True   ], &
+& 'VR9'        : [ True   ],  'DBBC9'      : [ True   ], &
+& 'DPHI9'      : [ True   ],  'GWS9'       : [ False  ], &
+& 'U0'         : [ True   ],  'V0'         : [ True   ], &
+& 'T0'         : [ True   ],  'PD0'        : [ True   ], &
+& 'VD0'        : [ True   ],  'C9'         : [ True   ], &
+& 'SP9'        : [ False  ],  'SP0'        : [ False  ], &
+& 'C0'         : [ True   ],  'UP9'        : [ True   ], &
+& 'VP9'        : [ True   ],  'TP9'        : [ True   ], &
+& 'U9_SI'      : [ True   ],  'V9_SI'      : [ True   ], &
+& 'T9_SI'      : [ True   ],  'PD9_SI'     : [ True   ], &
+& 'VD9_SI'     : [ True   ],  'C9_SI'      : [ True   ], &
+& 'UF9'        : [ True   ],  'VF9'        : [ True   ], &
+& 'TF9'        : [ True   ],  'VDF9'       : [ True   ], &
+& 'U9_NL'      : [ True   ],  'V9_NL'      : [ True   ], &
+& 'T9_NL'      : [ True   ],  'PD9_NL'     : [ True   ], &
+& 'VD9_NL'     : [ True   ],  'C9_NL'      : [ True   ], &
+& }
+
+#:set pb2_vars = { &
+& 'DBBC1'      : [ False ],  'DPHI1'      : [ False ], &
+& 'USI'        : [ True  ],  'VSI'        : [ True  ], &
+& 'TSI'        : [ True  ],  'PDSI'       : [ True  ], &
+& 'VDSI'       : [ True  ],  'SPSI'       : [ True  ], &
+& 'VVEL'       : [ True  ],  'URL'        : [ True  ], &
+& 'VRL'        : [ True  ],  'WRL'        : [ True  ], &
+& 'URL5'       : [ True  ],  'VRL5'       : [ True  ], &
+& 'WRL5'       : [ True  ],  'USI5'       : [ True  ], &
+& 'VSI5'       : [ True  ],  'U15'        : [ True  ], &
+& 'V15'        : [ True  ],  'T15'        : [ True  ], &
+& 'Q15'        : [ True  ],  'KAPPA'      : [ True  ], &
+& 'KAPPAT'     : [ True  ],  'KAPPAM'     : [ True  ], &
+& 'KAPPAH'     : [ True  ],  'KAPPA5'     : [ True  ], &
+& 'KAPPAT5'    : [ True  ],  'GWF'        : [ True  ], &
+& 'GDW'        : [ True  ],  'GWS'        : [ True  ], &
+& 'STDDISU'    : [ True  ],  'STDDISV'    : [ True  ], &
+& 'STDDISW'    : [ True  ], &
+& }
+
+#:def pcpg_sl_type_definition (ind, vars, use_gfl=False)
+TYPE CPG_SL${ind}$_TYPE
+  LOGICAL :: LOWNED = .FALSE.
+  INTEGER (KIND=JPIM) :: NLEV = -1
+  INTEGER (KIND=JPIB) :: ISIZE = 0
+  REAL (KIND=JPRB), POINTER, CONTIGUOUS :: ZVIEW (:,:) => NULL ()
+  REAL (KIND=JPRB), POINTER, CONTIGUOUS :: ZDATA (:,:,:) => NULL ()
+  CLASS (FIELD_3RB), POINTER :: F_DATA => NULL ()
+#:for var in vars
+  #:if vars[var][N3D]
+  REAL (KIND=JPRB), POINTER, CONTIGUOUS :: ${var}$ (:,:) => NULL ()
+!>REAL (KIND=JPRB)                      :: ${var}$ (NPROMA, 0:NLEV+1)
+  CLASS (FIELD_3RB), POINTER :: F_${var}$ => NULL ()
+  #:else
+  REAL (KIND=JPRB), POINTER, CONTIGUOUS :: ${var}$ (:) => NULL ()
+!>REAL (KIND=JPRB)                      :: ${var}$ (NPROMA)
+  CLASS (FIELD_2RB), POINTER :: F_${var}$ => NULL ()
+  #:endif
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+  REAL (KIND=JPRB), POINTER, CONTIGUOUS :: ${v.name}$   (${', '.join ([':'] * (v.dim-1))}$) => NULL ()
+!>REAL (KIND=JPRB)                      :: ${v.name}$ (NPROMA, 0:NLEV+1)
+  CLASS (FIELD_3RB), POINTER :: F_${v.name}$ => NULL ()
+  REAL (KIND=JPRB), POINTER, CONTIGUOUS :: ${v.name}$_F (${', '.join ([':'] * (v.dim-1))}$) => NULL ()
+!>REAL (KIND=JPRB)                      :: ${v.name}$_F (NPROMA, 0:NLEV+1)
+  CLASS (FIELD_3RB), POINTER :: F_${v.name}$_F => NULL ()
+    #:endif
+  #:endfor
+#:endif
+CONTAINS
+  PROCEDURE :: INIT => CPG_SL${ind}$_TYPE_INIT
+  PROCEDURE :: UPDATE_VIEW => CPG_SL${ind}$_TYPE_UPDATE_VIEW
+#:if USE_STACK
+  PROCEDURE :: INIT_STACK => CPG_SL${ind}$_TYPE_INIT_STACK
+  PROCEDURE :: ALLOC_STACK => CPG_SL${ind}$_TYPE_ALLOC_STACK
+  PROCEDURE :: UPDATE_VIEW_STACK => CPG_SL${ind}$_TYPE_UPDATE_VIEW_STACK
+  PROCEDURE :: SIZE_STACK => CPG_SL${ind}$_TYPE_SIZE_STACK
+#:endif
+  PROCEDURE :: FINAL => CPG_SL${ind}$_TYPE_FINAL
+END TYPE CPG_SL${ind}$_TYPE
+#:enddef
+
+$:pcpg_sl_type_definition ("1", pb1_vars, True)
+
+$:pcpg_sl_type_definition ("2", pb2_vars)
+
+REAL(KIND=JPRB),    PRIVATE, SAVE, TARGET :: ZDUM1 (1), ZDUM2 (1, 1), ZDUM3 (1,1,1)
+INTEGER(KIND=JPIM), PRIVATE, SAVE, TARGET :: IDUM1 (1), IDUM2 (1, 1), IDUM3 (1,1,1)
+
+CONTAINS
+
+$:pcpg_intdyn_methods ("CPG_XYBDER_TYPE"  , vars_cpg_dyn_xybder, "XYBDER", use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_intdyn_methods ("CPG_XYB_TYPE"     , vars_cpg_dyn_xyb   , "XYB"   , use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_intdyn_methods ("CPG_HWIND_TYPE"   , vars_cpg_dyn_hwind , "HWIND" , use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_intdyn_methods ("CPG_RCP_TYPE"     , vars_cpg_dyn_rcp   , "RCP"   , use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_intdyn_methods ("CPG_CTY_TYPE"     , vars_cpg_dyn_cty   , "CTY"   , use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_intdyn_methods ("CPG_TND_TYPE"     , vars_cpg_dyn_tnd   , "TND"   , use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_struct1_methods ("CPG_GPAR_TYPE"   , vars_cpg_gpar   , "TPARAR", "YOMPARAR", "M", "NGPAR")
+
+$:pcpg_type_methods ("CPG_GP_T_TMP_TYPE" , vars_cpg_gp_t_tmp, use_intdyn=True, use_lbounds=True, use_stack=USE_STACK, use_yddyna=True)
+
+$:pcpg_type_methods ("CPG_GP_TMP_TYPE"   , vars_cpg_gp_tmp,                    use_lbounds=True, use_stack=USE_STACK, use_yddyna=True)
+
+$:pcpg_type_methods ("CPG_DYN_TYPE"      , vars_cpg_dyn , use_intdyn=True, use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_type_methods ("CPG_PHY_TYPE"      , vars_cpg_phy , use_intdyn=True, use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_type_methods ("CPG_MISC_TYPE"     , vars_cpg_misc,                  use_lbounds=True, use_stack=USE_STACK)
+
+SUBROUTINE CPG_TMP_TYPE_INIT (SELF, REGISTRY, NLEV, PERSISTENT, YDDYNA)
+
+USE YOMDYNA, ONLY : TDYNA
+
+CLASS (CPG_TMP_TYPE) :: SELF
+TYPE (FIELD_REGISTRY),        INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),          INTENT (IN)    :: NLEV
+LOGICAL, OPTIONAL,            INTENT (IN)    :: PERSISTENT
+TYPE (TDYNA),                 INTENT (IN)    :: YDDYNA
+
+CALL SELF%CPG_GP%INIT (REGISTRY, NLEV, PERSISTENT, YDDYNA)
+
+END SUBROUTINE
+
+#:if USE_STACK
+SUBROUTINE CPG_TMP_TYPE_INIT_STACK (SELF, REGISTRY, NLEV)
+
+CLASS (CPG_TMP_TYPE) :: SELF
+TYPE (FIELD_REGISTRY),        INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),          INTENT (IN)    :: NLEV
+
+CALL SELF%CPG_GP%INIT_STACK (REGISTRY, NLEV)
+
+END SUBROUTINE
+
+SUBROUTINE CPG_TMP_TYPE_ALLOC_STACK (SELF, REGISTRY, NLEV, YDSTACK)
+
+USE STACK_MOD, ONLY : STACK
+
+CLASS (CPG_TMP_TYPE) :: SELF
+TYPE (FIELD_REGISTRY),        INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),          INTENT (IN)    :: NLEV
+TYPE (STACK)                                 :: YDSTACK
+
+CALL SELF%CPG_GP%ALLOC_STACK (REGISTRY, NLEV, YDSTACK)
+
+END SUBROUTINE
+#:endif
+
+SUBROUTINE CPG_TMP_TYPE_UPDATE_VIEW (SELF, BLOCK_INDEX)
+
+CLASS (CPG_TMP_TYPE)         :: SELF
+INTEGER(KIND=JPIM), INTENT (IN)   :: BLOCK_INDEX
+
+CALL SELF%CPG_GP%UPDATE_VIEW (BLOCK_INDEX)
+
+END SUBROUTINE 
+
+#:if USE_STACK
+SUBROUTINE CPG_TMP_TYPE_UPDATE_VIEW_STACK (SELF, BLOCK_INDEX)
+
+CLASS (CPG_TMP_TYPE)         :: SELF
+INTEGER(KIND=JPIM), INTENT (IN)   :: BLOCK_INDEX
+
+CALL SELF%CPG_GP%UPDATE_VIEW_STACK (BLOCK_INDEX)
+
+END SUBROUTINE 
+
+INTEGER (KIND=JPIB) FUNCTION CPG_TMP_TYPE_SIZE_STACK (SELF)
+
+CLASS (CPG_TMP_TYPE)         :: SELF
+
+CPG_TMP_TYPE_SIZE_STACK = SELF%CPG_GP%SIZE_STACK ()
+
+END FUNCTION
+#:endif
+
+SUBROUTINE CPG_TMP_TYPE_FINAL (SELF)
+
+CLASS (CPG_TMP_TYPE)         :: SELF
+
+CALL SELF%CPG_GP%FINAL
+
+END SUBROUTINE
+
+SUBROUTINE CPG_DDH_TYPE_INIT (SELF, REGISTRY, NLEV, PERSISTENT, YDMODEL, YDDDH)
+
+USE TYPE_MODEL, ONLY : MODEL
+USE DDH_MIX, ONLY : TYP_DDH
+
+CLASS (CPG_DDH_TYPE)                             :: SELF
+TYPE (FIELD_REGISTRY),            INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),              INTENT (IN)    :: NLEV
+LOGICAL, OPTIONAL,                INTENT (IN)    :: PERSISTENT
+TYPE (MODEL),                     INTENT (IN)    :: YDMODEL
+TYPE (TYP_DDH),                   INTENT (IN)    :: YDDDH
+
+
+CALL FIELD_NEW(SELF%F_AUX3D, UBOUNDS=[NLEV+1, YDMODEL%YRML_DIAG%YRMDDH%NDHIDH, YDDDH%NFIELDS3D_AUTO, REGISTRY%GEOM%YRDIM%NGPBLKS], &
+                       & PERSISTENT=PERSISTENT)
+CALL FIELD_NEW(SELF%F_AUX2D, UBOUNDS=[YDMODEL%YRML_DIAG%YRMDDH%NDHIDH, YDDDH%NFIELDS2D_AUTO, REGISTRY%GEOM%YRDIM%NGPBLKS], &
+                       & PERSISTENT=PERSISTENT)
+
+SELF%F_DHCV  => CREATE_TEMPORARY (GEOM=REGISTRY%GEOM, NLEV=NLEV+1, PERSISTENT=PERSISTENT, NDIM=YDMODEL%YRML_DIAG%YRMDDH%NDHCVSUN)
+SELF%F_AUXSM => CREATE_TEMPORARY (GEOM=REGISTRY%GEOM, NLEV=1, PERSISTENT=PERSISTENT, NDIM=NLEV, NDIM2=13)
+SELF%F_DDHI  => CREATE_TEMPORARY_INT (GEOM=REGISTRY%GEOM, PERSISTENT=PERSISTENT)
+
+END SUBROUTINE CPG_DDH_TYPE_INIT
+
+SUBROUTINE CPG_DDH_TYPE_UPDATE_VIEW (SELF, BLOCK_INDEX)
+
+CLASS (CPG_DDH_TYPE)              :: SELF
+INTEGER(KIND=JPIM), INTENT (IN)   :: BLOCK_INDEX
+
+IF (ASSOCIATED (SELF%F_AUX3D)) SELF%AUX3D (0:, 1:, 1:)  => SELF%F_AUX3D%GET_VIEW (BLOCK_INDEX)
+IF (ASSOCIATED (SELF%F_AUX2D)) SELF%AUX2D               => SELF%F_AUX2D%GET_VIEW (BLOCK_INDEX)
+IF (ASSOCIATED (SELF%F_DHCV )) SELF%DHCV  (1:, 0:, 1:)  => SELF%F_DHCV %GET_VIEW (BLOCK_INDEX)
+IF (ASSOCIATED (SELF%F_AUXSM)) SELF%AUXSM               => SELF%F_AUXSM%GET_VIEW (BLOCK_INDEX)
+IF (ASSOCIATED (SELF%F_DDHI )) SELF%DDHI                => SELF%F_DDHI %GET_VIEW (BLOCK_INDEX)
+
+END SUBROUTINE CPG_DDH_TYPE_UPDATE_VIEW
+
+SUBROUTINE CPG_DDH_TYPE_FINAL (SELF)
+
+CLASS (CPG_DDH_TYPE)              :: SELF
+
+CALL DELETE_TEMPORARY (SELF%F_AUX3D)
+CALL DELETE_TEMPORARY (SELF%F_AUX2D)
+CALL DELETE_TEMPORARY (SELF%F_DHCV)
+CALL DELETE_TEMPORARY (SELF%F_AUXSM)
+CALL DELETE_TEMPORARY (SELF%F_DDHI)
+
+SELF%AUX3D => NULL ()
+SELF%AUX2D => NULL ()
+SELF%DHCV  => NULL ()
+SELF%AUXSM => NULL ()
+SELF%DDHI  => NULL ()
+
+END SUBROUTINE CPG_DDH_TYPE_FINAL
+
+#:def pcpg_sl_type_methods (ind, vars, use_gfl=False, extra_levels=1)
+SUBROUTINE CPG_SL${ind}$_TYPE_INIT (SELF, REGISTRY, NLEV, YDTPTRSLB${ind}$ &
+  #:if use_gfl
+                                & , YDMODEL &
+                                & , YGFL &
+  #:endif
+                                & , PERSISTENT, PB${ind}$)
+
+USE PTRSLB${ind}$, ONLY : TPTRSLB${ind}$
+USE OML_MOD, ONLY: OML_MAX_THREADS
+
+#:if use_gfl
+USE YOM_YGFL, ONLY: TYPE_GFLD
+USE TYPE_MODEL, ONLY : MODEL
+#:endif
+
+CLASS (CPG_SL${ind}$_TYPE)                         :: SELF
+TYPE (FIELD_REGISTRY),              INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),                INTENT (IN)    :: NLEV
+TYPE (TPTRSLB${ind}$),              INTENT (IN)    :: YDTPTRSLB${ind}$
+#:if use_gfl
+TYPE (TYPE_GFLD),                   INTENT (IN)    :: YGFL
+TYPE (MODEL),                       INTENT (IN)    :: YDMODEL
+#:endif
+LOGICAL, OPTIONAL,                  INTENT (IN)    :: PERSISTENT
+REAL (KIND=JPRB), OPTIONAL, TARGET, INTENT (IN)    :: PB${ind}$ (:, :, :)
+
+INTEGER (KIND=JPIM) :: JFLD
+INTEGER (KIND=JPIM) :: ILEVS
+
+LOGICAL :: LLPERSISTENT
+
+LLPERSISTENT = .FALSE.
+IF (PRESENT (PERSISTENT)) LLPERSISTENT = PERSISTENT
+
+SELF%NLEV = NLEV
+
+IF (PRESENT (PB${ind}$)) THEN
+  SELF%ZDATA => PB${ind}$
+  SELF%LOWNED = .FALSE.
+  LLPERSISTENT = .TRUE.
+ELSEIF (LLPERSISTENT) THEN
+  ALLOCATE (SELF%ZDATA (REGISTRY%GEOM%YRDIM%NPROMA, YDTPTRSLB${ind}$%NFLDSLB${ind}$, REGISTRY%GEOM%YRDIM%NGPBLKS))
+  SELF%LOWNED = .TRUE.
+ELSE
+  ALLOCATE (SELF%ZDATA (REGISTRY%GEOM%YRDIM%NPROMA, YDTPTRSLB${ind}$%NFLDSLB${ind}$, OML_MAX_THREADS ()))
+  SELF%LOWNED = .TRUE.
+ENDIF
+
+SELF%F_DATA => CREATE_FIELD_WRAP (SELF%ZDATA, PERSISTENT=LLPERSISTENT)
+
+#:set lbound_lev = 1-extra_levels
+#:set extra_levels2 = 2*extra_levels
+#:set ubound_lev = -1+extra_levels2
+#:if ubound_lev == 0
+  #:set ubound_lev = ''
+#:elif ubound_lev > 0
+  #:set ubound_lev = '+' + str (ubound_lev)
+#:endif
+
+IF (YDTPTRSLB${ind}$%NFLDSLB${ind}$ > 1) THEN
+  ILEVS = NLEV${ubound_lev}$
+ELSE
+  ILEVS = 0
+ENDIF
+
+#:for var in vars
+IF (YDTPTRSLB${ind}$%MSLB${ind}$${var}$ > 0) THEN
+  JFLD = YDTPTRSLB${ind}$%MSLB${ind}$${var}$
+  #:if vars[var][N3D]
+  SELF%F_${var}$ => CREATE_FIELD_WRAP (SELF%ZDATA (:, JFLD:JFLD+ILEVS, :), PERSISTENT=LLPERSISTENT, LBOUNDS=[1,${lbound_lev}$,1])
+  #:else
+  SELF%F_${var}$ => CREATE_FIELD_WRAP (SELF%ZDATA (:, JFLD, :), PERSISTENT=LLPERSISTENT)
+  #:endif
+ELSE
+  SELF%F_${var}$ => NULL ()
+ENDIF
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+IF (YGFL%Y${v.name}$%MP_SL1 > 0 .AND. YGFL%Y${v.name}$%MP1 > 0) THEN
+  JFLD = YDTPTRSLB${ind}$%MSLB1GFL9  + (YGFL%Y${v.name}$%MP_SL1-1)*(NLEV+${extra_levels2}$)
+  SELF%F_${v.name}$ => CREATE_FIELD_WRAP (SELF%ZDATA (:, JFLD:JFLD+ILEVS, :), PERSISTENT=LLPERSISTENT, LBOUNDS=[1,${lbound_lev}$,1])
+ELSE
+  SELF%F_${v.name}$ => NULL ()
+ENDIF
+IF (YDMODEL%YRML_DYN%YRDYN%LSPLTHOIGFL .OR. (YDMODEL%YRML_DYN%YRDYN%NSPLTHOI /= 0)) THEN
+  IF (YGFL%Y${v.name}$%MP_SL1 > 0 .AND. YGFL%Y${v.name}$%MP1 > 0) THEN
+    JFLD = YDTPTRSLB${ind}$%MSLB1GFLF9 + (YGFL%Y${v.name}$%MP_SL1-1)*(NLEV+${extra_levels2}$)
+    SELF%F_${v.name}$_F => CREATE_FIELD_WRAP (SELF%ZDATA (:, JFLD:JFLD+ILEVS, :), PERSISTENT=LLPERSISTENT, LBOUNDS=[1,${lbound_lev}$,1])
+  ELSE
+    SELF%F_${v.name}$_F => NULL ()
+  ENDIF
+ENDIF
+    #:endif
+  #:endfor
+#:endif
+
+END SUBROUTINE CPG_SL${ind}$_TYPE_INIT
+
+#:if USE_STACK
+SUBROUTINE CPG_SL${ind}$_TYPE_INIT_STACK (SELF, REGISTRY, NLEV, YDTPTRSLB${ind}$ &
+#:if use_gfl
+                                & , YDMODEL &
+                                & , YGFL &
+#:endif
+                                & , PB${ind}$) 
+
+USE PTRSLB${ind}$, ONLY : TPTRSLB${ind}$
+USE OML_MOD, ONLY: OML_MAX_THREADS
+USE STACK_MOD, ONLY : MALIGN
+
+#:if use_gfl
+USE YOM_YGFL, ONLY: TYPE_GFLD
+USE TYPE_MODEL, ONLY : MODEL
+#:endif
+
+CLASS (CPG_SL${ind}$_TYPE)                         :: SELF
+TYPE (FIELD_REGISTRY),              INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),                INTENT (IN)    :: NLEV
+TYPE (TPTRSLB${ind}$),              INTENT (IN)    :: YDTPTRSLB${ind}$
+#:if use_gfl
+TYPE (TYPE_GFLD),                   INTENT (IN)    :: YGFL
+TYPE (MODEL),                       INTENT (IN)    :: YDMODEL
+#:endif
+REAL (KIND=JPRB), OPTIONAL, TARGET, INTENT (IN)    :: PB${ind}$ (:, :, :)
+
+SELF%ISIZE = 0
+SELF%NLEV = NLEV
+SELF%LOWNED = .FALSE.
+
+IF (PRESENT (PB${ind}$)) THEN
+  SELF%ZDATA => PB${ind}$
+  RETURN
+ENDIF
+
+SELF%ISIZE = MALIGN (REGISTRY%GEOM%YRDIM%NPROMA * YDTPTRSLB${ind}$%NFLDSLB${ind}$ * INT (KIND (PB${ind}$), JPIB))
+
+END SUBROUTINE CPG_SL${ind}$_TYPE_INIT_STACK
+#:endif
+
+SUBROUTINE CPG_SL${ind}$_TYPE_UPDATE_VIEW (SELF, BLOCK_INDEX)
+
+CLASS (CPG_SL${ind}$_TYPE)        :: SELF
+INTEGER(KIND=JPIM), INTENT (IN)   :: BLOCK_INDEX
+
+IF (ASSOCIATED (SELF%F_DATA)) THEN
+  SELF%ZVIEW => SELF%F_DATA%GET_VIEW (BLOCK_INDEX)
+#:for var in vars
+  #:if vars[var][N3D]
+  IF (ASSOCIATED (SELF%F_${var}$)) THEN
+    IF ((.NOT. SELF%F_${var}$%THREAD_BUFFER) .OR. (.NOT. ASSOCIATED (SELF%${var}$))) THEN
+      SELF%${var}$ (1:, ${lbound_lev}$:) => SELF%F_${var}$%GET_VIEW (BLOCK_INDEX)
+    ENDIF
+  ELSEIF (.NOT. ASSOCIATED (SELF%${var}$)) THEN
+    SELF%${var}$ => ZDUM2
+  ENDIF
+  #:else
+  IF (ASSOCIATED (SELF%F_${var}$)) THEN
+    IF ((.NOT. SELF%F_${var}$%THREAD_BUFFER) .OR. (.NOT. ASSOCIATED (SELF%${var}$))) THEN
+      SELF%${var}$ => SELF%F_${var}$%GET_VIEW (BLOCK_INDEX)
+    ENDIF
+  ELSEIF (.NOT. ASSOCIATED (SELF%${var}$)) THEN
+    SELF%${var}$ => ZDUM1
+  ENDIF
+  #:endif
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+  IF (ASSOCIATED (SELF%F_${v.name}$)) THEN
+    IF ((.NOT. SELF%F_${v.name}$%THREAD_BUFFER) .OR. (.NOT. ASSOCIATED (SELF%${v.name}$))) THEN
+      SELF%${v.name}$ (1:, ${lbound_lev}$:) => SELF%F_${v.name}$%GET_VIEW (BLOCK_INDEX)
+    ENDIF
+  ELSEIF (.NOT. ASSOCIATED (SELF%${v.name}$)) THEN
+    SELF%${v.name}$ => ZDUM${v.dim-1}$
+  ENDIF
+  IF (ASSOCIATED (SELF%F_${v.name}$_F)) THEN
+    IF ((.NOT. SELF%F_${v.name}$_F%THREAD_BUFFER) .OR. (.NOT. ASSOCIATED (SELF%${v.name}$_F))) THEN
+      SELF%${v.name}$_F (1:, ${lbound_lev}$:) => SELF%F_${v.name}$_F%GET_VIEW (BLOCK_INDEX)
+    ENDIF
+  ELSEIF (.NOT. ASSOCIATED (SELF%${v.name}$)) THEN
+    SELF%${v.name}$_F => ZDUM${v.dim-1}$
+  ENDIF
+    #:endif
+  #:endfor
+#:endif
+
+ELSE
+  SELF%ZVIEW => ZDUM2
+
+#:for var in vars
+  #:if vars[var][N3D]
+  IF (.NOT. ASSOCIATED (SELF%${var}$)) SELF%${var}$ => ZDUM2
+  #:else
+  IF (.NOT. ASSOCIATED (SELF%${var}$)) SELF%${var}$ => ZDUM1
+  #:endif
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+  IF (.NOT. ASSOCIATED (SELF%${v.name}$)) SELF%${v.name}$   => ZDUM${v.dim-1}$
+  IF (.NOT. ASSOCIATED (SELF%${v.name}$)) SELF%${v.name}$_F => ZDUM${v.dim-1}$
+    #:endif
+  #:endfor
+#:endif
+
+ENDIF
+
+END SUBROUTINE CPG_SL${ind}$_TYPE_UPDATE_VIEW
+
+#:if USE_STACK
+SUBROUTINE CPG_SL${ind}$_TYPE_UPDATE_VIEW_STACK (SELF, BLOCK_INDEX, REGISTRY, NLEV, YDTPTRSLB${ind}$ &
+#:if use_gfl
+                                & , YDMODEL &
+                                & , YGFL &
+#:endif
+                                & , PB${ind}$)
+
+USE PTRSLB${ind}$, ONLY : TPTRSLB${ind}$
+
+#:if use_gfl
+USE YOM_YGFL, ONLY: TYPE_GFLD
+USE TYPE_MODEL, ONLY : MODEL
+#:endif
+
+CLASS (CPG_SL${ind}$_TYPE)                         :: SELF
+INTEGER (KIND=JPIM),                INTENT (IN)    :: BLOCK_INDEX
+TYPE (FIELD_REGISTRY),              INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),                INTENT (IN)    :: NLEV
+TYPE (TPTRSLB${ind}$),              INTENT (IN)    :: YDTPTRSLB${ind}$
+#:if use_gfl
+TYPE (TYPE_GFLD),                   INTENT (IN)    :: YGFL
+TYPE (MODEL),                       INTENT (IN)    :: YDMODEL
+#:endif
+REAL (KIND=JPRB), OPTIONAL, TARGET, INTENT (IN)    :: PB${ind}$ (:, :, :)
+
+INTEGER (KIND=JPIM) :: JFLD
+
+IF (PRESENT (PB${ind}$)) THEN
+
+#:for var in vars
+  JFLD = YDTPTRSLB${ind}$%MSLB${ind}$${var}$
+  IF (YDTPTRSLB${ind}$%MSLB${ind}$${var}$ > 0) THEN
+    #:if vars[var][N3D]
+    SELF%${var}$ (1:, 0:) => SELF%ZDATA (:, JFLD:JFLD+SELF%NLEV+1, BLOCK_INDEX)
+    #:else
+    SELF%${var}$          => SELF%ZDATA (:, JFLD, BLOCK_INDEX)
+    #:endif
+  ELSE
+    #:if vars[var][N3D]
+    SELF%${var}$ (1:, 0:) => ZDUM2
+    #:else
+    SELF%${var}$          => ZDUM1
+    #:endif
+  ENDIF
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+  IF (YGFL%Y${v.name}$%MP_SL1 > 0 .AND. YGFL%Y${v.name}$%MP1 > 0) THEN
+    JFLD = YDTPTRSLB${ind}$%MSLB1GFL9  + (YGFL%Y${v.name}$%MP_SL1-1)*(SELF%NLEV+2)
+    SELF%${v.name}$ => SELF%ZDATA (:, JFLD:JFLD+SELF%NLEV+1, BLOCK_INDEX)
+  ELSE
+    SELF%${v.name}$ => ZDUM2
+  ENDIF
+  IF (YDMODEL%YRML_DYN%YRDYN%LSPLTHOIGFL .OR. (YDMODEL%YRML_DYN%YRDYN%NSPLTHOI /= 0)) THEN
+    IF (YGFL%Y${v.name}$%MP_SL1 > 0 .AND. YGFL%Y${v.name}$%MP1 > 0) THEN
+      JFLD = YDTPTRSLB${ind}$%MSLB1GFLF9 + (YGFL%Y${v.name}$%MP_SL1-1)*(SELF%NLEV+2)
+      SELF%${v.name}$_F => SELF%ZDATA (:, JFLD:JFLD+SELF%NLEV+1, BLOCK_INDEX)
+    ELSE
+      SELF%${v.name}$_F => ZDUM2
+    ENDIF
+  ENDIF
+    #:endif
+  #:endfor
+#:endif
+
+ENDIF
+
+END SUBROUTINE CPG_SL${ind}$_TYPE_UPDATE_VIEW_STACK
+
+INTEGER (KIND=JPIB) FUNCTION CPG_SL${ind}$_TYPE_SIZE_STACK (SELF)
+
+CLASS (CPG_SL${ind}$_TYPE) :: SELF
+
+CPG_SL${ind}$_TYPE_SIZE_STACK = SELF%ISIZE
+
+END FUNCTION
+
+SUBROUTINE CPG_SL${ind}$_TYPE_ALLOC_STACK (SELF, REGISTRY, NLEV, YDTPTRSLB${ind}$ &
+#:if use_gfl
+                                & , YDMODEL &
+                                & , YGFL &
+#:endif
+                                & , PB${ind}$ &
+                                & , YDSTACK)
+USE STACK_MOD, ONLY : STACK
+USE PTRSLB${ind}$, ONLY : TPTRSLB${ind}$
+
+#:if use_gfl
+USE YOM_YGFL, ONLY: TYPE_GFLD
+USE TYPE_MODEL, ONLY : MODEL
+#:endif
+
+CLASS (CPG_SL${ind}$_TYPE)                         :: SELF
+TYPE (FIELD_REGISTRY),              INTENT (INOUT) :: REGISTRY
+INTEGER (KIND=JPIM),                INTENT (IN)    :: NLEV
+TYPE (TPTRSLB${ind}$),              INTENT (IN)    :: YDTPTRSLB${ind}$
+#:if use_gfl
+TYPE (TYPE_GFLD),                   INTENT (IN)    :: YGFL
+TYPE (MODEL),                       INTENT (IN)    :: YDMODEL
+#:endif
+REAL (KIND=JPRB), OPTIONAL, TARGET, INTENT (IN)    :: PB${ind}$ (:, :, :)
+TYPE (STACK)                                       :: YDSTACK
+
+INTEGER (KIND=JPIM) :: JFLD
+
+IF (.NOT. PRESENT (PB${ind}$)) THEN
+
+  CALL YDSTACK%ALLOC (SELF%ZDATA, [REGISTRY%GEOM%YRDIM%NPROMA, YDTPTRSLB${ind}$%NFLDSLB${ind}$, 1])
+  SELF%ZVIEW => SELF%ZDATA (:,:,1)
+
+#:for var in vars
+  JFLD = YDTPTRSLB${ind}$%MSLB${ind}$${var}$
+  IF (YDTPTRSLB${ind}$%MSLB${ind}$${var}$ > 0) THEN
+    #:if vars[var][N3D]
+    SELF%${var}$ (1:, 0:) => SELF%ZDATA (:, JFLD:JFLD+NLEV+1, 1)
+    #:else
+    SELF%${var}$          => SELF%ZDATA (:, JFLD,             1)
+    #:endif
+  ELSE
+    #:if vars[var][N3D]
+    SELF%${var}$ (1:, 0:) => ZDUM2
+    #:else
+    SELF%${var}$          => ZDUM1
+    #:endif
+  ENDIF
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+  IF (YGFL%Y${v.name}$%MP_SL1 > 0 .AND. YGFL%Y${v.name}$%MP1 > 0) THEN
+    JFLD = YDTPTRSLB${ind}$%MSLB1GFL9  + (YGFL%Y${v.name}$%MP_SL1-1)*(SELF%NLEV+2)
+    SELF%${v.name}$ (1:, 0:) => SELF%ZDATA (:, JFLD:JFLD+NLEV+1, 1)
+  ELSE
+    SELF%${v.name}$          => ZDUM2
+  ENDIF
+  IF (YDMODEL%YRML_DYN%YRDYN%LSPLTHOIGFL .OR. (YDMODEL%YRML_DYN%YRDYN%NSPLTHOI /= 0)) THEN
+    IF (YGFL%Y${v.name}$%MP_SL1 > 0 .AND. YGFL%Y${v.name}$%MP1 > 0) THEN
+      JFLD = YDTPTRSLB${ind}$%MSLB1GFLF9 + (YGFL%Y${v.name}$%MP_SL1-1)*(SELF%NLEV+2)
+      SELF%${v.name}$ (1:, 0:) => SELF%ZDATA (:, JFLD:JFLD+NLEV+1, 1)
+    ELSE
+      SELF%${v.name}$_F      => ZDUM2
+    ENDIF
+  ENDIF
+    #:endif
+  #:endfor
+#:endif
+
+ENDIF
+
+END SUBROUTINE CPG_SL${ind}$_TYPE_ALLOC_STACK
+#:endif
+
+SUBROUTINE CPG_SL${ind}$_TYPE_FINAL (SELF)
+CLASS (CPG_SL${ind}$_TYPE)          :: SELF
+
+IF (ASSOCIATED (SELF%F_DATA)) CALL DELETE_TEMPORARY (SELF%F_DATA)
+SELF%F_DATA => NULL ()
+
+IF (SELF%LOWNED) THEN
+  DEALLOCATE (SELF%ZDATA)
+ENDIF
+
+SELF%ZDATA => NULL ()
+SELF%ZVIEW => NULL ()
+
+#:for var in vars
+  IF (ASSOCIATED (SELF%F_${var}$)) CALL DELETE_TEMPORARY (SELF%F_${var}$)
+  SELF%F_${var}$ => NULL ()
+  SELF%${var}$ => NULL ()
+#:endfor
+
+#:if use_gfl
+  #:for v in gfl.variables
+    #:if v.array
+    #:elif v.dim == 3
+  IF (ASSOCIATED (SELF%F_${v.name}$)) CALL DELETE_TEMPORARY (SELF%F_${v.name}$)
+  SELF%F_${v.name}$ => NULL ()
+  SELF%${v.name}$ => NULL ()
+  IF (ASSOCIATED (SELF%F_${v.name}$_F)) CALL DELETE_TEMPORARY (SELF%F_${v.name}$_F)
+  SELF%F_${v.name}$_F => NULL ()
+  SELF%${v.name}$_F => NULL ()
+    #:endif
+  #:endfor
+#:endif
+
+END SUBROUTINE CPG_SL${ind}$_TYPE_FINAL
+#:enddef
+
+$:pcpg_sl_type_methods ("1", pb1_vars, use_gfl=True,  extra_levels=1)
+
+$:pcpg_sl_type_methods ("2", pb2_vars, use_gfl=False, extra_levels=0)
+
+END MODULE CPG_TYPE_MOD
+

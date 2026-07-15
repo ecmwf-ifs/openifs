@@ -1,8 +1,10 @@
 /*
+ * (C) Copyright 2005- ECMWF.
  * (C) Copyright 2005- Meteo France.
- * 
+ *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ *
  * In applying this licence, ECMWF does not waive the privileges and immunities
  * granted to it by virtue of its status as an intergovernmental organisation
  * nor does it submit to any jurisdiction.
@@ -29,12 +31,12 @@ static char * getcpumask (char *buffer, size_t size)
   cpu_set_t mask;
   unsigned int ncpu;
   unsigned int icpu;
-  
+
   ncpu = sysconf (_SC_NPROCESSORS_CONF);
-  
+
   sched_getaffinity (0, sizeof (mask), &mask);
 
-  for (icpu = 0; icpu < ncpu; icpu++) 
+  for (icpu = 0; icpu < ncpu; icpu++)
     buffer[icpu] = CPU_ISSET (icpu, &mask) ? '1' : '0';
 
   buffer[ncpu] = '\0';
@@ -78,11 +80,11 @@ void linux_bind_dump_ (int * prank, int * psize)
   }
 
 #ifdef _OPENMP
-#pragma omp parallel 
+#pragma omp parallel
 #endif
   {
     char buffer[1024];
-    int iomp = 
+    int iomp =
 #ifdef _OPENMP
       omp_get_thread_num ()
 #else
@@ -97,7 +99,7 @@ void linux_bind_dump_ (int * prank, int * psize)
 #ifdef _OPENMP
 #pragma omp critical
 #endif
-            fprintf (fp, "\n                                                    mask = %s iomp = %2d", 
+            fprintf (fp, "\n                                                    mask = %s iomp = %2d",
                      getcpumask (buffer, sizeof (buffer)), iomp);
           }
 #ifdef _OPENMP
@@ -151,12 +153,12 @@ void linux_bind_ (int * prank, int * psize)
     }
 
 #ifdef _OPENMP
-#pragma omp parallel 
+#pragma omp parallel
 #endif
   {
     char * c;
     cpu_set_t mask;
-    int iomp = 
+    int iomp =
 #ifdef _OPENMP
       omp_get_thread_num ()
 #else
@@ -183,7 +185,7 @@ void linux_bind_ (int * prank, int * psize)
     for (icpu = 0; isdigit (*c); icpu++, c++)
       if (*c != '0')
         CPU_SET (icpu, &mask);
-     
+
     sched_setaffinity (0, sizeof (mask), &mask);
 
 end_parallel:

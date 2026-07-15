@@ -42,6 +42,7 @@ SUBROUTINE SUFPGRIB(CDFPCLIFNAME,YDFPGEO,KFPDOM,YDFPUSERGEO,YDFPOFN)
 !      S. Serrar    : 05-06-23 missing values to -9999.
 !                     (in case section 3 defined for GRIB)
 !      K. Yessad (Jan 2010): remove useless variables.
+!      R. El Khatib 08-Jan-2021 Quick fix for NTIMEFMT > 0
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB
@@ -52,6 +53,7 @@ USE YOMFPGEO, ONLY : TFPGEO
 USE TYPE_FPOFN, ONLY : TFPOFN
 USE IOSTREAM_MIX , ONLY : INI_IOSTREAM
 USE YOMMP0   , ONLY : NPROC
+USE YOMOPH0  , ONLY : NTIMEFMT
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -91,6 +93,7 @@ DO J=1,KFPDOM
   CALL SUECFNAME(LLINC,'s',ISTEP,ZTSTEP,ISTOP,YDFPOFN(J)%CGG,YDFPOFN(J)%CSH)
   CALL SUECFNAME(LLINC,'m',ISTEP,ZTSTEP,ISTOP,YDFPOFN(J)%CUA,YDFPOFN(J)%CSH)
   YDFPOFN(J)%CSH=YDFPOFN(J)%CSH(1:LEN_TRIM(YDFPOFN(J)%CSH)-IDIGITS-1)//' '
+  IF (NTIMEFMT > 0) YDFPOFN(J)%CSH=YDFPOFN(J)%CSH(1:LEN_TRIM(YDFPOFN(J)%CSH)-IDIGITS)//' '
   YDFPOFN(J)%CGG=YDFPOFN(J)%CGG(1:LEN_TRIM(YDFPOFN(J)%CGG)-IDIGITS-1)//' '
   YDFPOFN(J)%CUA=YDFPOFN(J)%CUA(1:LEN_TRIM(YDFPOFN(J)%CUA)-IDIGITS-1)//' '
 

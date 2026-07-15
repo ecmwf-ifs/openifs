@@ -1,6 +1,3 @@
-MODULE CCETR_MOD
-CONTAINS
-SUBROUTINE CCETR(KIDIA,KFDIA,KLON,KVTYPE,LDLAND,PIA,PMU0,PABC,PLAI,YDAGS,PXIA)
 
 ! (C) Copyright 1998- ECMWF.
 !
@@ -9,6 +6,57 @@ SUBROUTINE CCETR(KIDIA,KFDIA,KLON,KVTYPE,LDLAND,PIA,PMU0,PABC,PLAI,YDAGS,PXIA)
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**  *CCETR* 
+
+!     PURPOSE
+!     -------
+!     Calculates radiative transfer within the canopy
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (REAL):
+
+!     *PIA*          ABSORBED PAR AT THE TOP OF THE CANOPY        W M-2   
+!     *PMU0*        LOCAL COSINE OF INSTANTANEOUS MEAN SOLAR ZENITH ANGLE -
+!     *PABC*         ABSCISSA NEEDED FOR INTEGRATION              -
+!     *PLAI*         LEAF AREA INDEX                              M2/M2
+
+!     OUTPUT PARAMETERS (REAL):
+!     *PXIA*         INCIDENT RADIATION AFTER DIFFUSION           W M-2   
+
+
+!     METHOD
+!     ------
+!     Calvet et al. 1998 Forr. Agri. Met. 
+!     [from model of Jacobs(1994) and Roujean(1996)]
+!
+!     EXTERNALS
+!     --------
+!     none
+
+!     REFERENCE
+!     ---------
+!     Calvet et al. 1998 Forr. Agri. Met. 
+!      
+!     AUTHOR
+!     ------
+!	  A. Boone           * Meteo-France *
+!      (following Belair)
+
+!     MODIFICATIONS
+!     -------------
+!      Original    27/10/97 
+!      M.H. Voogt (KNMI) "C-Tessel"  09/2005
+!      S. Lafont (ECMWF) externalised CTESSEL 04/2006     
+!      G. Balsamo (ECMWF) 24/3/2014 cleaning and LDLAND protection
+!      I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP2 object for spatially distributed parameters
+!     ---------------------------------------------------------------------
+!
+
+MODULE CCETR_MOD
+CONTAINS
+SUBROUTINE CCETR(KIDIA,KFDIA,KLON,KVTYPE,LDLAND,PIA,PMU0,PABC,PLAI,YDAGS,PXIA)
 
 !**  *CCETR* 
 

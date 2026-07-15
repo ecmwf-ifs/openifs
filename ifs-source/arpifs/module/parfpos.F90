@@ -26,7 +26,7 @@ SAVE
 !     JPOSDOM : Maximum number of horizontal (sub)domains
 !     JPOSLEN : Maximum length of a (sub)domain name
 !     JPOSDIR : Maximum length of the path (or prefix) for the output files
-!     JPOSLE  : Maximum number of eta levels on the output subdomain
+!     JPOS3S  : Maximum number of vertical eta levels
 !     JPOSGL  : Maximum number of latitude rows of the output gaussian grid
 
 !     JPOSSCVA: Maximum number of post-processable passive scalars
@@ -38,7 +38,6 @@ SAVE
 !     JPOS3H  : Maximum number of pp. height (above orography) levels
 !     JPOS3TH : Maximum number of pp. potential temperature levels
 !     JPOS3PV : Maximum number of pp. potential vorticity levels
-!     JPOS3S  : Maximum number of pp. eta levels
 !     JPOS3I  : Maximum number of pp. temperature levels
 !     JPOSSCVA: Maximum number of passive scalars
 !     JPOSVX2 : Maximum number of free gp/sp upper air fields or extra surface fields
@@ -73,7 +72,7 @@ INTEGER(KIND=JPIM), PARAMETER :: JPOSNOGW=2
 INTEGER(KIND=JPIM), PARAMETER :: JPOSDOM=15
 INTEGER(KIND=JPIM), PARAMETER :: JPOSLEN=20
 INTEGER(KIND=JPIM), PARAMETER :: JPOSDIR=180
-INTEGER(KIND=JPIM), PARAMETER :: JPOSLE=JPMXLE
+INTEGER(KIND=JPIM), PARAMETER :: JPOS3S=JPMXLE
 INTEGER(KIND=JPIM), PARAMETER :: JPOSGL=JPMXGL
 
 INTEGER(KIND=JPIM), PARAMETER :: JPOSCFU=82
@@ -84,11 +83,10 @@ INTEGER(KIND=JPIM), PARAMETER :: JPOS3TH=75
 INTEGER(KIND=JPIM), PARAMETER :: JPOS3PV=75
 INTEGER(KIND=JPIM), PARAMETER :: JPOS3I=75
 INTEGER(KIND=JPIM), PARAMETER :: JPOS3F=75
-INTEGER(KIND=JPIM), PARAMETER :: JPOS3S=JPOSLE
-INTEGER(KIND=JPIM), PARAMETER :: JPOSSCVA=6
+INTEGER(KIND=JPIM), PARAMETER :: JPOSSCVA=9
 INTEGER(KIND=JPIM), PARAMETER :: JPOSGHG=3
-INTEGER(KIND=JPIM), PARAMETER :: JPOSGHGFLX=6
-INTEGER(KIND=JPIM), PARAMETER :: JPOSCHEM=150
+INTEGER(KIND=JPIM), PARAMETER :: JPOSGHGFLX=8
+INTEGER(KIND=JPIM), PARAMETER :: JPOSCHEM=170
 INTEGER(KIND=JPIM), PARAMETER :: JPOSCHEMFLX=50
 INTEGER(KIND=JPIM), PARAMETER :: JPOSAERO=42
 INTEGER(KIND=JPIM), PARAMETER :: JPOSAERO2=2*JPOSAERO
@@ -137,6 +135,6 @@ INTEGER(KIND=JPIM), PARAMETER :: JPOSDYN=JPOS3DF+JPOS2DF+JPOSEZDIAG
 INTEGER(KIND=JPIM), PARAMETER :: JPROW=2
 
 ! Maximum number of post-processing objects
-INTEGER(KIND=JPIM), PARAMETER :: JPOSOBJ=7
+INTEGER(KIND=JPIM), PARAMETER :: JPOSOBJ=20
 !     ------------------------------------------------------------------
 END MODULE PARFPOS

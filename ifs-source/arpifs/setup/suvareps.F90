@@ -69,7 +69,7 @@ USE YOM_GRIB_CODES , ONLY : NGRBES   ,NGRBSMLT ,NGRBLSPF ,NGRBLSP  ,NGRBCP   ,&
                     & NGRBSRO  ,NGRBSSRO ,NGRBFDIR ,NGRBCDIR , NGRBDSRP,&
                     & NGRBPARCS,NGRBUVB  ,NGRBPAR  ,NGRBTISR ,&
                     & NGRBVIMD ,NGRBSSRDC,NGRBSTRDC,&
-                    & NGRBNEE  ,NGRBGPP  ,NGRBREC
+                    & NGRBNEE  ,NGRBGPP  ,NGRBREC, NGRBCH4WET
 USE YOMRIP   , ONLY : TRIP
 USE YOMFPC   , ONLY : TNAMFPL
 
@@ -181,9 +181,9 @@ IF(LVAREPS) THEN
   IAFGC(43)=NGRBNEE
   IAFGC(44)=NGRBGPP
   IAFGC(45)=NGRBREC
-  IAFGC(46)=NGRBFZRA
-  IAFGC(47)=NGRBDSRP
-
+  IAFGC(46)=NGRBCH4WET
+  IAFGC(47)=NGRBFZRA
+  IAFGC(48)=NGRBDSRP
 
 ! Check whether any of the post-processed surface fields is an accumulated one,
 ! and add it to the list NAFVAREPSGC

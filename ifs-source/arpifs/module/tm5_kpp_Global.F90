@@ -30,7 +30,7 @@
 MODULE tm5_kpp_Global
 
   USE tm5_kpp_Parameters , ONLY:   NVAR, NFIX
-  USE PARKIND1           , ONLY:   JPIM     ,JPRB, JPRD
+  USE PARKIND1           , ONLY:   JPIM     ,JPRB
   
   IMPLICIT NONE
   PUBLIC
@@ -44,7 +44,7 @@ MODULE tm5_kpp_Global
 ! VAR - Concentrations of variable species (global)
 !  REAL(KIND=JPRB) :: VAR(NVAR)
 ! FIX - Concentrations of fixed species (global)
-  REAL(KIND=JPRD) :: FIX(NFIX)
+  REAL(KIND=JPRB) :: FIX(NFIX)
 ! VAR, FIX are chunks of array C
 !      EQUIVALENCE( C(1),VAR(1) )
 ! RCONST - Rate constants (global)
@@ -56,7 +56,7 @@ MODULE tm5_kpp_Global
 ! TEMP - Temperature
   REAL(KIND=JPRB) :: TEMP
 ! RTOLS - (scalar) Relative tolerance
-  REAL(KIND=JPRD) :: RTOLS
+  REAL(KIND=JPRB) :: RTOLS
 ! TSTART - Integration start time
   REAL(KIND=JPRB) :: TSTART
 ! TEND - Integration end time
@@ -64,9 +64,9 @@ MODULE tm5_kpp_Global
 ! DT - Integration step
   REAL(KIND=JPRB) :: DT
 ! ATOL - Absolute tolerance
-  REAL(KIND=JPRD) :: ATOL(NVAR)
+  REAL(KIND=JPRB) :: ATOL(NVAR)
 ! RTOL - Relative tolerance
-  REAL(KIND=JPRD) :: RTOL(NVAR)
+  REAL(KIND=JPRB) :: RTOL(NVAR)
 ! STEPMIN - Lower bound for integration step
   REAL(KIND=JPRB) :: STEPMIN
 ! STEPMAX - Upper bound for integration step
@@ -75,7 +75,7 @@ MODULE tm5_kpp_Global
   REAL(KIND=JPRB) :: CFACTOR
 ! DDMTYPE - DDM sensitivity w.r.t.: 0=init.val., 1=params
   INTEGER(KIND=JPIM) :: DDMTYPE
-  REAL(KIND=JPRD) :: ROUNDOFF_STORE
+  REAL(KIND=JPRB) :: ROUNDOFF_STORE
 
 ! INLINED global variable declarations
 

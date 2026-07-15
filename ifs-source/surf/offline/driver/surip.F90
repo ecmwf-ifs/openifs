@@ -1,3 +1,52 @@
+! (C) Copyright 1987- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURIP * - Routine to initialize the common YOMRIP
+
+!     Purpose.
+!     --------
+!           Initialize and print the common YOMRIP
+
+!**   Interface.
+!     ----------
+!        *CALL* *SURIP(KULOUT)
+
+!        Explicit arguments :
+!        --------------------
+!        KULOUT : Logical unit of the output
+
+!        Implicit arguments :
+!        --------------------
+!        COMMON YOMRIP
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!        Mats Hamrud and Philippe Courtier  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 87-10-15
+!        Modified DEC 1992 by K. YESSAD: changing RDTFLS2 into RTDT (=PTDT).
+!        Modified by R. EL Khatib : 93-04-02 Set-up defaults controled by LECMWF
+!        Modified by R. El Khatib  :93-05-06 Set-up through command line
+!     ------------------------------------------------------------------
+
 SUBROUTINE SURIP(KULOUT)
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -9,13 +58,6 @@ USE YOMRIP   , ONLY : NINDAT   ,NSSSSS   ,NSTADD   ,NSTASS   ,&
             &RDTSA2   ,RDTS62   ,RDTS22   ,RTDT
 
 #ifdef DOC
-! (C) Copyright 1987- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SURIP * - Routine to initialize the common YOMRIP
 

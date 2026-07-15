@@ -1,3 +1,58 @@
+
+! (C) Copyright 1990- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**   *SUBROUTINE* *SUVEXCS* INITIALIZES COMMON BLOCK *YOEVDFS*
+
+!      A. BELJAARS   E.C.M.W.F.   26/03/90
+
+!      PURPOSE
+!      -------
+
+!           *SUBROUTINE *SUVEXCS* INITIALIZES THE CONSTANTS NEEDED BY
+!      THE EMPIRICAL STABILITY FUNCTIONS AND SETS UP THE TABLE THAT
+!      GIVES THE STABILITY PARAMETER ETA (HEIGHT DEVIDED BY
+!      *OBUKHOV LENGTH) AS A FUNCTION OF THE GRADIENT *RICHARDSON NUMBER
+!      FOR STABLE SITUATIONS.
+
+!      INTERFACE
+!      ---------
+
+!           *CALL* *SUVEXCS* FROM *SUSURF*
+
+!      METHOD
+!      ------
+
+!           *THE ALGEBRAIC EQUATION TO BE SOLVED IS
+!      RI=(PHIH/PHIM**2)*ETA, WHERE *PHIH* AND *PHIM* ARE THE GRADIENT
+!      STABILITY FUNCTIONS FOR HEAT AND MOMENTUM RESPECTIVELY.
+!           *TO SOLVE THE IMPLICIT ALGEBRAIC EQUATION FOR *ETA* AS A
+!      FUNCTION OF *RI*, *NEWTON'S METHOD IS EMPLOYED WITH A FIXED
+!      NUMBER OF ITERATIONS. THE NECESSARY DERIVATIVES ARE EVALUATED
+!      NUMERICALLY.
+
+!      EXTERNALS
+!      ---------
+
+!           *STATEMENT FUNCTIONS *PHIMS*, *PHIHS*
+
+!      Modified
+
+!      P. Viterbo   09/06/2005      P
+
+!      REFERENCE
+!      ---------
+
+!           *SEE *PRESS ET AL. (1986; NUMERICAL RECIPES - THE ART OF
+!      SCIENTIFIC COMPUTING) FOR DETAILS ON THE SPLINE INTERPOLATION.
+
+!      -----------------------------------------------------------------
+
 MODULE SUVEXCS_MOD
 CONTAINS
 
@@ -10,14 +65,6 @@ USE YOS_EXCS  , ONLY : JPRITBL  ,RITBL    ,RIMAX    ,RCHBA    ,&
  & RCHBCD   ,RCHETA   ,RCHETB   ,RCHBHDL  ,&
  & RCDHALF  ,RCHBHDL  ,RCDHPI2  ,DRITBL   ,&
  & RLPBB    ,RLPCC    ,RLPDD
-
-! (C) Copyright 1990- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**   *SUBROUTINE* *SUVEXCS* INITIALIZES COMMON BLOCK *YOEVDFS*
 

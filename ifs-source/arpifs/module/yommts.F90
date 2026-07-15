@@ -11,22 +11,19 @@
 
 MODULE YOMMTS
 
-USE PARKIND1  ,ONLY : JPIM
-
 IMPLICIT NONE
 
 SAVE
 
-! LMTS : Switch d'activation de la production de temperatures de brillance
-! IF LMTS and LMTSCL production of clear sky TB
-! NHLIM : max hour  (production for hour of forecast < -NHLIM)
-! LUBIQUITAIRE : To have the satellite at the vetical of all the grid points
-! LISP_HYBRID : MSG simulated data in 'real' conditions over the MSG domain, 
-!               ubiquitaire computation elsewhere
+! Handling of simulated satellite images (former yommts)
+! (Cles d'activation de la production de temperatures de brillance)
 
-INTEGER(KIND=JPIM) :: NTYPE
-
-LOGICAL :: LMTS,LMTSCL,LUBIQUITAIRE,LISP_HYBRID
-
+! Overall key :
+LOGICAL :: LMTS = .FALSE.
+! Keys per satellites :
+LOGICAL :: LCHAN_MSAT(7:11,1:8)   = .FALSE.
+LOGICAL :: LCHAN_GOES(11:17,1:10) = .FALSE.
+LOGICAL :: LCHAN_MTSAT(1:1,1:4)   = .FALSE.
+LOGICAL :: LCHAN_HIMA(8:8,1:10)   = .FALSE.
 
 END MODULE YOMMTS

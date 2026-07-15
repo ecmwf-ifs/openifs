@@ -1,13 +1,14 @@
 ! (C) Copyright 1989- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUININ &
- & (YDEPHLI, YDECUMF,  KIDIA,    KFDIA,    KLON,    KLEV,&
+ & (YDCST,   YDTHF,    YDEPHLI, YDECUMF,  KIDIA,    KFDIA,    KLON,    KLEV,&
  & PTEN,     PQEN,     PQSEN,    PUEN,     PVEN,&
  & PGEO,     PAPH,&
  & KLAB,&
@@ -85,17 +86,21 @@ SUBROUTINE CUININ &
 !     --------------
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      05-02-11 : Optimisation (NJKT2) P. BECHTOLD
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RCPD
+USE YOMCST   , ONLY : TCST
+USE YOETHF   , ONLY : TTHF
 USE YOECUMF  , ONLY : TECUMF
 USE YOEPHLI  , ONLY : TEPHLI
 
 IMPLICIT NONE
 
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
 TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
 TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
@@ -126,7 +131,7 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PLU(KLON,KLEV)
 REAL(KIND=JPRB) ::     ZPH(KLON)
 LOGICAL ::  LLFLAG(KLON)
 
-INTEGER(KIND=JPIM) :: ICALL, IK, JK, JL
+INTEGER(KIND=JPIM) :: IK, JK, JL
 
 REAL(KIND=JPRB) :: ZORCPD !, ZZS
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
@@ -143,6 +148,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('CUININ',0,ZHOOK_HANDLE)
 ASSOCIATE(NJKT2=>YDECUMF%NJKT2, &
+ & RCPD=>YDCST%RCPD, &
  & LPHYLIN=>YDEPHLI%LPHYLIN)
 ZORCPD=1._JPRB/RCPD
 DO JK=2,KLEV
@@ -159,15 +165,13 @@ DO JK=2,KLEV
   IF(JK >= KLEV-1 .OR. JK<NJKT2) CYCLE
   IK=JK
   IF(LPHYLIN)THEN
-    ICALL=0
     CALL CUADJTQS &
-     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
-     &   ZPH,      PTENH,    PQSENH,  LLFLAG,   ICALL)  
+     & ( YDTHF, YDCST, KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     &   ZPH,      PTENH,    PQSENH,  LLFLAG,   0)  
   ELSE
-    ICALL=3
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
-     &   ZPH,      PTENH,    PQSENH,  LLFLAG,   ICALL)  
+     & ( YDTHF, YDCST, YDEPHLI,  KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     &   ZPH,      PTENH,    PQSENH,  LLFLAG,   3)  
   ENDIF
 
   DO JL=KIDIA,KFDIA

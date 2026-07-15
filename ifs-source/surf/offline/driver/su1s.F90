@@ -1,3 +1,52 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SU1s* - Initialize common YOMLOG1S controlling multi-column surface model 
+
+!     Purpose.
+!     --------
+!           Initialize YOMLOG1S, the common that includes 
+!           the basic switches for the multi-column model.
+
+!**   Interface.
+!     ----------
+!        *CALL* *SU1S from SU0YOM1S
+
+!        Explicit arguments :
+!        --------------------
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one-column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo   *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-22
+!        BART VD HURK (KNMI): ADJUSTED FOR MULTI-COLUMN MODE
+!        E. DUTRA - NEW OUTPUT FILE FOR LAKES 04/07/2008
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE SU1S
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
 USE YOMHOOK, ONLY   : LHOOK    ,DR_HOOK, JPHOOK
@@ -14,13 +63,6 @@ USE YOMLOG1S , ONLY : LDBGS1   ,LACCUMW , LSEMISS , CFFORC &
 USE YOMLUN1S , ONLY : NULNAM   ,NULOUT
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SU1s* - Initialize common YOMLOG1S controlling multi-column surface model 
 

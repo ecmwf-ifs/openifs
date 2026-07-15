@@ -1,10 +1,24 @@
-#!/usr/bin/bash
-set -x 
+#!/usr/bin/env bash
+set -x
 
 module load forge
 
 if [[ ${ECPLATFORM:-unset} == "hpc2020" ]]; then
-  ./ifs-run --launcher='ddt srun --qos=np '
+  if [[ "${TMPDIR:-}" =~ /ecinteractive/ ]] ; then
+    # Use TMPDIR to identify ecinteractive sessions, where LOCALSSD is defined.
+    # Don't test on LOCALSSD in case user has defined it everywhere.
+    export TMPDIR="${LOCALSSD:-"${SCRATCH}"}/ddt"
+    mkdir -p "${TMPDIR}"
+    ./ifs-run --launcher='ddt srun' --launcher_mem_flag='' $@
+    set +x
+    echo "
+This job was launched with settings intended for ecinteractive use.
+The debugger may perform better when run in the parallel queue,
+outside of ecinteractive.
+"
+  else
+    ./ifs-run --launcher='ddt srun --qos=np ' --launcher_mem_flag='' $@
+  fi
 else
-  ./ifs-run --launcher=ddt
-fi    
+  ./ifs-run --launcher=ddt $@
+fi

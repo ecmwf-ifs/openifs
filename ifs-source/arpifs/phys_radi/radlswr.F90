@@ -137,7 +137,9 @@ SUBROUTINE RADLSWR&
 !      RJHogan  15 Sept 2016 Added Dr Hook profiling for aerosol and cloud optics
 !      RJHogan  29 Sept 2016 SPP applied to ice effective radius when NRADIP==3 (default)
 !      Y. Bouteloup 21 October 2016 : Add new output flux PFDIF as PFDIR : Solar Downward diffuse
+!      L.Descamps Feb 2020 : transform hard-coded values for droplet size ditrib. into parameters
 !      M Leutbecher Oct 2020 SPP abstraction
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !-----------------------------------------------------------------------
 
 USE TYPE_MODEL , ONLY : MODEL
@@ -145,7 +147,8 @@ USE YOMDIMV    , ONLY : TDIMV
 USE PARKIND1   , ONLY : JPIM, JPRB
 USE YOMHOOK    , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMCT3     , ONLY : NSTEP
-USE YOMCST     , ONLY : RG       ,RD       ,RTT      ,RPI
+USE YOMCST     , ONLY : YRCST
+USE YOETHF     , ONLY : YRTHF
 USE YOELW      , ONLY : NTRA     ,NUA
 USE YOESRTCOP  , ONLY : &
  &                      RSYFWA   ,RSYFWB   ,RSYFWC   ,RSYFWD   ,RSYFWE   ,RSYFWF&
@@ -157,7 +160,6 @@ USE YOESRTCOP  , ONLY : &
  &                    , RSFLC0   ,RSFLC1   ,RSFLC2   ,RSFLC3   ,RSFLD0   ,RSFLD1&
  &                    , RSFLD2   ,RSFLD3  
 USE YOERDU     , ONLY : NUAER  ,NTRAER   ,REPLOG   ,REPSC    ,REPSCA  ,REPSCW   ,DIFF
-USE YOETHF     , ONLY : RTICE
 USE YOERRTFTR  , ONLY : NGB
 USE YOERRTM    , ONLY : JPGLW 
 USE YOESRTM    , ONLY : JPGSW, NGBSW
@@ -172,7 +174,7 @@ USE SPP_GEN_MOD, ONLY:SPP_PERT
 IMPLICIT NONE
 
 TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
-TYPE(MODEL)       ,INTENT(INOUT) :: YDMODEL
+TYPE(MODEL)       ,INTENT(IN)    :: YDMODEL
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
@@ -414,11 +416,15 @@ ASSOCIATE(NACTAERO=>YGFL%NACTAERO, &
  & LCCNL=>YDERAD%LCCNL, LCCNO=>YDERAD%LCCNO, LDIFFC=>YDERAD%LDIFFC, &
  & LRRTM=>YDERAD%LRRTM, NAERMACC=>YDERAD%NAERMACC, NDECOLAT=>YDERAD%NDECOLAT, &
  & NICEOPT=>YDERAD%NICEOPT, NLIQOPT=>YDERAD%NLIQOPT, NMCICA=>YDERAD%NMCICA, &
- & NMCVAR=>YDERAD%NMCVAR, NMINICE=>YDERAD%NMINICE, NOVLP=>YDERAD%NOVLP, &
+ & NMINICE=>YDERAD%NMINICE, NOVLP=>YDERAD%NOVLP, &
  & NRADIP=>YDERAD%NRADIP, NRADLP=>YDERAD%NRADLP, NSW=>YDERAD%NSW, &
  & RCCNLND=>YDERAD%RCCNLND, RCCNSEA=>YDERAD%RCCNSEA, RMINICE=>YDERAD%RMINICE, &
  & RRE2DE=>YDERAD%RRE2DE, &
- & NSTART=>YDRIP%NSTART)
+ & NSTART=>YDRIP%NSTART, &
+ & RG=>YRCST%RG, RTT=>YRCST%RTT, RPI=>YRCST%RPI, RD=>YRCST%RD, &
+ & RTICE=>YRTHF%RTICE, &
+ & RRATSEA=>YDERAD%RRATSEA, RRATLAND=>YDERAD%RRATLAND, RRATDRI=>YDERAD%RRATDRI,&
+ & RFACDICE=>YDERAD%RFACDICE)
 !     -----------------------------------------------------------------
 
 LLPRINT=.FALSE.
@@ -469,7 +475,7 @@ ENDIF
 
 !-- MACC-derived aerosol mmr climatology
 IF (NACTAERO == 0 .AND. NAERMACC == 1 ) THEN
-  IACTAERO=NMCVAR
+  IACTAERO=12 ! Formerly NMCVAR
   ICLIM=1
 ENDIF
 
@@ -708,7 +714,7 @@ IDBUG=IDBUG+1
 IF (IACTAERO >= 12 .AND. (LAERRRTM .OR. LAERADCLI)) THEN
 
   IFLAG=2
-  CALL SATUR (KIDIA, KFDIA, KLON  , 1, KLEV, YDMODEL%YRML_PHY_SLIN%YREPHLI%LPHYLIN, &
+  CALL SATUR (YRTHF, YRCST, KIDIA, KFDIA, KLON  , 1, KLEV, YDMODEL%YRML_PHY_SLIN%YREPHLI%LPHYLIN, &
     & PAP, PT   , ZQSAT, IFLAG )  
 
   DO JK=1,KLEV
@@ -812,7 +818,8 @@ DO JK=1,KLEV
         ! Constant (k) relating volume radius to effective radius rv^3=k*re^3
         ! k = (1.0+ZD*ZD)^3)/((1.0+3.0*ZD*ZD)^2)
         ! ZK=(1.0_JPRB+ZD*ZD)**3/(1.0_JPRB+3.0_JPRB*ZD*ZD)**2
-        ZK = 0.77_JPRB
+        !ZK = 0.77_JPRB
+        ZK=RRATSEA
 
         ! Cloud droplet concentration in cm-3 (activated CCN) over ocean
         ZNTOT=-1.15E-03_JPRB*ZASEA*ZASEA+0.963_JPRB*ZASEA+5.30_JPRB
@@ -830,7 +837,8 @@ DO JK=1,KLEV
         ! Constant (k) relating volume radius to effective radius rv^3=k*re^3
         ! k = (1.0+ZD*ZD)^3)/((1.0+3.0*ZD*ZD)^2)
         ! ZK=(1.0_JPRB+ZD*ZD)**3/(1.0_JPRB+3.0_JPRB*ZD*ZD)**2
-        ZK = 0.69_JPRB
+        ! ZK = 0.69_JPRB
+        ZK=RRATLAND
 
         ! Cloud droplet concentration in cm-3 (activated CCN) over land
         ZNTOT=-2.10E-04_JPRB*ZALND*ZALND+0.568_JPRB*ZALND-27.9_JPRB
@@ -854,7 +862,8 @@ DO JK=1,KLEV
       ! from Wood(2000) param (Eq. 19)
       IF (ZLWC(JL,JK) > REPSCW) THEN
         ZRLRATIO  = ZRWC(JL,JK)/ZLWC(JL,JK)
-        ZKL       = 0.222_JPRB
+!       ZKL       = 0.222_JPRB
+        ZKL=RRATDRI
         ZKRATIO   = (ZKL/ZK)**0.333_JPRB
         ZREFACDEN = 1.0_JPRB+0.2_JPRB*ZKRATIO*ZRLRATIO
         ZREFAC    = ((1.0_JPRB+ZRLRATIO)**0.666_JPRB)/ZREFACDEN
@@ -899,7 +908,7 @@ DO JK=1,KLEV
     ENDIF
     ZRADIP(JL)=326.3_JPRB+ZTEMPC*(12.42_JPRB + ZTEMPC*(0.197_JPRB + ZTEMPC*&
       & 0.0012_JPRB))    
-    
+    ZRADIP(JL)=RFACDICE*ZRADIP(JL)
     IF (NRADIP == 0) THEN
 !-- fixed 40 micron effective radius
       ZRADIP(JL)= 40.0_JPRB

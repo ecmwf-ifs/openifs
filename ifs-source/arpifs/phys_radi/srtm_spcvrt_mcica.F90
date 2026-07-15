@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 #ifdef RS6K
 @PROCESS HOT(NOVECTOR) NOSTRICT
 #endif
@@ -87,8 +96,8 @@ IMPLICIT NONE
 !              ---------
 
 TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
-TYPE(TERAD)       ,INTENT(INOUT) :: YDERAD
-TYPE(TERDI)       ,INTENT(INOUT) :: YDERDI
+TYPE(TERAD)       ,INTENT(IN)    :: YDERAD
+TYPE(TERDI)       ,INTENT(IN)    :: YDERDI
 INTEGER(KIND=JPIM),INTENT(IN)    :: KSW
 INTEGER(KIND=JPIM),INTENT(IN)    :: KCOLS
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA, KFDIA
@@ -289,7 +298,7 @@ DO JB = IB1, IB2
 
   IF (JB == 16) THEN
     CALL SRTM_TAUMOL16&
-     & (YDDIMV, KIDIA   , KFDIA    , KLEV    ,&
+     & ( KIDIA , KFDIA    , KLEV    ,&
      & PFAC00  , PFAC01   , PFAC10   , PFAC11   ,&
      & KJP     , KJT      , KJT1     , PONEMINUS,&
      & PCOLH2O , PCOLCH4  , PCOLMOL  ,&
@@ -299,7 +308,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 17) THEN
     CALL SRTM_TAUMOL17&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     , PONEMINUS ,&
      & PCOLH2O , PCOLCO2 , PCOLMOL  ,&
@@ -309,7 +318,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 18) THEN
     CALL SRTM_TAUMOL18&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     , PONEMINUS ,&
      & PCOLH2O , PCOLCH4 , PCOLMOL  ,&
@@ -319,7 +328,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 19) THEN
     CALL SRTM_TAUMOL19&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     , PONEMINUS ,&
      & PCOLH2O , PCOLCO2 , PCOLMOL  ,&
@@ -329,7 +338,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 20) THEN
     CALL SRTM_TAUMOL20&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     ,&
      & PCOLH2O , PCOLCH4 , PCOLMOL  ,&
@@ -339,7 +348,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 21) THEN
     CALL SRTM_TAUMOL21&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     , PONEMINUS ,&
      & PCOLH2O , PCOLCO2 , PCOLMOL  ,&
@@ -349,7 +358,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 22) THEN
     CALL SRTM_TAUMOL22&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     , PONEMINUS ,&
      & PCOLH2O , PCOLMOL , PCOLO2   ,&
@@ -359,7 +368,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 23) THEN
     CALL SRTM_TAUMOL23&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     ,&
      & PCOLH2O , PCOLMOL ,&
@@ -369,7 +378,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 24) THEN
     CALL SRTM_TAUMOL24&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     , PONEMINUS ,&
      & PCOLH2O , PCOLMOL , PCOLO2   , PCOLO3 ,&
@@ -380,7 +389,7 @@ DO JB = IB1, IB2
   ELSEIF (JB == 25) THEN
     !--- visible 16000-22650 cm-1   0.4415 - 0.6250 um
     CALL SRTM_TAUMOL25&
-     & (YDDIMV, KIDIA    , KFDIA   , KLEV     ,&
+     & ( KIDIA  , KFDIA   , KLEV     ,&
      & PFAC00   , PFAC01  , PFAC10 , PFAC11 ,&
      & KJP      , KJT     , KJT1   ,&
      & PCOLH2O  , PCOLMOL , PCOLO3 ,&
@@ -391,7 +400,7 @@ DO JB = IB1, IB2
   ELSEIF (JB == 26) THEN
     !--- UV-A 22650-29000 cm-1   0.3448 - 0.4415 um
     CALL SRTM_TAUMOL26&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PCOLMOL ,KLAYTROP,&
      & ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0&
      & )  
@@ -399,7 +408,7 @@ DO JB = IB1, IB2
   ELSEIF (JB == 27) THEN
     !--- UV-B 29000-38000 cm-1   0.2632 - 0.3448 um
     CALL SRTM_TAUMOL27&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP     , KJT     , KJT1     ,&
      & PCOLMOL , PCOLO3 ,&
@@ -410,7 +419,7 @@ DO JB = IB1, IB2
   ELSEIF (JB == 28) THEN
     !--- UV-C 38000-50000 cm-1   0.2000 - 0.2632 um
     CALL SRTM_TAUMOL28&
-     & (YDDIMV, KIDIA   , KFDIA   , KLEV    ,&
+     & ( KIDIA , KFDIA   , KLEV    ,&
      & PFAC00  , PFAC01  , PFAC10 , PFAC11 ,&
      & KJP     , KJT     , KJT1   , PONEMINUS ,&
      & PCOLMOL , PCOLO2  , PCOLO3 ,&
@@ -420,7 +429,7 @@ DO JB = IB1, IB2
 
   ELSEIF (JB == 29) THEN
     CALL SRTM_TAUMOL29&
-     & (YDDIMV, KIDIA    , KFDIA   , KLEV     ,&
+     & ( KIDIA  , KFDIA   , KLEV     ,&
      & PFAC00   , PFAC01  , PFAC10   , PFAC11 ,&
      & KJP      , KJT     , KJT1     ,&
      & PCOLH2O  , PCOLCO2 , PCOLMOL  ,&

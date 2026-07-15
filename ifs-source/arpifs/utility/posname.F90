@@ -9,7 +9,7 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
-SUBROUTINE POSNAME(KULNAM,CDNAML,KSTAT)
+SUBROUTINE POSNAME(KULNAM,CDNAML,KSTAT,LDNOREWIND)
 
 !**** *POSNAME* - position namelist file for reading; return error code
 !                 if namelist is not found
@@ -29,7 +29,14 @@ SUBROUTINE POSNAME(KULNAM,CDNAML,KSTAT)
 !                                 KSTAT  - non-zero if namelist not found
 !                                          1 = namelist not found
 
+!     Author.
+!     -------
 !      P.Marguinaud 22-Nov-2010
+
+!     Modifications.
+!     --------------
+!      R.Hogan      20-Jan-2022  Added no-rewind optional argument
+
 !     --------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -40,6 +47,7 @@ IMPLICIT NONE
 INTEGER(KIND=JPIM),INTENT(IN)    :: KULNAM 
 CHARACTER(LEN=*)  ,INTENT(IN)    :: CDNAML 
 INTEGER(KIND=JPIM),INTENT(OUT)   :: KSTAT
+LOGICAL,OPTIONAL,  INTENT(IN)    :: LDNOREWIND
 
 #include "abor1.intfb.h"
 
@@ -60,7 +68,15 @@ IF (LHOOK) CALL DR_HOOK('POSNAME',0,ZHOOK_HANDLE)
 KSTAT = 0
 
 CLINE='                                        '
-REWIND(KULNAM)
+! Rewind by default, but not if LDNOREWIND is present and TRUE. This
+! is useful for reading an array of structures of arbitrary length
+! from a namelist, by repeated use of the same group name.
+IF (.NOT. PRESENT(LDNOREWIND)) THEN
+  REWIND(KULNAM)
+ELSEIF (.NOT. LDNOREWIND) THEN
+  REWIND(KULNAM)
+ENDIF
+
 ILEN=LEN(CDNAML)
 ISTATUS=0
 ISCAN=0
@@ -88,7 +104,7 @@ DO WHILE (ISTATUS==0 .AND. ISCAN==0)
       ENDIF
     ENDIF
   CASE (1:)
-    CALL ABOR1 ('POSNAME: AN ERROR HAPPENED WHILE READING THE NAMELIST')
+    CALL ABOR1 ('POSNAME: AN ERROR OCCURRED WHILE READING THE NAMELIST')
   END SELECT
 ENDDO
 BACKSPACE(KULNAM)

@@ -92,12 +92,14 @@ SUBROUTINE CUININ2 &
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      P. Lopez      11-Jan-2007 Added LDRAIN switch (1D-Var rain)
 !      A. Geer       01-Oct-2008 LDRAIN1D name change to reflect usage
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !----------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RCPD
+USE YOMCST   , ONLY : YRCST
+USE YOETHF   , ONLY : YRTHF
 USE YOECUMF2 , ONLY : TECUMF2
 USE YOEPHLI  , ONLY : TEPHLI
 
@@ -149,7 +151,9 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !----------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('CUININ2',0,ZHOOK_HANDLE)
 ASSOCIATE(NJKT22=>YDECUMF2%NJKT22, &
+ & RCPD=>YRCST%RCPD, &
  & LPHYLIN=>YDEPHLI%LPHYLIN)
+
 ! Constant (for optimization)
 ZRCPD=1.0_JPRB/RCPD
 
@@ -174,12 +178,12 @@ DO JK=2,KLEV
   IF(LPHYLIN .OR. LDRAIN1D) THEN
     ICALL=0
     CALL CUADJTQS &
-     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     & ( YRTHF, YRCST, KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
      &   ZPH,      PTENH,    PQSENH,  LLFLAG,   ICALL)  
   ELSE
     ICALL=3
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,    KLEV,      IK,&
+     & ( YRTHF, YRCST, YDEPHLI,  KIDIA,    KFDIA,    KLON,    KLEV,      IK,&
      &   ZPH,      PTENH,    PQSENH,   LLFLAG,   ICALL)  
   ENDIF
 

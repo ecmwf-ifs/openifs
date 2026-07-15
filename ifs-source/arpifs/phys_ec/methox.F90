@@ -100,6 +100,13 @@ DO JK=1,KLEV
     LLPHOTO=PAP(JL,JK) < RPBOTPH
 
 !     METHANE OXIDATION
+!
+!     Based on the fact that 2*CH4+H2O (=RQLIM) is approx constant in stratosphere
+!     due to methane oxidising to water vapour with time as the air circulates.
+!     Parametrization relaxes water vapour to RQLIM with timescale (ZTAU1) that 
+!     decreases with decreasing pressure. RQLIM is dependent on time varying
+!     methane at the tropopause if LMETHOX_TIMEVAR is true (set in updrgas)
+!     otherwise constant (set in sumethox).
 
     IF(LLOXID) THEN
       IF(PAP(JL,JK) <= RPTOPOX) THEN

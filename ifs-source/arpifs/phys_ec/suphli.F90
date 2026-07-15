@@ -95,7 +95,7 @@ ASSOCIATE(NFLEVG=>YDDIMV%NFLEVG, &
  & LEMWAVE=>YDEPHY%LEMWAVE, &
  & LRRTM=>YDERAD%LRRTM, NOVLP=>YDERAD%NOVLP, &
  & LERADLW2=>YDPHNC%LERADLW2, LH2OCO2=>YDPHNC%LH2OCO2, LWLOPT=>YDPHNC%LWLOPT, &
- & LWSOPT=>YDPHNC%LWSOPT, LERADI2=>YDPHNC%LERADI2, &
+ & LWSOPT=>YDPHNC%LWSOPT, LERADI2=>YDPHNC%LERADI2, LEGWDGF2=>YDPHNC%LEGWDGF2, &
  & STZ=>YDSTA%STZ)
 
 ! Associate pointers for variables in namelist
@@ -148,7 +148,13 @@ RLPBETA=0.2_JPRB
 
 !RLPDRAG=0.3_JPRB
 !effectively switches off TL of gwdrag, should be on but bug somewhere, Nils
-RLPDRAG=0._JPRB
+!RLPDRAG=0._JPRB
+
+IF (LEGWDGF2) THEN
+  RLPDRAG=0.15_JPRB ! the whole gwd activated as in NL code
+ELSE
+  RLPDRAG=0.0_JPRB  ! only low-level blocking of gwd will be used
+ENDIF
 
 !*         5.     SET CONSTANTS RELATED TO RAINFALL EVAPORATION 
 !                 ---------------------------------------------

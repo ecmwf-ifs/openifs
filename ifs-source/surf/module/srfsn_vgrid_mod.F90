@@ -1,3 +1,69 @@
+
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFSN_VGRID* - Define snow verical grid 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE DEFINES THE SNOW VERTICAL GRID
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_VGRID* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*      NUMBER OF HORIZONTAL POINTS
+!    *KLEVSN*      NUMBER OF VERTICAL SNOW LAYERS
+
+
+!     INPUT PARAMETERS (REAL):
+!    *PSSN*         SNOW MULTI-LAYER MASS AT T-1, not regridded
+!    *PRSN*         SNOW MULTI-LAYER DENSITY AT T-1, not regridded
+!    *RLEVSNMIN*    MINIMUM SNOW DEPTH FOR EACH SNOW LAYER
+!    *RLEVSNMAX*    MAXIMUM SNOW DEPTH FOR EACH SNOW LAYER
+!    *RLEVSNMIN_GL* MINIMUM SNOW DEPTH FOR EACH SNOW LAYER OVER GLACIERS
+!    *RLEVSNMAX_GL* MAXIMUM SNOW DEPTH FOR EACH SNOW LAYER OVER GLACIERS
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LLNOSNOW*   NOSNOW MASK (TRUE THEN POINT IS SNOW-FREE)
+!    *PSDOR*      OROGRAPHIC PARAMETER                           m
+
+!     OUTPUT PARAMETERS 
+!    *PDSNOUT*    NEW VERTICAL THICKNESS OF SNOW LAYERS
+!    *ILESVNA*    (optional) NUMBER OF ACTIVE VERTICAL LAYERS
+!
+!    INPUT PARAMETER, OPTIONAL
+!    *LEMIN*    (optional) TRUE IF IT IS INNER LOOP MINIMISATION
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   E. Dutra      ECMWF     04/12/2015
+!     G. Arduini: using spatial variable snow thickness depending on
+!                 orography and snow depth
+
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_VGRID_MOD
 CONTAINS
 SUBROUTINE SRFSN_VGRID(KIDIA, KFDIA, KLON, KLEVSN,LLNOSNOW,PSDOR,&
@@ -10,14 +76,6 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2015- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFSN_VGRID* - Define snow verical grid 
 !     PURPOSE.

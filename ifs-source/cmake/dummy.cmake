@@ -16,16 +16,13 @@ if( NOT TARGET ifsdummy )
               dummy/arpifs/*
     )
 
-    if( HAVE_FORECAST_ONLY )
-      ecbuild_list_add_pattern(LIST ifsdummy_src GLOB dummy/forecast/*)
-    endif()
+    ecbuild_list_add_pattern(LIST ifsdummy_src GLOB dummy/forecast/*)
 
     ecbuild_add_library(TARGET ifsdummy
         SOURCES ${ifsdummy_src}
     )
 
-    include(target_ignore_missing_symbols)
-    target_ignore_missing_symbols( TARGET ifsdummy SYMBOLS
+    ifs_target_ignore_missing_symbols( TARGET ifsdummy SYMBOLS
       abor1_
     )
   

@@ -65,6 +65,7 @@ SUBROUTINE SUOPH(YDGEOMETRY)
 !      M.Hamrud  (Jan 2015) ! Remove FDB stuff from here
 !      R. El Khatib 08-Dec-2015 Interoperability GRIB2 vs FA
 !      R. El Khatib 17-Aug-2016 Cleaning
+!      R. El Khatib 18-Mar-2021 use the proper value NSTRON instead of ISTRON (for auto-documentation of LAM frame only)
 !     ------------------------------------------------------------------
 
 USE GEOMETRY_MOD , ONLY : GEOMETRY
@@ -75,6 +76,7 @@ USE YOMARG   , ONLY : NGRIBFILE
 USE YOMOPH0  , ONLY : CNMCA, YMDLOPH
 USE YOMVERT  , ONLY : VP00
 USE FA_MOD, ONLY : JPPRCM
+USE YOMFA    , ONLY : NSTRON
 
 !     ------------------------------------------------------------------
 
@@ -124,12 +126,11 @@ IF (NGRIBFILE==0.OR.LARPEGEF) THEN
   IF (LELAM) THEN
 
     CNMCA='CADRE.STANDARD.E'
-    ISTRON=MAX(0,MIN(11,NMSMAX,NSMAX)-1)
 
     CALL SUEFRAME(CNMCA,LMAP,NMSMAX,NSMAX,NDGLG,NDLON,LLGARD,LMRT,ELON0,ELAT0,&
      & ELONC,ELATC,EDELX,EDELY,ELON1,ELAT1,ELON2,ELAT2,ERPK,ELX,ELY,EXWN,EYWN,&
      & NDLUNG,NDLUXG,NDGUNG,NDGUXG,NBZONL,NBZONG,NIOLEVG,VP00,YVABIO%VALH,YVABIO%VBH, &
-     & NEDOM,ISTRON,NBIPINCIX,NBIPINCIY)
+     & NEDOM,NSTRON,NBIPINCIX,NBIPINCIY)
 
   ELSE
 

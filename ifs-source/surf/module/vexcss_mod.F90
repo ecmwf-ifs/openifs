@@ -1,3 +1,89 @@
+
+! (C) Copyright 1990- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VEXCSS* - DETERMINES THE EXCHANGE COEFFICIENTS BETWEEN THE
+!                 SURFACE AND THE LOWEST MODEL LEVEL WITH HELP OF
+!                 STABILITY AS FUNCTION OF OBUKHOV-L.
+
+!     Original A.C.M. BELJAARS       E.C.M.W.F.    26/03/90.
+!     Modified A.C.M. BELJAARS   26/03/99 Tiling of the land surface.
+!     Modified J. HAGUE          13/01/03 MASS Vector Functions 
+!     Duplicated P. LOPEZ        03/06/05 New version for linearized physics
+!     Modified   P. Viterbo ECMWF 12/05/2005 Externalize SURF
+!                                   (based on vdfexcss)
+!                M. Janiskova    27/06/2005 removed option for MASS vector
+!                                   functions not use in corresponding TL/AD
+!                M. Janiskova    15/02/2006 code re-organization for efficient
+!                                   computation of its TL/AD versions
+!                P. Lopez        July 2025  Added ocean currents
+
+!     PURPOSE
+!     -------
+
+!     DETERMINE EXCHANGE COEFFICIENTS BETWEEN THE SURFACE AND THE
+!     LOWEST MODEL LEVEL
+
+!     INTERFACE
+!     ---------
+
+!     *VEXCSS* IS CALLED BY *SURFEXCDRIVERS*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        TIME STEP
+!     *PRVDIFTS*     Semi-implicit factor for vertical diffusion discretization
+!     *PUMLEV*       X-VELOCITY COMPONENT AT T-1, lowest model level
+!     *PVMLEV*       Y-VELOCITY COMPONENT AT T-1, lowest model level
+!     *PTMLEV*       TEMPERATURE AT T-1, lowest model level
+!     *PQMLEV*       SPECIFIC HUMUDITY AT T-1, lowest model level
+!     *PAPHMS*       PRESSURE AT T-1, surface
+!     *PGEOMLEV*     GEOPOTENTIAL AT T-1, lowest model level
+!     *PCPTGZLEV*    DRY STATIC ENERGY, lowest model level
+!     *PCPTS*        DRY STATIC ENERGY AT THE SURFACE
+!     *PQSAM*        SPECIFIC HUMIDITY AT THE SURFACE
+!     *PZ0MM*        AERODYNAMIC ROUGHNESS LENGTH
+!     *PZ0HM*        ROUGHNESS LENGTH FOR TEMPERATURE
+!     *PZ0QM*        ROUGHNESS LENGTH FOR MOISTURE
+!     *PBUOM*        BUOYANCE FLUX AT THE SURFACE
+!     *PUCURR*       OCEAN CURRENT U-COMPONENT
+!     *PVCURR*       OCEAN CURRENT V-COMPONENT
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PCFM*         PROP. TO EXCH. COEFF. FOR MOMENTUM (C-STAR IN DOC.)
+!                    AT LOWEST MODEL LEVEL; CALLED WITH ZCFM(1,KLEV)
+!     *PCFH*         PROP. TO EXCH. COEFF. FOR HEAT     (C-STAR IN DOC.)
+!                    AT LOWEST MODEL LEVEL; CALLED WITH ZCFM(1,KLEV)
+!     *PCFQ*         PROP. TO EXCH. COEFF. FOR MOISTURE (C-STAR IN DOC.)
+!                    (THIS ARRAY APPLIES TO BOTTOM LAYER ONLY)
+
+!     METHOD
+!     ------
+
+!     THE ALGEBRAIC RELATION BETWEEN Z/L AND THE RICHARDSON NUMBER
+!     IS SOLVED ITERATIVELY. THE STABILITY FUNCTIONS ARE THE SO-CALLED
+!     PROFILE PSI-FUNCTIONS.
+!     THE INITIAL GUESS (E.G. FROM PREVIOUS TIMESTEP) IS BACK-
+!     SUBSTITUTED TO OBTAIN A SECOND APPROXIMATION. FURTHER ITERATION
+!     IS DONE BY LINEAR INTER(EXTRA)POLATION (NEWTON'S  METHOD WITH
+!     THE DERIVATIVE FROM SUCCESSIVE APPROXIMATIONS). 
+
+!     ------------------------------------------------------------------
+
 MODULE VEXCSS_MOD
 CONTAINS
 SUBROUTINE VEXCSS(KIDIA,KFDIA,KLON,PTMST,PRVDIFTS,&
@@ -13,14 +99,6 @@ USE YOS_THF   , ONLY : RVTMP2
 USE YOS_EXCS  , ONLY : RLPDD, RLPCC, RLPBB
 USE YOS_CST   , ONLY : TCST
 USE YOS_EXC   , ONLY : TEXC
-
-! (C) Copyright 1990- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
 

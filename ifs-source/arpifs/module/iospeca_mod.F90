@@ -73,6 +73,8 @@ INTERFACE IOSPECA_SELECTF
   MODULE PROCEDURE IOSPECA_SELECTFX, IOSPECA_SELECTFY
 END INTERFACE
 
+#include "abor1.intfb.h"
+
 SAVE
 
 CONTAINS
@@ -130,7 +132,7 @@ TYPE(SPECTRAL_FIELD), INTENT (INOUT) :: YDSPEC
 
 #include "evduvgeo.intfb.h"
 #include "specrt.intfb.h"
-#include "especrt.intfb.h" 
+#include "especrt.intfb.h"
 #include "spnh_conv_nhvar.intfb.h"
 
 REAL (KIND=JPHOOK) :: ZHOOK_HANDLE
@@ -176,13 +178,13 @@ SELECT CASE (KACTION)
     ENDIF
    
     IF (LELAM) THEN
-
+   
       ALLOCATE (YDCTX%RSPU (YDGEOMETRY%YRDIMV%NFLSUR, YDGEOMETRY%YRDIM%NSPEC2),&
               & YDCTX%RSPV (YDGEOMETRY%YRDIMV%NFLSUR, YDGEOMETRY%YRDIM%NSPEC2))
                                                                                                                                  
       WRITE (NULOUT,*)' IOSPECA : VOR,DIV + MEAN U,V --> U.GEO,V.GEO '
    
-      CALL EVDUVGEO (YDGEOMETRY, YDSPEC%VOR, YDSPEC%DIV, YDSPEC%UB, YDSPEC%VB, YDCTX%RSPU, YDCTX%RSPV)  
+      CALL EVDUVGEO (YDGEOMETRY, YDSPEC%VOR, YDSPEC%DIV, YDSPEC%UB, YDSPEC%VB, YDCTX%RSPU, YDCTX%RSPV)
    
     ENDIF
 
@@ -406,7 +408,6 @@ TYPE(TMCUF),          INTENT (INOUT),OPTIONAL :: YDMCUF
 #include "speree.intfb.h"
 #include "reespe.intfb.h"
 #include "ereespe.intfb.h"
-#include "abor1.intfb.h"
 
 REAL (KIND=JPRB), POINTER :: &
           & ZSPVOR (:,:), ZSPDIV (:,:), ZSPT(:,:), ZSPGFL (:,:,:), ZSPSP (:), &
@@ -833,8 +834,6 @@ INTEGER (KIND=JPIM), INTENT (IN)    :: KACTION
 TYPE (IOFLDDESC),    INTENT (OUT)   :: YDFLDSC (:)
 LOGICAL,             INTENT (IN), OPTIONAL :: LDINOR
 INTEGER (KIND=JPIM), INTENT (IN), OPTIONAL :: K3DINI
-
-#include "abor1.intfb.h"
 
 INTEGER (KIND=JPIM) :: IPT
 INTEGER (KIND=JPIM) :: IFLDSPG

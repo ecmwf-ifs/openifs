@@ -1,0 +1,93 @@
+# (C) Copyright 2022- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+
+# ecWam derived-types and definitions
+
+objtypes:
+ - frequency
+ - environment
+ - forcing_fields
+ - wave2ocean
+ - intgt_param_fields
+ - source_contribs
+
+objdef:
+  environment:
+   - [indep, int, 2]
+   - [iodp, int, 2]
+   - [iobnd, int, 2]
+   - [dellam1, real, 2]
+   - [cosphm1, real, 2]
+   - [depth, real, 2]
+   - [emaxdpt, real, 2]
+   - [ucur, real, 2]
+   - [vcur, real, 2]
+  frequency:
+   - [wavnum, real, 3]
+   - [cinv, real, 3]
+   - [cgroup, real, 3]
+   - [xk2cg, real, 3]
+   - [omosnh2kd, real, 3]
+   - [stokfac, real, 3]
+   - [ciwa, real, 3]
+  forcing_fields:
+   - [uwnd, real, 2]
+   - [vwnd, real, 2]
+   - [aird, real, 2]
+   - [wstar, real, 2]
+   - [cicover, real, 2]
+   - [cithick, real, 2]
+   - [lkfr, real, 2]
+   - [ustra, real, 2]
+   - [vstra, real, 2]
+   - [ucur, real, 2]
+   - [vcur, real, 2]
+   - [wswave, real, 2]
+   - [wdwave, real, 2]
+   - [ufric, real, 2]
+   - [tauw, real, 2]
+   - [tauwdir, real, 2]
+   - [z0m, real, 2]
+   - [z0b, real, 2]
+   - [chrnck, real, 2]
+   - [xlon, real, 2]
+   - [ylat, real, 2]
+  wave2ocean:
+   - [nswh, ocean, 2]
+   - [nmwp, ocean, 2]
+   - [nphieps, ocean, 2]
+   - [nemophif, ocean, 2]
+   - [ntauoc, ocean, 2]
+   - [nemotaux, ocean, 2]
+   - [nemotauy, ocean, 2]
+   - [nemoustokes, ocean, 2]
+   - [nemovstokes, ocean, 2]
+   - [nemostrn, ocean, 2]
+   - [nemowswave, ocean, 2]
+  intgt_param_fields:
+   - [wsemean, real, 2]
+   - [wsfmean, real, 2]
+   - [ustokes, real, 2]
+   - [vstokes, real, 2]
+   - [phieps, real, 2]
+   - [phiocd, real, 2]
+   - [phiaw, real, 2]
+   - [tauoc, real, 2]
+   - [tauxd, real, 2]
+   - [tauyd, real, 2]
+   - [tauocxd, real, 2]
+   - [tauocyd, real, 2]
+   - [strnms, real, 2]
+   - [altwh, real, 2]
+   - [caltwh, real, 2]
+   - [raltcor, real, 2]
+  source_contribs:
+   - [fl1, real, 4]
+   - [xllws, real, 4]
+   - [mij, int, 2]

@@ -1,7 +1,7 @@
 ! (C) Copyright 1989- Meteo-France.
 
 SUBROUTINE OPENFPFA(YDFPUSERGEO,KULFP,CDFPFN,CDLEC,KFILE,KDATE,LDFILAF,KNLATI,&
-                   &KNXLON,CDFPCACREATE,KFPCHKDAT,YDVAB)
+                   &KNXLON,CDFPCACREATE,YDVAB)
 
 !**** *OPENFPFA*  - OPEN AN EXISTING POST-PROCESSING FILE
 
@@ -29,7 +29,6 @@ SUBROUTINE OPENFPFA(YDFPUSERGEO,KULFP,CDFPFN,CDLEC,KFILE,KDATE,LDFILAF,KNLATI,&
 !        KNXLON : number of longitudes in file
 !        LDFILAF: .TRUE. to list the content of file
 !        CDFPCACREATE: cadre FA is file should be created
-!        KFPCHKDAT : check date (1) or not (0)
 
 !        IMPLICIT ARGUMENTS
 !        ------------------
@@ -65,6 +64,7 @@ SUBROUTINE OPENFPFA(YDFPUSERGEO,KULFP,CDFPFN,CDLEC,KFILE,KDATE,LDFILAF,KNLATI,&
 !      R. El Khatib 27-Sep-2013 Boyd window in frame
 !      R. El Khatib 04-Aug-2014 Pruning of the conf. 927/928 + remove sunmen
 !      R. El Khatib 21-Apr-2016 Remove geometry
+!      R. El Khatib 26-Jan-2021 Re-use NFPCHKDAT to control date checking on climatology datasets
 !     ------------------------------------------------------------------
 
 
@@ -73,6 +73,7 @@ USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
 USE YOMLUN   , ONLY : NULOUT
 USE TYPE_FPUSERGEO, ONLY : TFPUSERGEO
+USE YOMFPC   , ONLY : NFPCHKDAT
 USE YOMCST   , ONLY : RPI
 USE YOMVERT  , ONLY : VP00, TVAB, ALLOC_INIT_TVAB
 
@@ -88,7 +89,6 @@ LOGICAL           ,INTENT(IN),  OPTIONAL :: LDFILAF
 INTEGER(KIND=JPIM),INTENT(OUT), OPTIONAL :: KNLATI
 INTEGER(KIND=JPIM),INTENT(OUT), OPTIONAL :: KNXLON
 CHARACTER(LEN=*)  ,INTENT(IN),  OPTIONAL :: CDFPCACREATE
-INTEGER(KIND=JPIM),INTENT(IN),  OPTIONAL :: KFPCHKDAT
 TYPE(TVAB)       , INTENT(IN),  OPTIONAL :: YDVAB
 
 !     ------------------------------------------------------------------
@@ -223,9 +223,10 @@ IF (.NOT. LLCREATED) THEN
        & ' YOU READ TARGET CLIMATOLOGIC FIELDS FOR THE MONTH : ',IDATEF(2)  
       IF (IDATEF(2) /= KDATE(2)) THEN
         WRITE(NULOUT,*) ' EXPECTED MONTH : ',KDATE(2)
-        WRITE(NULOUT,*) &
-         & 'TARGET CLIM. AND INITIAL FILE OR MODEL DISAGREE ON MONTH'  
-        CALL ABOR1('OPENFPFA : ABOR1 CALLED')
+        WRITE(NULOUT,*) 'TARGET CLIM. AND INITIAL FILE OR MODEL DISAGREE ON MONTH'  
+        IF (NFPCHKDAT == 1) THEN
+          CALL ABOR1('OPENFPFA : ABOR1 CALLED')
+        ENDIF
       ENDIF
     ELSEIF(IFILE == 0) THEN
 !   Full date check : 
@@ -237,13 +238,9 @@ IF (.NOT. LLCREATED) THEN
       IF (.NOT.LLDATEOK) THEN
         WRITE(NULOUT,*) 'DATE IN FILE  : ',IDATEF
         WRITE(NULOUT,*) 'DATE COMPUTED : ',KDATE
-        IF (PRESENT(KFPCHKDAT)) THEN
-          IF (KFPCHKDAT == 0) THEN
-            WRITE(NULOUT,*) 'WARNING : DATES ARE DIFFERENT'
-          ELSE
-            CALL ABOR1(' OPENFPFA : ERROR IN DATE')
-          ENDIF
-        ELSE  
+        IF (NFPCHKDAT == 0) THEN
+          WRITE(NULOUT,*) 'WARNING : DATES ARE DIFFERENT'
+        ELSE
           CALL ABOR1(' OPENFPFA : ERROR IN DATE')
         ENDIF
       ENDIF

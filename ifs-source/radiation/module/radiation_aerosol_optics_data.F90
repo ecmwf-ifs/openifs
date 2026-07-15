@@ -1,10 +1,16 @@
 ! radiation_aerosol_optics_data.F90 - Type to store aerosol optical properties
 !
-! Copyright (C) 2015-2018 ECMWF
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-10-23  R. Hogan  Renamed single-character variables
@@ -17,6 +23,7 @@ module radiation_aerosol_optics_data
   use radiation_io,  only : nulerr, radiation_abort
 
   implicit none
+  public
 
   private :: get_line
 
@@ -49,6 +56,12 @@ module radiation_aerosol_optics_data
      ! to specific hydrophilic or hydrophobic aerosol types
      integer, allocatable, dimension(:) :: itype
 
+     ! Wavenumber (cm-1) upper and lower bounds of each spectral
+     ! interval, which if used in the RRTMG gas optics scheme should
+     ! match its band bounds
+     real(jprb), allocatable, dimension(:) :: wavenumber1_sw, wavenumber2_sw
+     real(jprb), allocatable, dimension(:) :: wavenumber1_lw, wavenumber2_lw
+
      ! Scattering properties are provided separately in the shortwave
      ! and longwave for hydrophobic and hydrophilic aerosols.
      ! Hydrophobic aerosols are dimensioned (nband,n_type_phobic):
@@ -56,26 +69,35 @@ module radiation_aerosol_optics_data
           &  mass_ext_sw_phobic, & ! Mass-extinction coefficient (m2 kg-1)
           &  ssa_sw_phobic,      & ! Single scattering albedo
           &  g_sw_phobic,        & ! Asymmetry factor
+!          &  ssa_g_sw_phobic,    & ! ssa*g
           &  mass_ext_lw_phobic, & ! Mass-extinction coefficient (m2 kg-1)
+!          &  mass_abs_lw_phobic, & ! Mass-absorption coefficient (m2 kg-1)
           &  ssa_lw_phobic,      & ! Single scattering albedo
           &  g_lw_phobic           ! Asymmetry factor
 
-     ! Hydrophilic aerosols are dimensioned (nband, nrh, n_type_philic):
+     ! Hydrophilic aerosols are dimensioned (nband,nrh,n_type_philic):
      real(jprb), allocatable, dimension(:,:,:) :: &
           &  mass_ext_sw_philic, & ! Mass-extinction coefficient (m2 kg-1)
           &  ssa_sw_philic,      & ! Single scattering albedo
           &  g_sw_philic,        & ! Asymmetry factor
+ !         &  ssa_g_sw_philic,    & ! ssa*g
           &  mass_ext_lw_philic, & ! Mass-extinction coefficient (m2 kg-1)
+ !         &  mass_abs_lw_philic, & ! Mass-absorption coefficient (m2 kg-1)
           &  ssa_lw_philic,      & ! Single scattering albedo
           &  g_lw_philic           ! Asymmetry factor
 
-     ! Scattering properties at selected wavelengths
-     ! (n_mono_wl,n_type_phobic/philic)
+     ! Wavelengths at which monochromatic properties are stored,
+     ! dimensioned (n_mono_wl), units metres
+     real(jprb), allocatable :: wavelength_mono(:)
+
+     ! Scattering properties at selected monochromatic wavelengths
+     ! (n_mono_wl,n_type_phobic)
      real(jprb), allocatable, dimension(:,:) :: &
           &  mass_ext_mono_phobic, & ! Mass-extinction coefficient (m2 kg-1)
           &  ssa_mono_phobic,      & ! Single scattering albedo
           &  g_mono_phobic,        & ! Asymmetry factor
           &  lidar_ratio_mono_phobic ! Lidar Ratio
+     ! ...hydrophilic aerosols dimensioned (n_mono_wl,nrh,n_type_philic):
      real(jprb), allocatable, dimension(:,:,:) :: &
           &  mass_ext_mono_philic, & ! Mass-extinction coefficient (m2 kg-1)
           &  ssa_mono_philic,      & ! Single scattering albedo
@@ -96,10 +118,11 @@ module radiation_aerosol_optics_data
 
      ! The number of hydrophobic and hydrophilic types read from the
      ! aerosol optics file
-     integer :: n_type_phobic, n_type_philic
+     integer :: n_type_phobic = 0
+     integer :: n_type_philic = 0
 
      ! Number of relative humidity bins
-     integer :: nrh
+     integer :: nrh = 0
 
      ! Number of longwave and shortwave bands of the data in the file,
      ! and monochromatic wavelengths
@@ -113,6 +136,9 @@ module radiation_aerosol_optics_data
 
    contains
      procedure :: setup => setup_aerosol_optics
+     procedure :: save  => save_aerosol_optics
+     procedure :: allocate
+     procedure :: initialize_types
      procedure :: set_hydrophobic_type
      procedure :: set_hydrophilic_type
      procedure :: set_empty_type
@@ -127,21 +153,23 @@ contains
 
   !---------------------------------------------------------------------
   ! Setup aerosol optics coefficients by reading them from a file
-  subroutine setup_aerosol_optics(this, file_name, ntype, iverbose)
+  subroutine setup_aerosol_optics(this, file_name, iverbose)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,              only : lhook, dr_hook, jphook
     use easy_netcdf_read_mpi, only : netcdf_file
     use radiation_io,         only : nulerr, radiation_abort
 
     class(aerosol_optics_type), intent(inout) :: this
     character(len=*), intent(in)              :: file_name
-    integer, intent(in)                       :: ntype
     integer, intent(in), optional             :: iverbose
 
     ! The NetCDF file containing the aerosol optics data
     type(netcdf_file)  :: file
+
+    real(jprb), allocatable :: wavelength_tmp(:)
     integer            :: iverb
-    real(jphook)       :: hook_handle
+
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',0,hook_handle)
 
@@ -161,6 +189,12 @@ contains
       this%use_hydrophilic = .false.
     end if
 
+    ! Read the wavenumber bounds
+    call file%get('wavenumber1_sw', this%wavenumber1_sw)
+    call file%get('wavenumber2_sw', this%wavenumber2_sw)
+    call file%get('wavenumber1_lw', this%wavenumber1_lw)
+    call file%get('wavenumber2_lw', this%wavenumber2_lw)
+
     ! Read the raw scattering data
     call file%get('mass_ext_sw_hydrophobic', this%mass_ext_sw_phobic)
     call file%get('ssa_sw_hydrophobic',      this%ssa_sw_phobic)
@@ -171,6 +205,10 @@ contains
 
     call file%get_global_attribute('description_hydrophobic', &
          &                         this%description_phobic_str)
+
+    ! Precompute ssa*g for the shortwave and mass-absorption for the
+    ! longwave - TBD FIX
+    !allocate(this%ssa_g_sw_phobic(...
 
     if (this%use_hydrophilic) then
       call file%get('mass_ext_sw_hydrophilic', this%mass_ext_sw_philic)
@@ -186,10 +224,35 @@ contains
            &                         this%description_philic_str)
     end if
 
-    ! Read the raw scattering data at selected wavelengths if
-    ! available in the input file
+    ! Read the monochromatic scattering data at selected wavelengths
+    ! if available in the input file
     if (file%exists('mass_ext_mono_hydrophobic')) then
       this%use_monochromatic = .true.
+
+      if (allocated(this%wavelength_mono)) then
+        ! User has provided required monochromatic wavelengths, which
+        ! must match those in the file (in the more recent "general"
+        ! aerosol optics, interpolation provides optical properties at
+        ! the requested wavelengths)
+        call file%get('wavelength_mono', wavelength_tmp)
+        if (size(wavelength_tmp) /= size(this%wavelength_mono)) then
+          write(nulerr,'(a,i0,a,i0,a)') '*** Error: ', size(this%wavelength_mono), &
+               &  ' monochromatic wavelengths requested but ', &
+               &  size(wavelength_tmp), ' in file'
+          call radiation_abort('Radiation configuration error')
+        end if
+        if (any(abs(this%wavelength_mono-wavelength_tmp) &
+               &  / this%wavelength_mono > 0.01_jprb)) then
+          write(nulerr,'(a,a)') '*** Error: requested monochromatic wavelengths', &
+               &  'must all be within 1% of values in file'
+          call radiation_abort('Radiation configuration error')
+        end if
+      else
+        ! User has not provided required wavelengths, so we save the
+        ! monochromatic wavelengths in the file
+        call file%get('wavelength_mono', this%wavelength_mono)
+      end if
+
       call file%get('mass_ext_mono_hydrophobic', this%mass_ext_mono_phobic)
       call file%get('ssa_mono_hydrophobic',      this%ssa_mono_phobic)
       call file%get('asymmetry_mono_hydrophobic',this%g_mono_phobic)
@@ -225,16 +288,16 @@ contains
       if (size(this%mass_ext_lw_philic,1) /= this%n_bands_lw) then
         write(nulerr,'(a,a)') '*** Error: mass extinction for hydrophilic and hydrophobic ', &
              &                'aerosol have different numbers of longwave bands'
-        call radiation_abort()
+        call radiation_abort('Radiation configuration error')
       end if
       if (size(this%mass_ext_sw_philic,1) /= this%n_bands_sw) then
         write(nulerr,'(a,a)') '*** Error: mass extinction for hydrophilic and hydrophobic ', &
              &                'aerosol have different numbers of shortwave bands'
-        call radiation_abort()
+        call radiation_abort('Radiation configuration error')
       end if
       if (size(this%rh_lower) /= this%nrh) then
         write(nulerr,'(a)') '*** Error: size(relative_humidity1) /= size(mass_ext_sw_hydrophilic,2)'
-        call radiation_abort()
+        call radiation_abort('Radiation configuration error')
       end if
 
     else
@@ -242,6 +305,18 @@ contains
       this%nrh           = 0
     end if
 
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',1,hook_handle)
+
+  end subroutine setup_aerosol_optics
+
+
+  !---------------------------------------------------------------------
+  ! Initialize the arrays describing the user's aerosol types
+  subroutine initialize_types(this, ntype)
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer,                    intent(in)    :: ntype
+    
     ! Allocate memory for mapping arrays
     this%ntype = ntype
     allocate(this%iclass(ntype))
@@ -250,19 +325,187 @@ contains
     this%iclass = IAerosolClassUndefined
     this%itype  = 0
 
-    if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',1,hook_handle)
+  end subroutine initialize_types
 
-  end subroutine setup_aerosol_optics
+  !---------------------------------------------------------------------
+  ! Allocate arrays for aerosol optics data type
+  subroutine allocate(this, n_type_phobic, n_type_philic, nrh, &
+       &              n_bands_lw, n_bands_sw, n_mono_wl)
+
+    use yomhook,     only : lhook, dr_hook, jphook
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer, intent(in) :: n_type_phobic, n_type_philic, nrh
+    integer, intent(in) :: n_bands_lw, n_bands_sw, n_mono_wl
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:allocate',0,hook_handle)
+
+    this%n_type_phobic = n_type_phobic
+    this%n_type_philic = n_type_philic
+    this%nrh           = nrh
+    this%n_bands_lw    = n_bands_lw
+    this%n_bands_sw    = n_bands_sw
+    this%n_mono_wl     = n_mono_wl
+
+    if (n_type_philic > 0) then
+      this%use_hydrophilic = .true.
+    else
+      this%use_hydrophilic = .false.
+    end if
+
+    if (n_bands_sw > 0) then
+      allocate(this%mass_ext_sw_phobic(n_bands_sw, n_type_phobic))
+      allocate(this%ssa_sw_phobic(n_bands_sw, n_type_phobic))
+      allocate(this%g_sw_phobic(n_bands_sw, n_type_phobic))
+    end if
+    if (n_bands_lw > 0) then
+      allocate(this%mass_ext_lw_phobic(n_bands_lw, n_type_phobic))
+      allocate(this%ssa_lw_phobic(n_bands_lw, n_type_phobic))
+      allocate(this%g_lw_phobic(n_bands_lw, n_type_phobic))
+    end if
+    if (n_mono_wl > 0) then
+      allocate(this%mass_ext_mono_phobic(n_mono_wl, n_type_phobic))
+      allocate(this%ssa_mono_phobic(n_mono_wl, n_type_phobic))
+      allocate(this%g_mono_phobic(n_mono_wl, n_type_phobic))
+      allocate(this%lidar_ratio_mono_phobic(n_mono_wl, n_type_phobic))
+    end if
+
+    if (n_type_philic > 0 .and. nrh > 0) then
+      if (n_bands_sw > 0) then
+        allocate(this%mass_ext_sw_philic(n_bands_sw, nrh, n_type_philic))
+        allocate(this%ssa_sw_philic(n_bands_sw, nrh, n_type_philic))
+        allocate(this%g_sw_philic(n_bands_sw, nrh, n_type_philic))
+      end if
+      if (n_bands_lw > 0) then
+        allocate(this%mass_ext_lw_philic(n_bands_lw, nrh, n_type_philic))
+        allocate(this%ssa_lw_philic(n_bands_lw, nrh, n_type_philic))
+        allocate(this%g_lw_philic(n_bands_lw, nrh, n_type_philic))
+      end if
+      if (n_mono_wl > 0) then
+        allocate(this%mass_ext_mono_philic(n_mono_wl, nrh, n_type_philic))
+        allocate(this%ssa_mono_philic(n_mono_wl, nrh, n_type_philic))
+        allocate(this%g_mono_philic(n_mono_wl, nrh, n_type_philic))
+        allocate(this%lidar_ratio_mono_philic(n_mono_wl, nrh, n_type_philic))
+      end if
+    end if
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:allocate',1,hook_handle)
+
+  end subroutine allocate
+
+
+  !---------------------------------------------------------------------
+  subroutine save_aerosol_optics(this, file_name, iverbose)
+
+    use yomhook,     only : lhook, dr_hook, jphook
+    use easy_netcdf, only : netcdf_file
+
+    class(aerosol_optics_type), intent(inout) :: this
+    character(len=*),           intent(in)    :: file_name
+    integer,          optional, intent(in)    :: iverbose
+
+    ! Object for output NetCDF file
+    type(netcdf_file) :: out_file
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:save',0,hook_handle)
+
+    ! Create the file
+    call out_file%create(trim(file_name), iverbose=iverbose)
+
+    ! Define dimensions
+    call out_file%define_dimension("band_lw", this%n_bands_lw)
+    call out_file%define_dimension("band_sw", this%n_bands_sw)
+    call out_file%define_dimension("hydrophilic", this%n_type_philic)
+    call out_file%define_dimension("hydrophobic", this%n_type_phobic)
+    call out_file%define_dimension("relative_humidity", this%nrh)
+    !if (this%use_monochromatic) then
+    !  call out_file%define_dimension("wavelength_mono", this%n_mono_wl)
+    !end if
+
+    ! Put global attributes
+    call out_file%put_global_attributes( &
+         &   title_str="Aerosol optical properties in the spectral intervals of the gas-optics scheme for ecRad", &
+         &   source_str="ecRad offline radiation model")
+    call out_file%put_global_attribute( &
+         &  "description_hydrophobic", this%description_phobic_str)
+    call out_file%put_global_attribute( &
+         &  "description_hydrophilic", this%description_philic_str)
+
+    ! Define variables
+    call out_file%define_variable("mass_ext_sw_hydrophobic", units_str="m2 kg-1", &
+         &  long_name="Shortwave mass-extinction coefficient of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_sw")
+    call out_file%define_variable("ssa_sw_hydrophobic", units_str="1", &
+         &  long_name="Shortwave single scattering albedo of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_sw")
+    call out_file%define_variable("asymmetry_sw_hydrophobic", units_str="1", &
+         &  long_name="Shortwave asymmetry factor of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_sw")
+
+    call out_file%define_variable("mass_ext_lw_hydrophobic", units_str="m2 kg-1", &
+         &  long_name="Longwave mass-extinction coefficient of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_lw")
+    call out_file%define_variable("ssa_lw_hydrophobic", units_str="1", &
+         &  long_name="Longwave single scattering albedo of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_lw")
+    call out_file%define_variable("asymmetry_lw_hydrophobic", units_str="1", &
+         &  long_name="Longwave asymmetry factor of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_lw")
+
+    call out_file%define_variable("mass_ext_sw_hydrophilic", units_str="m2 kg-1", &
+         &  long_name="Shortwave mass-extinction coefficient of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_sw")
+    call out_file%define_variable("ssa_sw_hydrophilic", units_str="1", &
+         &  long_name="Shortwave single scattering albedo of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_sw")
+    call out_file%define_variable("asymmetry_sw_hydrophilic", units_str="1", &
+         &  long_name="Shortwave asymmetry factor of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_sw")
+
+    call out_file%define_variable("mass_ext_lw_hydrophilic", units_str="m2 kg-1", &
+         &  long_name="Longwave mass-extinction coefficient of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_lw")
+    call out_file%define_variable("ssa_lw_hydrophilic", units_str="1", &
+         &  long_name="Longwave single scattering albedo of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_lw")
+    call out_file%define_variable("asymmetry_lw_hydrophilic", units_str="1", &
+         &  long_name="Longwave asymmetry factor of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_lw")
+
+    ! Write variables
+    call out_file%put("mass_ext_sw_hydrophobic", this%mass_ext_sw_phobic)
+    call out_file%put("ssa_sw_hydrophobic", this%ssa_sw_phobic)
+    call out_file%put("asymmetry_sw_hydrophobic", this%g_sw_phobic)
+    call out_file%put("mass_ext_lw_hydrophobic", this%mass_ext_lw_phobic)
+    call out_file%put("ssa_lw_hydrophobic", this%ssa_lw_phobic)
+    call out_file%put("asymmetry_lw_hydrophobic", this%g_lw_phobic)
+    call out_file%put("mass_ext_sw_hydrophilic", this%mass_ext_sw_philic)
+    call out_file%put("ssa_sw_hydrophilic", this%ssa_sw_philic)
+    call out_file%put("asymmetry_sw_hydrophilic", this%g_sw_philic)
+    call out_file%put("mass_ext_lw_hydrophilic", this%mass_ext_lw_philic)
+    call out_file%put("ssa_lw_hydrophilic", this%ssa_lw_philic)
+    call out_file%put("asymmetry_lw_hydrophilic", this%g_lw_philic)
+
+    call out_file%close()
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:save',1,hook_handle)
+
+  end subroutine save_aerosol_optics
 
 
   !---------------------------------------------------------------------
   ! Map user type "itype" onto stored hydrophobic type "i_type_phobic"
   subroutine set_hydrophobic_type(this, itype, i_type_phobic)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in)                       :: itype, i_type_phobic
-    real(jphook)                              :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophobic_type',0,hook_handle)
 
@@ -289,10 +532,11 @@ contains
   ! Map user type "itype" onto stored hydrophilic type "i_type_philic"
   subroutine set_hydrophilic_type(this, itype, i_type_philic)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in)                       :: itype, i_type_philic
-    real(jphook)                              :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophilic_type',0,hook_handle)
 
@@ -324,10 +568,11 @@ contains
   ! Set a user type "itype" to be ignored in the radiation scheme
   subroutine set_empty_type(this, itype)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in)                       :: itype
-    real(jphook)                              :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_empty_type',0,hook_handle)
 
@@ -353,13 +598,14 @@ contains
   ! is ignored.
   subroutine set_types(this, itypes)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_optics_type), intent(inout) :: this
     integer, dimension(:), intent(in)         :: itypes
 
     integer :: jtype
     integer :: istart, iend
-    real(jphook)                              :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_types',0,hook_handle)
 
@@ -387,11 +633,12 @@ contains
   ! it is best to remove the Dr Hook call.
   function calc_rh_index(this, rh)
 
-    !use yomhook,  only           : lhook, dr_hook, jphook
+    !use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_optics_type), intent(inout) :: this
     real(jprb),                 intent(in)    :: rh
     integer                                   :: calc_rh_index
-    !real(jphook)                              :: hook_handle
+    !real(jphook) :: hook_handle
 
     !if (lhook) call dr_hook('radiation_aerosol_optics_data:calc_rh_index',0,hook_handle)
 

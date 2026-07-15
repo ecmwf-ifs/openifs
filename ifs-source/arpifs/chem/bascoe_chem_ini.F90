@@ -49,7 +49,7 @@ USE YOM_YGFL , ONLY : TYPE_GFLD
 USE YOMCHEM  , ONLY : TCHEM
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-USE BASCOE_MODULE, ONLY : NBC, BASCOE_BCVAL, BASCOE_BCNAME
+USE BASCOE_TRACERS, ONLY : NBC, BASCOE_BCVAL, BASCOE_BCNAME
 
 
 
@@ -71,6 +71,7 @@ REAL(KIND=JPHOOK)                 :: ZHOOK_HANDLE
 #include "bascoe_sage_init.intfb.h"
 #include "bascoe_tropopause_init.intfb.h"
 #include "bascoe_climSAD_ini.intfb.h"
+#include "bascoe_j_tables_init.intfb.h"
 
 
 !-----------------------------------------------------------------------
@@ -123,7 +124,7 @@ CONTAINS
 SUBROUTINE TRACER_IDX_CHECK_BASCOE(YGFL)
 
 
-USE BASCOE_MODULE  , ONLY : &
+USE BASCOE_TRACERS  , ONLY : &
  & IO3,  IH2O2,  ICH4, ICO,  IHNO3,  ICH3OOH,  ICH2O, INO, &
  & IHO2 ,ICH3 ,ICH3O ,IHCO ,ICH3O2 ,IOH ,INO2 ,IN2O5 , &
  & IHO2NO2 ,INO3 ,IN2O ,IH2O ,IOCLO ,IHCL ,ICLONO2 ,IHOCL , &

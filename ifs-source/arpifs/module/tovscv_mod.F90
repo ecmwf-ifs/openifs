@@ -21,6 +21,7 @@ MODULE TOVSCV_MOD
 !   -------
 !   Mats Hamrud 01-Dec-2017 - From old code
 !   Marcin Chrust  May-2020 - Parallel I/O
+!   Alan  Geer     Nov 2022 - New generic sink variables for all-sky
 !-----------------------------------------------------------------------
 
 USE PARKIND1,     ONLY : JPIM, JPRB, JPRD

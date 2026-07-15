@@ -44,8 +44,7 @@ SUBROUTINE SURLX(YDDIM,YDDIMV,YDRIP,KULOUT)
 !     MODIFICATIONS.
 !     --------------
 !      K. Yessad (July 2014): Move some variables.
-!      J Flemming (Jan 2014): Relaxation for ozone
-!      MO Koehler (May 2025): File path variables for relaxation files
+!      J Flemming (Jan 2014) Relaxation for ozone
 !-----------------------------------------------------------------------
 
 USE YOMDIM   , ONLY : TDIM
@@ -55,13 +54,12 @@ USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMLUN   , ONLY : NULNAM
 USE YOMRIP   , ONLY : TRIP
 USE YOMRLX   , ONLY : LRLXG   ,NRLXAN   ,&
- & NFRLXG     ,NFRLXU    ,NPRLX3D   ,NPRLX2D   ,&
- & LRLXVO     ,LRLXDI    ,LRLXTE    ,LRLXQ     ,LRLXLP   ,&
- & LRLXQI     ,LRLXQL    ,LRLXQC    ,LRLXO3    ,&
- & XRLXVO     ,XRLXDI    ,XRLXTE    ,XRLXQ     ,XRLXLP   ,XRLXO3  ,&
- & ALATRLX1   ,ALATRLX2  ,ALONRLX1  ,ALONRLX2  ,&
- & NRLXLMIN   ,NRLXLMAX  ,NRLXLMINU ,NRLXLMAXU ,AXRLX ,AYRLX ,AZRLX, NRLXSMAX, &
- & CRLXPATHGG ,CRLXPATHSH
+ & NFRLXG   ,NFRLXU   ,NPRLX3D  ,NPRLX2D  ,&
+ & LRLXVO   ,LRLXDI   ,LRLXTE   ,LRLXQ    ,LRLXLP   ,&
+ & LRLXQI   ,LRLXQL   ,LRLXQC   ,LRLXO3   ,&
+ & XRLXVO   ,XRLXDI   ,XRLXTE   ,XRLXQ    ,XRLXLP   ,XRLXO3  ,&
+ & ALATRLX1 ,ALATRLX2 ,ALONRLX1 ,ALONRLX2 ,&
+ & NRLXLMIN ,NRLXLMAX ,NRLXLMINU,NRLXLMAXU,AXRLX ,AYRLX ,AZRLX, NRLXSMAX
 USE YOMSRLX   ,ONLY : TRLXVO   ,TRLXDI   ,TRLXTE,TRLXQ   ,TRLXLP, TRLXO3
 USE YOMCST   , ONLY : RPI
 
@@ -71,7 +69,7 @@ IMPLICIT NONE
 
 TYPE(TDIM),         INTENT(IN) :: YDDIM
 TYPE(TDIMV),        INTENT(IN) :: YDDIMV
-TYPE(TRIP),         INTENT(INOUT):: YDRIP
+TYPE(TRIP)         ,INTENT(INOUT):: YDRIP
 INTEGER(KIND=JPIM), INTENT(IN) :: KULOUT 
 
 !      ----------------------------------------------------------------
@@ -110,10 +108,6 @@ LRLXQL=.FALSE.
 LRLXQC=.FALSE.
 LRLXLP=.FALSE.
 LRLXO3=.FALSE.
-
-! default values for relaxation file paths
-CRLXPATHGG='./'
-CRLXPATHSH='./'
 
 NFRLXG=2
 NFRLXU=6
@@ -232,12 +226,6 @@ WRITE(UNIT=KULOUT,FMT='(&
  & XRLXVO, XRLXDI, XRLXTE,XRLXQ, XRLXLP, XRLXO3,&
  & LRLXVO, LRLXDI, LRLXTE,LRLXQ, LRLXLP,&
  & LRLXQI,LRLXQL,LRLXQC,LRLXO3
-WRITE(UNIT=KULOUT,FMT='(&
- & '' CRLXPATHGG = '',A,1X )')&
- & TRIM(CRLXPATHGG)
-WRITE(UNIT=KULOUT,FMT='(&
- & '' CRLXPATHSH = '',A,1X )')&
- & TRIM(CRLXPATHSH)
 WRITE(UNIT=KULOUT,FMT='('' NFRLXU ='',I3,1X,'' NRLXAN ='',I3,1X)')&
  & NFRLXU, NRLXAN
 WRITE(UNIT=KULOUT,FMT='('' NPRLX3D ='',I3,1X,'' NPRLX2D ='',I3,1X)')&
