@@ -57,7 +57,7 @@ contains
     !! Notify if mgrids_advection is active ( implementation != null ) 
   procedure, public :: execute
     !! Execute mgrids_advection
-  procedure, public :: final
+  procedure, public :: cleanup
     !! Cleanup mgrids_advection
 end type
 
@@ -131,7 +131,7 @@ end interface
 !------------------------------------------------------------------------------
 
 interface
-   module subroutine final(this)
+   module subroutine cleanup(this)
      class(mgrids_advection) :: this
    end subroutine
 end interface

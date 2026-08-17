@@ -24,6 +24,10 @@ external_data:
     - type:     file
       root: /projappl/project_465000527/models/ifs/ecpds/ifs-test-inidata/
 
+    # Default path on MareNostrum5
+    - type:     file
+      root: /gpfs/projects/bsc32/models/openifs/ifs-test-inidata/
+
     # Download from ECPDS if no cache directory is present.
     - type:     download
       root: https://aux.ecmwf.int/ecpds/home/ifs_test
