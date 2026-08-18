@@ -17,10 +17,9 @@ external_data:
     # * download (data is downloaded from a given URL)
 
     # Default path on Atos.
-    # - type:     file
-    #   root: /ec/fwsm/lb/project/ifs-test-inidata/
     - type:     file
-      root: /home/daha/ifs-test-inidata-cache   
+      root: /ec/fwsm/lb/project/ifs-test-inidata/
+       
 
     # Default path on Lumi.
     - type:     file
