@@ -189,14 +189,12 @@ endif()
 if(multio_FOUND)
   set(MULTIO_LIBRARIES)
   if(multio_HAVE_FDB5)
-    # Force the linkage of multio-fdb5 for static builds
-    if(NOT BUILD_SHARED_LIBS)
-      list(APPEND MULTIO_LIBRARIES -Wl,--push-state,--no-as-needed multio-fapi -Wl,--pop-state)
-    else()
-      list(APPEND MULTIO_LIBRARIES multio-fapi)
-    endif()
+    # multio-fapi is unreferenced by libarpifs (which calls libmultio directly), so
+    # a --as-needed linker drops it along with multio-api and its action plugins.
+    list(APPEND MULTIO_LIBRARIES -Wl,--push-state,--no-as-needed multio-fapi -Wl,--pop-state)
+  else()
+    list(APPEND MULTIO_LIBRARIES multio-fapi)
   endif()
-  list(APPEND MULTIO_LIBRARIES multio-fapi)
 endif()
 
 include(ProcessorCount)
