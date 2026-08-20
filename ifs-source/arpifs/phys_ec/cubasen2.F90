@@ -11,7 +11,7 @@ SUBROUTINE CUBASEN2 &
  & KIDIA,    KFDIA,    KLON,    KLEV,   KINDEX,&
  & LDRAIN1D, LDCVOPT,  LDMIXS,&
  & PTENH,    PQENH,    PGEOH,    PAP,      PAPH,&
- & PQHFL,    PAHFS,&
+ & PQHFL_S,  PAHFS_S,&
  & PTEN,     PQEN,     PQSEN,    PGEO,&
  & PTU,      PQU,      PLU,&
  & PBUOH,    PWU2H,    PWUBASE,  PLGLAC,   PQPRCV,  PCAPE,&
@@ -72,8 +72,8 @@ SUBROUTINE CUBASEN2 &
 
 !    *PTENH*        ENV. TEMPERATURE (T+1) ON HALF LEVELS           K
 !    *PQENH*        ENV. SPEC. HUMIDITY (T+1) ON HALF LEVELS      KG/KG
-!    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)        KG/(SM2)
-!    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
+!    *PQHFL_S*      SURF. MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)  KG/(SM2)
+!    *PAHFS_S*      SURFACE SENSIBLE HEAT FLUX                     W/M2
 !    *PSSTRU*       KINEMATIC surface U-MOMENTUM FLUX             (M/S)^2
 !    *PSSTRV*       KINEMATIC surface V-MOMENTUM FLUX             (M/S)^2
 !    *PGEOH*        GEOPOTENTIAL ON HALF LEVELS                   M2/S2
@@ -85,8 +85,6 @@ SUBROUTINE CUBASEN2 &
 !    *PGEO*         GEOPOTENTIAL                                  M2/S2
 !    *PUEN*         PROVISIONAL ENVIRONMENT U-VELOCITY (T+1)       M/S
 !    *PVEN*         PROVISIONAL ENVIRONMENT V-VELOCITY (T+1)       M/S
-!    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)        KG/(SM2)
-!    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
 
 !    UPDATED PARAMETERS (REAL):
 
@@ -135,6 +133,7 @@ SUBROUTINE CUBASEN2 &
 !          A.Geer       01-OCt-2008 LDRAIN1D name change to reflect usage
 !          P.Lopez      15-Oct-2015 Added CAPE computation (excl. liquid water loading)
 !          P.Lopez      01-Dec-2020 Added arguments KINDEX, LDMIXS and PWU2H
+!          P.Lopez      18-Jan-2023 Added top bound on T and q excesses.
 
 !----------------------------------------------------------------------
 
@@ -165,8 +164,8 @@ REAL(KIND=JPRB)    ,INTENT(IN)    :: PQENH(KLON,KLEV)
 REAL(KIND=JPRB)    ,INTENT(IN)    :: PGEOH(KLON,KLEV+1) 
 REAL(KIND=JPRB)    ,INTENT(IN)    :: PAP(KLON,KLEV) 
 REAL(KIND=JPRB)    ,INTENT(IN)    :: PAPH(KLON,KLEV+1) 
-REAL(KIND=JPRB)    ,INTENT(IN)    :: PQHFL(KLON,KLEV+1) 
-REAL(KIND=JPRB)    ,INTENT(IN)    :: PAHFS(KLON,KLEV+1) 
+REAL(KIND=JPRB)    ,INTENT(IN)    :: PQHFL_S(KLON) 
+REAL(KIND=JPRB)    ,INTENT(IN)    :: PAHFS_S(KLON) 
 REAL(KIND=JPRB)    ,INTENT(IN)    :: PTEN(KLON,KLEV) 
 REAL(KIND=JPRB)    ,INTENT(IN)    :: PQEN(KLON,KLEV) 
 REAL(KIND=JPRB)    ,INTENT(IN)    :: PQSEN(KLON,KLEV) 
@@ -378,8 +377,8 @@ DO JK=KLEV-1,JKT1,-1
 !LOP      ZUST  = MAX(SQRT(PSSTRU(JL)**2 + PSSTRV(JL)**2),ZREPUST)
       ZUST  = 0.1_JPRB
 
-      ZKHVFL  = (PAHFS(JL,KLEV+1)*ZRCPD+&
-       & RETV*PTEN(JL,KLEV)*PQHFL(JL,KLEV+1)&
+      ZKHVFL  = (PAHFS_S(JL)*ZRCPD+&
+       & RETV*PTEN(JL,KLEV)*PQHFL_S(JL)&
        & )/ZRHO  
       ZFACT3 = ZUST**3 - 1.5_JPRB*RKAP*ZKHVFL*PGEOH(JL,KLEV)/PTEN(JL,KLEV)  
       ZWS = 1.2_JPRB * MAX(ZFACT3,0.0_JPRB)**(1.0_JPRB/3._JPRB)
@@ -394,10 +393,10 @@ DO JK=KLEV-1,JKT1,-1
       IF (ZKHVFL < 0.0_JPRB) THEN
         LLGO_ON(JL)  = .TRUE.
         ILAB(JL,KLEV)= 1
-        ZFACT4 = -1.5_JPRB*PAHFS(JL,KLEV+1)/(ZRHO*ZWS*RCPD)
-        ZTEXC = MAX(ZFACT4,0.0_JPRB)
-        ZFACT5 = -1.5_JPRB*PQHFL(JL,KLEV+1)/(ZRHO*ZWS)
-        ZQEXC = MAX(ZFACT5,0.0_JPRB)
+        ZFACT4 = -1.5_JPRB*PAHFS_S(JL)/(ZRHO*ZWS*RCPD)
+        ZTEXC = MIN(MAX(ZFACT4, 0.0_JPRB), 1.0_JPRB)
+        ZFACT5 = -1.5_JPRB*PQHFL_S(JL)/(ZRHO*ZWS)
+        ZQEXC = MIN(MAX(ZFACT5, 0.0_JPRB), 5.E-4_JPRB)
         ZQU (JL,KLEV) = PQENH(JL,KLEV) + ZQEXC
         ZZSUH (JL,KLEV) = ZSENH(JL,KLEV) + RCPD*ZTEXC
         ZTU (JL,KLEV) = (ZSENH(JL,KLEV)-PGEOH(JL,KLEV))*ZRCPD + ZTEXC

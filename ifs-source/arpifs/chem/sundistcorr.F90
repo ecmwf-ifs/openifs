@@ -1,7 +1,7 @@
 ! (C) Copyright 2009- ECMWF.
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
@@ -11,13 +11,13 @@ SUBROUTINE SUNDISTCORR(KMONTH, KDAY, PFACTOR)
 ! Purpose:
 !   Computes a dimensionless scaling factor that represents the annual
 !   variation of the Earth-Sun distance. This factor multiplies photolysis
-!   rates for a given calendar date. 
-!    
-!   Called from IFS chemistry (e.g. chem_bascoe/tm5), and required for 
+!   rates for a given calendar date.
+!
+!   Called from IFS chemistry (e.g. chem_bascoe/tm5), and required for
 !   photolysis evaluation.
 !
 ! Interface:
-!   
+!
 !   Inputs:  Calendar month and day (no year)
 !   Output:  Earth-Sun distance correction factor (dimensionless)
 !

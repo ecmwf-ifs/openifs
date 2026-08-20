@@ -49,6 +49,7 @@ SUBROUTINE SUTOPH(YDSTA,YDDIMV,YDEPHY,YDPHY,YDTOPH,KULOUT)
 !      E. Bazile and I. Beau 2011-01-18 : NTRELAX (T,Q,U) for 1D model MUSC
 !      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
 !      Y. Bouteloup 2013-11-04 : New formulation of the drag meso for Qv
+!      ? : Move initialization of vertical relaxation profiles for U, V, T and Q from acdrme to here.
 !     ------------------------------------------------------------------
 
 USE YOMSTA   , ONLY : TSTA
@@ -351,6 +352,12 @@ IF (LRRMES.AND..NOT.LAGPHY) THEN
      & ,G9.3, T70,E9.3, T80,G9.3)') JLEV,RMESOU(JLEV),ZMESU,&
      & RMESOT(JLEV),ZMEST,&
      & RMESOQ(JLEV),ZMESQ 
+  ENDDO
+  DO JLEV=1,NFLEVG
+    YDTOPH%RUREL(JLEV)=0.0_JPRB
+    YDTOPH%RVREL(JLEV)=0.0_JPRB
+    YDTOPH%RTREL(JLEV)=YDSTA%STTEM(JLEV)
+    YDTOPH%RQREL(JLEV)=RFMESOQ
   ENDDO
 ENDIF
 

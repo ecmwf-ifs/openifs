@@ -10,6 +10,6 @@
 ! 
 
 !     ------------------------------------------------------------------
-NAMELIST/NAMGEM/LNONHYD_GEOM,RMUCEN,RLOCEN,RSTRET,NSTTYP,NHTYP,RNLGINC
+NAMELIST/NAMGEM/LNONHYD_GEOM,LNHX_GEOM,RMUCEN,RLOCEN,RSTRET,NSTTYP,NHTYP,RNLGINC
 !     ------------------------------------------------------------------
 

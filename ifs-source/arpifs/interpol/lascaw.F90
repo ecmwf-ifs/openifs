@@ -196,11 +196,14 @@ SUBROUTINE LASCAW(&
 !      F. Vana, P. Smolikova & A. Craciun (Aug-2017): high order traj research & WENO
 !      F. Vana  20-Feb-2019: quintic vertical interpolation 
 !      F. Vana  18-Jul-2019: SLVF & cleaning
+!      H Petithomme (Dec 2020): optimisation and simplification, COMAD bugfix
+!      R. El Khatib 03-Nov-2021 Reduce cache misses on MASK_SL2 + vectorization
+!      F. Vana  14-Mar-2024: fixed CY49R1
 ! End Modifications
 !     ------------------------------------------------------------------
 
 USE YOMVSPLIP , ONLY : TVSPLIP
-USE PARKIND1  , ONLY : JPIM, JPRB, JPRD
+USE PARKIND1  , ONLY : JPIA,JPIM, JPRB, JPRD
 USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
 
 ! arp/ifs dependencies to be solved later.
@@ -275,7 +278,7 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCLO(KPROMB,KFLEV,3,2,KDIMK)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCLOSLD(KPROMB,KFLEV,3,2,KDIMK)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCLOSLT(KPROMB,KFLEV,3,2)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCLOMAD(KPROMB,KFLEV,3,2,KDIMK)
-INTEGER(KIND=JPIM),INTENT(INOUT) :: KL0(KPROMB,KFLEV,0:3)
+INTEGER(KIND=JPIM),INTENT(OUT) :: KL0(KPROMB,KFLEV,0:3)
 INTEGER(KIND=JPIM),INTENT(OUT)   :: KLH0(KPROMB,KFLEV,0:3) 
 INTEGER(KIND=JPIM),INTENT(OUT)   :: KLEV(KPROMB,KFLEV) 
 INTEGER(KIND=JPIM),INTENT(OUT)   :: KNOWENO(KPROMB,KFLEV) 
@@ -293,34 +296,28 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PHVW(KPROMB,KFLEV,4*KHVI)
 
 !     ------------------------------------------------------------------
 
+INTEGER(KIND=JPIA) :: ILEV64,IL
+INTEGER(KIND=JPIM) :: ILEV,IOFF,JOFF,INP
 INTEGER(KIND=JPIM) :: IADDR(YDSL%NDGSAH:YDSL%NDGENH)
-
-INTEGER(KIND=JPIM) :: IFLVM2,ILEV,ILEVV,JLAT,JLEV,JROF,IBCLIM
-
-INTEGER(KIND=JPIM) :: ILAV(KST:KPROF,KFLEV)
-INTEGER(KIND=JPIM) :: IZLATV(KST:KPROF,KFLEV)
-
-INTEGER(KIND=JPIM) :: JJ,JK
-INTEGER(KIND=JPIM) :: ILO(KPROMB), ILO1(KPROMB), ILO2(KPROMB), ILO3(KPROMB)
-INTEGER(KIND=JPIM) :: ILOIK(KST:KPROF,KFLEV), ILO1IK(KST:KPROF,KFLEV)
+INTEGER(KIND=JPIM) :: IFLVM2,JLAT,JLEV,JROF,IBCLIM,JJ,IZLATV
+INTEGER(KIND=JPIM) :: ILAV(KPROMB,KFLEV)
+INTEGER(KIND=JPIM),ALLOCATABLE :: IILEV(:,:)
+INTEGER(KIND=JPIM),TARGET :: ILO(4*KPROMB)
+INTEGER(KIND=JPIM),CONTIGUOUS,POINTER :: ILO1(:),ILO2(:),ILO3(:)
+INTEGER(KIND=JPIM) :: ILO0IK(KST:KPROF,KFLEV), ILO1IK(KST:KPROF,KFLEV)
 INTEGER(KIND=JPIM) :: ILO2IK(KST:KPROF,KFLEV), ILO3IK(KST:KPROF,KFLEV)
-INTEGER(KIND=JPIM) :: IILA(KPROMB,KFLEV)
-INTEGER(KIND=JPIM) :: IILEV(KPROMB,KFLEV)
 
-REAL(KIND=JPRB) :: PD, ZD2, ZDA, ZDB, ZDC, ZDD,&
- & ZDAMAD, ZDBMAD, ZDCMAD, ZDDMAD,&
- & ZDEN1, ZDEN2, ZDVER, ZFAC, ZLO, ZLO1, ZLO2, ZLO3, ZNUM, ZEPS
-REAL(KIND=JPRB) :: ZSLHDKMINH,ZSLHDKMINV
-REAL(KIND=JPRB), PARAMETER :: ZSLHDKMINV_WENO=0._JPRB   ! WENO only runs with Lagrangian cubic!!!
-
+REAL(KIND=JPRB) :: ZDAMAD, ZDBMAD, ZDCMAD, ZDDMAD
 
 REAL(KIND=JPRB) :: ZKHTURB(KPROMB,KFLEV,KDIMK)
 LOGICAL         :: LLT_SLHD(4),LLT_PHYS(4),LLSLHD,LLSLHDQUAD,LLSLHD_OLD,LL3DTURB,LLSLVF
 LOGICAL         :: LLCOMAD,LLCOMADH,LLCOMADV
-REAL(KIND=JPRB) :: ZZWH(KPROMB,3,KFLEV)
-REAL(KIND=JPRB) :: ZZWHMAD(KPROMB,3,KFLEV)
-REAL(KIND=JPRB) :: ZCLA(KPROMB,KFLEV,3) 
-REAL(KIND=JPRB) :: ZCLO(KPROMB,KFLEV,3,2)
+REAL(KIND=JPRB) :: PD,ZDA,ZDB,ZDC,ZDD,ZDVER,ZFAC,ZLO,ZLO1,ZLO2,ZLO3,ZEPS
+REAL(KIND=JPRB) :: ZSLHDKMINH,ZSLHDKMINV,ZW1,ZW2,Z1,Z2,Z3,Z4
+REAL(KIND=JPRB), PARAMETER :: ZSLHDKMINV_WENO=0._JPRB   ! WENO only runs with Lagrangian cubic!!!
+
+REAL(KIND=JPRB) :: ZCLA(KPROMB,KFLEV,3),ZCLO(KPROMB,KFLEV,3)
+REAL(KIND=JPRB) :: ZDUM(KPROMB,KFLEV,3) ! output field to be ditched
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !     ------------------------------------------------------------------
@@ -338,6 +335,8 @@ FHLO4(PD)=-PD*PD*(1.0_JPRB-PD)
 
 #include "lascaw_cla.intfb.h"
 #include "lascaw_clo.intfb.h"
+#include "lascaw_claturb.intfb.h"
+#include "lascaw_cloturb.intfb.h"
 #include "lascaw_vintw.intfb.h"
 
 !     ------------------------------------------------------------------
@@ -374,12 +373,12 @@ LLSLVF=(KWIS /= 202).AND.LSLVF
 
 ! cases relevant for COMAD scheme (switches LDCOMADH and LDCOMADV  are
 ! deactivated during computation of interpolation points in LAPINEA)
-LLCOMAD =LDCOMAD.AND.(KWIS==103.OR.KWIS==104.OR.KWIS==105.OR.KWIS==203.OR.KWIS==106)
+LLCOMAD =LDCOMAD.AND.(KWIS==103.OR.KWIS==104.OR.KWIS==105.OR.KWIS==106.OR.KWIS==203)
 LLCOMADH=LLCOMAD.AND.LDCOMADH
 LLCOMADV=LLCOMAD.AND.LDCOMADV
 
-! switches for interpolation of physics 
-! It holds the same value for every iteration step (in ICI scheme). 
+! switches for interpolation of physics
+! It holds the same value for every iteration step (in ICI scheme).
 LLT_PHYS(1)=LSLHD
 LLT_PHYS(2)=LSLHDQUAD
 LLT_PHYS(3)=LDSLHD_OLD
@@ -400,21 +399,27 @@ ELSEIF (KWIS==106) THEN
 ENDIF
 
 DO JLAT=YDSL%NDGSAH,YDSL%NDGENH
-  IADDR(JLAT)=KSTABUF(JLAT)+YDSL%NASLB1*(0-KFLDN)
+  IADDR(JLAT)=KSTABUF(JLAT)-YDSL%NASLB1*KFLDN
 ENDDO
 
-IF ( LL3DTURB ) THEN
+IF (LL3DTURB) THEN
   ! copy from kappa
   ZKHTURB(KST:KPROF,1:KFLEV,2)=PKAPPAM(KST:KPROF,1:KFLEV)
   ZKHTURB(KST:KPROF,1:KFLEV,3)=PKAPPAH(KST:KPROF,1:KFLEV)
 ENDIF
 
-IF (KSPLTHOI == 1) THEN
-  ! In this case the ZKHTURB is set to static mode with maximum diffusion.
-  ZKHTURB(KST:KPROF,1:KFLEV,KDIMK)=1._JPRB
-ENDIF
+! In this case ZKHTURB is used as KAPPA and is set to static mode with maximum diffusion.
+IF (KSPLTHOI == 1) ZKHTURB(KST:KPROF,1:KFLEV,KDIMK)=1._JPRB
 
 IFLVM2=KFLEV-2
+
+! optim: general indexing of longitudinal positions on latitudes using pointers on
+! adjacent positions so that ilo is contiguously filled over kst:krpof+3*np
+! please bear in mind that pointers do overlap (by kst-1), but not final positions in ilo
+INP = KPROF-KST+1
+ILO1 => ILO(INP+1:)
+ILO2 => ILO(2*INP+1:)
+ILO3 => ILO(3*INP+1:)
 
 !     ------------------------------------------------------------------
 
@@ -422,470 +427,277 @@ IFLVM2=KFLEV-2
 !              ---------
 
 !*   distance for horizontal linear interpolations in latitude (common to all options)
-#ifdef __INTEL_COMPILER
-!$OMP SIMD PRIVATE(JLEV)
-DO JROF=KST,KPROF
-  DO JLEV=1,KFLEV
-#else
+
+! optim: enhanced vectorization by way of intermediate variable (lowers gathers)
 DO JLEV=1,KFLEV
   DO JROF=KST,KPROF
-#endif
-    ! * Calculation of linear weights, KL0.
-    IZLATV(JROF,JLEV)=INT(P4JP*(PIS2-PLAT(JROF,JLEV))+0.75_JPRB+ZEPS)-YDSL%NFRSTLOFF
-    ILAV(JROF,JLEV)=IZLATV(JROF,JLEV)+NINT(SIGN(0.5_JPRB,PLATI(IZLATV(JROF,JLEV))-PLAT(JROF,JLEV)+ZEPS)-1.5_JPRB)
-    PDLAT(JROF,JLEV)=(PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+1))&
-         & /(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1)+ZEPS)  
+    ! * Calculation of linear weights
+    IZLATV=INT(P4JP*(PIS2-PLAT(JROF,JLEV))+0.75_JPRB+ZEPS)-YDSL%NFRSTLOFF
+    ILAV(JROF,JLEV)=IZLATV+NINT(SIGN(0.5_JPRB,PLATI(IZLATV)-PLAT(JROF,JLEV)+ZEPS)-1.5_JPRB)
+
+    Z1 = PLATI(ILAV(JROF,JLEV)+1)
+    PDLAT(JROF,JLEV)=(PLAT(JROF,JLEV)-Z1)/(PLATI(ILAV(JROF,JLEV)+2)-Z1+ZEPS)
   ENDDO
 ENDDO
 
 !        1.01  Coordinates and weights for trilinear interpolations.
-IF (KWIS == 101) THEN
-  ZFAC=PVRLEVX/(PVETA(KFLEV+1)-PVETA(0))
-   !$OMP SIMD PRIVATE(ZLO,ZLO1,ZLO2,ZLO3,JLEV,ILEV)
-   DO JROF=KST,KPROF
-      DO JLEV=1,KFLEV
-         ZLO   =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)  )
-         ILOIK(JROF,JLEV)   =INT(ZLO)
-         ILOIK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)  )+YDSL%NSLEXT(ILOIK(JROF,JLEV) ,ILAV(JROF,JLEV) )
-         PDLO(JROF,JLEV,0)=ZLO -REAL(INT(ZLO) ,JPRB)
-         ZLO1  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+1)
-         ILO1IK(JROF,JLEV)  =INT(ZLO1)
-         ILO1IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1IK(JROF,JLEV),ILAV(JROF,JLEV)+1)
-         PDLO(JROF,JLEV,1)=ZLO1-REAL(INT(ZLO1),JPRB)
-         ZLO2  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+2)
-         ILO2IK(JROF,JLEV)  =INT(ZLO2)
-         ILO2IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2IK(JROF,JLEV),ILAV(JROF,JLEV)+2)
-         PDLO(JROF,JLEV,2)=ZLO2-REAL(INT(ZLO2),JPRB)
-         ZLO3  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+3)
-         ILO3IK(JROF,JLEV)  =INT(ZLO3)
-         ILO3IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3IK(JROF,JLEV),ILAV(JROF,JLEV)+3)
-         PDLO(JROF,JLEV,3)=ZLO3-REAL(INT(ZLO3),JPRB)
-      ENDDO
-   ENDDO
-  ! NOTE: Loop merged with previous loop
-  ! DO JLEV=1,KFLEV
-!DIR$ PREFERVECTOR
-  !   DO JROF=KST,KPROF
-  !     ILOIK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)  )+YDSL%NSLEXT(ILOIK(JROF,JLEV) ,ILAV(JROF,JLEV) )
-  !     ILO1IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1IK(JROF,JLEV),ILAV(JROF,JLEV)+1)
-  !     ILO2IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2IK(JROF,JLEV),ILAV(JROF,JLEV)+2)
-  !     ILO3IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3IK(JROF,JLEV),ILAV(JROF,JLEV)+3)
-  !   ENDDO
-  ! ENDDO
-
-  !$OMP SIMD PRIVATE(JLEV,ILEV)
-  DO JROF=KST,KPROF
-     DO JLEV=1,KFLEV
-        ILEV  =KVAUT(INT(PLEV(JROF,JLEV)*ZFAC))-1
-        IF(ILEV < IFLVM2.AND.&
-             & (PLEV(JROF,JLEV)-PVETA(ILEV+2)) > 0.0_JPRB) ILEV=ILEV+1  
-        KLEV(JROF,JLEV)=ILEV
-        KL0(JROF,JLEV,0)=ILOIK(JROF,JLEV)+YDSL%NASLB1*ILEV
-        KL0(JROF,JLEV,1)=ILO1IK(JROF,JLEV)+YDSL%NASLB1*ILEV
-        KL0(JROF,JLEV,2)=ILO2IK(JROF,JLEV)+YDSL%NASLB1*ILEV
-        KL0(JROF,JLEV,3)=ILO3IK(JROF,JLEV)+YDSL%NASLB1*ILEV
-     ENDDO
-     ! NOTE: Loop partially combined with the previous loop
-     DO JLEV=1,KFLEV
-        ILEV=KLEV(JROF,JLEV)
-        PDVER(JROF,JLEV)=(PLEV(JROF,JLEV)-PVETA(ILEV+1))/&
-             & (PVETA(ILEV+2)-PVETA(ILEV+1))
-     ENDDO
-  ENDDO
-#ifdef __INTEL_COMPILER
-    ! * Mask calculation for on-demand communications:
-  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
-     !$OMP SIMD PRIVATE(JROF,JJ,JK)
-     DO JLEV=1,KFLEV
-        DO JROF=KST,KPROF
-           JJ=ILOIK (JROF,JLEV)
-           DO JK=JJ,JJ+3
-              YDSL%MASK_SL2(JK)=1
-           ENDDO
-        ENDDO
-     ENDDO
-     !$OMP SIMD PRIVATE(JROF,JJ,JK)
-     DO JLEV=1,KFLEV
-        DO JROF=KST,KPROF
-           JJ=ILO1IK(JROF,JLEV)
-           DO JK=JJ,JJ+3
-              YDSL%MASK_SL2(JK)=1
-           ENDDO
-        ENDDO
-     ENDDO
-     !$OMP SIMD PRIVATE(JROF,JJ,JK)
-     DO JLEV=1,KFLEV
-        DO JROF=KST,KPROF
-           JJ=ILO2IK(JROF,JLEV)
-           DO JK=JJ,JJ+3
-              YDSL%MASK_SL2(JK)=1
-           ENDDO
-        ENDDO
-     ENDDO
-     !$OMP SIMD PRIVATE(JROF,JJ,JK)
-     DO JLEV=1,KFLEV
-        DO JROF=KST,KPROF
-           JJ=ILO3IK(JROF,JLEV)
-           DO JK=JJ,JJ+3
-              YDSL%MASK_SL2(JK)=1
-           ENDDO
-        ENDDO
-     ENDDO
-  ENDIF
-#else
-    ! * Mask calculation for on-demand communications:
-  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
-    DO JLEV=1,KFLEV
-      DO JROF=KST,KPROF
-        JJ=ILOIK (JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO1IK(JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO2IK(JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO3IK(JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-      ENDDO
-    ENDDO
-  ENDIF
-#endif
-
-ENDIF
-
-!        1.03  Coordinates and weights for ( horizontal 12 points
-!              + vertical cubic + 32 points interpolations ) or
-!              ( horizontal 12 points + 32 points interpolations ).
+!              horizontal 12 points + vertical cubic + 32 points interpolations
 !              Optionally, Hermite cubic, cubic B-spline or WENO vertical interpolations weights are computed.
 
-IF (KWIS == 102 .OR. KWIS == 103 .OR. KWIS == 104 .OR. KWIS == 105 .OR. KWIS == 106) THEN
+! note: IOFF varies or not, depending on KHOR
+IOFF=YDSL%NASLB1*KFLDN
 
-ZFAC=PVRLEVX/(PVETA(KFLEV+1)-PVETA(0))
-
-IF(.NOT.LLCOMADH.AND..NOT.LLCOMADV)THEN
-
+IF (101 <= KWIS.AND.KWIS <= 106) THEN
+  ZFAC=PVRLEVX/(PVETA(KFLEV+1)-PVETA(0))
 
   DO JLEV=1,KFLEV
-    ! * Calculation of linear weights, KL0, KLH0.
-!CDIR NODEP
-!DIR$ PREFERVECTOR
+    ! vertical interpolation: linear weights
+    ! the cubic weight computation are done in LASCAW_VINTW
+    !CDIR NODEP
+    !DIR$ PREFERVECTOR
+    !DIR$ IVDEP
     DO JROF=KST,KPROF
-
-      ! meridional interpolation: linear weights and input for cubic weights (LASCAW_CLA)
-      ! general case 
-      ZDA   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV))
-      ZDB   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+1)
-      ZDC   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+2)
-      ZDD   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+3)
-      ZZWH(JROF,1,JLEV)=(ZDA*ZDC)*ZDD*PIPI(ILAV(JROF,JLEV)+1,1)
-      ZZWH(JROF,2,JLEV)=(ZDA*ZDB)*ZDD*PIPI(ILAV(JROF,JLEV)+1,2)
-      ZZWH(JROF,3,JLEV)=(ZDA*ZDB)*ZDC*PIPI(ILAV(JROF,JLEV)+1,3)
-    ENDDO
-    IILA(KST:KPROF,JLEV)=ILAV(KST:KPROF,JLEV)
-    PDLAMAD(KST:KPROF,JLEV)=PDLAT(KST:KPROF,JLEV)
-    ZZWHMAD(KST:KPROF,1:3,JLEV)=ZZWH(KST:KPROF,1:3,JLEV)
-  ENDDO
-
-  DO JLEV=1,KFLEV
-!CDIR NODEP
-!DIR$ PREFERVECTOR
-    DO JROF=KST,KPROF
-      ZLO   =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)  )
-      ILOIK(JROF,JLEV)   =INT(ZLO)
-      PDLO(JROF,JLEV,0)=ZLO -REAL(INT(ZLO) ,JPRB)
-      ZLO1  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+1)
-      ILO1IK(JROF,JLEV)  =INT(ZLO1)
-      PDLO(JROF,JLEV,1)=ZLO1-REAL(INT(ZLO1),JPRB)
-      ZLO2  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+2)
-      ILO2IK(JROF,JLEV)  =INT(ZLO2)
-      PDLO(JROF,JLEV,2)=ZLO2-REAL(INT(ZLO2),JPRB)
-      ZLO3  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+3)
-      ILO3IK(JROF,JLEV)  =INT(ZLO3)
-      PDLO(JROF,JLEV,3)=ZLO3-REAL(INT(ZLO3),JPRB)
-    ENDDO
-  ENDDO
-  DO JLEV=1,KFLEV
-!DIR$ PREFERVECTOR
-    DO JROF=KST,KPROF
-      ILOIK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)  )+YDSL%NSLEXT(ILOIK(JROF,JLEV) ,ILAV(JROF,JLEV) )
-      ILO1IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1IK(JROF,JLEV),ILAV(JROF,JLEV)+1)
-      ILO2IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2IK(JROF,JLEV),ILAV(JROF,JLEV)+2)
-      ILO3IK(JROF,JLEV)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3IK(JROF,JLEV),ILAV(JROF,JLEV)+3)
-    ENDDO
-  ENDDO
-
-  DO JLEV=1,KFLEV
-    PDLOMAD(KST:KPROF,JLEV,0)=PDLO(KST:KPROF,JLEV,0)
-    PDLOMAD(KST:KPROF,JLEV,1)=PDLO(KST:KPROF,JLEV,1)
-    PDLOMAD(KST:KPROF,JLEV,2)=PDLO(KST:KPROF,JLEV,2)
-    PDLOMAD(KST:KPROF,JLEV,3)=PDLO(KST:KPROF,JLEV,3)
-  ENDDO
-
-  DO JLEV=1,KFLEV
-!DIR$ PREFERVECTOR
-    DO JROF=KST,KPROF
-      ! vertical interpolation: linear weights
-      ! the cubic weight computation are done in 
-      ! LASCAW_VINTW (including terms for grid irregularity)
-      ILEVV=KVAUT(INT(PLEV(JROF,JLEV)*ZFAC))-1
-      IF(ILEVV < IFLVM2.AND.&
-       & (PLEV(JROF,JLEV)-PVETA(ILEVV+2)) > 0.0_JPRB) ILEVV=ILEVV+1  
-      KLEV(JROF,JLEV)=ILEVV
-      ! general case
-      PDVER(JROF,JLEV)=(PLEV(JROF,JLEV)-PVETA(ILEVV+1))/&
-       & (PVETA(ILEVV+2)-PVETA(ILEVV+1))  
-      PDVERMAD(JROF,JLEV)=PDVER(JROF,JLEV)
-    ENDDO
-  ENDDO
-
-!CDIR NODEP
-  DO JLEV=1,KFLEV
-    IF (KHOR == 0) ILEV=JLEV
-    IF (KHOR == 1) ILEV=KFLDN
-!DIR$ PREFERVECTOR
-    DO JROF=KST,KPROF
-      KL0(JROF,JLEV,0)=ILOIK(JROF,JLEV)+YDSL%NASLB1*KLEV(JROF,JLEV)
-      KL0(JROF,JLEV,1)=ILO1IK(JROF,JLEV)+YDSL%NASLB1*KLEV(JROF,JLEV)
-      KL0(JROF,JLEV,2)=ILO2IK(JROF,JLEV)+YDSL%NASLB1*KLEV(JROF,JLEV)
-      KL0(JROF,JLEV,3)=ILO3IK(JROF,JLEV)+YDSL%NASLB1*KLEV(JROF,JLEV)
-
-      KLH0(JROF,JLEV,0)=ILOIK(JROF,JLEV)+YDSL%NASLB1*ILEV
-      KLH0(JROF,JLEV,1)=ILO1IK(JROF,JLEV)+YDSL%NASLB1*ILEV
-      KLH0(JROF,JLEV,2)=ILO2IK(JROF,JLEV)+YDSL%NASLB1*ILEV
-      KLH0(JROF,JLEV,3)=ILO3IK(JROF,JLEV)+YDSL%NASLB1*ILEV
-
-    ENDDO
-  ENDDO
-
-    ! * Mask calculation for on-demand communications:
-  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
-    DO JLEV=1,KFLEV
-      DO JROF=KST,KPROF
-        JJ=ILOIK (JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO1IK(JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO2IK(JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO3IK(JROF,JLEV)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-      ENDDO
-    ENDDO
-  ENDIF
-
-ELSE
-
-  DO JLEV=1,KFLEV
-    IF (KHOR == 0) ILEV=JLEV
-    IF (KHOR == 1) ILEV=KFLDN
-
-    ! * Calculation of linear weights, KL0, KLH0.
-!CDIR NODEP
-!DIR$ PREFERVECTOR
-    DO JROF=KST,KPROF
-
-      ! meridional interpolation: linear weights and input for cubic weights (LASCAW_CLA)
-      ! general case 
-      ZDA   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV))
-      ZDB   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+1)
-      ZDC   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+2)
-      ZDD   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+3)
-      IILA(JROF,JLEV)=ILAV(JROF,JLEV)
-      ZZWH(JROF,1,JLEV)=(ZDA*ZDC)*ZDD*PIPI(ILAV(JROF,JLEV)+1,1)
-      ZZWH(JROF,2,JLEV)=(ZDA*ZDB)*ZDD*PIPI(ILAV(JROF,JLEV)+1,2)
-      ZZWH(JROF,3,JLEV)=(ZDA*ZDB)*ZDC*PIPI(ILAV(JROF,JLEV)+1,3)
-
-      ! COMAD meridional interpolation 
-      IF (LLCOMADH) THEN
-        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)*PSTDDISV(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISV(JROF,JLEV))
-        ZDAMAD = ZDA-ZDB
-        ZDDMAD = ZDD-ZDC
-        ZDBMAD = ZDB*PSTDDISV(JROF,JLEV) +0.5_JPRB*(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1)) *&
-         & (1._JPRB-PSTDDISV(JROF,JLEV))
-        ZDCMAD = ZDC*PSTDDISV(JROF,JLEV) -0.5_JPRB*(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1)) *&
-         & (1._JPRB-PSTDDISV(JROF,JLEV))
-        ZDAMAD = ZDAMAD + ZDBMAD
-        ZDDMAD = ZDDMAD + ZDCMAD
-        IILA(JROF,JLEV)=ILAV(JROF,JLEV)
-        ZZWHMAD(JROF,1,JLEV)=(ZDAMAD*ZDCMAD)*ZDDMAD*PIPI(ILAV(JROF,JLEV)+1,1)
-        ZZWHMAD(JROF,2,JLEV)=(ZDAMAD*ZDBMAD)*ZDDMAD*PIPI(ILAV(JROF,JLEV)+1,2)
-        ZZWHMAD(JROF,3,JLEV)=(ZDAMAD*ZDBMAD)*ZDCMAD*PIPI(ILAV(JROF,JLEV)+1,3)
-      ELSE
-        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)
-        ZZWHMAD(JROF,1,JLEV)=ZZWH(JROF,1,JLEV)
-        ZZWHMAD(JROF,2,JLEV)=ZZWH(JROF,2,JLEV)
-        ZZWHMAD(JROF,3,JLEV)=ZZWH(JROF,3,JLEV)
+      KLEV(JROF,JLEV)=KVAUT(INT(PLEV(JROF,JLEV)*ZFAC))-1
+      IF (KLEV(JROF,JLEV) < IFLVM2 .AND. PLEV(JROF,JLEV) > PVETA(KLEV(JROF,JLEV)+2)) THEN
+        KLEV(JROF,JLEV)=KLEV(JROF,JLEV)+1
       ENDIF
-
-      ! zonal interpolation: linear weights for 4 lat. cicles
-      ! as the grid is regular in the zonal direction,
-      ! the cubic weight computation does not need 
-      ! other input than linear weights (LASCAW_CLO)
-      ! general case
-      ZLO   =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)  )
+      Z1 = PVETA(KLEV(JROF,JLEV)+1)
+      PDVER(JROF,JLEV)=(PLEV(JROF,JLEV)-Z1)/(PVETA(KLEV(JROF,JLEV)+2)-Z1)
+    ! * Calculation of linear weights, KL0, KLH0.
+    ! zonal interpolation: linear weights for 4 lat. circles
+    ! as the grid is regular in the zonal direction, the cubic weight computation does not need
+    ! other input than linear weights (LASCAW_CLO)
+      ZLO   =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV))
       ILO(JROF)   =INT(ZLO )
-      PDLO(JROF,JLEV,0)=ZLO -REAL(ILO(JROF) ,JPRB)
+      PDLO(JROF,JLEV,0)=ZLO -ILO(JROF)
       ZLO1  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+1)
       ILO1(JROF)  =INT(ZLO1)
-      PDLO(JROF,JLEV,1)=ZLO1-REAL(ILO1(JROF),JPRB)
+      PDLO(JROF,JLEV,1)=ZLO1-ILO1(JROF)
       ZLO2  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+2)
       ILO2(JROF)  =INT(ZLO2)
-      PDLO(JROF,JLEV,2)=ZLO2-REAL(ILO2(JROF),JPRB)
+      PDLO(JROF,JLEV,2)=ZLO2-ILO2(JROF)
       ZLO3  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+3)
       ILO3(JROF)  =INT(ZLO3)
-      PDLO(JROF,JLEV,3)=ZLO3-REAL(ILO3(JROF),JPRB)
+      PDLO(JROF,JLEV,3)=ZLO3-ILO3(JROF)
+    ENDDO
 
-      ! COMAD zonal interpolation 
+    ! optim: does not vectorize, use 64-bit indexing (IL)
+    DO JROF=KST,KPROF
+      IL=ILAV(JROF,JLEV)
+      ILO(JROF)=IADDR(ILAV(JROF,JLEV))+YDSL%NSLEXT(ILO(JROF),IL)
+      ILO1(JROF)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1(JROF),IL+1)
+      ILO2(JROF)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2(JROF),IL+2)
+      ILO3(JROF)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3(JROF),IL+3)
+    ENDDO
+
+    DO JROF=KST,KPROF
+      ILO0IK(JROF,JLEV)=ILO (JROF)
+      ILO1IK(JROF,JLEV)=ILO1(JROF)
+      ILO2IK(JROF,JLEV)=ILO2(JROF)
+      ILO3IK(JROF,JLEV)=ILO3(JROF)
+    ENDDO
+
+    IF(KWIS == 101) THEN
+      ! note: case 101 only set linear weights, so only requires central lats
+      DO JROF=KST,KPROF
+        JOFF=YDSL%NASLB1*KLEV(JROF,JLEV)
+        KL0(JROF,JLEV,1)=ILO1(JROF)+JOFF
+        KL0(JROF,JLEV,2)=ILO2(JROF)+JOFF
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        JOFF=YDSL%NASLB1*KLEV(JROF,JLEV)
+        KL0(JROF,JLEV,0)=ILO(JROF)+JOFF
+        KL0(JROF,JLEV,1)=ILO1(JROF)+JOFF
+        KL0(JROF,JLEV,2)=ILO2(JROF)+JOFF
+        KL0(JROF,JLEV,3)=ILO3(JROF)+JOFF
+      ENDDO
+
+      ! note: mind the offsets IOFF/JOFF
+      IF(KHOR == 0) IOFF=YDSL%NASLB1*JLEV
+      KLH0(KST:KPROF,JLEV,0)=ILO(KST:KPROF)+IOFF
+      KLH0(KST:KPROF,JLEV,1)=ILO1(KST:KPROF)+IOFF
+      KLH0(KST:KPROF,JLEV,2)=ILO2(KST:KPROF)+IOFF
+      KLH0(KST:KPROF,JLEV,3)=ILO3(KST:KPROF)+IOFF
+    ENDIF
+  ENDDO
+
+  ! * Mask calculation for on-demand communications:
+  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE) THEN
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(ILO1IK(JROF,JLEV):ILO1IK(JROF,JLEV)+3)=1
+      ENDDO
+    ENDDO
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(ILO2IK(JROF,JLEV):ILO2IK(JROF,JLEV)+3)=1
+      ENDDO
+    ENDDO
+    IF (KWIS /= 101) THEN
+      DO JLEV=1,KFLEV
+        DO JROF=KST,KPROF
+          YDSL%MASK_SL2(ILO0IK(JROF,JLEV):ILO0IK(JROF,JLEV)+3)=1
+        ENDDO
+      ENDDO
+      DO JLEV=1,KFLEV
+        DO JROF=KST,KPROF
+          YDSL%MASK_SL2(ILO3IK(JROF,JLEV):ILO3IK(JROF,JLEV)+3)=1
+        ENDDO
+      ENDDO
+    ENDIF
+  ENDIF
+ENDIF
+
+IF (102 <= KWIS.AND.KWIS <= 106) THEN
+  DO JLEV=1,KFLEV
+    DO JROF=KST,KPROF
+      ! meridional interpolation: linear weights and input for cubic weights (LASCAW_CLA)
+      ! general case 
+      ZDA   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV))
+      ZDB   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+1)
+      ZDC   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+2)
+      ZDD   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+3)
+      Z2 = ZDA*ZDB
+      ! here we need to keep this original array separated from the weight 
+      ! PCLA as that might be modified by every call of LASCAW_CLA
+      ZCLA(JROF,JLEV,1)=(ZDA*ZDC)*ZDD*PIPI(ILAV(JROF,JLEV)+1,1)
+      ZCLA(JROF,JLEV,2)=Z2*ZDD*PIPI(ILAV(JROF,JLEV)+1,2)
+      ZCLA(JROF,JLEV,3)=Z2*ZDC*PIPI(ILAV(JROF,JLEV)+1,3)
+
       IF (LLCOMADH) THEN
-        PDLOMAD(JROF,JLEV,0)=PDLO(JROF,JLEV,0)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
-        PDLOMAD(JROF,JLEV,1)=PDLO(JROF,JLEV,1)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
-        PDLOMAD(JROF,JLEV,2)=PDLO(JROF,JLEV,2)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
-        PDLOMAD(JROF,JLEV,3)=PDLO(JROF,JLEV,3)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
+        Z1 = 1._JPRB/PSTDDISV(JROF,JLEV)
+        Z4 = 0.5_JPRB*(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1))*(Z1-1._JPRB)
+        ZDAMAD = (ZDA-ZDB)*Z1
+        ZDDMAD = (ZDD-ZDC)*Z1
+        ZDBMAD = ZDB+Z4
+        ZDCMAD = ZDC-Z4
+        ZDAMAD = ZDAMAD + ZDBMAD
+        ZDDMAD = ZDDMAD + ZDCMAD
+        Z2 = ZDAMAD*ZDBMAD
+        Z3 = PSTDDISV(JROF,JLEV)**3
+        PCLAMAD(JROF,JLEV,1,1)=ZDAMAD*ZDCMAD*ZDDMAD*PIPI(ILAV(JROF,JLEV)+1,1)*Z3
+        PCLAMAD(JROF,JLEV,2,1)=Z2*ZDDMAD*PIPI(ILAV(JROF,JLEV)+1,2)*Z3
+        PCLAMAD(JROF,JLEV,3,1)=Z2*ZDCMAD*PIPI(ILAV(JROF,JLEV)+1,3)*Z3
       ELSE
+        PCLAMAD(JROF,JLEV,1,1)=ZCLA(JROF,JLEV,1)
+        PCLAMAD(JROF,JLEV,2,1)=ZCLA(JROF,JLEV,2)
+        PCLAMAD(JROF,JLEV,3,1)=ZCLA(JROF,JLEV,3)
+      ENDIF
+    ENDDO
+
+    ! COMAD zonal linear weights
+    IF (LLCOMADH) THEN
+      DO JROF=KST,KPROF
+          PDLAMAD(JROF,JLEV)=0.5_JPRB+(PDLAT(JROF,JLEV)-0.5_JPRB)*PSTDDISV(JROF,JLEV)
+          PDLOMAD(JROF,JLEV,0)=0.5_JPRB+(PDLO(JROF,JLEV,0)-0.5_JPRB)*PSTDDISU(JROF,JLEV)
+          PDLOMAD(JROF,JLEV,1)=0.5_JPRB+(PDLO(JROF,JLEV,1)-0.5_JPRB)*PSTDDISU(JROF,JLEV)
+          PDLOMAD(JROF,JLEV,2)=0.5_JPRB+(PDLO(JROF,JLEV,2)-0.5_JPRB)*PSTDDISU(JROF,JLEV)
+          PDLOMAD(JROF,JLEV,3)=0.5_JPRB+(PDLO(JROF,JLEV,3)-0.5_JPRB)*PSTDDISU(JROF,JLEV)
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)
         PDLOMAD(JROF,JLEV,0)=PDLO(JROF,JLEV,0)
         PDLOMAD(JROF,JLEV,1)=PDLO(JROF,JLEV,1)
         PDLOMAD(JROF,JLEV,2)=PDLO(JROF,JLEV,2)
         PDLOMAD(JROF,JLEV,3)=PDLO(JROF,JLEV,3)
-      ENDIF
-
-      ! vertical interpolation: linear weights
-      ! the cubic weight computation are done in 
-      ! LASCAW_VINTW (including terms for grid irregularity)
-      ILEVV=KVAUT(INT(PLEV(JROF,JLEV)*ZFAC))-1
-      IF(ILEVV < IFLVM2.AND.&
-       & (PLEV(JROF,JLEV)-PVETA(ILEVV+2)) > 0.0_JPRB) ILEVV=ILEVV+1  
-      KLEV(JROF,JLEV)=ILEVV
-      ! general case
-      PDVER(JROF,JLEV)=(PLEV(JROF,JLEV)-PVETA(ILEVV+1))/&
-       & (PVETA(ILEVV+2)-PVETA(ILEVV+1))  
-      ! COMAD vertical interpolation 
-      IF (LLCOMADV) THEN
-        PDVERMAD(JROF,JLEV)=PDVER(JROF,JLEV)*PSTDDISW(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISW(JROF,JLEV))
-      ELSE
-        PDVERMAD(JROF,JLEV)=PDVER(JROF,JLEV)
-      ENDIF
-
-      ILO(JROF)=IADDR(ILAV(JROF,JLEV)  )+YDSL%NSLEXT(ILO(JROF) ,ILAV(JROF,JLEV)  )
-      ILO1(JROF)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1(JROF),ILAV(JROF,JLEV)+1)
-      ILO2(JROF)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2(JROF),ILAV(JROF,JLEV)+2)
-      ILO3(JROF)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3(JROF),ILAV(JROF,JLEV)+3)
-
-      KL0(JROF,JLEV,0)=ILO(JROF)+YDSL%NASLB1*ILEVV
-      KL0(JROF,JLEV,1)=ILO1(JROF)+YDSL%NASLB1*ILEVV
-      KL0(JROF,JLEV,2)=ILO2(JROF)+YDSL%NASLB1*ILEVV
-      KL0(JROF,JLEV,3)=ILO3(JROF)+YDSL%NASLB1*ILEVV
-
-      KLH0(JROF,JLEV,0)=ILO(JROF)+YDSL%NASLB1*ILEV
-      KLH0(JROF,JLEV,1)=ILO1(JROF)+YDSL%NASLB1*ILEV
-      KLH0(JROF,JLEV,2)=ILO2(JROF)+YDSL%NASLB1*ILEV
-      KLH0(JROF,JLEV,3)=ILO3(JROF)+YDSL%NASLB1*ILEV
-
-    ENDDO
-  ENDDO
-
-    ! * Mask calculation for on-demand communications:
-  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
-    DO JLEV=1,KFLEV
-      DO JROF=KST,KPROF
-        JJ=ILO (JROF)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO1(JROF)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO2(JROF)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
-        JJ=ILO3(JROF)
-        YDSL%MASK_SL2(JJ:JJ+3)=1
       ENDDO
-    ENDDO
-  ENDIF
+    ENDIF
 
-ENDIF
-
-
+    ! COMAD vertical interpolation 
+    IF (LLCOMADV) THEN
+      DO JROF=KST,KPROF
+        PDVERMAD(JROF,JLEV)=0.5_JPRB+(PDVER(JROF,JLEV)-0.5_JPRB)*PSTDDISW(JROF,JLEV)
+      ENDDO
+    ELSE
+      DO JROF=KST,KPROF
+        PDVERMAD(JROF,JLEV)=PDVER(JROF,JLEV)
+      ENDDO
+    ENDIF
+  ENDDO
 
   IF (LLSLHD.AND.LDSLHDHEAT) THEN
     ! Computes the weights for heat fields affected by SLHD
-    !  all the rest is recomputed once again bellow.
-    LLT_SLHD(4)=.FALSE.
+    !  all the rest is recomputed once again below.
 
     ! * Calculation of PCLA and PCLASLD:
-    CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,&
-     & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,&
-     & IILA,ZZWH,ZZWHMAD,PDLAT,PDLAMAD,PKAPPAT,ZKHTURB(:,:,1),&
-     & PSLD,PSLDW,P3DTW,&
-     & PCLA(:,:,:,1),PCLAMAD(:,:,:,1),PCLASLT(:,:,:))
+    CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,&
+     & ILAV,ZCLA,PDLAT,PKAPPAT,&
+     & PSLD,PSLDW,PCLA(:,:,:,1),PCLASLT)
 
     ! * Calculation of PCLO and PCLOSLD:
     CALL LASCAW_CLO(YDDYNA,KFLEV,&
-     & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,PDLO(:,:,1),PDLOMAD(:,:,1),&
-     & PKAPPAT,ZKHTURB(:,:,1),&
+     & KPROMB,KST,KPROF,LLCOMADH,LLT_SLHD,ZSLHDKMINH,&
+     & PDLO(:,:,1),PDLOMAD(:,:,1),PKAPPAT,&
      & PCLO(:,:,:,1,1),PCLOMAD(:,:,:,1,1),PCLOSLT(:,:,:,1))
     CALL LASCAW_CLO(YDDYNA,KFLEV,&
-     & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,PDLO(:,:,2),PDLOMAD(:,:,2),&
-     & PKAPPAT,ZKHTURB(:,:,1),&
+     & KPROMB,KST,KPROF,LLCOMADH,LLT_SLHD,ZSLHDKMINH,&
+     & PDLO(:,:,2),PDLOMAD(:,:,2),PKAPPAT,&
      & PCLO(:,:,:,2,1),PCLOMAD(:,:,:,2,1),PCLOSLT(:,:,:,2))
-
   ENDIF
 
   ! Loop over all horiz. weights for 3Dturb (computing in addition
   !                         two sets with and without SLHD)
   DO JJ=1,KDIMK
+    ! * Calculation of PCLA and PCLASLD:
+    IF(JJ > 1) THEN
+      PCLAMAD(KST:KPROF,1:KFLEV,1:3,JJ) = PCLAMAD(KST:KPROF,1:KFLEV,1:3,1)
+    ENDIF
+
     IF ((KSPLTHOI == 1).AND.(JJ == KDIMK)) THEN
       ! Bit specific case computing diffusive weights for physical tendencies.
       ! In this case SLHD weights are of no use.
 
-      ! * Calculation of PCLA and PCLASLD:
-      CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,&
-       & KPROMB,KST,KPROF,LLT_PHYS,ZSLHDKMINH,&
-       & IILA,ZZWH,ZZWHMAD,PDLAT,PDLAMAD,ZKHTURB(:,:,JJ),ZKHTURB(:,:,JJ),&
-       & PSLD,PSLDW,P3DTW,&
-       & ZCLA(:,:,:),PCLAMAD(:,:,:,JJ),PCLA(:,:,:,JJ))
+      ! warning: PCLA must not be modified in LASCAW_CLA as PCLA, but as PCLASLD
+      CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,KPROMB,KST,KPROF,LLT_PHYS,ZSLHDKMINH, &
+       & ILAV,ZCLA,PDLAT,&
+       & ZKHTURB(:,:,JJ),PSLD,PSLDW,ZDUM,PCLA(:,:,:,JJ))
 
-      ! * Calculation of PCLO and PCLOSLD:
+      ! * Calculation of PCLO (as PCLOSLD) and PCLOMAD:
       CALL LASCAW_CLO(YDDYNA,KFLEV,&
-       & KPROMB,KST,KPROF,LLT_PHYS,ZSLHDKMINH,PDLO(:,:,1),PDLOMAD(:,:,1),&
-       & ZKHTURB(:,:,JJ),ZKHTURB(:,:,JJ),&
-       & ZCLO(:,:,:,1),PCLOMAD(:,:,:,1,JJ),PCLO(:,:,:,1,JJ))
+       & KPROMB,KST,KPROF,LLCOMADH,LLT_PHYS,ZSLHDKMINH,&
+       & PDLO(:,:,1),PDLOMAD(:,:,1),ZKHTURB(:,:,JJ),&
+       & ZCLO,PCLOMAD(:,:,:,1,JJ),PCLO(:,:,:,1,JJ))
       CALL LASCAW_CLO(YDDYNA,KFLEV,&
-       & KPROMB,KST,KPROF,LLT_PHYS,ZSLHDKMINH,PDLO(:,:,2),PDLOMAD(:,:,2),&
-       & ZKHTURB(:,:,JJ),ZKHTURB(:,:,JJ),&
-       & ZCLO(:,:,:,2),PCLOMAD(:,:,:,2,JJ),PCLO(:,:,:,2,JJ))
-
+       & KPROMB,KST,KPROF,LLCOMADH,LLT_PHYS,ZSLHDKMINH,&
+       & PDLO(:,:,2),PDLOMAD(:,:,2),ZKHTURB(:,:,JJ),&
+       & ZCLO,PCLOMAD(:,:,:,2,JJ),PCLO(:,:,:,2,JJ))
     ELSE
-
-      IF (JJ == 1) THEN
-        LLT_SLHD(4)=.FALSE.
-      ELSE
-        LLT_SLHD(4)=LL3DTURB
-      ENDIF
-
       ! * Calculation of PCLA, PCLAMAD and PCLASLD:
-      CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,&
-       & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,&
-       & IILA,ZZWH,ZZWHMAD,PDLAT,PDLAMAD,PKAPPA,ZKHTURB(:,:,JJ),&
-       & PSLD,PSLDW,P3DTW,&
-       & PCLA(:,:,:,JJ),PCLAMAD(:,:,:,JJ),PCLASLD(:,:,:,JJ))
+      CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,&
+        & ILAV,ZCLA,PDLAT,PKAPPA,&
+       & PSLD,PSLDW,PCLA(:,:,:,JJ),PCLASLD(:,:,:,JJ))
 
       ! * Calculation of PCLO and PCLOSLD for central lat 1 and 2
       ! (linear int. only for lat 0 and 3)
       CALL LASCAW_CLO(YDDYNA,KFLEV,&
-       & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,PDLO(:,:,1),PDLOMAD(:,:,1),&
-       & PKAPPA,ZKHTURB(:,:,JJ),&
+       & KPROMB,KST,KPROF,LLCOMADH,LLT_SLHD,ZSLHDKMINH,&
+       & PDLO(:,:,1),PDLOMAD(:,:,1),PKAPPA,&
        & PCLO(:,:,:,1,JJ),PCLOMAD(:,:,:,1,JJ),PCLOSLD(:,:,:,1,JJ))
       CALL LASCAW_CLO(YDDYNA,KFLEV,&
-       & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,PDLO(:,:,2),PDLOMAD(:,:,2),&
-       & PKAPPA,ZKHTURB(:,:,JJ),&
+       & KPROMB,KST,KPROF,LLCOMADH,LLT_SLHD,ZSLHDKMINH,&
+       & PDLO(:,:,2),PDLOMAD(:,:,2),PKAPPA,&
        & PCLO(:,:,:,2,JJ),PCLOMAD(:,:,:,2,JJ),PCLOSLD(:,:,:,2,JJ))
 
+      IF (JJ > 1.AND.LL3DTURB) THEN
+        CALL LASCAW_CLATURB(YDSL,KFLEV,KPROMB,KST,KPROF,ILAV,ZKHTURB(:,:,JJ),P3DTW,&
+         & PCLA(:,:,:,JJ),PCLASLD(:,:,:,JJ))
+        CALL LASCAW_CLOTURB(KFLEV,KPROMB,KST,KPROF,ZKHTURB(:,:,JJ),PCLO(:,:,:,1,JJ),&
+         & PCLOSLD(:,:,:,1,JJ))
+        CALL LASCAW_CLOTURB(KFLEV,KPROMB,KST,KPROF,ZKHTURB(:,:,JJ),PCLO(:,:,:,2,JJ),&
+         & PCLOSLD(:,:,:,2,JJ))
+      ENDIF
     ENDIF
-
   ENDDO
 
   ! * Calculation of PVINTW and PVINTWSLD:
 
   ! Do update of quadratic weight for vertical interpolation
-  IF (KWIS == 102) LLT_SLHD(2) = (HOISLTV /= 0._JPRB)
+  IF (KWIS == 102) LLT_SLHD(2) = HOISLTV /= 0._JPRB
 
-  IF (((KWIS == 102).AND.LSLTVWENO) .OR. (KWIS == 106)) THEN
+  IF (KWIS == 102.AND.LSLTVWENO.OR.KWIS == 106) THEN
+    ALLOCATE(IILEV(KPROMB,KFLEV))
 
     ! Set value for boundary offset
     IF (LDREGETA) THEN
@@ -903,13 +715,21 @@ ENDIF
           IILEV(KST:KPROF,1:KFLEV)=KLEV(KST:KPROF,1:KFLEV)
         CASE (2)
           IILEV(KST:KPROF,1:KFLEV)=MIN(IFLVM2-IBCLIM,KLEV(KST:KPROF,1:KFLEV)+1) 
-          KNOWENO(KST:KPROF,1:KFLEV)=KNOWENO(KST:KPROF,1:KFLEV) &
-           & + IILEV(KST:KPROF,1:KFLEV)-KLEV(KST:KPROF,1:KFLEV) - 1
+          DO JLEV=1,KFLEV
+            !dir$ ivdep
+            DO JROF=KST,KPROF
+              KNOWENO(JROF,JLEV)=KNOWENO(JROF,JLEV)+IILEV(JROF,JLEV)-KLEV(JROF,JLEV)-1
+            ENDDO
+          ENDDO
         CASE (3)
           ! can't be  KSLEV-1 as there is no half level on -1
           IILEV(KST:KPROF,1:KFLEV)=MAX(IBCLIM,KLEV(KST:KPROF,1:KFLEV)-1)
-          KNOWENO(KST:KPROF,1:KFLEV)=KNOWENO(KST:KPROF,1:KFLEV) &
-           & + IILEV(KST:KPROF,1:KFLEV)-KLEV(KST:KPROF,1:KFLEV) + 1
+          DO JLEV=1,KFLEV
+            !dir$ ivdep
+            DO JROF=KST,KPROF
+              KNOWENO(JROF,JLEV)=KNOWENO(JROF,JLEV)+IILEV(JROF,JLEV)-KLEV(JROF,JLEV)+1
+            ENDDO
+          ENDDO
         CASE DEFAULT
           CALL ABOR1(' LASCAW: WENO PROBLEM')
       END SELECT    
@@ -922,14 +742,16 @@ ENDIF
 
     ENDDO
 
+    DEALLOCATE(IILEV)
+
     ! make sure it only keeps -1,0,+1 values
-    IF ((MAXVAL(KNOWENO(KST:KPROF,1:KFLEV)) > 1+IBCLIM) .OR. &
-     &  (MINVAL(KNOWENO(KST:KPROF,1:KFLEV)) <-1-IBCLIM))     &
-     &  CALL ABOR1(' LASCAW: Something strange is happenig about level shifts.')
+    IF (ANY(ABS(KNOWENO(KST:KPROF,1:KFLEV)) > 1+IBCLIM))&
+     &  CALL ABOR1(' LASCAW: Something strange is happening about level shifts.')
 
     ! C_k functions 
     IF (LDREGETA) THEN
       DO JLEV=1,KFLEV
+        !dir$ ivdep
         DO JROF=KST,KPROF
           ! regular mesh (LREGETA=.t. case)
           ! Note: This code doesn't seem to work for irregular vertical spacing.
@@ -941,29 +763,26 @@ ENDIF
       ENDDO
     ELSE
       DO JLEV=1,KFLEV
+        ! optim: does not vectorize (yet ?), but use of interm. variables lowers gathers
         DO JROF=KST,KPROF
           ! general form
-          ILEVV=KLEV(JROF,JLEV)
-          IF ((ILEVV > 1) .AND. (ILEVV < KFLEV-3)) THEN
-            PCW(JROF,JLEV,1)=PGAMMA_WENO(ILEVV,1) &
-             & *(PLEV(JROF,JLEV)-PVETA(ILEVV-1))*(PLEV(JROF,JLEV)-PVETA(ILEVV+4))  ! central
-            PCW(JROF,JLEV,2)=PGAMMA_WENO(ILEVV,2) &
-             & *(PLEV(JROF,JLEV)-PVETA(ILEVV-1))*(PLEV(JROF,JLEV)-PVETA(ILEVV  ))  ! lower
-            PCW(JROF,JLEV,3)=PGAMMA_WENO(ILEVV,3) &
-             & *(PLEV(JROF,JLEV)-PVETA(ILEVV+3))*(PLEV(JROF,JLEV)-PVETA(ILEVV+4))  ! upper
+          ILEV=KLEV(JROF,JLEV)
+          IF (ILEV > 1.AND.ILEV < KFLEV-3) THEN
+            Z1 = PLEV(JROF,JLEV)-PVETA(ILEV-1)
+            Z4 = PLEV(JROF,JLEV)-PVETA(ILEV+4)
+            PCW(JROF,JLEV,1)=PGAMMA_WENO(ILEV,1)*Z1*Z4 ! central
+            PCW(JROF,JLEV,2)=PGAMMA_WENO(ILEV,2)*Z1*(PLEV(JROF,JLEV)-PVETA(ILEV)) ! lower
+            PCW(JROF,JLEV,3)=PGAMMA_WENO(ILEV,3)*(PLEV(JROF,JLEV)-PVETA(ILEV+3))*Z4 ! upper
           ENDIF
         ENDDO
       ENDDO
     ENDIF
-
   ELSE
-
     ! All the other cases but WENO
     CALL LASCAW_VINTW(YDDYNA,&
      & KPROMB,KFLEV,KST,KPROF,LLCOMADV,LLT_SLHD,LLSLVF,LDSLHDHEAT,ZSLHDKMINV,KLEV,&
      & PLEV,PDVER,PDVERMAD,PSTDDISW,PKAPPA,PKAPPAT,PVETA,PVCUICO,PVSLD,PVSLDW,PVSLVF,&
      & PVINTW,PVINTWMAD,PVINTWSLD,PVINTWSLT,PVINTWSLVF)
-
   ENDIF
 
   IF (KWIS == 104) THEN
@@ -976,26 +795,29 @@ ENDIF
         PHVW(JROF,JLEV,3)=FHLO3(ZDVER)
         PHVW(JROF,JLEV,4)=FHLO4(ZDVER)
       ENDDO
+
       ! * Calculation of PVDERW:
+      ! optim: now vectorizes with help of intermediate variables (lowers gathers)
       DO JROF=KST,KPROF
-        ILEVV=KLEV(JROF,JLEV)
-        ZNUM=PVETA(ILEVV+2)-PVETA(ILEVV+1)
-        ZDEN1=0.5_JPRB*(PVETA(ILEVV+2)-PVETA(ILEVV))
-        ZDEN2=0.5_JPRB*(PVETA(ILEVV+3)-PVETA(ILEVV+1))
-        IF(ILEVV >= 1.AND.ILEVV <= KFLEV-3) THEN
-          PVDERW(JROF,JLEV,1,1)=0.5_JPRB*ZNUM/ZDEN1
-          PVDERW(JROF,JLEV,2,1)=0.5_JPRB*ZNUM/ZDEN1
-          PVDERW(JROF,JLEV,1,2)=0.5_JPRB*ZNUM/ZDEN2
-          PVDERW(JROF,JLEV,2,2)=0.5_JPRB*ZNUM/ZDEN2
-        ELSEIF (ILEVV == 0) THEN
+        ILEV=KLEV(JROF,JLEV)
+        Z1 = PVETA(ILEV+1)
+        Z2 = PVETA(ILEV+2)
+        ZW1=(Z2-Z1)/(Z2-PVETA(ILEV))
+        ZW2=(Z2-Z1)/(PVETA(ILEV+3)-Z1)
+        IF(ILEV >= 1.AND.ILEV <= KFLEV-3) THEN
+          PVDERW(JROF,JLEV,1,1)=ZW1
+          PVDERW(JROF,JLEV,2,1)=ZW1
+          PVDERW(JROF,JLEV,1,2)=ZW2
+          PVDERW(JROF,JLEV,2,2)=ZW2
+        ELSEIF (ILEV == 0) THEN
           PVDERW(JROF,JLEV,1,1)=0.0_JPRB
-          PVDERW(JROF,JLEV,2,1)=ZNUM/ZDEN1
-          PVDERW(JROF,JLEV,1,2)=0.5_JPRB*ZNUM/ZDEN2
-          PVDERW(JROF,JLEV,2,2)=0.5_JPRB*ZNUM/ZDEN2
-        ELSEIF (ILEVV == KFLEV-2) THEN
-          PVDERW(JROF,JLEV,1,1)=0.5_JPRB*ZNUM/ZDEN1
-          PVDERW(JROF,JLEV,2,1)=0.5_JPRB*ZNUM/ZDEN1
-          PVDERW(JROF,JLEV,1,2)=ZNUM/ZDEN2
+          PVDERW(JROF,JLEV,2,1)=2._jprb*ZW1
+          PVDERW(JROF,JLEV,1,2)=ZW2
+          PVDERW(JROF,JLEV,2,2)=ZW2
+        ELSEIF (ILEV == KFLEV-2) THEN
+          PVDERW(JROF,JLEV,1,1)=ZW1
+          PVDERW(JROF,JLEV,2,1)=ZW1
+          PVDERW(JROF,JLEV,1,2)=2._jprb*ZW2
           PVDERW(JROF,JLEV,2,2)=0.0_JPRB
         ENDIF
       ENDDO
@@ -1005,21 +827,21 @@ ENDIF
   IF (KWIS == 105) THEN
     ! * Calculation of PVINTWS (weights for cubic spline interpolation).
     DO JLEV=1,KFLEV
+      ! optim: does not vectorize
       DO JROF=KST,KPROF
-        ILEVV=KLEV(JROF,JLEV)
-        ZD2=PLEV(JROF,JLEV)-PVETA(ILEVV+1)
-        PVINTWS(JROF,JLEV,1)=RFVV(4,ILEVV  ,1)+ZD2*( RFVV(4,ILEVV  ,2) +&
-         & ZD2*(RFVV(4,ILEVV   ,3) + ZD2*RFVV(4,ILEVV  ,4) ) )  
-        PVINTWS(JROF,JLEV,2)=RFVV(3,ILEVV+1,1)+ZD2*( RFVV(3,ILEVV+1,2) +&
-         & ZD2*( RFVV(3,ILEVV+1,3) + ZD2*RFVV(3,ILEVV+1,4) ) )  
-        PVINTWS(JROF,JLEV,3)=RFVV(2,ILEVV+2,1)+ZD2*( RFVV(2,ILEVV+2,2) +&
-         & ZD2*( RFVV(2,ILEVV+2,3) + ZD2*RFVV(2,ILEVV+2,4) ) )  
-        PVINTWS(JROF,JLEV,4)=RFVV(1,ILEVV+3,1)+ZD2*( RFVV(1,ILEVV+3,2) +&
-         & ZD2*( RFVV(1,ILEVV+3,3) + ZD2*RFVV(1,ILEVV+3,4) ) )  
+        ILEV64=KLEV(JROF,JLEV)
+        Z1=PLEV(JROF,JLEV)-PVETA(ILEV64+1)
+        PVINTWS(JROF,JLEV,1)=RFVV(4,ILEV64,1)+Z1*(RFVV(4,ILEV64,2) +&
+         & Z1*(RFVV(4,ILEV64,3) + Z1*RFVV(4,ILEV64,4)))
+        PVINTWS(JROF,JLEV,2)=RFVV(3,ILEV64+1,1)+Z1*(RFVV(3,ILEV64+1,2) +&
+         & Z1*(RFVV(3,ILEV64+1,3) + Z1*RFVV(3,ILEV64+1,4)))
+        PVINTWS(JROF,JLEV,3)=RFVV(2,ILEV64+2,1)+Z1*(RFVV(2,ILEV64+2,2) +&
+         & Z1*(RFVV(2,ILEV64+2,3) + Z1*RFVV(2,ILEV64+2,4)))
+        PVINTWS(JROF,JLEV,4)=RFVV(1,ILEV64+3,1)+Z1*(RFVV(1,ILEV64+3,2) +&
+         & Z1*(RFVV(1,ILEV64+3,3) + Z1*RFVV(1,ILEV64+3,4)))
       ENDDO
     ENDDO
   ENDIF
-
 ENDIF
 
 !     ----------------------------------------------------------------
@@ -1031,161 +853,186 @@ ENDIF
 !        2.01  Coordinates and weights for bilinear interpolations.
 
 IF (KWIS == 201) THEN
+  IF (KHOR == 1) IOFF=0
 
   DO JLEV=1,KFLEV
-    IF (KHOR == 0) ILEV=JLEV
-    IF (KHOR == 1) ILEV=KFLDN
+    IF (KHOR == 0) IOFF=YDSL%NASLB1*JLEV
 
     ! * Calculation of linear weights, KL0.
 !CDIR NODEP
 !DIR$ PREFERVECTOR
+    !dir$ ivdep
     DO JROF=KST,KPROF
-
-      ZLO1  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+1)
-      ILO1(JROF)  =INT(ZLO1)
-      PDLO(JROF,JLEV,1)=ZLO1-REAL(ILO1(JROF),JPRB)
-      ZLO2  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+2)
-      ILO2(JROF)  =INT(ZLO2)
-      PDLO(JROF,JLEV,2)=ZLO2-REAL(ILO2(JROF),JPRB)
-
-      KL0(JROF,JLEV,1)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1(JROF),ILAV(JROF,JLEV)+1)+YDSL%NASLB1*ILEV
-      KL0(JROF,JLEV,2)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2(JROF),ILAV(JROF,JLEV)+2)+YDSL%NASLB1*ILEV
-
+      ZLO1=PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+1)
+      ILO1(JROF)=INT(ZLO1)
+      PDLO(JROF,JLEV,1)=ZLO1-ILO1(JROF)
+      ZLO2=PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+2)
+      ILO2(JROF)=INT(ZLO2)
+      PDLO(JROF,JLEV,2)=ZLO2-ILO2(JROF)
     ENDDO
 
-    ! * Mask calculation for on-demand communications:
-    IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
-      DO JROF=KST,KPROF
-        YDSL%MASK_SL2(KL0(JROF,JLEV,1):KL0(JROF,JLEV,1)+3)=1
-        YDSL%MASK_SL2(KL0(JROF,JLEV,2):KL0(JROF,JLEV,2)+3)=1
-      ENDDO
-    ENDIF
+    ! optim: does not vectorize, use of IL (kind JPIA) since nslext is 64-bit indexed
+!CDIR NODEP
+!DIR$ PREFERVECTOR
+    !dir$ ivdep
+    DO JROF=KST,KPROF
+      IL=ILAV(JROF,JLEV)
+      KL0(JROF,JLEV,1)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1(JROF),IL+1)+IOFF
+      KL0(JROF,JLEV,2)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2(JROF),IL+2)+IOFF
+    ENDDO
 
   ENDDO
 
+  ! * Mask calculation for on-demand communications (using KL0)
+  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(KL0(JROF,JLEV,1):KL0(JROF,JLEV,1)+3)=1
+      ENDDO
+    ENDDO
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(KL0(JROF,JLEV,2):KL0(JROF,JLEV,2)+3)=1
+      ENDDO
+    ENDDO
+  ENDIF
 ENDIF
 
 !        2.03  Coordinates and weights for 12 points interpolations.
 
 IF (KWIS == 202 .OR. KWIS == 203) THEN
+  IF (KHOR == 1) IOFF=0
 
   DO JLEV=1,KFLEV
-    IF (KHOR == 0) ILEV=JLEV
-    IF (KHOR == 1) ILEV=KFLDN
+    IF (KHOR == 0) IOFF=YDSL%NASLB1*JLEV
 
     ! * Calculation of linear weights, KL0.
 !CDIR NODEP
 !DIR$ PREFERVECTOR
+    !dir$ ivdep
     DO JROF=KST,KPROF
-
-      ! meridional interpolation: linear weights and input for cubic weights (LASCAW_CLA)
-      ! general case 
-      PDLAT(JROF,JLEV)=(PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+1))&
-       & /(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1))  
-      ZDA   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV))
-      ZDB   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+1)
-      ZDC   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+2)
-      ZDD   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+3)
-
-      IILA(JROF,JLEV)=ILAV(JROF,JLEV)
-      ZZWH(JROF,1,JLEV)=(ZDA*ZDC)*ZDD*PIPI(ILAV(JROF,JLEV)+1,1)
-      ZZWH(JROF,2,JLEV)=(ZDA*ZDB)*ZDD*PIPI(ILAV(JROF,JLEV)+1,2)
-      ZZWH(JROF,3,JLEV)=(ZDA*ZDB)*ZDC*PIPI(ILAV(JROF,JLEV)+1,3)
-
-      ! COMAD meridional interpolation 
-      IF (LLCOMADH) THEN
-        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)*PSTDDISV(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISV(JROF,JLEV))
-        ZDAMAD = ZDA-ZDB
-        ZDDMAD = ZDD-ZDC
-        ZDBMAD = ZDB*PSTDDISV(JROF,JLEV) +0.5_JPRB*(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1)) *&
-         & (1._JPRB-PSTDDISV(JROF,JLEV))
-        ZDCMAD = ZDC*PSTDDISV(JROF,JLEV) -0.5_JPRB*(PLATI(ILAV(JROF,JLEV)+2)-PLATI(ILAV(JROF,JLEV)+1)) *&
-         & (1._JPRB-PSTDDISV(JROF,JLEV))
-        ZDAMAD = ZDAMAD + ZDBMAD
-        ZDDMAD = ZDDMAD + ZDCMAD
-        IILA(JROF,JLEV)=ILAV(JROF,JLEV)
-        ZZWHMAD(JROF,1,JLEV)=(ZDAMAD*ZDCMAD)*ZDDMAD*PIPI(ILAV(JROF,JLEV)+1,1)
-        ZZWHMAD(JROF,2,JLEV)=(ZDAMAD*ZDBMAD)*ZDDMAD*PIPI(ILAV(JROF,JLEV)+1,2)
-        ZZWHMAD(JROF,3,JLEV)=(ZDAMAD*ZDBMAD)*ZDCMAD*PIPI(ILAV(JROF,JLEV)+1,3)
-      ELSE
-        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)
-        ZZWHMAD(JROF,1,JLEV)=ZZWH(JROF,1,JLEV)
-        ZZWHMAD(JROF,2,JLEV)=ZZWH(JROF,2,JLEV)
-        ZZWHMAD(JROF,3,JLEV)=ZZWH(JROF,3,JLEV)
-      ENDIF
-
       ! zonal interpolation: linear weights for 4 lat. cicles
       ! as the grid is regular in the zonal direction,
       ! the cubic weight computation does not need 
       ! other input than linear weights (LASCAW_CLO)
       ! general case
-      ZLO   =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)  )
-      ILO(JROF)   =INT(ZLO )
-      PDLO(JROF,JLEV,0)=ZLO -REAL(ILO(JROF) ,JPRB)
+      ZLO   =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV))
+      ILO(JROF)=INT(ZLO)
+      PDLO(JROF,JLEV,0)=ZLO-ILO(JROF)
       ZLO1  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+1)
-      ILO1(JROF)  =INT(ZLO1)
-      PDLO(JROF,JLEV,1)=ZLO1-REAL(ILO1(JROF),JPRB)
+      ILO1(JROF) =INT(ZLO1)
+      PDLO(JROF,JLEV,1)=ZLO1-ILO1(JROF)
       ZLO2  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+2)
-      ILO2(JROF)  =INT(ZLO2)
-      PDLO(JROF,JLEV,2)=ZLO2-REAL(ILO2(JROF),JPRB)
+      ILO2(JROF) =INT(ZLO2)
+      PDLO(JROF,JLEV,2)=ZLO2-ILO2(JROF)
       ZLO3  =PLON(JROF,JLEV)*PLSDEPI(ILAV(JROF,JLEV)+3)
-      ILO3(JROF)  =INT(ZLO3)
-      PDLO(JROF,JLEV,3)=ZLO3-REAL(ILO3(JROF),JPRB)
+      ILO3(JROF)=INT(ZLO3)
+      PDLO(JROF,JLEV,3)=ZLO3-ILO3(JROF)
+    ENDDO
 
-      ! COMAD zonal interpolation 
+    ! optim: does not vectorize, use of IL (kind JPIA) since nslext is 64-bit indexed
+!CDIR NODEP
+!DIR$ PREFERVECTOR
+    !dir$ ivdep
+    DO JROF=KST,KPROF
+      IL=ILAV(JROF,JLEV)
+      KL0(JROF,JLEV,0)=IADDR(ILAV(JROF,JLEV))+YDSL%NSLEXT(ILO(JROF),IL)+IOFF
+      KL0(JROF,JLEV,1)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1(JROF),IL+1)+IOFF
+      KL0(JROF,JLEV,2)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2(JROF),IL+2)+IOFF
+      KL0(JROF,JLEV,3)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3(JROF),IL+3)+IOFF
+    ENDDO
+
+  ENDDO
+
+  ! * Mask calculation for on-demand communications:
+  IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(KL0(JROF,JLEV,0):KL0(JROF,JLEV,0)+3)=1
+      ENDDO
+    ENDDO
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(KL0(JROF,JLEV,1):KL0(JROF,JLEV,1)+3)=1
+      ENDDO
+    ENDDO
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(KL0(JROF,JLEV,2):KL0(JROF,JLEV,2)+3)=1
+      ENDDO
+    ENDDO
+    DO JLEV=1,KFLEV
+      DO JROF=KST,KPROF
+        YDSL%MASK_SL2(KL0(JROF,JLEV,3):KL0(JROF,JLEV,3)+3)=1
+      ENDDO
+    ENDDO
+  ENDIF
+
+  DO JLEV=1,KFLEV
+    !dir$ ivdep
+    DO JROF=KST,KPROF
+      ! meridional interpolation: linear weights and input for cubic weights (LASCAW_CLA)
+      ! general case 
+      Z1 = PLATI(ILAV(JROF,JLEV)+1)
+      Z2 = PLATI(ILAV(JROF,JLEV)+2)
+      PDLAT(JROF,JLEV)=(PLAT(JROF,JLEV)-Z1)/(Z2-Z1)  
+      ZDA   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV))
+      ZDB   =PLAT(JROF,JLEV)-Z1
+      ZDC   =PLAT(JROF,JLEV)-Z2
+      ZDD   =PLAT(JROF,JLEV)-PLATI(ILAV(JROF,JLEV)+3)
+      Z2 = ZDA*ZDB
+      ZCLA(JROF,JLEV,1)=(ZDA*ZDC)*ZDD*PIPI(ILAV(JROF,JLEV)+1,1)
+      ZCLA(JROF,JLEV,2)=Z2*ZDD*PIPI(ILAV(JROF,JLEV)+1,2)
+      ZCLA(JROF,JLEV,3)=Z2*ZDC*PIPI(ILAV(JROF,JLEV)+1,3)
+
+      ! COMAD meridional interpolation 
       IF (LLCOMADH) THEN
-        PDLOMAD(JROF,JLEV,0)=PDLO(JROF,JLEV,0)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
-        PDLOMAD(JROF,JLEV,1)=PDLO(JROF,JLEV,1)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
-        PDLOMAD(JROF,JLEV,2)=PDLO(JROF,JLEV,2)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
-        PDLOMAD(JROF,JLEV,3)=PDLO(JROF,JLEV,3)*PSTDDISU(JROF,JLEV) + 0.5_JPRB * (1._JPRB-PSTDDISU(JROF,JLEV))
+        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)*PSTDDISV(JROF,JLEV)+0.5_JPRB*(1._JPRB-PSTDDISV(JROF,JLEV))
+        Z1 = 1._JPRB/PSTDDISV(JROF,JLEV)
+        Z4 = 0.5_JPRB*(Z2-Z1)*(Z1-1._JPRB)
+        ZDA = (ZDA-ZDB)*Z1
+        ZDD = (ZDD-ZDC)*Z1
+        ZDB = ZDB +Z4
+        ZDC = ZDC -Z4
+        ZDA = ZDA + ZDB
+        ZDD = ZDD + ZDC
+        Z2 = ZDA*ZDB
+        Z3 = PSTDDISV(JROF,JLEV)**3
+        PCLAMAD(JROF,JLEV,1,1)=ZDA*ZDC*ZDD*PIPI(ILAV(JROF,JLEV)+1,1)*Z3
+        PCLAMAD(JROF,JLEV,2,1)=Z2*ZDD*PIPI(ILAV(JROF,JLEV)+1,2)*Z3
+        PCLAMAD(JROF,JLEV,3,1)=Z2*ZDC*PIPI(ILAV(JROF,JLEV)+1,3)*Z3
+
+        PDLOMAD(JROF,JLEV,0)=PDLO(JROF,JLEV,0)*PSTDDISU(JROF,JLEV)+0.5_JPRB*(1._JPRB-PSTDDISU(JROF,JLEV))
+        PDLOMAD(JROF,JLEV,1)=PDLO(JROF,JLEV,1)*PSTDDISU(JROF,JLEV)+0.5_JPRB*(1._JPRB-PSTDDISU(JROF,JLEV))
+        PDLOMAD(JROF,JLEV,2)=PDLO(JROF,JLEV,2)*PSTDDISU(JROF,JLEV)+0.5_JPRB*(1._JPRB-PSTDDISU(JROF,JLEV))
+        PDLOMAD(JROF,JLEV,3)=PDLO(JROF,JLEV,3)*PSTDDISU(JROF,JLEV)+0.5_JPRB*(1._JPRB-PSTDDISU(JROF,JLEV))
       ELSE
+        PDLAMAD(JROF,JLEV)=PDLAT(JROF,JLEV)
+        PCLAMAD(JROF,JLEV,1,1)=ZCLA(JROF,JLEV,1)
+        PCLAMAD(JROF,JLEV,2,1)=ZCLA(JROF,JLEV,2)
+        PCLAMAD(JROF,JLEV,3,1)=ZCLA(JROF,JLEV,3)
         PDLOMAD(JROF,JLEV,0)= PDLO(JROF,JLEV,0)
         PDLOMAD(JROF,JLEV,1)= PDLO(JROF,JLEV,1)
         PDLOMAD(JROF,JLEV,2)= PDLO(JROF,JLEV,2)
         PDLOMAD(JROF,JLEV,3)= PDLO(JROF,JLEV,3)
       ENDIF
-
-      ILO(JROF)=IADDR(ILAV(JROF,JLEV)  )+YDSL%NSLEXT(ILO(JROF) ,ILAV(JROF,JLEV)  )
-      ILO1(JROF)=IADDR(ILAV(JROF,JLEV)+1)+YDSL%NSLEXT(ILO1(JROF),ILAV(JROF,JLEV)+1)
-      ILO2(JROF)=IADDR(ILAV(JROF,JLEV)+2)+YDSL%NSLEXT(ILO2(JROF),ILAV(JROF,JLEV)+2)
-      ILO3(JROF)=IADDR(ILAV(JROF,JLEV)+3)+YDSL%NSLEXT(ILO3(JROF),ILAV(JROF,JLEV)+3)
-
-      KL0(JROF,JLEV,0)=ILO(JROF)+YDSL%NASLB1*ILEV
-      KL0(JROF,JLEV,1)=ILO1(JROF)+YDSL%NASLB1*ILEV
-      KL0(JROF,JLEV,2)=ILO2(JROF)+YDSL%NASLB1*ILEV
-      KL0(JROF,JLEV,3)=ILO3(JROF)+YDSL%NASLB1*ILEV
-
     ENDDO
-
-    ! * Mask calculation for on-demand communications:
-    IF(NPROC > 1.AND.YDSL%LSLONDEM_ACTIVE)THEN
-      DO JROF=KST,KPROF
-        YDSL%MASK_SL2(KL0(JROF,JLEV,0):KL0(JROF,JLEV,0)+3)=1
-        YDSL%MASK_SL2(KL0(JROF,JLEV,1):KL0(JROF,JLEV,1)+3)=1
-        YDSL%MASK_SL2(KL0(JROF,JLEV,2):KL0(JROF,JLEV,2)+3)=1
-        YDSL%MASK_SL2(KL0(JROF,JLEV,3):KL0(JROF,JLEV,3)+3)=1
-      ENDDO
-    ENDIF
-
   ENDDO
 
   ! * Calculation of PCLA and PCLASLD:
-  CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,&
-   & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,&
-   & IILA,ZZWH,ZZWHMAD,PDLAT,PDLAMAD,PKAPPA,ZKHTURB(:,:,1),&
-   & PSLD,PSLDW,P3DTW,&
-   & PCLA(:,:,:,1),PCLAMAD(:,:,:,1),PCLASLD(:,:,:,1))
+  CALL LASCAW_CLA(YDSL,YDDYNA,KFLEV,KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,&
+   & ILAV,ZCLA,PDLAT,PKAPPA,&
+   & PSLD,PSLDW,PCLA(:,:,:,1),PCLASLD(:,:,:,1))
 
   ! * Calculation of PCLO and PCLOSLD:
   CALL LASCAW_CLO(YDDYNA,KFLEV,&
-   & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,PDLO(:,:,1),PDLOMAD(:,:,1),&
-   & PKAPPA,ZKHTURB(:,:,1),&
+   & KPROMB,KST,KPROF,LLCOMADH,LLT_SLHD,ZSLHDKMINH,&
+   & PDLO(:,:,1),PDLOMAD(:,:,1),PKAPPA,&
    & PCLO(:,:,:,1,1),PCLOMAD(:,:,:,1,1),PCLOSLD(:,:,:,1,1))
   CALL LASCAW_CLO(YDDYNA,KFLEV,&
-   & KPROMB,KST,KPROF,LLT_SLHD,ZSLHDKMINH,PDLO(:,:,2),PDLOMAD(:,:,2),&
-   & PKAPPA,ZKHTURB(:,:,1),&
+   & KPROMB,KST,KPROF,LLCOMADH,LLT_SLHD,ZSLHDKMINH,&
+   & PDLO(:,:,2),PDLOMAD(:,:,2),PKAPPA,&
    & PCLO(:,:,:,2,1),PCLOMAD(:,:,:,2,1),PCLOSLD(:,:,:,2,1))
-
 ENDIF
 
 !     ------------------------------------------------------------------

@@ -1,13 +1,11 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
 MODULE YOEVDF
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -29,6 +27,10 @@ REAL(KIND=JPRB) :: RETAWDS
 REAL(KIND=JPRB) :: RTOFDALPHA
 REAL(KIND=JPRB) :: REISTHSC
 INTEGER(KIND=JPIM) :: NSUBST
+REAL(KIND=JPRB) :: RFAC_TWO_COEF
+REAL(KIND=JPRB) :: RZC_H
+REAL(KIND=JPRB) :: RZL_INF
+
 !---------------------------------------------------------------------
 CONTAINS
   PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION 
@@ -40,6 +42,7 @@ END TYPE TVDF
 
 !     OBUKHOV-L UPDATE     ACMB          26/03/90.
 !     LWDS-upate           A.Beljaars    Jan-2014   
+!     HARMONIE-AROME upd   U. Andrae     Dec-2020
 
 !     NAME        TYPE     DESCRIPTION
 !     ----        ----     -----------
@@ -77,6 +80,9 @@ WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'REPS2WDS = ', SELF%REPS2WDS
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RETAWDS = ', SELF%RETAWDS
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NSUBST = ', SELF%NSUBST
 WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'REISTHSC = ', SELF%REISTHSC
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RFAC_TWO_COEF = ', SELF%RFAC_TWO_COEF
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RZC_H = ', SELF%RZC_H
+WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RZL_INF = ', SELF%RZL_INF
 
 
 END SUBROUTINE PRINT_CONFIGURATION

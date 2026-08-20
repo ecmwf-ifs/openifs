@@ -1,3 +1,51 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUDIM1S * - Setting up of the dimensions of the surface
+!                  multi-column model
+
+!     Purpose.
+!     --------
+!            dimensioning the surface one-column model
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUDIM1S*
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the one-column model
+
+!     Author.
+!     -------
+!        Pedro Viterbo and Jean-Francois Mahfouf  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-06-21
+!        Bart vd Hurk (KNMI) interface for multi-column model
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE SUDIM1S
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,    JPRD
@@ -16,13 +64,6 @@ USE YOMFORC1S, ONLY : JPSTPFC
 USE YOEPHY   , ONLY : LEOCML   ,LEFLAKE  ,LEURBAN, LECTESSEL, LECLIM10D
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUDIM1S * - Setting up of the dimensions of the surface
 !                  multi-column model

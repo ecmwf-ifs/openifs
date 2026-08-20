@@ -1,3 +1,68 @@
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFWDIF* -  DOES THE IMPLICIT CALCULATION FOR SOIL MOISTURE
+
+!     PURPOSE.
+!     --------
+!          SOLVE TRIDIAGONAL SYSTEM OF EQUATIONS FOR SOIL MOISTURE.
+!     IT SHOULD BE PRECEDED BY A CALL TO *SRFWEXC* AND FOLLLOWED BY
+!     A CALL TO *SRFWINC*.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFWDIF* IS CALLED FROM *SURFTSTP*
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SURFACE LAYERS
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 (REAL):
+!    *PWSAM1M*    PSI AT TIME LEVEL T
+!    *PCFW*       MODIFIED DIFFUSIVITIES (LAMBDA-STAR IN DOCUM.)
+!                 (INDEX JK REFERS TO LEVEL JK+1/2)
+!    *PRHSW*      RIGHT-HAND SIDE OF EQUATIONS
+!                 TREATMENT OF EVAPORATION FLUX
+!    *PCDZ*       C*DZ  (PROFILE OF LAYER DEPTH FOR SOIL WATER)
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PWSADIF*    PSI-STAR  DIVIDED BY ALFA     
+
+!     METHOD.
+!     -------
+!     *LU*-DECOMPOSITION AND BACK SUBSTITUTION IN ONE DOWNWARD SCAN
+!     AND ONE UPWARD SCAN.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original
+!     P.VITERBO      E.C.M.W.F.      9/02/93
+!     A.BELJAARS     E.C.M.W.F.      12/03/1999   
+!                      (GENERALIZATION FOR WATER, TEMPERATURE AND ICE)  
+!      J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     ------------------------------------------------------------------
+
 MODULE SRFWDIF_MOD
 CONTAINS
 SUBROUTINE SRFWDIF(KIDIA,KFDIA,KLON,KLEVS,&
@@ -8,14 +73,6 @@ SUBROUTINE SRFWDIF(KIDIA,KFDIA,KLON,KLEVS,&
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_SOIL , ONLY : TSOIL
-
-! (C) Copyright 1993- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFWDIF* -  DOES THE IMPLICIT CALCULATION FOR SOIL MOISTURE
 

@@ -15,9 +15,10 @@
 !****  Author   : P. Bechtold ECMWF 01/2016
 !****
 !****  Modifications:
+!****    01/2023 R.Forbes, Added time-varying methox reference values
 !****
 !****--------------------------------------------------------------------
 !***
 !***  RQLIM: target humidity for relaxation
 !***---------------------------------------------------------------------
-NAMELIST / NAMMETHOX / RQLIM
+NAMELIST / NAMMETHOX / RQLIM, RQLIM_REFYR, RCH4_REFYR, LMETHOX_TIMEVAR

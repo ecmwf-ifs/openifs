@@ -21,6 +21,7 @@ SUBROUTINE NOTURBULENCE(YDSURF,KDIM, &
 !        EXPLICIT ARGUMENTS :
 !        --------------------
 !     ==== INPUTS ===
+! LDEPHYS_NEW : key to indicate the used physics variant
 ! KDIM     : Derived variable for dimensions
 
 !     ==== Input/Output ====
@@ -51,6 +52,7 @@ SUBROUTINE NOTURBULENCE(YDSURF,KDIM, &
 !     MODIFICATIONS.
 !     --------------
 ! B. Ingleby      2019-01-17  Change PQCFL to Y2M
+!     F. Vana     2023-Mar-15 diagnostics moved towards the end of CALLPAR
 
 !-----------------------------------------------------------------------
 
@@ -103,11 +105,11 @@ DO JL=KDIM%KIDIA,KDIM%KFDIA
   PSURF%PEVAPMU(JL) = 0.0_JPRB
   PSURF%PSD_VD(JL,YSD_VD%YBLH%MP)=0.0_JPRB
   FLUX%PFWSB(JL)=0.0_JPRB
-  PDIAG%PI10FG(JL)=0.0_JPRB
-  PDIAG%PUSTRG(JL)=0.0_JPRB
-  PDIAG%PVSTRG(JL)=0.0_JPRB
   PDIAG%PVDISG(JL)=0.0_JPRB
 ENDDO
+PDIAG%PI10FG(KDIM%KIDIA:KDIM%KFDIA)=0.0_JPRB
+PDIAG%PUSTRG(KDIM%KIDIA:KDIM%KFDIA)=0.0_JPRB
+PDIAG%PVSTRG(KDIM%KIDIA:KDIM%KFDIA)=0.0_JPRB
 
 SURFL%ZEVAPSNW(KDIM%KIDIA:KDIM%KFDIA)=0.0_JPRB
 ! DDH

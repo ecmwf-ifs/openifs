@@ -44,9 +44,10 @@ LOGICAL :: LRDEPOS     ! Contol key for calling aerosol scavenging
 LOGICAL :: LBUFLUX     ! If TRUE fluxes are calculated in AROEND_BUDGET, if FALSE, tendencies remain
 CHARACTER(LEN=1) :: CCOUPLING ! Type of SURFEX coupling. E - explicit, I - implicit
 LOGICAL :: LMDUST      ! Contol key for calling the desertic aerosols IN ALADIN
-LOGICAL :: LSURFEX_CRITICAL ! Run SURFEX calculations in a critical section
 LOGICAL :: LSURFEX_KFROM ! Use TRUE/FALSE in GOTO_SURFEX from within OpenMP (debug purposes)
-INTEGER(KIND=JPIM) :: NSURFEX_ITER  !Run SURFEX calculations several times (test harness)
+LOGICAL :: LGRADHPHY
+INTEGER(KIND=JPIM) :: NFLDCORE=0 ! Number of 3D fields in core array to compute gradients
+INTEGER(KIND=JPIM) :: NGRADIENTS=0 ! Number of 3D gradients to compute from the fields in core
 
 END TYPE TARPHY
 

@@ -10,6 +10,7 @@ ecbuild_info("[climfield]")
 
 find_package(ecRegrid)
 find_package(TIFF)
+find_package( NetCDF COMPONENTS CXX )
 
 if(NOT ECREGRID_FOUND)
   ecbuild_warn("Could not find ecRegrid library - skipping climfield project")
@@ -46,8 +47,7 @@ foreach(src IN ITEMS ${program_srcs})
 
   if( NOT TARGET ${program} )
     ecbuild_add_executable(TARGET ${program} SOURCES ${src}
-      INCLUDES ${ECCODES_INCLUDE_DIRS} ${NETCDF_INCLUDE_DIRS}
-      LIBS climfield.${PREC} ${ECCODES_LIBRARIES} ${NETCDF_LIBRARIES})
+      LIBS climfield.${PREC} ${ECCODES_LIBRARIES} NetCDF::NetCDF_CXX )
   endif()
 
 endforeach()

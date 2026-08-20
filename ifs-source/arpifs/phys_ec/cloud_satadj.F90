@@ -11,7 +11,7 @@
 @PROCESS HOT(NOVECTOR) NOSTRICT
 #endif
 SUBROUTINE CLOUD_SATADJ(YDECLDP, YDEPHLI, YDECUMF, YDEPHY, YDSPP_CONFIG,&
- & KIDIA,    KFDIA,    KLON,    KLEV,  KTYPE, &
+ & KIDIA,    KFDIA,    KLON,    KLEV,  KTYPE, LDDIAG, &
  & PTSPHY, PAP,  PAPH, &
  & PT, PQ, PA, &
  & PL, PI, & 
@@ -52,6 +52,9 @@ SUBROUTINE CLOUD_SATADJ(YDECLDP, YDEPHLI, YDECUMF, YDEPHY, YDSPP_CONFIG,&
 !     01-10-2016 : R.Forbes  New routine. Duplicate of cond/evap from cloudsc.F90
 !     15-02-2020 : R.Forbes  Rewrite of routine, modified saturation adjustment and limits 
 !                            New simpler fn QSATMIXADJ/QSATWATADJ to replace CUADJTQ
+!     R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
+!     F. Vana  (Jan 2023): No diagnostics in predictor step
+!
 !
 !     REFERENCES.
 !     ----------
@@ -67,10 +70,8 @@ USE YOEPHLI  , ONLY : TEPHLI
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMLUN   , ONLY : NULOUT
-USE YOMCST   , ONLY : RG, RD, RCPD, RETV, RTT, RLVTT, RLSTT
-USE YOETHF   , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, &
- & R5ALVCP, R5ALSCP, RALVDCP, RALSDCP, RTWAT, RTICE, RTICECU, &
- & RTWAT_RTICE_R, RTWAT_RTICECU_R, RKOOP1, RKOOP2
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of fcttre.func.h below. REK.
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of fcttre.func.h and fccld.func.h below. REK.
 USE YOECUMF  , ONLY : TECUMF
 USE YOEPHY   , ONLY : TEPHY
 USE SPP_MOD     , ONLY : TSPP_CONFIG
@@ -92,6 +93,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON             ! Number of grid points
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV             ! Number of levels
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTYPE(KLON)      ! Convection type 0-3
+LOGICAL           ,INTENT(IN)    :: LDDIAG           ! Switch to activate diagnostics
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY           ! Physics timestep
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV)   ! Pressure on full levels
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1)! Pressure on half levels
@@ -180,6 +182,7 @@ REAL(KIND=JPRB) :: ZGDP(KLON)
 REAL(KIND=JPRB) :: ZDA(KLON)
 REAL(KIND=JPRB) :: ZDP(KLON)
 REAL(KIND=JPRB) :: ZDZ(KLON)
+REAL(KIND=JPRB) :: ZDT
 REAL(KIND=JPRB) :: ZXRAMID
 REAL(KIND=JPRB) :: ZP_R(KLON)
 REAL(KIND=JPRB) :: ZSUPSATL(KLON)
@@ -247,7 +250,14 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !===============================================================================
 IF (LHOOK) CALL DR_HOOK('CLOUD_SATADJ',0,ZHOOK_HANDLE)
 
-ASSOCIATE(NCLDTOP=>YDECLDP%NCLDTOP, &
+ASSOCIATE(RG=>YDCST%RG, RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RTT=>YDCST%RTT, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, &
+ & RV=>YDCST%RV, RD=>YDCST%RD, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, R4IES=>YDTHF%R4IES, &
+ & R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, &
+ & RALSDCP=>YDTHF%RALSDCP, RALFDCP=>YDTHF%RALFDCP, RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, &
+ & RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, RKOOP1=>YDTHF%RKOOP1, RKOOP2=>YDTHF%RKOOP2, &
+ & RLMLT=>YDCST%RLMLT, &
+ & NCLDTOP=>YDECLDP%NCLDTOP, &
  & NSSOPT=>YDECLDP%NSSOPT, & 
  & LBUD23=>YDEPHY%LBUD23, &
  & LCLDBUDC=>YDECLDP%LCLDBUDC, &
@@ -849,29 +859,35 @@ DO JK=NCLDTOP,KLEV
   ELSE
     IS = 0
   ENDIF
+
+  IF (LCLDBUD_TIMEINT) THEN
+    ZDT = 1.0_JPRB
+  ELSE
+    ZDT = ZQTMST ! 1/timestep
+  ENDIF
   
-  IF (LCLDBUD_VERTINT) THEN
+  IF (LCLDBUD_VERTINT.AND.LDDIAG) THEN
  
    DO JL=KIDIA,KFDIA
   
     ! Cloud fraction budget terms
     IK = 0
-    PEXTRA(JL,IK+1,1)  = PEXTRA(JL,IK+1,1)  + ZACOND(JL)*ZQTMST*ZDZ(JL)   ! + Condensation of new cloud
-    PEXTRA(JL,IK+2,1)  = PEXTRA(JL,IK+2,1)  + ZAEVAP(JL)*ZQTMST*ZDZ(JL)   ! - Evaporation of cloud
-    PEXTRA(JL,IK+3,1)  = PEXTRA(JL,IK+3,1)  + ZSUPSATA(JL)*ZQTMST*ZDZ(JL) ! + Supersat clipping after cloud_satadj
+    PEXTRA(JL,IK+1,IS+1)  = PEXTRA(JL,IK+1,IS+1)  + ZACOND(JL)*ZDT*ZDZ(JL)   ! + Condensation of new cloud
+    PEXTRA(JL,IK+2,IS+1)  = PEXTRA(JL,IK+2,IS+1)  + ZAEVAP(JL)*ZDT*ZDZ(JL)   ! - Evaporation of cloud
+    PEXTRA(JL,IK+3,IS+1)  = PEXTRA(JL,IK+3,IS+1)  + ZSUPSATA(JL)*ZDT*ZDZ(JL) ! + Supersat clipping after cloud_satadj
        
     ! Cloud condensate budget terms
     IK = 14
-    PEXTRA(JL,IK+1,1) = PEXTRA(JL,IK+1,1) + ZLCOND_ENV_L(JL)*ZQTMST*ZDZ(JL) ! + Condensation of new cloud
-    PEXTRA(JL,IK+2,1) = PEXTRA(JL,IK+2,1) + ZLCOND_CLD_L(JL)*ZQTMST*ZDZ(JL) ! + Condensation of existing cloud
-    PEXTRA(JL,IK+3,1) = PEXTRA(JL,IK+3,1) - ZLEVAP_CLD_L(JL)*ZQTMST*ZDZ(JL)  ! - Evaporation of existing cloud
-    PEXTRA(JL,IK+4,1) = PEXTRA(JL,IK+4,1) + ZSUPSATL(JL)*ZQTMST*ZDZ(JL) ! + Supersat clipping after cloud_satadj
+    PEXTRA(JL,IK+1,IS+1) = PEXTRA(JL,IK+1,IS+1) + ZLCOND_ENV_L(JL)*ZDT*ZDZ(JL) ! + Condensation of new cloud
+    PEXTRA(JL,IK+2,IS+1) = PEXTRA(JL,IK+2,IS+1) + ZLCOND_CLD_L(JL)*ZDT*ZDZ(JL) ! + Condensation of existing cloud
+    PEXTRA(JL,IK+3,IS+1) = PEXTRA(JL,IK+3,IS+1) - ZLEVAP_CLD_L(JL)*ZDT*ZDZ(JL)  ! - Evaporation of existing cloud
+    PEXTRA(JL,IK+4,IS+1) = PEXTRA(JL,IK+4,IS+1) + ZSUPSATL(JL)*ZDT*ZDZ(JL) ! + Supersat clipping after cloud_satadj
     
     IK = 39
-    PEXTRA(JL,IK+1,1) = PEXTRA(JL,IK+1,1) + ZLCOND_ENV_I(JL)*ZQTMST*ZDZ(JL) ! + Condensation of new cloud
-    PEXTRA(JL,IK+2,1) = PEXTRA(JL,IK+2,1) + ZLCOND_CLD_I(JL)*ZQTMST*ZDZ(JL) ! + Condensation of existing cloud
-    PEXTRA(JL,IK+3,1) = PEXTRA(JL,IK+3,1) - ZLEVAP_CLD_I(JL)*ZQTMST*ZDZ(JL)  ! - Evaporation of existing cloud
-    PEXTRA(JL,IK+4,1) = PEXTRA(JL,IK+4,1) + ZSUPSATI(JL)*ZQTMST*ZDZ(JL) ! + Supersat clipping after cloud_satadj
+    PEXTRA(JL,IK+1,IS+1) = PEXTRA(JL,IK+1,IS+1) + ZLCOND_ENV_I(JL)*ZDT*ZDZ(JL) ! + Condensation of new cloud
+    PEXTRA(JL,IK+2,IS+1) = PEXTRA(JL,IK+2,IS+1) + ZLCOND_CLD_I(JL)*ZDT*ZDZ(JL) ! + Condensation of existing cloud
+    PEXTRA(JL,IK+3,IS+1) = PEXTRA(JL,IK+3,IS+1) - ZLEVAP_CLD_I(JL)*ZDT*ZDZ(JL)  ! - Evaporation of existing cloud
+    PEXTRA(JL,IK+4,IS+1) = PEXTRA(JL,IK+4,IS+1) + ZSUPSATI(JL)*ZDT*ZDZ(JL) ! + Supersat clipping after cloud_satadj
 
    ENDDO
    IS = IS + 1
@@ -881,13 +897,13 @@ DO JK=NCLDTOP,KLEV
   !-----------------------------------------------------------------
   ! Cloud fraction budget 
   !-----------------------------------------------------------------
-  IF (LCLDBUDC) THEN
+  IF (LCLDBUDC.AND.LDDIAG) THEN
     DO JL=KIDIA,KFDIA
-      PEXTRA(JL,JK,IS+1)  = PEXTRA(JL,JK,IS+1) + ZACOND(JL)*ZQTMST   ! Condensation of new cloud
-      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZAEVAP(JL)*ZQTMST   ! Evaporation of cloud
-      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZSUPSATA(JL)*ZQTMST ! Supersat clipping
+      PEXTRA(JL,JK,IS+1)  = PEXTRA(JL,JK,IS+1) + ZACOND(JL)*ZDT   ! Condensation of new cloud
+      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZAEVAP(JL)*ZDT   ! Evaporation of cloud
+      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZSUPSATA(JL)*ZDT ! Supersat clipping
       !PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZDTDP*ZWTOT
-      !PEXTRA(JL,JK,IS+14) = PEXTRA(JL,JK,IS+14) + ZDTDIAB*ZQTMST
+      !PEXTRA(JL,JK,IS+14) = PEXTRA(JL,JK,IS+14) + ZDTDIAB*ZDT
       !PEXTRA(JL,JK,IS+15) = PEXTRA(JL,JK,IS+15) + PTENDENCY_VDF_T(JL,JK)
       !PEXTRA(JL,JK,IS+16) = PEXTRA(JL,JK,IS+16) + PLUDELI(JL,JK,4)*ZGDP(JL)
       !PEXTRA(JL,JK,IS+17) = PEXTRA(JL,JK,IS+17) + PTENDENCY_VDF_Q(JL,JK)
@@ -899,12 +915,12 @@ DO JK=NCLDTOP,KLEV
   !-----------------------------------------------------------------
   ! Cloud liquid condensate budget 
   !-----------------------------------------------------------------
-  IF (LCLDBUDL) THEN
+  IF (LCLDBUDL.AND.LDDIAG) THEN
     DO JL=KIDIA,KFDIA
-      PEXTRA(JL,JK,IS+1) = PEXTRA(JL,JK,IS+1) + ZLCOND_ENV_L(JL)*ZQTMST ! + Condensation of new cloud
-      PEXTRA(JL,JK,IS+2) = PEXTRA(JL,JK,IS+2) + ZLCOND_CLD_L(JL)*ZQTMST ! + Condensation of existing cloud
-      PEXTRA(JL,JK,IS+3) = PEXTRA(JL,JK,IS+3) - ZLEVAP_CLD_L(JL)*ZQTMST ! - Evaporation of existing cloud
-      PEXTRA(JL,JK,IS+4) = PEXTRA(JL,JK,IS+4) + ZSUPSATL(JL)*ZQTMST     ! + Supersat clipping so far this timestep
+      PEXTRA(JL,JK,IS+1) = PEXTRA(JL,JK,IS+1) + ZLCOND_ENV_L(JL)*ZDT ! + Condensation of new cloud
+      PEXTRA(JL,JK,IS+2) = PEXTRA(JL,JK,IS+2) + ZLCOND_CLD_L(JL)*ZDT ! + Condensation of existing cloud
+      PEXTRA(JL,JK,IS+3) = PEXTRA(JL,JK,IS+3) - ZLEVAP_CLD_L(JL)*ZDT ! - Evaporation of existing cloud
+      PEXTRA(JL,JK,IS+4) = PEXTRA(JL,JK,IS+4) + ZSUPSATL(JL)*ZDT     ! + Supersat clipping so far this timestep
    ENDDO
     IS = IS + 22
   ENDIF
@@ -912,12 +928,12 @@ DO JK=NCLDTOP,KLEV
   !-----------------------------------------------------------------
   ! Cloud ice condensate budget 
   !-----------------------------------------------------------------
-  IF (LCLDBUDI) THEN
+  IF (LCLDBUDI.AND.LDDIAG) THEN
     DO JL=KIDIA,KFDIA
-      PEXTRA(JL,JK,IS+1)  = PEXTRA(JL,JK,IS+1) + ZLCOND_ENV_I(JL)*ZQTMST ! + Condensation of new cloud
-      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZLCOND_CLD_I(JL)*ZQTMST ! + Condensation of existing cloud
-      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) - ZLEVAP_CLD_I(JL)*ZQTMST ! - Evaporation of existing cloud
-      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + ZSUPSATI(JL)*ZQTMST     ! + Supersat clipping so far this timestep 
+      PEXTRA(JL,JK,IS+1)  = PEXTRA(JL,JK,IS+1) + ZLCOND_ENV_I(JL)*ZDT ! + Condensation of new cloud
+      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZLCOND_CLD_I(JL)*ZDT ! + Condensation of existing cloud
+      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) - ZLEVAP_CLD_I(JL)*ZDT ! - Evaporation of existing cloud
+      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + ZSUPSATI(JL)*ZDT     ! + Supersat clipping so far this timestep 
     ENDDO
     IS = IS + 18
   ENDIF

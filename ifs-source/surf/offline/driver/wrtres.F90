@@ -1,6 +1,3 @@
-SUBROUTINE WRTRES
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,JPRM,JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -8,6 +5,47 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *WRTRES*  - writes NetCDF restart file
+
+!     Purpose.
+!     --------
+!        writes out restart file
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTRES
+
+!     Explicit arguments :
+!     --------------------
+
+!     Implicit arguments :
+!     --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk (KNMI)
+
+!     Modifications.
+!     --------------
+!        original: 17/7/2000
+!        E. DUTRA     02/2009 - ADD LAKES RELATED
+!        E. Dutra     11/2009 - Add LAI restart
+
+SUBROUTINE WRTRES
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,JPRM,JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 
 !**** *WRTRES*  - writes NetCDF restart file
 

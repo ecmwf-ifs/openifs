@@ -56,6 +56,7 @@ TYPE(TYPE_T0)  :: YT5  ! Pointers to trajectory quantities
 END TYPE TGMV
 
 !-------------------------------------------------------------------------
+#include "abor1.intfb.h"
 
 CONTAINS
 
@@ -88,8 +89,6 @@ TYPE(TGMV), INTENT(INOUT) :: SELF
 TYPE(TGMV), INTENT(IN)    :: RHS
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-#include "abor1.intfb.h"
 
 IF (LHOOK) CALL DR_HOOK('YOMGMV:COPY_YOMGMV',0,ZHOOK_HANDLE)
 

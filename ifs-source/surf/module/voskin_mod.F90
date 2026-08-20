@@ -1,11 +1,3 @@
-MODULE VOSKIN_MOD
-CONTAINS
-SUBROUTINE VOSKIN(KIDIA,KFDIA,KLON, &
- & PTMST, &
- & PSSRFL, PSLRFL, PAHFS, PAHFL, PUSTR, PVSTR, &
- & PUMLEV, PVMLEV, PTSKM1M, PSST, PUSTOKES, PVSTOKES,  &
- & YDCST, YDEXC, & 
- & PTSK, PRPLRG)  
 ! (C) Copyright 2001- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -78,8 +70,87 @@ SUBROUTINE VOSKIN(KIDIA,KFDIA,KLON, &
 !     Modification of the stability function for stable condition and 
 !     Langmuir circulation effect 
 !     N.Semane+P.Bechtold 04-10-2012 Add PRPLRG factor for small planet
-!     A. Beljaars+P.Bechtold 28-12-2020 Saunders cst half+T depend viscosity
+!     A. Beljaars+P.Bechtold 28-12-2020 T depend viscosity
 !     R.Forbes 15-01-2021 corrected zeroing of ZDCOOL/ZDWARM to outside if test
+!     J. Bidlot Temperature dependent thermal expansion coefficient for sea water 
+!
+!     -----------------------------------------------------------------------
+
+MODULE VOSKIN_MOD
+CONTAINS
+SUBROUTINE VOSKIN(KIDIA,KFDIA,KLON, &
+ & PTMST, &
+ & PSSRFL, PSLRFL, PAHFS, PAHFL, PUSTR, PVSTR, &
+ & PUMLEV, PVMLEV, PTSKM1M, PSST, PUSTOKES, PVSTOKES,  &
+ & YDCST, YDEXC, & 
+ & PTSK, PRPLRG,PGP2DSPP,LPERT_COLDSKIN)  
+!     ------------------------------------------------------------------
+
+!**   *VOSKIN* - COMPUTES WARM AND COLD SKIN EFFECTS OVER THE OCEAN
+
+!     Original A. Beljaars       E.C.M.W.F.         02-01-2001
+
+!     PURPOSE
+!     -------
+
+!     SOLVES FOR OCEAN SURFACE TEMPERATURE COLD SKIN AND WARM LAYER
+
+!     INTERFACE
+!     ---------
+
+!     *VOSKIN* IS CALLED BY *CALLPAR*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        PHYSICS TIME STEP
+!     *PSSRFL*       NET SOLAR RADIATION AT THE SURFACE
+!     *PSLRFL*       NET THERMAL RADIATION AT THE SURFACE
+!     *PAHFS*        SURFACE SENSIBLE HEAT FLUX
+!     *PAHFL*        SURFACE LATENT HEAT FLUX
+!     *PUSTR*        SURFACE STRESS X-DIRECTION
+!     *PVSTR*        SURFACE STRESS Y-DIRECTION
+!     *PUMLEV*       X-VELOCITY COMPONENT, lowest atmospheric level   m/s 
+!     *PVMLEV*       Y-VELOCITY COMPONENT, lowest atmospheric level   m/s 
+!     *PTSKM1M*      SKIN TEMPERATURE AT PREVIOUS TIME LEVEL
+!     *PSST*         SST
+!     *PUSTOKES*     SURFACE STOKES VELOCITY X-DIRECTION
+!     *PVSTOKES*     SURFACE STOKES VELOCITY Y-DIRECTION
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PTSK*         NEW SKIN TEMPERATURE 
+
+!     METHOD
+!     ------
+
+!     The cool skin formulation follows Fairall et al. (1996) and  
+!     depends ON surface energy balance and wind speed. The warm skin 
+!     model uses the skin temperature as a prognostic variable for the 
+!     top ocean layer. Two formulations exist:
+!     Formulation A follows she diagnostic form by Webster et al. (1996)
+!       cast into a empirical prognostic form. 
+!     Formulation C is based on derivation by Xubin Zeng
+
+!     For more details see Beljaars (1997): Air-sea interaction in the 
+!     ECMWF model, in Seminar on Atmospher-surface interaction, 
+!     8-12 September 1997. 
+
+!     Both formulations can be activated independently by 
+!     switches. 
+
+!     Takaya et al. (2009)
+!     Modification of the stability function for stable condition and 
+!     Langmuir circulation effect 
+!     N.Semane+P.Bechtold 04-10-2012 Add PRPLRG factor for small planet
+!     A. Beljaars+P.Bechtold 28-12-2020 T depend viscosity
+!     R.Forbes 15-01-2021 corrected zeroing of ZDCOOL/ZDWARM to outside if test
+!     J. Bidlot Temperature dependent thermal expansion coefficient for sea water 
 !
 !     -----------------------------------------------------------------------
 
@@ -110,6 +181,8 @@ TYPE(TCST)        ,INTENT(IN)    :: YDCST
 TYPE(TEXC)        ,INTENT(IN)    :: YDEXC
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTSK(:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PRPLRG
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGP2DSPP(:)
+LOGICAL           ,INTENT(IN)    :: LPERT_COLDSKIN
 
 INTEGER(KIND=JPIM) :: JL
 CHARACTER*1 CHVER
@@ -212,7 +285,7 @@ IF (LEOCWA .OR. LEOCCO) THEN
     ZUST(JL)=MAX(SQRT(ZUST2),ZEPUST)
 
 !     Ocean buoyancy 
-    ZALPHA(JL)=MAX(1.E-5_JPRB,1.E-5_JPRB*(PSST(JL)-273._JPRB))
+    ZALPHA(JL)=MAX(1.0E-5_JPRB, 2.1E-5_JPRB*MAX(PSST(JL)-ZT0+3.2_JPRB,0._JPRB)**0.79_JPRB)
   ENDDO
 ENDIF
 
@@ -243,6 +316,9 @@ IF (LEOCCO) then
     ZFC=MAX(ZFC,0.01_JPRB)
     ZQ2=MAX(1.0_JPRB,-ZFC*PSSRFL(JL)+ZQ)
     ZDCOOL(JL)=-ZDELTA*ZQ2/ZKW
+    IF(LPERT_COLDSKIN) THEN
+      ZDCOOL(JL) = ZDCOOL(JL) * PGP2DSPP(JL)
+    ENDIF
   ENDDO
 ENDIF
 

@@ -192,9 +192,9 @@ IEFRH=3
             ZASY(JAER)=ASY_SS( IIRH ,IWAVL,IBIN)
             ZFAC = RSS_RH80_MASSFAC
           ELSEIF (ITYP == 2) THEN
-            ZALF(JAER)=ALF_DD(IBIN,IWAVL)
-            ZOMG(JAER)=OMG_DD(IBIN,IWAVL)
-            ZASY(JAER)=ASY_DD(IBIN,IWAVL)
+            ZALF(JAER)=ALF_DD(IIRH, IWAVL, IBIN)
+            ZOMG(JAER)=OMG_DD(IIRH, IWAVL, IBIN)
+            ZASY(JAER)=ASY_DD(IIRH, IWAVL, IBIN)
           ELSEIF (ITYP == 3) THEN
 !-- for bin 2 (hydrophobic), use the 20% value of the OM optical properties
             IF (IBIN == 2) IIRH=IEFRH
@@ -247,9 +247,9 @@ IEFRH=3
               ZASY(JAER)=ASY_BC(IWAVL)
             ELSEIF (NVOLOPTP == 3) THEN
 !-- use dust for 0.9-20 um bin
-              ZALF(JAER)=ALF_DD(3,IWAVL)
-              ZOMG(JAER)=OMG_DD(3,IWAVL)
-              ZASY(JAER)=ASY_DD(3,IWAVL)
+              ZALF(JAER)=ALF_DD(1,IWAVL,3)
+              ZOMG(JAER)=OMG_DD(1,IWAVL,3)
+              ZASY(JAER)=ASY_DD(1,IWAVL,3)
             ENDIF
           ELSEIF (ITYP == 10) THEN
             ZALF(JAER)=0._JPRB

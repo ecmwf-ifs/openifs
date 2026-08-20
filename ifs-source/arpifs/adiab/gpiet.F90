@@ -14,10 +14,7 @@ SUBROUTINE GPIET(YDPHY,KPROMA,KSTART,KPROF,KFLEV,PQT0,PTT0,PCP,PRPRESF,PTETAE)
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY :  RD       ,RV       ,RCPD     ,RCPV     ,RETV     ,&
- &                     RCW      ,RCS      ,RLVTT    ,RLSTT    ,RTT      ,RATM     ,&
- &                     RALPW    ,RBETW    ,RGAMW    ,RALPS    ,RBETS    ,&
- &                     RGAMS    ,RALPD    ,RBETD    ,RGAMD  
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMPHY   , ONLY : TPHY
 
 !**** *GPIET*    Compute the isobaric equivalent temperature on model levels
@@ -54,6 +51,7 @@ USE YOMPHY   , ONLY : TPHY
 !     --------------
 !        ORIGINAL : 02-03-19
 !        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     -----------------------------------------------------------------
 
 IMPLICIT NONE
@@ -84,7 +82,12 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !     ------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('GPIET',0,ZHOOK_HANDLE)
-ASSOCIATE(LNEIGE=>YDPHY%LNEIGE)
+ASSOCIATE(LNEIGE=>YDPHY%LNEIGE, &
+ & RCPD=>YDCST%RCPD, RCPV=>YDCST%RCPV, RETV=>YDCST%RETV, RCW=>YDCST%RCW, RCS=>YDCST%RCS, &
+ & RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, RATM=>YDCST%RATM, &
+ & RALPW=>YDCST%RALPW, RBETW=>YDCST%RBETW, RGAMW=>YDCST%RGAMW, RALPS=>YDCST%RALPS, &
+ & RBETS=>YDCST%RBETS, RGAMS=>YDCST%RGAMS, RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, &
+ & RGAMD=>YDCST%RGAMD, RV=>YDCST%RV, RD=>YDCST%RD)
 !     ------------------------------------------------------------------
 
 !*       1.COMPUTE ISOBARIC EQUIVALENT POT TEMPERATURE ON MODEL LEVELS

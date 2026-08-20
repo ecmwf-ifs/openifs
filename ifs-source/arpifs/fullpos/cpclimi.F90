@@ -3,7 +3,7 @@
 SUBROUTINE CPCLIMI(YDCLIMO,YDNAMFPINT,YDNAMFPSCI,YDAFN,KFPXFLD,YDFPGEOMETRY,YDFPWSTD,YDFPSTRUCT,YDGEOMETRY,YDSURF,YDMODEL,&
  & KFLD,KOD,KORDER,PHALO,PFPOUT)
 
-!**** *CPCLIMI*  - Interpolate climatology fields
+!**** *CPCLIMI*  - Interpolate climatology fields (pratically : land-sea mask or land mask)
 
 !     PURPOSE.
 !     --------
@@ -70,6 +70,7 @@ SUBROUTINE CPCLIMI(YDCLIMO,YDNAMFPINT,YDNAMFPSCI,YDAFN,KFPXFLD,YDFPGEOMETRY,YDFP
 !      R. El Khatib 27-Jul-2016 interpolations over C+I+E
 !      R. El Khatib 09-Sep-2016 Cleaning + temporary option for Boyd
 !      E.Dutra/G.Arduini Jan 2018: change of HPOS dimension of PSP_SG, snow multi-layer
+!      R. El Khatib 20-Aug-2020 Cleaning
 !     ------------------------------------------------------------------
 
 USE TYPE_MODEL         , ONLY : MODEL
@@ -112,7 +113,7 @@ REAL(KIND=JPRB)   ,INTENT(OUT) :: PFPOUT(YDFPGEOMETRY%YFPGEO_DEP%NFPROMA,KFLD,YD
 !-----------------------------------------------------------------------------
 
 LOGICAL :: LLINC, LLCTLCLIM, LLINTERPOL
-INTEGER(KIND=JPIM) :: JFLD, JKGLO, IBL, JROF, IST, IEND, JBLOC, IRFPOS, IOFF
+INTEGER(KIND=JPIM) :: JFLD, JKGLO, IBL, IST, IEND, JBLOC, IRFPOS
 INTEGER(KIND=JPIM) :: IDUMARR(2)
 
 REAL(KIND=JPRB) :: ZCORE(YDGEOMETRY%YRDIM%NPROMA,KFLD), ZPARITY(KFLD)
@@ -184,7 +185,8 @@ ZWSXI=HUGE(1._JPRB)
 ZWDXI=HUGE(1._JPRB)
 
 CALL GSTATS(1434,0)
-!$OMP PARALLEL DO SCHEDULE(DYNAMIC,1) PRIVATE(JKGLO,IEND,IBL,JROF,JFLD,IOFF,ZCORE)
+!$OMP PARALLEL PRIVATE(JKGLO,IEND,IBL,JFLD,ZCORE)
+!$OMP DO SCHEDULE(DYNAMIC,1)
 DO JKGLO=1,NGPTOT,NPROMA
 
   IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
@@ -202,7 +204,8 @@ DO JKGLO=1,NGPTOT,NPROMA
   ENDIF
   CALL FPHALO(YDFPSTRUCT,NPROMA,KFLD,JKGLO,IEND,KFLD,ZCORE,PHALO)
 ENDDO
-!$OMP END PARALLEL DO
+!$OMP END DO
+!$OMP END PARALLEL
 CALL GSTATS(1434,1)
 
 
@@ -248,7 +251,7 @@ IF (LFPDISTRIB(YDFPGEOMETRY)) THEN
        & YLRQAUX,IRFPOS,ZCLI(:,:),ZWSXI,ZWDXI)
       !   Though the call to fpcorphy should be theorically correct, 
       !   setting to zero seems to lead to smoother fields in the extension zone
-      !   - as it was coded before - but it could have been 1. as well ...
+      !   - as it was coded before - but it could have been 1. as well, since only land-sea mask or land mask should be concerned ...
       !   this option is not documented yet. REK
       IF (NFPBOYD==1) THEN
         PFPOUT(IST:IEND,:,JBLOC)=0._JPRB

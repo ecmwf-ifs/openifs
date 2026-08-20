@@ -62,6 +62,7 @@ SUBROUTINE SUFPF(YDNAMFPF,KFPCONF,YDFPUSERGEO)
 !      R. El Khatib 17-Jul-2013 FABEC post-processing
 !    R. El Khatib : 09-Aug-2013 Protection against useless matrix usage
 !    R. El Khatib : 27-02-2019 Support for simple precision
+!    R. El Khatib : 07-Mar-2023 Slightly increase RFPMAXDEV in simple precision or certain machines wouldn't make it.
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB     ,JPRD
@@ -146,7 +147,7 @@ IF (JPRB == JPRD) THEN
   ! Double precision version
   RFPMAXDEV=1.E-10_JPRB
 ELSE
-  RFPMAXDEV=0.2E-5_JPRB
+  RFPMAXDEV=0.205E-5_JPRB
 ENDIF
 NFPREADALL=1
 LFPWRFIL=.FALSE.

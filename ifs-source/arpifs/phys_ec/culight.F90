@@ -7,7 +7,7 @@
 ! nor does it submit to any jurisdiction
 
 SUBROUTINE CULIGHT &
- & ( YDEPHY,  YGFL  ,  YDECUMF, &
+ & ( PPLDARE, PPLRG,   YDTHF,   YDCST,   YDEPHY,  YGFL, YDECUMF, &
  &   KIDIA ,  KFDIA ,  KLON,    KLEV,  PGAW, PGELAT, &
  &   PAP,     PAPH  ,  PAPHI,   PAPHIF,  LDLAND,&
  &   PT    ,  PLU   ,  PMFU,    PCAPE, &
@@ -109,19 +109,15 @@ SUBROUTINE CULIGHT &
 !    P. Lopez 24/07/2015     New ECMWF lightning parameterization plus added Grewe (2001) and Allen-Pickering (2002).
 !    P. Lopez 08/10/2015     Moved lightning NOx computations to CULINOX.
 !    P. Lopez 25/03/2021     Extended usage to the case of explicit convection (i.e. at very high resolutions).
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !
 !----------------------------------------------------------------------
 
 USE PARKIND1  , ONLY : JPIM     ,JPRB
 USE YOMHOOK   , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST    , ONLY : RG       ,RLVTT    ,RLSTT    ,RTT      ,&
-                     & RD       ,RPI      ,RA       ,RDAYI
-USE YOETHF    , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
-                     & R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
-                     & RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
-                     & RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
-USE YOMDYNCORE, ONLY : RPLRG
+USE YOMCST    , ONLY : TCST
+USE YOETHF    , ONLY : TTHF  
 USE YOEPHY    , ONLY : TEPHY
 USE YOM_YGFL  , ONLY : TYPE_GFLD
 USE YOECUMF   , ONLY : TECUMF
@@ -130,9 +126,13 @@ USE YOECUMF   , ONLY : TECUMF
 
 IMPLICIT NONE
 
-TYPE(TEPHY)       ,INTENT(INOUT) :: YDEPHY
-TYPE(TYPE_GFLD)   ,INTENT(INOUT) :: YGFL
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLDARE
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLRG
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TEPHY)       ,INTENT(IN)    :: YDEPHY
+TYPE(TYPE_GFLD)   ,INTENT(IN)    :: YGFL
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -164,6 +164,8 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCDEPTH(KLON)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWMFU(KLON)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCHARGE(KLON)
 
+#include "abor1.intfb.h"
+ 
 !             LOCAL STORAGE
 !             ----- -------
 
@@ -185,8 +187,8 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('CULIGHT',0,ZHOOK_HANDLE)
 
-ASSOCIATE(NLIMODE=>YDEPHY%NLIMODE, NCHEM=>YGFL%NCHEM, LMFPEN=>YDECUMF%LMFPEN)
-
+ASSOCIATE(NLIMODE=>YDEPHY%NLIMODE, LMFPEN=>YDECUMF%LMFPEN, &
+ & RA=>YDCST%RA, RD=>YDCST%RD, RDAYI=>YDCST%RDAYI, RG=>YDCST%RG, RPI=>YDCST%RPI, RTT=>YDCST%RTT)
 !----------------------------------------------------------------------
 !     0.           INITIALIZE CONSTANTS AND FIELDS
 !----------------------------------------------------------------------
@@ -220,11 +222,6 @@ ZAREA_REF=(20015.1_JPRB/90.0_JPRB)*(17333.6_JPRB/72.0_JPRB)
 !     1.           CALCULATE LIGHTNING FLASH RATES
 !----------------------------------------------------------------------
 
-IF (NCHEM /= 0) THEN
-  NLIMODE = 4
-!  WRITE(NULOUT,*) 'CAMS-SPECIFIC CONFIGURATION CHANGE: NLIMODE HAS BEEN SET TO 4'
-ENDIF
-
 DO JL=KIDIA,KFDIA
 
   IF (LDCUM(JL) .AND. KCTOP(JL) >= 1 .AND. KCTOP(JL) <= KLEV) THEN
@@ -237,7 +234,7 @@ DO JL=KIDIA,KFDIA
     PPRECMX(JL)=MAXVAL(PFPLCL(JL,KCTOP(JL):KCBOT(JL))+PFPLCN(JL,KCTOP(JL):KCBOT(JL)))
 
 ! naj is this cloud base <  4 km OK for TM5's and MOZART's parameterisations ?
-    IF (ZBASHG < (4.0_JPRB/RPLRG) .AND. PPRECMX(JL) > 1.E-10_JPRB) THEN
+    IF (ZBASHG < (4.0_JPRB/PPLRG) .AND. PPRECMX(JL) > 1.E-10_JPRB) THEN
 
       ! Set flag for grid-points where NOx computations should be performed in CULINOX.
       LDLINOX(JL)=.TRUE.

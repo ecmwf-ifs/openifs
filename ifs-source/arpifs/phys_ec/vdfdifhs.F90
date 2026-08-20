@@ -114,6 +114,7 @@ SUBROUTINE VDFDIFHS (YDMCC,YDEPHY,YDRIP,KIDIA, KFDIA, KLON, KLEV, KLEVSN,KTOP,KT
 !      G. Balsamo   14-08-2013 For lakes
 !      E. Dutra 11-10-2016 : Replaace surfseb by surfsebs to accomudate interface changes in surfseb 
 !                            not replicated in surfsebs. 
+!      J. McNorton  24-08-2022 Urban tile
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB
@@ -200,7 +201,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !     ------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('VDFDIFHS',0,ZHOOK_HANDLE)
-ASSOCIATE(LEFLAKE=>YDEPHY%LEFLAKE, YSURF=>YDEPHY%YSURF, &
+ASSOCIATE(LEFLAKE=>YDEPHY%LEFLAKE, LEURBAN=>YDEPHY%LEURBAN, YSURF=>YDEPHY%YSURF, &
  & LNEMOLIMTHK=>YDMCC%LNEMOLIMTHK, &
  & TSTEP=>YDRIP%TSTEP)
 ZALF=PVDIFTS
@@ -286,6 +287,7 @@ ZTSRF(KIDIA:KFDIA,8) = PTSM1M(KIDIA:KFDIA)
 IF (LEFLAKE) THEN
   ZTSRF(KIDIA:KFDIA,9) = PSST(KIDIA:KFDIA)
 ENDIF
+IF (LEURBAN) ZTSRF(KIDIA:KFDIA,10) = PTSM1M(KIDIA:KFDIA)
 
 ZCOEF1=1.0_JPRB/(RG*ZALF*PTMST)
 DO JT=1,KTILES
@@ -294,7 +296,6 @@ DO JT=1,KTILES
     ZRHOCQU(JL,JT) = PCFQTI(JL,JT)*ZCOEF1
   ENDDO
 ENDDO
-
 
 !*         3.2     CALL TO SURFACE ENERGY BALANCE ROUTINE
 !                  REMEMBER: OUTPUT IS EXTRAPOLATED IN TIME

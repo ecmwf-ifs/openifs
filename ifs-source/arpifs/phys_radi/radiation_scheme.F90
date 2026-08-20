@@ -1,10 +1,12 @@
-! (C) Copyright 2015- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE RADIATION_SCHEME &
      & (YDMODEL,KIDIA, KFDIA, KLON, KLEV, KAEROSOL, &
      &  PSOLAR_IRRADIANCE, &
@@ -61,6 +63,7 @@ SUBROUTINE RADIATION_SCHEME &
 !   2019-02-07  R. Hogan  SPARTACUS cloud size from PARAM_CLOUD_EFFECTIVE_SEPARATION_ETA
 !   2020-10-12  M. Leutbecher SPP abstraction
 !   2021-08-26  R. Hogan  Added "true" Coddington solar spectrum
+!   2022-07-08  R. El Khatib Contribution to the encapsulation of YOMCST and YOETHF
 !
 !-----------------------------------------------------------------------
 
@@ -70,14 +73,14 @@ USE PARKIND1       , ONLY : JPIM, JPRB, JPRD
 USE YOMHOOK        , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMRIP0        , ONLY : NINDAT
 USE YOMCT3         , ONLY : NSTEP
-USE YOMCST         , ONLY : RPI, RSIGMA ! Stefan-Boltzmann constant
-USE YOMLUN         , ONLY : NULERR
+USE YOMCST         , ONLY : YRCST
+USE YOETHF         , ONLY : YRTHF
+USE YOMLUN         , ONLY : NULERR, NULOUT
 USE SPP_GEN_MOD    , ONLY : SPP_PERT
 USE MPL_MYRANK_MOD , ONLY : MPL_MYRANK
-USE RADIATION_SETUP, ONLY : ITYPE_TROP_BG_AER, ITYPE_STRAT_BG_AER
 
 ! Modules from ecRad radiation library
-USE RADIATION_CONFIG,         ONLY : ISOLVERSPARTACUS
+USE RADIATION_CONFIG,         ONLY : ISOLVERSPARTACUS, CONFIG_TYPE
 USE RADIATION_SINGLE_LEVEL,   ONLY : SINGLE_LEVEL_TYPE
 USE RADIATION_THERMODYNAMICS, ONLY : THERMODYNAMICS_TYPE
 USE RADIATION_GAS,            ONLY : GAS_TYPE,&
@@ -94,7 +97,7 @@ IMPLICIT NONE
 ! INPUT ARGUMENTS
 
 ! *** Array dimensions and ranges
-TYPE(MODEL)       ,INTENT(INOUT):: YDMODEL
+TYPE(MODEL)       ,INTENT(IN), TARGET :: YDMODEL
 INTEGER(KIND=JPIM),INTENT(IN)   :: KIDIA    ! Start column to process
 INTEGER(KIND=JPIM),INTENT(IN)   :: KFDIA    ! End column to process
 INTEGER(KIND=JPIM),INTENT(IN)   :: KLON     ! Number of columns
@@ -258,7 +261,15 @@ INTEGER(KIND=JPIM), SAVE :: N_OUTPUT_FLUXES = 0
 ! NetCDF file name in case of bad fluxes
 CHARACTER(LEN=512) :: CL_FILE_NAME
 
+! Old Tegen aerosol scheme diagnosed by other logicals being false:
+! the logic setting this needs to be the same as in
+! su_radiation_scheme.F90
+LOGICAL :: LL_USE_TEGEN_AEROSOLS
+  
+TYPE (CONFIG_TYPE), POINTER :: RAD_CONFIG
+
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
 
 
 ! Import time functions for iseed calculation
@@ -272,10 +283,18 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('RADIATION_SCHEME',0,ZHOOK_HANDLE)
 
+! RAD_CONFIG is modified in this routine
+! - either use a private object
+! - or move the modification outside this routine
+! For now use pointer laundering
+
+RAD_CONFIG => YDMODEL%YRML_PHY_RAD%YRADIATION%RAD_CONFIG
+
 ASSOCIATE(YDRADIATION=>YDMODEL%YRML_PHY_RAD%YRADIATION, &
      &    YRERAD=>YDMODEL%YRML_PHY_RAD%YRERAD, &
-     &    YDSPP_CONFIG=>YDMODEL%YRML_GCONF%YRSPP_CONFIG)
-ASSOCIATE(RAD_CONFIG=>YDRADIATION%RAD_CONFIG, &
+     &    YDSPP_CONFIG=>YDMODEL%YRML_GCONF%YRSPP_CONFIG, &
+     &    YDERDI=>YDMODEL%YRML_PHY_RAD%YRERDI)
+ASSOCIATE(RPI=>YRCST%RPI, RSIGMA=>YRCST%RSIGMA, &
      &    NWEIGHT_UV=>YDRADIATION%NWEIGHT_UV, &
      &    IBAND_UV  =>YDRADIATION%IBAND_UV(:), &
      &    WEIGHT_UV =>YDRADIATION%WEIGHT_UV(:), &
@@ -283,7 +302,8 @@ ASSOCIATE(RAD_CONFIG=>YDRADIATION%RAD_CONFIG, &
      &    IBAND_PAR =>YDRADIATION%IBAND_PAR(:), &
      &    WEIGHT_PAR=>YDRADIATION%WEIGHT_PAR(:), &
      &    TROP_BG_AER_MASS_EXT=>YDRADIATION%TROP_BG_AER_MASS_EXT, &
-     &    STRAT_BG_AER_MASS_EXT=>YDRADIATION%STRAT_BG_AER_MASS_EXT)
+     &    STRAT_BG_AER_MASS_EXT=>YDRADIATION%STRAT_BG_AER_MASS_EXT, &
+     &    NACTAERO=>YDMODEL%YRML_GCONF%YGFL%NACTAERO)
 ! Allocate memory in radiation objects
 CALL SINGLE_LEVEL%ALLOCATE(KLON, YRERAD%NSW, YRERAD%NLWEMISS, &
      &                     USE_SW_ALBEDO_DIRECT=.TRUE.)
@@ -292,9 +312,12 @@ CALL GAS%ALLOCATE(KLON, KLEV)
 CALL YLCLOUD%ALLOCATE(KLON, KLEV)
 IF (YDMODEL%YRML_PHY_RAD%YREAERATM%LAERCCN &
      &  .OR. YDMODEL%YRML_PHY_RAD%YREAERATM%LAERRRTM &
-     &  .OR. YRERAD%NAERMACC == 1) THEN
+     &  .OR. YRERAD%NAERMACC == 1 .OR. NACTAERO > 0) THEN
+  LL_USE_TEGEN_AEROSOLS = .FALSE.
   CALL AEROSOL%ALLOCATE(KLON, 1, KLEV, KAEROSOL) ! MACC aerosols
 ELSE
+  LL_USE_TEGEN_AEROSOLS = .TRUE.
+  WRITE(NULOUT,'(A)') 'RADIATION_SCHEME: Warning, assuming Tegen aerosols'
   CALL AEROSOL%ALLOCATE(KLON, 1, KLEV, 6) ! Tegen climatology
 ENDIF
 CALL FLUX%ALLOCATE(RAD_CONFIG, 1, KLON, KLEV)
@@ -335,7 +358,7 @@ THERMODYNAMICS%TEMPERATURE_HL(KIDIA:KFDIA,KLEV+1)&
 ! Compute saturation specific humidity, used to hydrate aerosols. The
 ! "2" for the last argument indicates that the routine is not being
 ! called from within the convection scheme.
-CALL SATUR(KIDIA, KFDIA, KLON, 1, KLEV, YDMODEL%YRML_PHY_SLIN%YREPHLI%LPHYLIN, &
+CALL SATUR(YRTHF, YRCST, KIDIA, KFDIA, KLON, 1, KLEV, YDMODEL%YRML_PHY_SLIN%YREPHLI%LPHYLIN, &
      &  PPRESSURE, PTEMPERATURE, THERMODYNAMICS%H2O_SAT_LIQ, 2)  
 ! Alternative approximate version using temperature and pressure from
 ! the thermodynamics structure
@@ -349,6 +372,17 @@ SINGLE_LEVEL%SW_ALBEDO(KIDIA:KFDIA,:)      = PALBEDO_DIF(KIDIA:KFDIA,:)
 SINGLE_LEVEL%SW_ALBEDO_DIRECT(KIDIA:KFDIA,:)=PALBEDO_DIR(KIDIA:KFDIA,:)
 ! Spectral longwave emissivity
 SINGLE_LEVEL%LW_EMISSIVITY(KIDIA:KFDIA,:)  = PSPECTRALEMISS(KIDIA:KFDIA,:)
+
+! Do we adjust the solar spectrum for time in the solar cycle? Only
+! available with the ecCKD gas optics scheme.
+IF (YRERAD%LSPECTRALSOLARCYCLE) THEN
+  ! Solar cycles are counted from solar minima, so whole numbers lead to a
+  ! multiplier of minus one (solar minimum), values ending in .5 lead
+  ! to a multiplier of plus one (solar maximum)
+  SINGLE_LEVEL%SPECTRAL_SOLAR_CYCLE_MULTIPLIER = YDERDI%RSOLARCYCLEMULT
+ELSE
+  SINGLE_LEVEL%SPECTRAL_SOLAR_CYCLE_MULTIPLIER = 0.0_JPRB
+END IF
 
 ! Create the relevant seed from date and time get the starting day
 ! and number of minutes since start
@@ -507,11 +541,7 @@ ENDIF
 CALL THERMODYNAMICS%GET_LAYER_MASS(KIDIA,KFDIA,ZLAYER_MASS)
 
 ! Copy over aerosol mass mixing ratio
-IF (YDMODEL%YRML_PHY_RAD%YREAERATM%LAERCCN &
-     &  .OR. YDMODEL%YRML_PHY_RAD%YREAERATM%LAERRRTM &
-     &  .OR. YRERAD%NAERMACC == 1) THEN
-
-
+IF (.NOT. LL_USE_TEGEN_AEROSOLS) THEN
   ! MACC aerosol from climatology or prognostic aerosol variables -
   ! this is already in mass mixing ratio units with the required array
   ! orientation so we can copy it over directly
@@ -525,18 +555,18 @@ IF (YDMODEL%YRML_PHY_RAD%YREAERATM%LAERCCN &
     ENDDO
   ENDDO
 
-  IF (YRERAD%NAERMACC == 1) THEN
+  IF (.NOT. LL_USE_TEGEN_AEROSOLS) THEN
     ! Add the tropospheric and stratospheric backgrounds contained in the
     ! old Tegen arrays - this is very ugly!
     IF (TROP_BG_AER_MASS_EXT > 0.0_JPRB) THEN
-      AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,ITYPE_TROP_BG_AER)&
-           &  = AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,ITYPE_TROP_BG_AER)&
+      AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,YDRADIATION%ITYPE_TROP_BG_AER)&
+           &  = AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,YDRADIATION%ITYPE_TROP_BG_AER)&
            &  + PAEROSOL_OLD(KIDIA:KFDIA,1,:)&
            &  / (ZLAYER_MASS * TROP_BG_AER_MASS_EXT)
     ENDIF
     IF (STRAT_BG_AER_MASS_EXT > 0.0_JPRB) THEN
-      AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,ITYPE_STRAT_BG_AER)&
-           &  = AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,ITYPE_STRAT_BG_AER)&
+      AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,YDRADIATION%ITYPE_STRAT_BG_AER)&
+           &  = AEROSOL%MIXING_RATIO(KIDIA:KFDIA,:,YDRADIATION%ITYPE_STRAT_BG_AER)&
            &  + PAEROSOL_OLD(KIDIA:KFDIA,6,:)&
            &  / (ZLAYER_MASS * STRAT_BG_AER_MASS_EXT)
     ENDIF

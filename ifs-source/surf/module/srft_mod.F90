@@ -1,3 +1,94 @@
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFT* - Computes temperature changes in soil.
+
+!     PURPOSE.
+!     --------
+!**   Computes temperature changes in soil due to 
+!**   surface heat flux and diffusion.  
+
+!**   INTERFACE.
+!     ----------
+!          *SRFT* IS CALLED FROM *SURF*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF SURFACE TILES
+!    *KDHVTTS*    Number of variables for soil energy budget
+!    *KDHFTTS*    Number of fluxes for soil energy budget
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PWSAM1M*    SOIL MOISTURE                                m**3/m**3
+!    *PSLRFLTI*   Tiled NET LONGWAVE  RADIATION AT THE SURFACE        W/M**2
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL       W/M2
+!    *PGLICE*     GROUND HEAT FLUX FROM ICE DECK TO SOIL       W/M2
+!    *PCTSA*      VOLUMETRIC HEAT CAPACITY                      J/K/M**3
+!    *PFRTI*      TILE FRACTIONS                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!    *PAHFSTI*    TILE SURFACE SENSIBLE HEAT FLUX                 W/M2
+!    *PEVAPTI*    TILE SURFACE MOISTURE FLUX                     KG/M2/S
+!    *PSSRFLTI*   TILE NET SHORTWAVE RADIATION FLUX AT SURFACE    W/M2
+
+!     UPDATED PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PTSA*       SOIL TEMPERATURE                               K
+!    *PTSDFL*     UPWARD FLUX BETWEEN SURFACE AND DEEP LAYER     W/M**2
+!    *PDHTTS*     Diagnostic array for soil T (see module yomcdh)
+
+!     METHOD.
+!     -------
+
+!          Parameters are set and the tridiagonal solver is called.
+
+!     EXTERNALS.
+!     ----------
+!     *SRFWDIF*
+
+!     REFERENCE.
+!     ----------
+!          See documentation.
+
+!     Original :
+!     P.VITERBO      E.C.M.W.F.     16/03/93
+!     A.Beljaars     E.C.M.W.F.     12/03/1999
+!                    (implicit solution of diffusion equation)
+!     P.VITERBO      E.C.M.W.F.     17/05/2000
+!                    (Surface DDH for TILES)
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo    24-05-2004      Change surface units
+!     G. Balsamo    08-01-2006      Include Van Genuchten Hydro.
+!     E. Dutra      21/11/2008      change ground heat flux ! account for new lake tile
+!     E. Dutra      10/10/2014  net longwave tiled
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     J. McNorton   24/08/2022  urban tile
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP3 object for spatially distributed parameters
+!     G. Arduini           Sept 2024 Snow over land-ice
+!     ------------------------------------------------------------------
+
 MODULE SRFT_MOD
 CONTAINS
 SUBROUTINE SRFT(KIDIA  , KFDIA , KLON   , KTILES, KLEVS ,&
@@ -16,14 +107,6 @@ USE YOS_FLAKE, ONLY : TFLAKE
 USE YOS_URB  , ONLY : TURB
 
 USE SRFWDIF_MOD
-
-! (C) Copyright 1993- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFT* - Computes temperature changes in soil.
 
@@ -100,6 +183,7 @@ USE SRFWDIF_MOD
 !     G. Balsamo    08-01-2006      Include Van Genuchten Hydro.
 !     E. Dutra      21/11/2008      change ground heat flux ! account for new lake tile
 !     E. Dutra      10/10/2014  net longwave tiled
+!     J. McNorton   24/08/2022  urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -156,7 +240,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SRFT_MOD:SRFT',0,ZHOOK_HANDLE)
 ASSOCIATE(RLVTT=>YDCST%RLVTT, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, &
  & LEVGEN=>YDSOIL%LEVGEN, RDAT=>YDSOIL%RDAT, RFRSMALL=>YDSOIL%RFRSMALL, &
  & RTF1=>YDSOIL%RTF1, RTF2=>YDSOIL%RTF2, RTF3=>YDSOIL%RTF3, RTF4=>YDSOIL%RTF4, &
  & RKERST1=>YDSOIL%RKERST1, RKERST2=>YDSOIL%RKERST2, RKERST3=>YDSOIL%RKERST3, &
@@ -196,7 +280,7 @@ DO JL=KIDIA,KFDIA
      & +PFRTI(JL,6)*(PAHFSTI(JL,6)+RLVTT*PEVAPTI(JL,6))&
      & +PFRTI(JL,8)*(PAHFSTI(JL,8)+RLVTT*PEVAPTI(JL,8))  
      
-    IF ( KTILES .GT. 9 ) THEN
+    IF (LEURBAN) THEN
      ZSSRFL=ZSSRFL+PFRTI(JL,10)*PSSRFLTI(JL,10)
      ZSLRFL=ZSLRFL+PFRTI(JL,10)*PSLRFLTI(JL,10)
      ZTHFL=ZTHFL+PFRTI(JL,10)*(PAHFSTI(JL,10)+RLVTT*PEVAPTI(JL,10))
@@ -211,7 +295,7 @@ DO JL=KIDIA,KFDIA
           ZSURFL(JL)=PGSN(JL)+(ZSSRFL+ZSLRFL+ZTHFL) & 
                   & / (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8))
         ENDIF
-        IF ( KTILES .GT. 9 ) THEN
+        IF ( LEURBAN ) THEN
           IF ( (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)+PFRTI(JL,10)) > RFRSMALL ) THEN
             ZSURFL(JL)=PGSN(JL)+(ZSSRFL+ZSLRFL+ZTHFL) &
                     & / (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)+PFRTI(JL,10))
@@ -260,7 +344,7 @@ DO JK=1,KLEVS
           ZDIF(JL,JK)=FSOILTCOND(PWSAM1M(JL,JK),ZFF,JS)
 !         print*,'soil cond',jk,PWSAM1M(JL,JK),js,ZDIF(JL,JK),FSOILTCOND(PWSAM1M(JL,JK),JS),ZDIF(JL,JK)-FSOILTCOND(PWSAM1M(JL,JK),JS)
         ENDIF
-        IF ( KTILES .GT. 9 ) THEN
+        IF ( LEURBAN ) THEN
           IF (JK == 1) THEN
             ZDIF(JL,JK) = (1.0_JPRB-PFRTI(JL,10))*ZDIF(JL,JK) + (PFRTI(JL,10)*RURBTC1) !EXCHANGE DIFFERS FOR URBAN
           ENDIF
@@ -363,7 +447,7 @@ IF (SIZE(PDHTTS) > 0) THEN
 ! Ground heat flux
       PDHTTS(JL,1,14)=-ZSURFL(JL)
 ! Urban
-      IF ( KTILES .GT. 9 ) THEN
+      IF ( LEURBAN ) THEN
         PDHTTS(JL,1,9)=PDHTTS(JL,1,9)+PFRTI(JL,10)*PAHFSTI(JL,10)
         PDHTTS(JL,1,10)=PDHTTS(JL,1,10)+PFRTI(JL,10)*PEVAPTI(JL,10)
       ENDIF    
@@ -386,7 +470,7 @@ IF (SIZE(PDHTTS) > 0) THEN
       IF (LLDOSOIL(JL)) THEN
 ! Heat capacity per unit surface
         PDHTTS(JL,JK,1)=RRCSOIL*RDAT(JK)
-        IF ( KTILES .GT. 9 ) THEN
+        IF ( LEURBAN ) THEN
           PDHTTS(JL,JK,1)=(RRCSOIL*(1.0_JPRB-PFRTI(JL,10)) + (PFRTI(JL,10)*RURBVHC))*RDAT(JK)
         ENDIF
 ! Soil temperature

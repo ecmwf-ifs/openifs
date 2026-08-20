@@ -1,13 +1,14 @@
 ! (C) Copyright 1989- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUDDRAFN &
- & (YDEPHLI, YDECUMF,&
+ & (YDCST,   YDTHF,    YDEPHLI, YDECUMF,&
  & KIDIA,    KFDIA,    KLON,     KLEV,&
  & LDDRAF,&
  & PTENH,    PQENH,    PQSEN,&
@@ -92,19 +93,23 @@ SUBROUTINE CUDDRAFN &
 !     --------------
 !      03-08-28 : Clean-up detrainment rates   P. BECHTOLD
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE YOEPHLI  , ONLY : TEPHLI
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG       ,RCPD     ,RETV
+USE YOMCST   , ONLY : TCST
+USE YOETHF   , ONLY : TTHF
 USE YOECUMF  , ONLY : TECUMF
 
 IMPLICIT NONE
 
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
-TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
+TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -131,7 +136,7 @@ REAL(KIND=JPRB) ::     ZDMFEN(KLON),           ZDMFDE(KLON),&
  & ZCOND(KLON),        ZOENTR(KLON),           ZBUOY(KLON)  
 REAL(KIND=JPRB) ::     ZPH(KLON)
 LOGICAL ::  LLO2(KLON)
-INTEGER(KIND=JPIM) :: ICALL, IK, IS, ITOPDE, JK, JL
+INTEGER(KIND=JPIM) :: IK, IS, ITOPDE, JK, JL
 
 REAL(KIND=JPRB) :: ZBUO, ZBUOYZ, ZBUOYV, ZDMFDP, ZDZ, ZENTR, ZMFDQK,&
  & ZMFDSK, ZQDDE, ZQEEN, ZRAIN, &
@@ -142,6 +147,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('CUDDRAFN',0,ZHOOK_HANDLE)
 ASSOCIATE(ENTRDD=>YDECUMF%ENTRDD, NJKT3=>YDECUMF%NJKT3, &
+ & RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RG=>YDCST%RG, &
  & RMFCMIN=>YDECUMF%RMFCMIN)
 ITOPDE=NJKT3
 ZRG=1.0_JPRB/RG
@@ -235,10 +241,9 @@ DO JK=3,KLEV
   ENDDO
 
   IK=JK
-  ICALL=2
   CALL CUADJTQ &
-   & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK, &
-   &   ZPH,      PTD,      PQD,      LLO2,     ICALL )  
+   & ( YDTHF, YDCST, YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK, &
+   &   ZPH,      PTD,      PQD,      LLO2,     2 )  
 
   DO JL=KIDIA,KFDIA
     IF(LLO2(JL)) THEN

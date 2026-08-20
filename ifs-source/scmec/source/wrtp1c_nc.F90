@@ -62,13 +62,14 @@ USE YOETHF      , ONLY : RHOH2O
 USE YOMCT3      , ONLY : NSTEP
 USE YOMGT1C0    , ONLY : UT0      ,VT0      ,TT0      ,QT0      ,&
                         &WT0      ,ST0      ,AT0      ,SPT0     ,&
-                        &RNT0     ,SNT0
+                        &RNT0     ,SNT0     
 USE YOMGP1C0    , ONLY : TSA0     ,WSA0     ,SNS0     ,TL0      ,&
                         &WL0      ,RSN0     ,ASN0     ,TSN0
 USE YOMGPD1C    , ONLY : VQSAT
 USE YOMLOG1C    , ONLY : NPOSPRG  ,NPOSASC
-USE YOETHF
-USE YOMCST
+USE YOETHF      , ONLY : RVTMP2   ,YDTHF=>YRTHF           ! Rename for fcttre.func.h
+USE YOMCST      , ONLY : RETV     ,RCPD     ,RD       ,RV       ,&
+                        &RG       ,RLVTT    ,YDCST=>YRCST ! Rename for fcttre.func.h
 USE INTDYN_MOD  , ONLY : YYTXYB
 USE SURFACE_FIELDS_MIX, ONLY : TSURF
 
@@ -144,7 +145,8 @@ CALL SURF_INQ(YSURF,PRDAW=ZRDAW)
 ZLINU0(1:ICSS) = WSA0(1:ICSS) / RHOH2O / ZRDAW(1:ICSS)
 
 IST  = 1
-IEND = 1
+!IEND = 1
+IEND = NPROMA
 
 ZPRESH(NFLEVG) = EXP(SPT0)
 

@@ -94,9 +94,9 @@ USE YOMLOCS       , ONLY : TOBSLOCS
 
 USE DBASE_MOD     , ONLY : DBASE
 USE FULLPOS       , ONLY : TFPOS
-USE YOMJBECV      , ONLY : LECPHYSPARECV, READ_FG_ECV, SAVE_FG_ECV, YRECV5
-USE YOMJBPAR1DECV , ONLY : SUPARECVTRAJ, PARECV_SAVE
-USE YOMJBECPHYSECV , ONLY : LSOLARCST
+!USE YOMJBECV      , ONLY : LECPHYSPARECV
+!USE YOMJBPAR1DECV , ONLY : PARECV_SAVE
+!USE YOMJBECPHYSECV , ONLY : LSOLARCST
 #ifdef WITH_ATLAS
 USE ATLAS_MODULE  , ONLY : ATLAS_TRACE
 #endif
@@ -124,6 +124,23 @@ TYPE(ATLAS_TRACE) :: TRACE
 
 #include "cnt2.intfb.h"
 #include "dealxmo.intfb.h"
+
+
+
+#include "pertobs.intfb.h"
+#include "sacmac1.intfb.h"
+#include "screen.intfb.h"
+#include "suobs.intfb.h"
+#include "suobs_legacy.intfb.h"
+#include "suobsb.intfb.h"
+#include "sualldfi.intfb.h"
+#include "suprepjcdfi.intfb.h"
+#include "evjcdfi.intfb.h"
+#include "save_fg_ecv.intfb.h"
+
+
+
+
 !      -----------------------------------------------------------------
 
 !*       1.    Initialize YOMCT1.
@@ -149,12 +166,8 @@ IF (LOBSC1 .AND. LOBS) THEN
 ENDIF
 
 IF (LJCDFI) THEN
-
-
-
-
-  call abor1("OIFS - cnt1 call to obs setup (LJCDFI) should never be called - EXIT")
-
+  CALL SUPREPJCDFI(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYN,NULOUT)
+  CALL SUALLDFI(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMF,NULOUT)
 ENDIF
 
 !      -----------------------------------------------------------------
@@ -169,9 +182,6 @@ IF(LOBSC1 .AND. LVARBC) THEN
 
 ENDIF
 
-!      -----------------------------------------------------------------
-!*       2.6   set up parameters optimization
-!              --------------------------------------
 !      -----------------------------------------------------------------
 
 !*       3.    Call level 2 control routine.
@@ -207,13 +217,9 @@ ENDIF
 !              -------------------------------
 
 IF (LSCREEN.AND.L_SCREEN_CALL) THEN
-
-
-
-
-
-  call abor1("OIFS - cnt1 call to obs setup (LSCREEN.AND.L_SCREEN_CALL) should never be called - EXIT")
-
+  CALL GSTATS(45,0)
+  CALL SCREEN(YDMODEL,YDODB,YGOM5,YDJOT)
+  CALL GSTATS(45,1)
 ENDIF
 
 !      -----------------------------------------------------------------
@@ -233,18 +239,30 @@ ENDIF
 
 !*       6.    save CMA files and evaluate cost function (LOBSC1)
 !              --------------------------------------------------
+
+IF(LSCREEN.OR.LOBSC1) CALL GSTATS(46,0)
+
+IF (LJCDFI) CALL EVJCDFI(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMF,YDMODEL%YRML_DYN%YRDYN,NULOUT,.TRUE.)
+
+IF (LOBSC1) THEN
+  CALL SACMAC1(YDMODEL%YRML_GCONF%YRDIMF,YDODB,YDGEOMETRY,YDVARBC%AFJPCOST,YDJOT)
+ENDIF
+
+
+
+
+
+IF(LSCREEN.OR.LOBSC1) CALL GSTATS(46,1)
+
+
+
 !      -----------------------------------------------------------------
 !*       7.    Save parameters optim. information for cycling
 !              ------------------------------------------------------
 
 IF (LOBS .AND. LECV) THEN
-
-
-
-
-  call abor1("OIFS - cnt1 call to obs setup (LSCREEN.AND.L_SCREEN_CALL) should never be called - EXIT")
+  CALL SAVE_FG_ECV(YDGEOMETRY,  YDFIELDS%FIELD5_ECV)
 !  IF (LECPHYSPARECV) CALL PARECV_SAVE()
-
 ENDIF
 
 !      -----------------------------------------------------------------

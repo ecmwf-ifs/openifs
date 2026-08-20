@@ -9,7 +9,7 @@
 
 MODULE YOMMP0
 
-USE PARKIND1  ,ONLY : JPIM
+USE PARKIND1  ,ONLY : JPIM, JPRD
 
 IMPLICIT NONE
 
@@ -33,10 +33,10 @@ SAVE
 !  mysetb      :  own processor set b (is in the range 1 to nprgpew)
 !  my_region_ns:  own processor set a (is in the range 1 to n_regions_ns)
 !  my_region_ew:  own processor set b (is in the range 1 to n_regions_ew)
-!  mysetw      :  own processor set a in wave space (1..nprtrw)   
-!  mysetv      :  own processor set b in wave space (1..nprtrv)    
-!  mysetm      :  own processor set a in spectral space (1..nprtrm)    
-!  mysetn      :  own processor set b in spectral space (1..nprtrn)    
+!  mysetw      :  own processor set a in wave space (1..nprtrw)
+!  mysetv      :  own processor set b in wave space (1..nprtrv)
+!  mysetm      :  own processor set a in spectral space (1..nprtrm)
+!  mysetn      :  own processor set b in spectral space (1..nprtrn)
 
 !  n_regions_ns:  number of regions (LEQ_REGIONS=T) or NPRGPNS (LEQ_REGIONS=F)
 !  n_regions_ew:  maximum number of partitions for all regions
@@ -44,7 +44,7 @@ SAVE
 !  ngpset2pe   :  grid point space processor mapping array (n_regions_ns,n_regions_ew)
 !  nslpad      :  number of pad words initialised to a huge number at either
 !                 of side of the sl halo, used to trap halo problems.
-!                 The default is 0. 
+!                 The default is 0.
 !  nouttype    :  type of output (post) processing to be performed
 !              :  1=pbio
 !              :  2=output to FDB
@@ -59,7 +59,7 @@ SAVE
 !                 (from 1 to NPROC) and the numbering used by the
 !                 underlying communication library.
 !  ndistio(1)   : if set to 1, then fields with be written in separate files
-!                (1 file per nstrout proc and per forecast term). 
+!                (1 file per nstrout proc and per forecast term).
 !                 if set to 2, then fields with be written in separate files
 !                (1 file per nstrout proc; all forecast terms in)
 !  ndistio(2)   : disable write by proc #1
@@ -75,6 +75,8 @@ SAVE
 !  lsplitout   :  output data provided in sequential files (.true.) or
 !                 in directories (.false.)
 !  lsync_slcom : true: activate a barrier in SL communications
+!  lsync_slcom2: true: activate a barrier in SL COMM2 communications
+!  lsync_calsl : true: activate a barrier at the end of SL_CALL
 !  lsync_trans : true: activate a barrier in spectral transforms
 !  lsldebug    : true: diagnostics regarding use of SL halos is computed and printed
 !  lslondem    : .true. default value for sl on demand (used for model)
@@ -128,6 +130,8 @@ LOGICAL :: LSPLIT
 LOGICAL :: LEQ_REGIONS
 LOGICAL :: LSPLITOUT
 LOGICAL :: LSYNC_SLCOM
+LOGICAL :: LSYNC_SLCOM2
+LOGICAL :: LSYNC_CALSL
 LOGICAL :: LSYNC_TRANS
 LOGICAL :: LSLDEBUG
 LOGICAL :: LSLONDEM
@@ -180,11 +184,14 @@ INTEGER(KIND=JPIM) :: NPRTRV
 INTEGER(KIND=JPIM) :: NSTRIN
 INTEGER(KIND=JPIM) :: NSTROUT
 
+REAL(KIND=JPRD) :: SLOWRANKS_DELAY
+REAL(KIND=JPRD) :: SLOWRANKS_FACTOR
+
 ! ----------------------------------------------------------------------
 
 !     -- for use by diwrgrid*.F90 routine(s) : Override this via nampar1.h
 
-INTEGER(KIND=JPIM) :: M_BARRINC_DIWRGRID = 3 
+INTEGER(KIND=JPIM) :: M_BARRINC_DIWRGRID = 3
 
 #ifdef RS6K
 LOGICAL :: L_GATHERV_WRGP = .FALSE.

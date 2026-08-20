@@ -1,21 +1,3 @@
-MODULE SRFTS_MOD
-CONTAINS
-SUBROUTINE SRFTS(KIDIA  , KFDIA  , KLON   , KLEVS ,&
- & PTMST  , PTSAM1M, PWSAM1M, KSOTY, &
- & PFRTI  , PAHFSTI, PEVAPTI,&
- & PSLRFL ,PSSRFLTI, PGSN   ,&
- & PCTSA  , PTSA   , LDLAND ,&
- & YDCST  , YDSOIL , YDFLAKE)  
-  
-USE PARKIND1  , ONLY : JPIM, JPRB
-USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_CST   , ONLY : TCST
-USE YOS_SOIL  , ONLY : TSOIL
-USE YOS_FLAKE , ONLY : TFLAKE
-
-USE SRFWDIFS_MOD
-
-#ifdef DOC
 ! (C) Copyright 2011- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -24,6 +6,95 @@ USE SRFWDIFS_MOD
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+!**** *SRFTS* - Computes temperature changes in soil.
+
+!     PURPOSE.
+!     --------
+!**   Computes temperature changes in soil due to 
+!**   surface heat flux and diffusion.  
+
+!**   INTERFACE.
+!     ----------
+!          *SRFTS* IS CALLED FROM *SURFTSTPS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!   
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+!    *PCIL*       LAND-ICE FRACTION
+!    *PGLICE*     LAND-ICE HEAT FLUX INTO THE SOIL
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PWSAM1M*    SOIL MOISTURE                                m**3/m**3
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE        W/M**2
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL       W/M2
+!    *PCTSA*      VOLUMETRIC HEAT CAPACITY                      J/K/M**3
+!    *PFRTI*      TILE FRACTIONS                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!    *PAHFSTI*    TILE SURFACE SENSIBLE HEAT FLUX                 W/M2
+!    *PEVAPTI*    TILE SURFACE MOISTURE FLUX                     KG/M2/S
+!    *PSSRFLTI*   TILE NET SHORTWAVE RADIATION FLUX AT SURFACE    W/M2
+
+!     UPDATED PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PTSA*       SOIL TEMPERATURE                               K
+
+
+!     METHOD.
+!     -------
+
+!          Parameters are set and the tridiagonal solver is called.
+
+!     EXTERNALS.
+!     ----------
+!     *SRFWDIFS*
+
+!     REFERENCE.
+!     ----------
+!          See documentation.
+
+!     Original
+!     --------
+!          Simplified version based on SRFT
+!     M. Janiskova   E.C.M.W.F.     26-07-2011  
+
+!     Modifications
+!     -------------
+!     J. McNorton           24/08/2022  urban tile
+!     I. Ayan-Miguez (BSC)  Sep 2023    Added PSSDP3 object for spatially distributed parameters 
+!     ------------------------------------------------------------------
+
+MODULE SRFTS_MOD
+CONTAINS
+SUBROUTINE SRFTS(KIDIA  , KFDIA  , KLON   , KLEVS ,&
+ & PTMST  , PTSAM1M, PWSAM1M, KSOTY, &
+ & PFRTI  , PAHFSTI, PEVAPTI,&
+ & PSLRFL ,PSSRFLTI, PGSN   ,&
+ & PCTSA  , PTSA   , LDLAND ,&
+ & YDCST  , YDSOIL , YDFLAKE, YDURB)  
+  
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_CST   , ONLY : TCST
+USE YOS_SOIL  , ONLY : TSOIL
+USE YOS_FLAKE , ONLY : TFLAKE
+USE YOS_URB   , ONLY : TURB
+
+USE SRFWDIFS_MOD
+
+#ifdef DOC
 !**** *SRFTS* - Computes temperature changes in soil.
 
 !     PURPOSE.
@@ -90,6 +161,7 @@ USE SRFWDIFS_MOD
 
 !     Modifications
 !     -------------
+!     J. McNorton           24/08/2022  urban tile
 
 !     ------------------------------------------------------------------
 #endif
@@ -120,6 +192,7 @@ LOGICAL,            INTENT(IN)   :: LDLAND(:)
 TYPE(TCST),         INTENT(IN)   :: YDCST
 TYPE(TSOIL),        INTENT(IN)   :: YDSOIL
 TYPE(TFLAKE),       INTENT(IN)   :: YDFLAKE
+TYPE(TURB),         INTENT(IN)   :: YDURB
 
 REAL(KIND=JPRB),    INTENT(OUT)  :: PTSA(:,:)
 
@@ -142,7 +215,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SRFTS_MOD:SRFTS',0,ZHOOK_HANDLE)
 ASSOCIATE(RLVTT=>YDCST%RLVTT, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, &
  & LEVGEN=>YDSOIL%LEVGEN, RDAT=>YDSOIL%RDAT, RFRSMALL=>YDSOIL%RFRSMALL, &
  & RKERST1=>YDSOIL%RKERST1, RKERST2=>YDSOIL%RKERST2, RKERST3=>YDSOIL%RKERST3, &
  & RLAMBDADRY=>YDSOIL%RLAMBDADRY, RLAMBDADRYM=>YDSOIL%RLAMBDADRYM, &
@@ -207,15 +280,28 @@ DO JL=KIDIA,KFDIA
      & +PFRTI(JL,4)*(PAHFSTI(JL,4)+RLVTT*PEVAPTI(JL,4))&
      & +PFRTI(JL,6)*(PAHFSTI(JL,6)+RLVTT*PEVAPTI(JL,6))&
      & +PFRTI(JL,8)*(PAHFSTI(JL,8)+RLVTT*PEVAPTI(JL,8))  
-     
+
+    IF ( LEURBAN ) THEN
+      ZSSRFL  = ZSSRFL+PFRTI(JL,10)*PSSRFLTI(JL,10)
+      ZSLRFL  = ZSLRFL+PFRTI(JL,10)*PSLRFL (JL)
+      ZTHFL   = ZTHFL+PFRTI(JL,10)*(PAHFSTI(JL,10)+RLVTT*PEVAPTI(JL,10))
+    ENDIF
+    
     ZSURFL(JL)=ZSSRFL+ZSLRFL+ZTHFL+PGSN(JL)
 
     IF ( LEFLAKE ) THEN
       IF ( PFRTI(JL,9) > RFRSMALL ) THEN
         ZSURFL(JL)=PGSN(JL)
-        IF ( (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)) > RFRSMALL ) THEN
-          ZSURFL(JL)=PGSN(JL)+(ZSSRFL+ZSLRFL+ZTHFL) & 
-           & / (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8))
+        IF ( LEURBAN ) THEN
+          IF ( (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)+PFRTI(JL,10)) > RFRSMALL ) THEN
+            ZSURFL(JL)=PGSN(JL)+(ZSSRFL+ZSLRFL+ZTHFL) &
+             & / (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)+PFRTI(JL,10))
+          ENDIF
+        ELSE
+          IF ( (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8)) > RFRSMALL ) THEN
+            ZSURFL(JL)=PGSN(JL)+(ZSSRFL+ZSLRFL+ZTHFL) & 
+             & / (PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,6)+PFRTI(JL,8))
+          ENDIF
         ENDIF
       ENDIF
     ENDIF

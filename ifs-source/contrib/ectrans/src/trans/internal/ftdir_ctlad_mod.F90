@@ -52,14 +52,13 @@ SUBROUTINE FTDIR_CTLAD(KF_UV_G,KF_SCALARS_G,KF_GP,KF_FS, &
 !     Modifications.
 !     --------------
 !        Original : 00-03-03
+!        R. El Khatib 09-Sep-2020 NSTACK_MEMORY_TR
 
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 
-!USE TPM_GEN
-!USE TPM_DIM
-!USE TPM_GEOMETRY
+USE TPM_GEN         ,ONLY : NSTACK_MEMORY_TR
 USE TPM_DISTR       ,ONLY : D, MYPROC, NPROC
 
 USE TRLTOG_MOD      ,ONLY : TRLTOG
@@ -85,8 +84,9 @@ REAL(KIND=JPRB),OPTIONAL    , INTENT(OUT) :: PGP3B(:,:,:,:)
 REAL(KIND=JPRB),OPTIONAL    , INTENT(OUT) :: PGP2(:,:,:)
 
 ! Local variables
-REAL(KIND=JPRB) :: ZGTF(KF_FS,D%NLENGTF)
-
+REAL(KIND=JPRB),TARGET  :: ZGTF_STACK(KF_FS*MIN(1,MAX(0,NSTACK_MEMORY_TR)),D%NLENGTF)
+REAL(KIND=JPRB),TARGET, ALLOCATABLE :: ZGTF_HEAP(:,:)
+REAL(KIND=JPRB),POINTER  :: ZGTF(:,:)
 
 INTEGER(KIND=JPIM) :: IST
 INTEGER(KIND=JPIM) :: IVSETUV(KF_UV_G)
@@ -101,6 +101,18 @@ INTEGER(KIND=JPIM) :: IBEG,IEND,IINC
 ! Field distribution in Spectral/Fourier space
 
 CALL GSTATS(133,0)
+
+IF (NSTACK_MEMORY_TR == 1) THEN
+  ZGTF => ZGTF_STACK(:,:)
+ELSE
+  ALLOCATE(ZGTF_HEAP(KF_FS,D%NLENGTF))
+! Now, force the OS to allocate this shared array right now, not when it starts
+! to be used which is an OPEN-MP loop, that would cause a threads synchronization lock :
+  IF (KF_FS > 0 .AND. D%NLENGTF > 0) THEN
+    ZGTF_HEAP(1,1)=HUGE(1._JPRB)
+  ENDIF
+  ZGTF => ZGTF_HEAP(:,:)
+ENDIF
 
 IF(MYPROC > NPROC/2)THEN
   IBEG=1

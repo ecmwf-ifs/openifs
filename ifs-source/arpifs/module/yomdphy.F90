@@ -1,13 +1,11 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
 MODULE YOMDPHY
 
 USE PARKIND1  ,ONLY : JPIM
@@ -49,7 +47,8 @@ TYPE :: TDPHY
 !     NTSSG : number of surface temperatures for subgrid diagnostics
 
 !     LTPROF: .T. if more than 1 vertical layer in deep soil
-!     LDIRCLSMOD: L to take 2m model equivalent directly from input file
+!     LDIRCLSMOD: L to take CLS model equivalent directly from input file
+!     LDIRSICMOD: L to take sea-ice model (CLS option) equivalent directly from input file
 
 INTEGER(KIND=JPIM) :: NCSS
 INTEGER(KIND=JPIM) :: NVXP
@@ -73,6 +72,7 @@ INTEGER(KIND=JPIM) :: NTOZ3D
 INTEGER(KIND=JPIM) :: NTSSG
 LOGICAL            :: LTPROF
 LOGICAL            :: LDIRCLSMOD
+LOGICAL            :: LDIRSICMOD
 CONTAINS
   PROCEDURE, PASS :: PRINT => PRINT_CONFIGURATION 
 END TYPE TDPHY
@@ -116,6 +116,7 @@ SUBROUTINE PRINT_CONFIGURATION(SELF, KDEPTH, KOUTNO)
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'NTSSG = ', SELF%NTSSG
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LTPROF = ', SELF%LTPROF
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LDIRCLSMOD = ', SELF%LDIRCLSMOD
+  WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'LDIRSICMOD = ', SELF%LDIRSICMOD
 
 END SUBROUTINE PRINT_CONFIGURATION
 

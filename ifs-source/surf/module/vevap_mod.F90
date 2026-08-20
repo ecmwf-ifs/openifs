@@ -1,17 +1,3 @@
-MODULE VEVAP_MOD
-CONTAINS
-SUBROUTINE VEVAP(KIDIA,KFDIA,KLON,PTMST,KTILE,&
- & PWLMX ,PTMLEV  ,PQMLEV  ,PAPHMS, PTSKM1M, PTSAM1M,&
- & PQS   ,PCFQ  ,PWETB ,PWETL ,PWETLU ,PWETH ,PWETHS,&
- & YDCST ,YDVEG ,YDURB,&
- & PCPTS ,PCSAT ,PCAIR ,PCPTSU,PCSATU ,PCAIRU,PCSNW ,PDHVEGS)
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_THF  , ONLY : RVTMP2
-USE YOS_CST  , ONLY : TCST
-USE YOS_VEG  , ONLY : TVEG
-USE YOS_URB  , ONLY : TURB
 
 ! (C) Copyright 1990- ECMWF.
 !
@@ -35,6 +21,94 @@ USE YOS_URB  , ONLY : TURB
 !     Move to SURF library  P Viterbo      15/05/2005
 !          (based on VDFEVAP)
 !     Compute unstressed evaporation       26/02/2014
+!     Urban tile            J McNorton     24/08/2022
+
+!     PURPOSE
+!     -------
+
+!     COMPUTE EQUIVALENT EVAPOTRANSPIRATION EFFICIENCY
+
+!     INTERFACE
+!     ---------
+
+!     *VEVAP* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILE*        TILE INDEX
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMST*        TIME STEP (only used to prevent overshooting of the 
+!                    evaporation of the inteception reservoir)
+!     *PWLMX*        MAXIMUM INTERCEPTION LAYER CAPACITY
+!     *PTMLEV*       TEMPERATURE AT T-1, lowest atmospheric level
+!     *PQMLEV*       SPECIFIC HUMUDITY AT T-1, lowest atmospheric level
+!     *PAPHMS*       PRESSURE AT T-1, surface
+!     *PTSKM1M*      SKIN TEMPERATURE
+!     *PTSAM1M*      SURFACE TEMPERATURE
+!     *PQS*          SATURATION Q AT SURFACE
+!     *PCFQ*         PROP. TO EXCH. COEFF. FOR MOISTURE(C-STAR IN DOC.)
+!                    (SURFACE LAYER ON;Y)
+!     *PWETB*        BARE SOIL RESISTANCE
+!     *PWETL*        STOMATAL RESISTANCE LOW VEGETATION
+!     *PWETLU*       STOMATAL RESISTANCE UNSTRESSED LOW VEGETATION
+!     *PWETH*        STOMATAL RESISTANCE HIGH VEGETATION, SNOW FREE
+!     *PWETHS*       STOMATAL RESISTANCE HIGH VEGETATION WITH SNOW
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PCPTS*        DRY STATIC ENRGY AT SURFACE
+!     *PCPTSU*       DRY STATIC ENRGY AT SURFACE (unstressed)
+!     *PCSAT*        MULTIPLICATION FACTOR FOR QS AT SURFACE
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCAIR*        MULTIPLICATION FACTOR FOR Q AT LOWEST MODEL LEVEL
+!                    FOR SURFACE FLUX COMPUTATION
+!     *PCSATU*       AS PCSAT FOR UNSTRESSED LOW VEGETATION 
+!     *PCAIRU*       AS PCAIR FOR UNSTRESSED LOW VEGETATION
+!     *PCSNW*        MULTIPLICATION FACTOR FOR MOISTURE FLUX
+!                    COMPUTATION FROM SNOW THROUGH CANOPY (TILE 7)
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
+MODULE VEVAP_MOD
+CONTAINS
+SUBROUTINE VEVAP(KIDIA,KFDIA,KLON,PTMST,KTILE,&
+ & PWLMX ,PTMLEV  ,PQMLEV  ,PAPHMS, PTSKM1M, PTSAM1M,&
+ & PQS   ,PCFQ  ,PWETB ,PWETL ,PWETLU ,PWETH ,PWETHS,&
+ & YDCST ,YDVEG ,YDURB,&
+ & PCPTS ,PCSAT ,PCAIR ,PCPTSU,PCSATU ,PCAIRU,PCSNW ,PDHVEGS)
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF  , ONLY : RVTMP2
+USE YOS_CST  , ONLY : TCST
+USE YOS_VEG  , ONLY : TVEG
+USE YOS_URB  , ONLY : TURB
+
+!     ------------------------------------------------------------------
+
+!**   *VEVAP* - COMPUTE EQUIVALENT EVAPOTRANSPIRATION EFFICIENCY
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.     18/01/90.
+
+!     OBUKHOV-L UPDATE      ACMB           26/03/90.
+!     (MAINLY TECHNICAL; TO MAKE CODE MORE READABLE)
+!     Tiling of land surface ACMB          26/03/99.
+!     Change surface units  P Viterbo      24/05/2004
+!     Move to SURF library  P Viterbo      15/05/2005
+!          (based on VDFEVAP)
+!     Compute unstressed evaporation       26/02/2014
+!     Urban tile            J McNorton     24/08/2022
 
 !     PURPOSE
 !     -------

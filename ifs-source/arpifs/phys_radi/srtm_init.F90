@@ -1,4 +1,13 @@
-SUBROUTINE SRTM_INIT(NWVCONTINUUM)
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+SUBROUTINE SRTM_INIT(CDIRECTORY, NWVCONTINUUM)
 
 !-- read in the basic coefficients to configure RRTM_SW
 !- creates module YOESRTWN with BG, NSPA, NSPB, WAVENUM1, WAVENUM2,
@@ -14,6 +23,8 @@ USE YOESRTWN , ONLY : NG, NGM, WT, NGC, RWGT, WTSM
 !USE YOMLUN   , ONLY : NULOUT
 
 IMPLICIT NONE
+
+CHARACTER(LEN=*), INTENT(IN) :: CDIRECTORY
 
 ! Water vapour continuum model (0=default MT_CKD2.5, 1=CAVIAR)
 INTEGER(KIND=JPIM), INTENT(IN), OPTIONAL :: NWVCONTINUUM
@@ -66,7 +77,7 @@ CALL SUSRTM
 
 !-- read in the molecular absorption coefficients
 
-CALL SRTM_KGB16
+CALL SRTM_KGB16(CDIRECTORY)
 CALL SRTM_KGB17
 CALL SRTM_KGB18
 CALL SRTM_KGB19
@@ -84,7 +95,7 @@ CALL SRTM_KGB29
 IF (PRESENT(NWVCONTINUUM)) THEN
   ! Modify the shortwave water vapour continuum, if requested
   CALL MODIFY_WV_CONTINUUM(NWVCONTINUUM)
-END IF
+ENDIF
 
 !-- read in the cloud optical properties
 !- creates module YOESRTOP with EXTLIQ1, SSALIQ1, ASYLIQ1, 
@@ -104,37 +115,22 @@ END IF
 !-- Compute relative weighting for new g-point combinations.
 
 IGCSM = 0
-!WRITE(NULOUT,9001) JPSW,JPG
-9001 FORMAT(1X,'srtm_init JPSW=',I3,' JPG=',I3)
 DO IBND = 1,JPSW
   IPRSM = 0
-!  WRITE(NULOUT,9002) IBND,NGC(IBND)
-9002 FORMAT(1X,'srtm_init NGC(',I3,')=',I3)
   IF (NGC(IBND) < JPG) THEN
     DO IGC = 1,NGC(IBND)
       IGCSM = IGCSM + 1
       ZWTSUM = 0.
-!      WRITE(NULOUT,9003) IGC,IGCSM,NGN(IGCSM)
-9003  FORMAT(1X,'srtm_init IGC=',I3,' NGN(',I3,')=',I3)
       DO IPR = 1, NGN(IGCSM)
         IPRSM = IPRSM + 1
-!        WRITE(NULOUT,9004) IPR,IPRSM,WT(IPRSM)
-9004    FORMAT(1X,'srtm_init IPR=',I3,' WT(',I3,')=',E14.7)
         ZWTSUM = ZWTSUM + WT(IPRSM)
       ENDDO
-!      WRITE(NULOUT,9005) IGC,ZWTSUM
-9005  FORMAT(1X,'srtm_init WTSM(',I3,')=',E14.7)
       WTSM(IGC) = ZWTSUM
     ENDDO
 
-!    WRITE(NULOUT,9006) IBND+15,NG(IBND+15)
-9006 FORMAT(1X,'srtm_init NG(',I3,')=',I3)
     DO IG = 1,NG(IBND+15)
       IND = (IBND-1)*JPG + IG
-!!      WRITE(NULOUT,9007) IND,NGM(IND), IG,WT(IG), WTSM(NGM(IND)), IND,RWGT(IND)
-9007 FORMAT(1X,'srtm_init NGM(',I3,')=',I3,' WT(',I3,')=',E13.7,' WTSM=',E13.7,' RWGT(',I3,')=',E13.7)
       RWGT(IND) = WT(IG)/WTSM(NGM(IND))
-!      WRITE(NULOUT,9007) IND,NGM(IND),IG,WT(IG),WTSM(NGM(IND)),IND,RWGT(IND)
     ENDDO
   ELSE
     DO IG = 1,NG(IBND+15)

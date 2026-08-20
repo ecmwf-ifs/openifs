@@ -55,6 +55,8 @@ SUBROUTINE AER_DRYDEP &
 !          following Zhang et al 2001.
 !          SRémy       20170117 land classes from JFlemming's branch
 !          SRémy       20170512  externalize diurnal cycle
+!          R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
+!          J. McNorton 24 August 2022 Add urban tile
 
 !     SWITCHES.
 !     --------
@@ -67,7 +69,8 @@ USE GEOMETRY_MOD,  ONLY : GEOMETRY
 USE TYPE_MODEL,    ONLY : MODEL
 USE PARKIND1,      ONLY : JPIM, JPRB, JPRD
 USE YOMHOOK,       ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCST,        ONLY : RG
+USE YOMCST,        ONLY : YRCST
+USE YOETHF,        ONLY : YRTHF
 USE YOMRIP0,       ONLY : NINDAT
 USE YOMLUN,        ONLY : NULOUT
 USE YOEPHLI,       ONLY : YREPHLI
@@ -242,11 +245,11 @@ ASSOCIATE(NDRYDEP=>YDEAERSNK%NDRYDEP, &
  & RRHTAB=>YDEAERSNK%RRHTAB,                               &
  & NACTAERO=>YGFL%NACTAERO, &
  & NGLOBALAT=>YDMP%NGLOBALAT, &
- & NDRYDEPVEL_DYN => YDEAERSNK%NDRYDEPVEL_DYN, &
  & YAERO_DESC=>YDEAERATM%YAERO_DESC, &
  & LAERDUST_NEWBIN=>YDEAERATM%LAERDUST_NEWBIN, &
  & RAERDUST_REBOUND=>YDEAERATM%RAERDUST_REBOUND, &
  & RSS_DRY_DIAFAC=>YDEAERATM%RSS_DRY_DIAFAC, &
+ & RG=>YRCST%RG, &
  & LCOMPO_DCDD=>YDCOMPO%LCOMPO_DCDD)
 
 !- PFAERI   in unit of xx m-2 s-1 (surface flux)
@@ -283,122 +286,7 @@ DO JL=KIDIA,KFDIA
   ZMAXVDRY(JL)= ZDZ(JL) / PTSPHY
 ENDDO
 
-CALL SATUR (KIDIA, KFDIA, KLON  , KTDIA, KLEV, LLPHYLIN, PAP, PT, ZQSAT, 2 )
-
-IRH(:)=1
-
-IMM=NMM(NINDAT)
-IDD=NDD(NINDAT)
-
-DO JL=KIDIA,KFDIA
-  
-  ZVEG0(JL)=PCVL(JL) + PCVH(JL)
-  ! use dominant type 
-  ID=MAXLOC(PFRTI(JL,:))
-  IDOMTILE(JL) = ID(1)
-  IDOMTILE1(JL) = ID(1)
-  ! reassign  tile properties in case of wet skin (3) which could be hi lo veg or bare ground  
-  IF ( IDOMTILE1(JL) == 3 ) THEN
-  ! undo dry test 
-    IF ( ZVEG0(JL) < 0.5_JPRB ) THEN
-      IDOMTILE(JL)=8   ! re-assign to bare ground 
-    ELSE
-      IDOMTILE(JL)= 4 ! re-assign to low veg   
-    IF ( PCVL(JL) <= PCVH(JL) )  IDOMTILE(JL)= 6 ! re-assign to high veg 
-    ENDIF 
-  ENDIF
-   SELECT CASE (IDOMTILE(JL))
-    CASE(1,9,0)
-     IVEG_I(JL)=15
-     ZLAI(JL)=0.0_JPRB
-    CASE(2)
-     IVEG_I(JL)=7
-     ZLAI(JL)=0.0_JPRB
-    CASE (6,7)
-     ZLAI(JL)= PLAIH(JL)
-     IVEG_I(JL)=KTVH(JL)
-    CASE (4)
-     IVEG_I(JL)=KTVL(JL)
-     ZLAI(JL)= PLAIL(JL)
-    CASE (8,5)
-     IVEG_I(JL)=8
-     ZLAI(JL)= 0.0_JPRB
-    CASE DEFAULT
-     CALL ABOR1('AER_DRYDEP: unsupported land class')
-   END SELECT 
-
-   ! use 2nd dominant type 
-  ID1=MAXLOC(PFRTI(JL,:),mask=(PFRTI(JL,:) < PFRTI(JL,ID(1))))
-  IDOMTILEBIS(JL) = ID1(1)
-  IDOMTILE1BIS(JL) = ID1(1)
-  ! reassign  tile properties in case of wet skin (3) which could be hi lo veg
-  ! or bare ground  
-  IF ( IDOMTILE1BIS(JL) == 3 ) THEN
-  ! undo dry test 
-    IF ( ZVEG0(JL) < 0.5_JPRB ) THEN
-      IDOMTILEBIS(JL)=8   ! re-assign to bare ground 
-    ELSE
-      IDOMTILEBIS(JL)= 4 ! re-assign to low veg   
-    IF ( PCVL(JL) <= PCVH(JL) )  IDOMTILEBIS(JL)= 6 ! re-assign to high veg 
-    ENDIF
-  ENDIF
-
-  SELECT CASE (IDOMTILEBIS(JL))
-    CASE(1,9,0)
-     IVEG_I1(JL)=15
-    CASE(2)
-     IVEG_I1(JL)=7
-    case (6,7)
-     IVEG_I1(JL)=KTVH(JL)
-    case (4)
-     IVEG_I1(JL)=KTVL(JL)
-    case (8,5)
-     IVEG_I1(JL)=8
-    CASE DEFAULT
-     CALL ABOR1('AER_DRYDEP: unsupported land class')
-   END SELECT
-
-  ! use 3rd dominant type 
-  ID2=MAXLOC(PFRTI(JL,:),mask=(PFRTI(JL,:) < PFRTI(JL,ID1(1))))
-  IDOMTILEBIS2(JL) = ID2(1)
-  IDOMTILE1BIS2(JL) = ID2(1)
-  ! reassign  tile properties in case of wet skin (3) which could be hi lo veg
-  ! or bare ground  
-  IF ( IDOMTILE1BIS2(JL) == 3 ) THEN
-  ! undo dry test 
-    IF ( ZVEG0(JL) < 0.5_JPRB ) THEN
-      IDOMTILEBIS2(JL)=8   ! re-assign to bare ground 
-    ELSE
-      IDOMTILEBIS2(JL)= 4 ! re-assign to low veg   
-    IF ( PCVL(JL) <= PCVH(JL) )  IDOMTILEBIS2(JL)= 6 ! re-assign to high veg 
-    ENDIF
-  ENDIF
-
-  SELECT CASE (IDOMTILEBIS2(JL))
-    CASE(1,9,0)
-     IVEG_I2(JL)=15
-    CASE(2)
-     IVEG_I2(JL)=7
-    CASE (6,7)
-     IVEG_I2(JL)=KTVH(JL)
-    CASE (4)
-     IVEG_I2(JL)=KTVL(JL)
-    CASE (8,5)
-     IVEG_I2(JL)=8
-    CASE DEFAULT
-     CALL ABOR1('AER_DRYDEP: unsupported land class')
-   END SELECT
-
-ENDDO
-! very simplistic mapping of 4 arpege classes into 11 regional Weseley classes 
-
-CALL DDR_ZH_SEASON(KIDIA, KFDIA, KLON, IMM, IDD,  PGELAT, IDOMTILE, IVEG_I, ISEASON_WE1, IVEG_ZH1 )
-CALL DDR_ZH_SEASON(KIDIA, KFDIA, KLON, IMM, IDD,  PGELAT, IDOMTILEBIS, IVEG_I1, ISEASON_WE2, IVEG_ZH2 )
-CALL DDR_ZH_SEASON(KIDIA, KFDIA, KLON, IMM, IDD,  PGELAT, IDOMTILEBIS2, IVEG_I2, ISEASON_WE3, IVEG_ZH3 )
-
-PVEG(KIDIA:KFDIA)=IVEG_ZH1(KIDIA:KFDIA)*1.0_JPRB
-PVEG1(KIDIA:KFDIA)=IVEG_ZH2(KIDIA:KFDIA)*1.0_JPRB
-PVEG2(KIDIA:KFDIA)=IVEG_ZH3(KIDIA:KFDIA)*1.0_JPRB
+CALL SATUR (YRTHF, YRCST, KIDIA, KFDIA, KLON  , KTDIA, KLEV, LLPHYLIN, PAP, PT, ZQSAT, 2 )
 
 IF (LCOMPO_DCDD) THEN
   CALL COMPO_DIURNAL( YDRIP, KIDIA, KFDIA, KLON, 'Sine', PGELAM, PGELAT, ZSCALE, &
@@ -416,143 +304,23 @@ DO JAER=1,NACTAERO
 
   DO JL=KIDIA,KFDIA
 
-    ZRHCL(JL)=PQ(JL)/ZQSAT(JL,KLEV)
-    ZRHO = PRHO(JL,KLEV)
-    DO JTAB=1,12
-      IF (ZRHCL(JL)*100._JPRB > RRHTAB(JTAB)) THEN
-        IRH(JL)=JTAB
-      ENDIF
-    ENDDO
     ZAERO = PAERO(JL,KLEV,JAER) + PTSPHY * PTAERI(JL,KLEV,JAER)
+    ZRHO = PRHO(JL,KLEV)
     IF (YAERO_DESC(JAER)%RDDEPVSEA < 0._JPRB .OR. YAERO_DESC(JAER)%RDDEPVLIC < 0._JPRB) THEN
       ! use SUMO dry dep velocity for SO2 if negative value(s) configured
       ZVDEP(JAER) = MIN(ZMAXVDRY(JL), ZSCALE(JL)*PSO2DD(JL) )
     ELSE
-! online  dry deposition
-      IF (NDRYDEPVEL_DYN >0) THEN
-        ! set RHOP and WETD for each aerosol type
-        ZSIGMA=2.0_JPRB
-        IF (ITYP == 1) THEN
-          ZRHOP=RSSDENS_RHTAB(IRH(JL))
-          ZWETD=ZD_SS(IBIN)*RSSGROWTH_RHTAB(IRH(JL))
-        ELSEIF (ITYP == 2) THEN
-          ZRHOP=RRHO_DD(IBIN)
-          ZWETD=ZD_DD(IBIN)
-        ELSEIF (ITYP == 3) THEN
-          ZWETD=2._JPRB*ZR_OM*ZRH_GROWTH_OM(IRH(JL))
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_OM(IRH(JL))**3
-          ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_OM
-        ELSEIF (ITYP == 4) THEN
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_BC(IRH(JL))**3
-          ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_BC
-          ZWETD=2._JPRB*ZR_BC*ZRH_GROWTH_BC(IRH(JL))
-        ELSEIF (ITYP == 5 .OR. ITYP == 10) THEN ! SO4 only
-          ZVFRAC = 1.0_JPRB / ZRH_GROWTH_SO4(IRH(JL))**3
-          ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_SO4
-          ZWETD=2._JPRB*ZR_SO4*ZRH_GROWTH_SO4(IRH(JL))
-        ELSEIF (ITYP == 6) THEN ! nitrate
-           ZVFRAC = 1.0_JPRB / ZRH_GROWTH_NI(IRH(JL))**3
-           ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_NI(IBIN)
-           ZWETD=2._JPRB*ZR_NI(IBIN)*ZRH_GROWTH_NI(IRH(JL))
-        ELSEIF (ITYP == 7) THEN ! Ammonium
-           ZVFRAC = 1.0_JPRB / ZRH_GROWTH_AM(IRH(JL))**3
-           ZRHOP = ZRHO_H2O*(1.0_JPRB-ZVFRAC) + ZVFRAC*ZRHO_AM
-           ZWETD=2._JPRB*ZR_AM*ZRH_GROWTH_AM(IRH(JL))
-        ELSEIF (ITYP == 8) THEN ! SOA
-          ZSIGMA=1.6_JPRB
-          ZVFRAC = 1.0 / ZRH_GROWTH_SOA(IRH(JL))**3
-          ZRHOP = ZRHO_H2O*(1.0-ZVFRAC) + ZVFRAC*ZRHO_SOA
-          ZWETD=2._JPRB*ZR_SOA(IBIN)*ZRH_GROWTH_SOA(IRH(JL))
-         ELSEIF (ITYP == 9) THEN ! Ash
-          ZRHOP=ZRHO_ASH
-          ZWETD=ZR_ASH*2._JPRB
-        ELSE
-           ! no deposition for this species; bail out of processing it on other grid points
-           ! and cycle to next species
-           EXIT
-        ENDIF
-        IF (NDRYDEPVEL_DYN == 1) THEN
-          ! compute deposition velocity following Zhang et al 2001
-          CALL AER_DRYDEPVEL(ISEASON_WE1(JL), IVEG_ZH1(JL), ZRHOP,ZWETD,ZSIGMA, &
-          &                  PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,RAERDUST_REBOUND,ZVDEPS1(JAER))
-          IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
-          &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
-            CALL AER_DRYDEPVEL(ISEASON_WE2(JL), IVEG_ZH2(JL), ZRHOP,ZWETD,ZSIGMA, &
-            &                  PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,RAERDUST_REBOUND,ZVDEPS2(JAER))
-
-            IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
-            &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) < 1._JPRB ) THEN
-              CALL AER_DRYDEPVEL(ISEASON_WE3(JL), IVEG_ZH3(JL), ZRHOP,ZWETD,ZSIGMA, &
-              &                  PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,RAERDUST_REBOUND,ZVDEPS3(JAER))
-            ENDIF
-          ENDIF
-        ENDIF
-        IF (NDRYDEPVEL_DYN == 2) THEN
-          ! compute deposition velocity following Zhang and He 2014
-          CALL AER_DRYDEPVELZH14(ISEASON_WE1(JL),IVEG_I(JL), IVEG_ZH1(JL), ZLAI(JL), ZWETD, ZSIGMA,ZRHOP,&
-          &                  PZ0M(JL),PCI(JL),PAERUST(JL),PT(JL,KLEV),PDZ(JL),RAERDUST_REBOUND,ZVDEPS1(JAER))
-          IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
-          &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
-            CALL AER_DRYDEPVELZH14(ISEASON_WE2(JL), IVEG_I1(JL),  IVEG_ZH2(JL),ZLAI(JL),ZWETD,ZSIGMA,ZRHOP,&
-            &                  PZ0M(JL),PCI(JL),PAERUST(JL),PT(JL,KLEV),PDZ(JL),RAERDUST_REBOUND,ZVDEPS2(JAER))
-            IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
-            &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) <1._JPRB ) THEN
-              CALL AER_DRYDEPVELZH14(ISEASON_WE3(JL),IVEG_I2(JL), IVEG_ZH3(JL), ZLAI(JL),ZWETD, ZSIGMA, ZRHOP,&
-              & PZ0M(JL),PCI(JL),PAERUST(JL),PT(JL,KLEV),PDZ(JL),RAERDUST_REBOUND,ZVDEPS3(JAER))
-            ENDIF
-          ENDIF
-        ENDIF
-         IF (NDRYDEPVEL_DYN == 3) THEN
-          ! compute deposition velocity following Emerson et al. (2020)
-          CALL AER_DRYDEPVELEM20(ISEASON_WE1(JL), IVEG_ZH1(JL),ZRHOP,ZWETD,ZSIGMA, &
-          & PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,ZVDEPS1(JAER))
-          IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
-          &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
-            CALL AER_DRYDEPVELEM20(ISEASON_WE2(JL), IVEG_ZH2(JL), ZRHOP,ZWETD,ZSIGMA, &
-            & PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,ZVDEPS2(JAER))
-
-            IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
-            &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) < 1._JPRB ) THEN
-              CALL AER_DRYDEPVELEM20(ISEASON_WE3(JL), IVEG_ZH3(JL), ZRHOP,ZWETD,ZSIGMA, &
-              & PZ0M(JL),PCI(JL),PAERUST(JL),PDZ(JL),PT(JL,KLEV),ZRHO,ZVDEPS3(JAER))
-            ENDIF
-          ENDIF
-        ENDIF
-
-
-        ZVDEPS1(JAER)=MIN(0.1_JPRB,ZVDEPS1(JAER))
-        ZVDEPS2(JAER)=MIN(0.1_JPRB,ZVDEPS2(JAER))
-        ZVDEPS3(JAER)=MIN(0.1_JPRB,ZVDEPS3(JAER))
-        ZVDEP(JAER)=ZVDEPS1(JAER)*PFRTI(JL,IDOMTILE1(JL))
-
-        IF (PFRTI(JL,IDOMTILE1BIS(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS(JL)) < 0.5_JPRB &
-        &   .AND. PFRTI(JL,IDOMTILE1(JL)) < 1._JPRB) THEN
-          ZVDEP(JAER)=ZVDEP(JAER)+ZVDEPS2(JAER)*PFRTI(JL,IDOMTILE1BIS(JL))
-
-          IF (PFRTI(JL,IDOMTILE1BIS2(JL)) > 0._JPRB .AND. PFRTI(JL,IDOMTILE1BIS2(JL)) < 0.5_JPRB &
-          &   .AND. (PFRTI(JL,IDOMTILE1(JL))+PFRTI(JL,IDOMTILE1BIS(JL))) < 1._JPRB ) THEN
-            ZVDEP(JAER)=ZVDEP(JAER)+ZVDEPS3(JAER)*PFRTI(JL,IDOMTILE1BIS2(JL))
-          ENDIF
-        ENDIF
-
-        ZVDEP(JAER)=MIN(0.1_JPRB,ZVDEP(JAER))
-      ELSE
-! no on line dry deposition  
-        ZOCEA= 1._JPRB-PLSM(JL)
-        ZFROC= ZOCEA*(1._JPRB-PCI(JL))
-        ZVDEP(JAER)= ZFROC * YAERO_DESC(JAER)%RDDEPVSEA + &
-        & (1 - ZFROC) * YAERO_DESC(JAER)%RDDEPVLIC
-        ! apply diurnal cycle and stability check 
-        ZVDEP(JAER)= MIN( ZMAXVDRY(JL),  ZSCALE(JL)*ZVDEP(JAER) )
-      ENDIF
+      ZOCEA= 1._JPRB-PLSM(JL)
+      ZFROC= ZOCEA*(1._JPRB-PCI(JL))
+      ZVDEP(JAER)= ZFROC * YAERO_DESC(JAER)%RDDEPVSEA + &
+      & (1 - ZFROC) * YAERO_DESC(JAER)%RDDEPVLIC
+      ! apply diurnal cycle and stability check 
+      ZVDEP(JAER)= MIN( ZMAXVDRY(JL),  ZSCALE(JL)*ZVDEP(JAER) )
+    ENDIF
 !   SR 03/2018 reduce dry deposition over smoother snow surfaces
     IF (PSNS(JL) > 1.E-3_JPRB .OR. PCI(JL) > 0.5_JPRB) THEN
       ZVDEP(JAER)=ZVDEP(JAER)/2.5_JPRB
       ZVDEP(JAER)=MIN(ZVDEP(JAER),3.E-4_JPRB)
-    ENDIF
-! RVDPxxx (from su_aerp, derived from LMDZ in m s-1)
-!   formula is consistent: (xx m-2 s-1) - (m s-1) * (xx kg-1) * (kg m-3)
-!   PFAERO is then in xx m-2 s-1
     ENDIF
 
     PVDEP(JL,JAER)=ZVDEP(JAER)

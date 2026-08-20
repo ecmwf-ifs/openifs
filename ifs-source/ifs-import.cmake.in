@@ -19,7 +19,7 @@
 # - IFS_CYCLE                     :  Version of IFS in the form CY<MAJOR>R<MINOR>
 # - PREC                          :  IFS build precision (SP or DP)
 
-if( @PNAME@_IS_BUILD_DIR_EXPORT )
+if( @PROJECT_NAME@_IS_BUILD_DIR_EXPORT )
   set( IFS_EXECUTABLE             @IFS_EXECUTABLE@ )
   set( SCM_EXECUTABLE             @SCM_EXECUTABLE@ )
   set( IFS_BIN_DIR                @CMAKE_BINARY_DIR@/bin )

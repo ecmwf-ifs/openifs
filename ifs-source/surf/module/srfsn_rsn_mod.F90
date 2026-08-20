@@ -1,6 +1,74 @@
+
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**** *SRFSN_RSN* - Snow density
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES THE SNOW DENSITY
+!          As a single prognostic snowpack for seasonal snow and land ice is used,
+!          the two different contributions are weighted by PCIL for sub-grid ice.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_RSN* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVSN*     VERTICAL SNOW LAYERS
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LLNOSNOW*   NO-SNOW/SNOW MASK (TRUE IF NO-SNOW)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    TOTAL SNOW MASS IN EACH LAYER (per unit area) kg/m**2
+!    *PWSNM1M*    LIQUID WATER CONTENT IN SNOW                 kg/m**2
+!    *PRSNM1M*    SNOW DENSITY in each layer                   kg/m**3
+!    *PTSNM1M*    TEMPERATURE OF SNOW LAYER                    K
+!    *PSNOWF*     TOTAL SNOW FLUX AT THE SURFACE              KG/M**2/S
+!    *PUSRF*      U-WIND COMPONENT LOWER MODEL LEVEL           m/s
+!    *PVSRF*     V-WIND COMPONENT LOWER MODEL LEVEL            m/s
+!    *PTSRF*      TEMPERATURE LOWER MODEL LEVEL                 K
+
+!     INPUT PARAMETERS AT T
+!    *PWSN* LIQUID WATER CONTENT IN SNOW                 kg/m**2
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PRSN*       SNOW DENSITY in each layer                   kg/m**3
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   E. Dutra      ECMWF     04/12/2015
+!                G. Arduini    ECMWF     01/09/2021
+!     Modified   G. Arduini    ECMWF     Sept 2024    snow over land-ice
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_RSN_MOD
 CONTAINS
-SUBROUTINE SRFSN_RSN(KIDIA,KFDIA,KLON,KLEVSN,PTMST,LLNOSNOW,&
+SUBROUTINE SRFSN_RSN(KIDIA,KFDIA,KLON,KLEVSN,PTMST,LLNOSNOW,PFRSN,&
                     &PRSNM1M,PSSNM1M,PTSNM1M,PWSNM1M,PWSN,&
                     &PSNOWF,PUSRF,PVSRF,PTSRF,&
                     &YDSOIL,YDCST,PRSN,PDHTSS)
@@ -12,13 +80,6 @@ USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOS_SOIL , ONLY : TSOIL 
 USE YOS_CST  , ONLY : TCST
 
-! (C) Copyright 2015- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**** *SRFSN_RSN* - Snow density
 !     PURPOSE.
 !     --------
@@ -86,6 +147,7 @@ INTEGER(KIND=JPIM), INTENT(IN)   :: KLON
 INTEGER(KIND=JPIM), INTENT(IN)   :: KLEVSN
 REAL(KIND=JPRB)   , INTENT(IN)   :: PTMST
 LOGICAL           , INTENT(IN)   :: LLNOSNOW(:) 
+REAL(KIND=JPRB)   , INTENT(IN)   :: PFRSN(:)
 
 REAL(KIND=JPRB)   , INTENT(IN)   :: PRSNM1M(:,:)
 REAL(KIND=JPRB)   , INTENT(IN)   :: PSSNM1M(:,:)
@@ -163,7 +225,7 @@ DO JL=KIDIA,KFDIA
     DO JK=1,KLEVSN
       ZGAMMAMOB(JK)=RSNDAMOB*( 1.0_JPRB - MAX( 0._JPRB, (PRSNM1M(JL,JK) - RHOMINSND)/RSNDMOB ) )
       ZGAMMAW(JK)=1._JPRB - RSNDAW*MAX(ZEPS,EXP(-RSNDBW*SQRT(PUSRF(JL)**2+PVSRF(JL)**2))) + ZGAMMAMOB(JK)
-      ZDSN(JK)=PSSNM1M(JL,JK) / MAX(ZEPS,PRSNM1M(JL,JK))
+      ZDSN(JK)=PSSNM1M(JL,JK) / MAX(ZEPS,PRSNM1M(JL,JK)*PFRSN(JL))
     ENDDO
     ! COMPACTION RATES PER LAYER
     ZADD=0._JPRB      

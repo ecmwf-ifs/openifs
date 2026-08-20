@@ -1,10 +1,11 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2008- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE GWDRAG_WMS(YDSTA,YDEGWD,YDEGWWMS,KIDIA,  KFDIA,   KLON,  KLEV,   KLAUNCH, PTSTEP,&
                      &PTM1 ,  PUM1,    PVM1,  PAPM1,  PAPHM1, PGEO1 ,&
@@ -45,6 +46,7 @@ SUBROUTINE GWDRAG_WMS(YDSTA,YDEGWD,YDEGWWMS,KIDIA,  KFDIA,   KLON,  KLEV,   KLAU
 !                          Optimisation+bug corrections   P. Bechtold
 !           November 2012: possibility of different ZGAM transform T. Stockdale
 !           November 2015: resolution scaling for octahedral grid  P. Bechtold
+!           December 2022: increase spectral intervals from 20 to 32
 ! ---------------------------------------------------------------------------------
 
 
@@ -84,7 +86,7 @@ REAL(KIND=JPRB)   ,INTENT(OUT):: PFLUXU(KLON,KLEV+1)  ! = zonal component of ver
 REAL(KIND=JPRB)   ,INTENT(OUT):: PFLUXV(KLON,KLEV+1)  ! = meridional component of vertical momentum flux (Pa)
 !work
 INTEGER(KIND=JPIM), PARAMETER  :: IAZIDIM=4     !number of azimuths
-INTEGER(KIND=JPIM), PARAMETER  :: INCDIM=20     !number of discretized c spectral elements in launch spectrum  
+INTEGER(KIND=JPIM), PARAMETER  :: INCDIM=32     !(was 20) number of discretized c spectral elements in launch spectrum  
 
 REAL(KIND=JPRB) :: ZUHM1(KLON,KLEV)             !half-model level zonal velocity
 REAL(KIND=JPRB) :: ZVHM1(KLON,KLEV)             !half-model level meridional velocity

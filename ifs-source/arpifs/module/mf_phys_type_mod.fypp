@@ -1,0 +1,277 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#:mute
+#:include "cpg_macros.fypp"
+
+
+#:set USE_STACK = False
+
+#:set AS_void            = []
+#:set AS_0_NFLEVG        = [ [ '0', 'YDCPG_OPTS%KFLEVG' ] ]
+#:set AS_1_nflevg        = [ [ '1', 'NLEV' ] ]
+#:set AS_1_NFLEVG        = [ [ '1', 'YDCPG_OPTS%KFLEVG' ] ]
+#:set AS_0_NFLEVG_NTSSG1 = [ [ '0', 'YDCPG_OPTS%KFLEVG' ], [ '1', 'YDCPG_OPTS%KTSSG+1' ] ]
+#:set AS_0_1             = [ [ '0', '1' ] ]
+#:set AS_YSP_SBD_NLEVS   = [ [ '1', 'YDCPG_OPTS%YRSURF_DIMS%YSP_SBD%NLEVS' ] ]
+#:set AS_NTSSG1          = [ [ '1', 'YDCPG_OPTS%KTSSG+1' ] ]
+#:set AS_0_NFLEVG_2      = [ [ '1', 'YDCPG_OPTS%KFLEVG' ], [ '1', '2' ] ]
+#:set AS_0_NSORAYFRm1    = [ [ '0', 'YDCPG_OPTS%KSORAYFR-1' ] ]
+#:set AS_NGRAD_1_NFLEVG  = [ [ '1', 'YDCPG_OPTS%KGRADIENTS' ], [ '1', 'NLEV' ] ]
+#:set AS_1_NDTPREC       = [ [ '1', 'YDCPG_OPTS%KDTPREC' ] ]
+#:set AS_1_NDTPREC2      = [ [ '1', 'YDCPG_OPTS%KDTPREC2' ] ]
+
+#:set vars_mf_phys_out = { &
+& "DIFCQ"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective flux of specific humidity (not rain/snow)        " ], &
+& "DIFCQL"         : [False, False, AS_0_NFLEVG,        None,                 None,               "convective flux of liquid water (not rain/snow)             " ], &
+& "DIFCQN"         : [False, False, AS_0_NFLEVG,        None,                 None,               "convective flux of solid water (not rain/snow)              " ], &
+& "DIFCS"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective flux of enthalpy (not rain/snow)                 " ], &
+& "DIFTQ"          : [False, False, AS_0_NFLEVG,        None,                 None,               "turbulent flux (inc. 'q' negative) of specific humidity     " ], &
+& "DIFTQL"         : [False, False, AS_0_NFLEVG,        None,                 None,               "turbulent flux (inc. 'q' negative) of liquid water          " ], &
+& "DIFTQN"         : [False, False, AS_0_NFLEVG,        None,                 None,               "turbulent flux (inc. 'q' negative) of solid water           " ], &
+& "DIFTS"          : [False, False, AS_0_NFLEVG,        None,                 None,               "turbulent flux of enthalpy (or dry static energy)           " ], &
+& "EDR"            : [False, False, AS_1_NFLEVG,        None,                 None,               ""                                                             ], &
+& "FCCQL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective condensation flux for liquid water               " ], &
+& "FCCQN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective condensation flux for ice                        " ], &
+& "FCSQL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "stratiform condensation flux for liquid water               " ], &
+& "FCSQN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "stratiform condensation flux for ice                        " ], &
+& "FCQLNG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "pseudo-flux of liquid water to correct for 'ql'<0           " ], &
+& "FCQNNG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "pseudo-flux of ice to correct for 'qi'<0                    " ], &
+& "FCQGNG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "pseudo-flux of graupel to correct for 'qi'<0                " ], &
+& "FCQNG"          : [False, False, AS_0_NFLEVG,        None,                 None,               "pseudo-flux of water to correct for Q<0                     " ], &
+& "FPLCL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation as rain                            " ], &
+& "FPLCN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation as snow                            " ], &
+& "FPLCG"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation as graupel                         " ], &
+& "FPLCH"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation as hail                            " ], &
+& "FPLSL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "stratiform precipitation as rain                            " ], &
+& "FPLSN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "stratiform precipitation as snow                            " ], &
+& "FPLSG"          : [False, False, AS_0_NFLEVG,        None,                 None,               "stratiform precipitation as graupel                         " ], &
+& "FPLSH"          : [False, False, AS_0_NFLEVG,        None,                 None,               "stratiform precipitation as hail                            " ], &
+& "FPFPSL"         : [False, False, AS_0_NFLEVG,        None,                 None,               "flux of liquid resol. precipitation: the generation term.   " ], &
+& "FPFPSN"         : [False, False, AS_0_NFLEVG,        None,                 None,               "flux of solid resolved precipitation: the generation term.  " ], &
+& "FPFPSG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "flux of graupel resolved precipitation: the generation term " ], &
+& "FPFPCL"         : [False, False, AS_0_NFLEVG,        None,                 None,               "flux of liquid conv. precipitation: the generation term.    " ], &
+& "FPFPCN"         : [False, False, AS_0_NFLEVG,        None,                 None,               "flux of snow conv. precipitation: the generation term.      " ], &
+& "FPFPCG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "flux of graupel conv. precipitation: the generation term.   " ], &
+& "FPEVPSL"        : [False, False, AS_0_NFLEVG,        None,                 None,               "resolved precipitation flux due to evaporation              " ], &
+& "FPEVPSN"        : [False, False, AS_0_NFLEVG,        None,                 None,               "resolved precipitation flux due to sublimation              " ], &
+& "FPEVPSG"        : [False, False, AS_0_NFLEVG,        None,                 None,               "resolved precipitation flux due to sublimation (graupel)    " ], &
+& "FPEVPCL"        : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation flux due to evaporation            " ], &
+& "FPEVPCN"        : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation flux due to sublimation            " ], &
+& "FPEVPCG"        : [False, False, AS_0_NFLEVG,        None,                 None,               "convective precipitation flux due to sublimation (graupel)  " ], &
+& "FRSO"           : [False, False, AS_0_NFLEVG_NTSSG1, None,                 None,               "shortwave radiative flux                                    " ], &
+& "FRTH"           : [False, False, AS_0_NFLEVG_NTSSG1, None,                 None,               "longwave radiative flux                                     " ], &
+& "STRCU"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective flux of momentum 'U'                             " ], &
+& "STRCV"          : [False, False, AS_0_NFLEVG,        None,                 None,               "convective flux of momentum 'V'                             " ], &
+& "STRDU"          : [False, False, AS_0_NFLEVG,        None,                 None,               "gravity wave drag flux 'U'                                  " ], &
+& "STRDV"          : [False, False, AS_0_NFLEVG,        None,                 None,               "gravity wave drag flux 'V'                                  " ], &
+& "STRTU"          : [False, False, AS_0_NFLEVG,        None,                 None,               "turbulent flux of momentum 'U'                              " ], &
+& "STRTV"          : [False, False, AS_0_NFLEVG,        None,                 None,               "turbulent flux of momentum 'V'                              " ], &
+& "STRMU"          : [False, False, AS_0_NFLEVG,        None,                 None,               "mesospheric flux for 'U'-momentum                           " ], &
+& "STRMV"          : [False, False, AS_0_NFLEVG,        None,                 None,               "mesospheric flux for 'V'-momentum                           " ], &
+& "DIFCQLC"        : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "DIFCQIC"        : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FIMCC"          : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FEDQLC"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FEDQIC"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FEDQRC"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FEDQSC"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCNEGQLC"       : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCNEGQIC"       : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCNEGQRC"       : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCNEGQSC"       : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FRMH"           : [False, False, AS_0_NFLEVG,        None,                 None,               "mesospheric enthalpy flux                                   " ], &
+& "FCHOZ"          : [False, False, AS_0_NFLEVG,        None,                 None,               "ozon photo-chemical flux                                    " ], &
+& "FDIS"           : [False, False, AS_0_NFLEVG,        None,                 None,               "enthalpy flux due to dissipation of kinetic energy.         " ], &
+& "FHPSL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "liquid water stratiform condensation enthalpy flux          " ], &
+& "FHPSN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "snow stratiform condensation enthalpy flux                  " ], &
+& "FHPSG"          : [False, False, AS_0_NFLEVG,        None,                 None,               "graupel stratiform condensation enthalpy flux               " ], &
+& "FHPCL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "liquid water convective condensation enthalpy flux          " ], &
+& "FHPCN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "snow convective condensation enthalpy flux                  " ], &
+& "FHPCG"          : [False, False, AS_0_NFLEVG,        None,                 None,               "graupel convective condensation enthalpy flux               " ], &
+& "FHSCL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "sensible heat flux due to liquid convective precipitations  " ], &
+& "FHSCN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "sensible heat flux due to snow convective precipitations    " ], &
+& "FHSSL"          : [False, False, AS_0_NFLEVG,        None,                 None,               "sensible heat flux due to liquid stratiform precipitations  " ], &
+& "FHSSN"          : [False, False, AS_0_NFLEVG,        None,                 None,               "sensible heat flux due to snow stratiform precipitations    " ], &
+& "FHSSG"          : [False, False, AS_0_NFLEVG,        None,                 None,               "sensible heat flux due to graupel stratiform precipitations " ], &
+& "FEPFP"          : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCMPCQ"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCMPSN"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FCMPSL"         : [False, False, AS_0_NFLEVG,        None,                 None,               "                                                            " ], &
+& "FRSOC"          : [False, False, AS_0_1,             None,                 None,               "shortwave clear sky radiative flux                          " ], &
+& "FRTHC"          : [False, False, AS_0_1,             None,                 None,               "longwave clear sky radiative flux                           " ], &
+& "FCHSP"          : [False, False, AS_YSP_SBD_NLEVS,   None,                 None,               "heat flux from surface to deep soil                         " ], &
+& "FCLL"           : [False, False, AS_NTSSG1,          None,                 None,               "latent heat flux over liquid water (or wet soil)            " ], &
+& "FCLN"           : [False, False, AS_NTSSG1,          None,                 None,               "latent heat flux over snow (or ice)                         " ], &
+& "FCS"            : [False, False, AS_NTSSG1,          None,                 None,               "sensible heat flux at surface level                         " ], &
+& "FEVL"           : [False, False, AS_NTSSG1,          None,                 None,               "water vapour flux over liquid water (or wet soil)           " ], &
+& "FEVN"           : [False, False, AS_NTSSG1,          None,                 None,               "water vapour flux over snow (or ice) and frozen soil        " ], &
+& "FEVV"           : [False, False, AS_void,            None,                 None,               "evapotranspiration flux                                     " ], &
+& "FLWSP"          : [False, False, AS_void,            None,                 None,               "water flux from surface to deep soil                        " ], &
+& "FTR"            : [False, False, AS_void,            None,                 None,               "transpiration flux                                          " ], &
+& "FRSODS"         : [False, False, AS_void,            None,                 None,               "surface downwards solar flux                                " ], &
+& "FRSOPS"         : [False, False, AS_void,            None,                 None,               "surface parallel solar flux                                 " ], &
+& "FRSDNI"         : [False, False, AS_void,            None,                 None,               "Direct normal irradiance                                    " ], &
+& "FRSGNI"         : [False, False, AS_void,            None,                 None,               "Global normal irradiance                                    " ], &
+& "FRTHDS"         : [False, False, AS_void,            None,                 None,               "surface downwards IR flux                                   " ], &
+& "FONTE"          : [False, False, AS_void,            None,                 None,               "water flux corresponding to surface snow melt               " ], &
+& "FGEL"           : [False, False, AS_void,            None,                 None,               "freezing flux of soil water                                 " ], &
+& "FGELS"          : [False, False, AS_void,            None,                 None,               "freezing flux of soil water at surface level                " ], &
+& "ALB"            : [False, False, AS_void,            None,                 None,               "modele surface shortwave albedo (diagnostic)                " ], &
+& "GZ0"            : [False, False, AS_void,            None,                 None,               "g*roughness length (current)                                " ], &
+& "GZ0H"           : [False, False, AS_void,            None,                 None,               "current g*thermal roughness length (if KVCLIV >=8)          " ], &
+& "RUISL"          : [False, False, AS_void,            None,                 None,               "run-off flux out the interception water-tank                " ], &
+& "RUISP"          : [False, False, AS_void,            None,                 None,               "run-off flux in soil                                        " ], &
+& "RUISS"          : [False, False, AS_void,            None,                 None,               "run-off flux at surface level                               " ], &
+& "FRSOPT"         : [False, False, AS_void,            None,                 None,               "top parallel solar flux                                     " ], &
+& "FRSOLU"         : [False, False, AS_void,            None,                 None,               "downward lunar flux at surface                              " ], &
+& "QCLS"           : [False, False, AS_void,            None,                 None,               "specific humidity at 2 meters (diagnostic)                  " ], &
+& "TCLS"           : [False, False, AS_void,            None,                 None,               "temperature at 2 meters (diagnostic)                        " ], &
+& "UCLS"           : [False, False, AS_void,            None,                 None,               "U-component of wind at 10 meters (diagnostic)               " ], &
+& "VCLS"           : [False, False, AS_void,            None,                 None,               "V-component of wind at 10 meters (diagnostic)               " ], &
+& "NUCLS"          : [False, False, AS_void,            None,                 None,               "U-component of neutral wind at 10 meters (diagnostic)       " ], &
+& "NVCLS"          : [False, False, AS_void,            None,                 None,               "V-component of neutral wind at 10 meters (diagnostic)       " ], &
+& "RHCLS"          : [False, False, AS_void,            None,                 None,               "relative humidity at 2 meters (diagnostic)                  " ], &
+& "MRT"            : [False, False, AS_void,            None,                 None,               "mean radiant temperature                                    " ], &
+& "CLCH"           : [False, False, AS_void,            None,                 None,               "high cloud cover (diagnostic)                               " ], &
+& "CLCM"           : [False, False, AS_void,            None,                 None,               "medium cloud cover (diagnostic)                             " ], &
+& "CLCL"           : [False, False, AS_void,            None,                 None,               "low cloud cover (diagnostic)                                " ], &
+& "CLCC"           : [False, False, AS_void,            None,                 None,               "convective cloud cover (diagnostic)                         " ], &
+& "CLPH"           : [False, False, AS_void,            None,                 None,               "height (in meters) of the PBL                               " ], &
+& "VEIN"           : [False, False, AS_void,            None,                 None,               "ventilation index in the PBL                                " ], &
+& "DRNSHF"         : [False, False, AS_void,            None,                 None,               "derivative of the non solar surface with respect to Tsurf   " ], &
+& "CAPE"           : [False, False, AS_void,            None,                 None,               "CAPE                                                        " ], &
+& "CTOP"           : [False, False, AS_void,            None,                 None,               "top of convective nebulosity (diagnostic)                   " ], &
+& "MOCON"          : [False, False, AS_void,            None,                 None,               "moisture convergence                                        " ], &
+& "UGST"           : [False, False, AS_void,            None,                 None,               "U-component of gusts (diagnostic)                           " ], &
+& "VGST"           : [False, False, AS_void,            None,                 None,               "V-component of gusts (diagnostic)                           " ], &
+& "CT"             : [False, False, AS_void,            None,                 None,               "thermical coefficient of soil-vegetation middle             " ], &
+& "TENDU"          : [False, False, AS_1_NFLEVG,        None,                 None,               "'U'-wind tendency due to physics                            " ], &
+& "TENDV"          : [False, False, AS_1_NFLEVG,        None,                 None,               "'V'-wind tendency due to physics                            " ], &
+& "FCQRNG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "pseudo-flux of rain to correct for Q<0                      " ], &
+& "FCQSNG"         : [False, False, AS_0_NFLEVG,        None,                 None,               "pseudo-flux of snow to correct for Q<0                      " ], &
+& "DIAGH"          : [False, False, AS_void,            None,                 None,               "Add Hail diagnostic PDIAGH (AROME)                          " ], &
+& "VISICLD"        : [False, False, AS_void,            None,                 None,               "Visibility due to ice and/or water cloud                    " ], &
+& "FLASH"          : [False, False, AS_void,            None,                 None,               "Add lightening density (fl/ km2 /s )                        " ], &
+& "VISIHYD"        : [False, False, AS_void,            None,                 None,               "Vsibility due to precipitations(rain, graupel, snow)        " ], &
+& "MXCLWC"         : [False, False, AS_void,            None,                 None,               "Cloud Water Liquid Content at HVISI meters                  " ], &
+& "TPWCLS"         : [False, False, AS_void,            None,                 None,               "wet-bulb temperature at 2 meters (diagnostic)               " ], &
+& "CUCONVCA"       : [False, False, AS_void,            None,                 None,               "CA array for interaction with the physics                   " ], &
+& "NLCONVCA"       : [False, False, AS_void,            None,                 None,               "CA array for interaction with the physics                   " ], &
+& "SIC"            : [False, False, AS_void,            None,                 None,               "Sea Ice Content                                             " ], &
+& }
+
+#:set vars_mf_phys_opt = { &
+& "GDEOSI"         : [True,  False, AS_0_NFLEVG_2,      None,                 "LLMF_PHYS",        "DESCENDING INCREMENTAL OPTICAL DEPTHS, SOLAR"                                ], &
+& "GUEOSI"         : [True,  False, AS_0_NFLEVG_2,      None,                 "LLMF_PHYS",        "ASCENDING  INCREMENTAL OPTICAL DEPTHS, SOLAR"                                ], &
+& "GMU0"           : [True,  False, AS_0_NSORAYFRm1,    None,                 "LLMF_PHYS",        "COSINE OF SOLAR ZENITH ANGLE, APPROXIMATE ACTUAL VALUE"                      ], &
+& "GMU0_MIN"       : [True,  False, AS_void,            None,                 "LLMF_PHYS",        "COSINE OF SOLAR ZENITH ANGLE, MIN VALUE"                                     ], &
+& "GMU0_MAX"       : [True,  False, AS_void,            None,                 "LLMF_PHYS",        "COSINE OF SOLAR ZENITH ANGLE, MAX VALUE"                                     ], &
+& "GDEOTI"         : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "descending incremental optical depths, dB/dT(T0) weights"                    ], &
+& "GDEOTI2"        : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "descending incremental optical depths, B weights with linear T_e correction" ], &
+& "GUEOTI"         : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "ascending incremental optical depths, dB/dT(T0) weights"                     ], &
+& "GUEOTI2"        : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "ascending incremental optical depths, B weights with linear T_e correction"  ], &
+& "GEOLT"          : [True,  False, AS_1_NFLEVG,        None,                 "LLMF_PHYS",        "local optical depths, dB/dT(T0) weights"                                     ], &
+& "GEOXT"          : [True,  False, AS_1_NFLEVG,        None,                 "LLMF_PHYS",        "maximum optical depths for EBL-EAL, dB/dT(T0) weights"                       ], &
+& "GRPROX"         : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "correction term for adjacent exchanges"                                      ], &
+& "GMIXP"          : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "non-statistical weights for bracketing"                                      ], &
+& "GFLUXC"         : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "out of bracket part of clearsky EBL, resp. EBL-EAL flux"                     ], &
+& "GRSURF"         : [True,  False, AS_void,            None,                 "LLMF_PHYS",        "corrective ratio for surface cts contribution"                               ], &
+& }
+
+
+#:set vars_mf_phys_rad = { &
+& "EMTD"           : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "DOWNWARD LONGWAVE EMISSIVITY" ], &
+& "EMTU"           : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "UPWARD   LONGWAVE EMISSIVITY" ], &
+& "TRSW"           : [True,  False, AS_0_NFLEVG,        None,                 "LLMF_PHYS",        "SHORTWAVE TRANSMISSIVITY"     ], &
+& "RMOON"          : [True,  False, AS_void,            None,                 "LLMF_PHYS",        "Moon radiation"               ], &
+& }
+
+#:set vars_mf_phys_for = { &
+& "U"              : [True,  False, AS_1_NFLEVG,        None,                 "LLMF_PHYS"          ], &
+& "V"              : [True,  False, AS_1_NFLEVG,        None,                 "LLMF_PHYS"          ], &
+& "T"              : [True,  False, AS_1_NFLEVG,        None,                 "LLMF_PHYS"          ], &
+& "Q"              : [True,  False, AS_1_NFLEVG,        None,                 "LLMF_PHYS"          ], &
+& }
+
+#:set vars_mf_phys_gra = { &
+& "G"              : [True,  False, AS_NGRAD_1_NFLEVG,  None,                 "LLMF_PHYS"          ], &
+& }
+
+#:endmute
+MODULE MF_PHYS_TYPE_MOD
+
+USE PARKIND1, ONLY : JPIM, JPRB
+USE FIELD_MODULE
+USE FIELD_REGISTRY_MOD
+USE PARKIND1, ONLY : JPRB, JPIM, JPIB
+
+IMPLICIT NONE
+
+$:pcpg_type_definition ("MF_PHYS_OUT_TYPE",  vars_mf_phys_out, use_stack=USE_STACK)
+$:pcpg_type_definition ("MF_PHYS_OPT_TYPE" , vars_mf_phys_opt, use_stack=USE_STACK)
+$:pcpg_type_definition ("MF_PHYS_FOR_TYPE" , vars_mf_phys_for, use_stack=USE_STACK)
+$:pcpg_type_definition ("MF_PHYS_GRA_TYPE" , vars_mf_phys_gra, use_stack=USE_STACK)
+$:pcpg_type_definition ("MF_PHYS_RAD_TYPE" , vars_mf_phys_rad, use_stack=USE_STACK)
+
+TYPE MF_PHYS_TYPE
+  TYPE (MF_PHYS_OUT_TYPE) :: OUT
+  TYPE (MF_PHYS_OPT_TYPE) :: OPT
+  TYPE (MF_PHYS_FOR_TYPE) :: FOR
+  TYPE (MF_PHYS_GRA_TYPE) :: GRA
+  TYPE (MF_PHYS_RAD_TYPE) :: RAD
+CONTAINS
+  PROCEDURE :: UPDATE_VIEW => MF_PHYS_TYPE_UPDATE_VIEW
+  PROCEDURE :: FINAL => MF_PHYS_TYPE_FINAL
+END TYPE MF_PHYS_TYPE
+
+REAL(KIND=JPRB),    PRIVATE, SAVE, TARGET :: ZDUM1 (1), ZDUM2 (1, 1), ZDUM3 (1,1,1)
+INTEGER(KIND=JPIM), PRIVATE, SAVE, TARGET :: IDUM1 (1), IDUM2 (1, 1), IDUM3 (1,1,1)
+
+CONTAINS
+
+$:pcpg_type_methods ("MF_PHYS_OUT_TYPE", vars_mf_phys_out, use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_type_methods ("MF_PHYS_OPT_TYPE", vars_mf_phys_opt, use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_type_methods ("MF_PHYS_FOR_TYPE", vars_mf_phys_for, use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_type_methods ("MF_PHYS_GRA_TYPE", vars_mf_phys_gra, use_lbounds=True, use_stack=USE_STACK)
+
+$:pcpg_type_methods ("MF_PHYS_RAD_TYPE", vars_mf_phys_rad, use_lbounds=True, use_stack=USE_STACK)
+
+SUBROUTINE MF_PHYS_TYPE_UPDATE_VIEW (SELF, BLOCK_INDEX)
+
+CLASS (MF_PHYS_TYPE) :: SELF
+INTEGER(KIND=JPIM), INTENT (IN)   :: BLOCK_INDEX
+
+CALL SELF%OUT%UPDATE_VIEW (BLOCK_INDEX)
+CALL SELF%OPT%UPDATE_VIEW (BLOCK_INDEX)
+CALL SELF%FOR%UPDATE_VIEW (BLOCK_INDEX)
+CALL SELF%GRA%UPDATE_VIEW (BLOCK_INDEX)
+CALL SELF%RAD%UPDATE_VIEW (BLOCK_INDEX)
+
+END SUBROUTINE MF_PHYS_TYPE_UPDATE_VIEW
+
+SUBROUTINE MF_PHYS_TYPE_FINAL (SELF)
+
+CLASS (MF_PHYS_TYPE) :: SELF
+
+CALL SELF%OUT%FINAL ()
+CALL SELF%OPT%FINAL ()
+CALL SELF%FOR%FINAL ()
+CALL SELF%GRA%FINAL ()
+CALL SELF%RAD%FINAL ()
+
+END SUBROUTINE MF_PHYS_TYPE_FINAL
+
+END MODULE MF_PHYS_TYPE_MOD
+

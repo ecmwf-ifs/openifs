@@ -12,6 +12,18 @@
 
 !     E. DUTRA    E.C.M.W.F.      05/04/2016
 
+!     Modifications:
+!     I. Ayan-Miguez (BSC) Oct 2023: Add refactorization of Global and 
+!                                    Spatially distributed parameters
+
+!     ------------------------------------------------------------------
+
+!     ------------------------------------------------------------------
+
+!     *FCSURF** CONTAINS STATEMENT FUNCTIONS USED BY THE SURFACE MODEL
+
+!     E. DUTRA    E.C.M.W.F.      05/04/2016
+
 !     ------------------------------------------------------------------
 
 REAL(KIND=JPRB) :: ZZSNM ! Snow mass (kg m-2)

@@ -40,8 +40,10 @@ SUBROUTINE IFSTOWAM (BLK2LOC,                      &
 !                   FIELDS(:,4) = w* USED FOR GUSTINESS
 !                   FIELDS(:,5) = SEA ICE FRACTION 
 !                   FIELDS(:,6) = LAKE FRACTION 
-!                   FIELDS(:,7) = U COMPONENT OF SURFACE CURRENT 
-!                   FIELDS(:,8) = V COMPONENT OF SURFACE CURRENT 
+!                   FIELDS(:,7) = U COMPONENT OF SURFACE STRESS 
+!                   FIELDS(:,8) = V COMPONENT OF SURFACE STRESS 
+!                   FIELDS(:,9) = U COMPONENT OF SURFACE CURRENT 
+!                   FIELDS(:,10)= V COMPONENT OF SURFACE CURRENT 
 !        *LWCUR* - LOGICAL CONTROLLING THE PRESENCE OF MEANINGFUL
 !                   SURFACE CURRENTS (I.E. NOT ALL ZEROS).
 !        *MASK_IN*- MASK FOR FIELDS TO ONLY POINTS TO THE PART
@@ -49,14 +51,6 @@ SUBROUTINE IFSTOWAM (BLK2LOC,                      &
 !        *NXS:NXE*  FIRST DIMENSION OF FIELDG
 !        *NYS:NYE*  SECOND DIMENSION OF FIELDG
 !        *FIELDG*   INPUT FORCING FIELDS ON THE WAVE MODEL GRID
-
-!     EXTERNALS                                                         
-!     ---------                                                         
-
-!     *ABORT1*         TERMINATES PROCESSING
-!     *INCDATE*        INCREMENTS DATE 
-!     *INITIALINT*     COMPUTES INTERPOLATION COEFFICIENTS (FOR FLDINTER)
-!     *FLDINTER*       INTERPOLATES ATMOSPHERIC FIELDS TO WAM GRID
 
 ! --------------------------------------------------------------------- 
 
@@ -68,15 +62,16 @@ SUBROUTINE IFSTOWAM (BLK2LOC,                      &
       USE YOWGRID  , ONLY : NPROMA_WAM, NCHNK, KIJL4CHNK
       USE YOWICE   , ONLY : IPARAMCI
       USE YOWMAP   , ONLY : IRGG     ,AMOWEP   ,AMOSOP   ,AMOEAP   ,    &
-     &            AMONOP   ,XDELLA   ,ZDELLO   ,NLONRGG
+     &            AMONOP   ,XDELLA   ,ZDELLO   ,NLONRGG,                &
+     &            NGX      ,NGY
       USE YOWMPP   , ONLY : IRANK    ,NPROC
       USE YOMMP0   , ONLY : MYSETW   ,NPRCIDS  ,NPRTRW   ,NPRTRV
-      USE YOWPARAM , ONLY : NGX      ,NGY      ,NIBLO    ,LL1D
+      USE YOWPARAM , ONLY : LL1D
       USE YOWPCONS , ONLY : ZMISS    ,ROAIR    ,WSTAR0
       USE YOWSTAT  , ONLY : LADEN    ,LGUST
       USE YOWTEST  , ONLY : IU06
       USE YOWWNDG  , ONLY : ICODE_CPL,IWPER    ,ICOORD 
-      USE YOWWIND  , ONLY : NC       ,NR       , CWDFILE  ,LLNEWCURR
+      USE YOWWIND  , ONLY : LLNEWCURR
 
       USE YOMTAG   , ONLY : MTAGWAMNORM
       USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
@@ -91,14 +86,15 @@ SUBROUTINE IFSTOWAM (BLK2LOC,                      &
 #include "abort1.intfb.h"
 #include "fldinter.intfb.h"
 #include "initialint.intfb.h"
+#include "intrpolchk.intfb.h"
 
-      TYPE(WVGRIDLOC), DIMENSION(NPROMA_WAM, NCHNK), INTENT(IN) :: BLK2LOC
+      TYPE(WVGRIDLOC), INTENT(IN) :: BLK2LOC
       INTEGER(KIND=JWIM), INTENT(IN) :: NFIELDS, NGPTOTG, NCA, NRA
       REAL(KIND=JWRB), INTENT(IN) :: FIELDS(NGPTOTG,NFIELDS)
       LOGICAL, INTENT(IN) :: LWCUR
       INTEGER(KIND=JWIM), INTENT(INOUT) :: MASK_IN(NGPTOTG)
       INTEGER(KIND=JWIM), INTENT(IN) :: NXS, NXE, NYS, NYE
-      TYPE(FORCING_FIELDS), DIMENSION(NXS:NXE, NYS:NYE), INTENT(INOUT) :: FIELDG
+      TYPE(FORCING_FIELDS), INTENT(INOUT) :: FIELDG
 
 
       INTEGER(KIND=JWIM) :: ICHNK, KIJS, KIJL
@@ -108,15 +104,17 @@ SUBROUTINE IFSTOWAM (BLK2LOC,                      &
       INTEGER(KIND=JWIM) :: IBEG, IEND, IBEGOFF, IENDOFF, IA, IB, ISETW, ISETV 
 !$    INTEGER,EXTERNAL :: OMP_GET_MAX_THREADS
       INTEGER(KIND=JWIM), SAVE :: IPERIODIC
+      INTEGER(KIND=JWIM), SAVE :: NCAD, NRAD
+      INTEGER(KIND=JWIM), SAVE :: NWX, NWY
       INTEGER(KIND=JWIM) :: IREQ(NPROC+1)
       INTEGER(KIND=JWIM) :: IRECVCOUNTS(NPROC)
       INTEGER(KIND=JWIM), ALLOCATABLE, SAVE :: JJ(:), II(:,:), IIP(:,:)
-      INTEGER(KIND=JWIM), ALLOCATABLE, SAVE :: ISTART(:)
       INTEGER(KIND=JWIM), ALLOCATABLE, SAVE :: ILONRGG(:), IJBLOCK(:,:)
 
       REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
       REAL(KIND=JWRB) :: ZDUM(2)
       REAL(KIND=JWRB) :: VAL 
+      REAL(KIND=JWRB), SAVE :: RMONOP, RMOSOP, RMOWEP, RMOEAP
       REAL(KIND=JWRB), DIMENSION(NFIELDS,4) :: NORMS ! 1:average, 2:min, 3:max, 4:variance 
       REAL(KIND=JWRB), ALLOCATABLE :: ZCOMBUF(:),ZCOMBUF1(:)
       REAL(KIND=JWRB), ALLOCATABLE :: ZBUFW(:)
@@ -139,9 +137,6 @@ SUBROUTINE IFSTOWAM (BLK2LOC,                      &
 
 IF (LHOOK) CALL DR_HOOK('IFSTOWAM',0,ZHOOK_HANDLE)
 
-ASSOCIATE(IFROMIJ => BLK2LOC%IFROMIJ, &
- &        JFROMIJ => BLK2LOC%JFROMIJ)
-
       CALL GSTATS_BARRIER(796)
 
 !     ONLY ACTIVE IF COUPLED TO IFS.
@@ -152,20 +147,46 @@ ASSOCIATE(IFROMIJ => BLK2LOC%IFROMIJ, &
 !         1.1 FIRST TIME ONLY, COMPUTE INTERPOLATION COEFFICIENTS:
 !             ----------------------------------------------------
 !
-          IF (.NOT.ALLOCATED(ILONRGG)) ALLOCATE (ILONRGG(NRA))
-          IF (.NOT.ALLOCATED(JJ)) ALLOCATE (JJ(NGY))
-          IF (.NOT.ALLOCATED(II)) ALLOCATE (II(NGX,NGY))
-          IF (.NOT.ALLOCATED(IIP)) ALLOCATE (IIP(NGX,NGY))
-          IF (.NOT.ALLOCATED(DJ1)) ALLOCATE (DJ1(NGY))
-          IF (.NOT.ALLOCATED(DII1)) ALLOCATE (DII1(NGX,NGY))
-          IF (.NOT.ALLOCATED(DIIP1)) ALLOCATE (DIIP1(NGX,NGY))
 
-          
-          CALL INITIALINT(IU06, NCA, NRA,                               &
-     &                    NGX, NGY, IRGG, NLONRGG, XDELLA, ZDELLO,      &
-     &                    AMOWEP, AMOSOP, AMOEAP, AMONOP, IPERIODIC,    &
-     &                    ILONRGG,                                      &
-     &                    LLINTERPOL,DJ1, DII1, DIIP1, JJ, II, IIP)
+!         IS INTERPOLATION NEEDED?
+
+          IF (.NOT.ALLOCATED(ILONRGG)) ALLOCATE (ILONRGG(NRA))
+
+          CALL INTRPOLCHK(IU06, NCA, NRA,                            &
+     &                    NGX, NGY, IRGG, NLONRGG, XDELLA, ZDELLO,   &
+     &                    AMOWEP, AMOSOP, AMOEAP, AMONOP,            &
+     &                    NCAD, NRAD,                                &
+     &                    RMONOP, RMOSOP, RMOWEP, RMOEAP,            &
+     &                    ILONRGG, IPERIODIC, LLINTERPOL)
+         
+
+          IF (LLINTERPOL) THEN 
+            NWX=NGX
+            NWY=NGY
+          ELSE
+            ! dummy dimension as it will not be used.
+            NWX=1
+            NWY=1
+          ENDIF
+
+          IF (.NOT.ALLOCATED(JJ)) ALLOCATE (JJ(NWY))
+          IF (.NOT.ALLOCATED(II)) ALLOCATE (II(NWX,NWY))
+          IF (.NOT.ALLOCATED(IIP)) ALLOCATE (IIP(NWX,NWY))
+          IF (.NOT.ALLOCATED(DJ1)) ALLOCATE (DJ1(NWY))
+          IF (.NOT.ALLOCATED(DII1)) ALLOCATE (DII1(NWX,NWY))
+          IF (.NOT.ALLOCATED(DIIP1)) ALLOCATE (DIIP1(NWX,NWY))
+
+          IF (LLINTERPOL) THEN 
+!            INTERPOLATION NEEDED, COMPUTE INTERPOLATION WEIGHTS
+            CALL INITIALINT(IU06, NCA, NRA,                            &
+     &                      NGX, NGY, IRGG, NLONRGG, XDELLA, ZDELLO,   &
+     &                      AMOWEP, AMOSOP, AMOEAP, AMONOP,            &
+     &                      NCAD, NRAD,                                &
+     &                      RMONOP, RMOSOP, RMOWEP, RMOEAP,            &
+     &                      ILONRGG, IPERIODIC,                        & 
+     &                      NWX, NWY, DJ1, DII1, DIIP1, JJ, II, IIP)
+          ENDIF
+
 
           LWCOUSAMEGRID = .NOT. LLINTERPOL
           WRITE(IU06,*) ' SUB. IFSTOWAM - LWCOUSAMEGRID = ',LWCOUSAMEGRID
@@ -264,9 +285,11 @@ ASSOCIATE(IFROMIJ => BLK2LOC%IFROMIJ, &
           IF (NFIELDS >= 3) AFLABEL(3)='Air density     '
           IF (NFIELDS >= 4) AFLABEL(4)='w*              '
           IF (NFIELDS >= 5) AFLABEL(5)='Sea ice fraction'
-          IF (NFIELDS >= 6) AFLABEL(6)='Lake fraction'
-          IF (NFIELDS >= 7) AFLABEL(7)='U-ocean-current '
-          IF (NFIELDS >= 8) AFLABEL(8)='V-ocean-current '
+          IF (NFIELDS >= 6) AFLABEL(6)='Lake fraction   '
+          IF (NFIELDS >= 7) AFLABEL(7)='U-surface-stress'
+          IF (NFIELDS >= 8) AFLABEL(8)='V-surface-stress'
+          IF (NFIELDS >= 9) AFLABEL(9)='U-ocean-current '
+          IF (NFIELDS >= 10) AFLABEL(10)='V-ocean-current '
         ENDIF
 
 !       COMPUTATION OF THE NORMS OF INPUT FIELDS
@@ -298,8 +321,6 @@ ASSOCIATE(IFROMIJ => BLK2LOC%IFROMIJ, &
 !$OMP     END PARALLEL DO
           CALL GSTATS(1436,1)
           LFRSTIME=.FALSE.
-          IF (.NOT.ALLOCATED(ISTART)) ALLOCATE (ISTART(NFIELDS))
-          ISTART(:)=0
           N_MASK_IN=NGPTOTG
 
           DO IFLD=1,NFIELDS
@@ -509,14 +530,16 @@ ASSOCIATE(IFROMIJ => BLK2LOC%IFROMIJ, &
           KIJS = 1
           KIJL = NPROMA_WAM 
 
-          CALL FLDINTER (IU06, NGPTOTG, NCA, NRA, NFIELDS, FIELDS,                         &
-     &                   NGX, NGY, IRGG, NLONRGG, XDELLA, ZDELLO,                          &
-     &                   IFROMIJ(:,ICHNK), JFROMIJ(:,ICHNK), KIJS, KIJL, KIJL4CHNK(ICHNK), &
-     &                   AMOWEP, AMOSOP, AMOEAP, AMONOP, IPERIODIC,                        &
-     &                   ILONRGG, IJBLOCK, ZMISS,                                          &
-     &                   LADEN, ROAIR, LGUST, WSTAR0, LLKC, LWCUR,                         &
-     &                   LLINTERPOL,                                                       &
-     &                   DJ1, DII1, DIIP1, JJ, II, IIP, MASK_IN,                           &
+          CALL FLDINTER (IU06, NGPTOTG, NCA, NRA, NFIELDS, FIELDS,               &
+     &                   NGX, NGY, IRGG, NLONRGG, XDELLA, ZDELLO,                &
+     &                   BLK2LOC%IFROMIJ(:,ICHNK), BLK2LOC%JFROMIJ(:,ICHNK),     &
+     &                   KIJS, KIJL, KIJL4CHNK(ICHNK),                           &
+     &                   AMOWEP, AMOSOP, AMOEAP, AMONOP, IPERIODIC,              &
+     &                   ILONRGG, IJBLOCK, ZMISS,                                &
+     &                   LADEN, ROAIR, LGUST, WSTAR0, LLKC, LWCUR,               &
+     &                   LLINTERPOL,                                             &
+     &                   NWX, NWY, DJ1, DII1, DIIP1, JJ, II, IIP,                &
+     &                   MASK_IN,                                                &
      &                   NXS, NXE, NYS, NYE, FIELDG)
         ENDDO
 !$OMP   END PARALLEL DO
@@ -529,7 +552,5 @@ ASSOCIATE(IFROMIJ => BLK2LOC%IFROMIJ, &
       ENDIF
 
 IF (LHOOK) CALL DR_HOOK('IFSTOWAM',1,ZHOOK_HANDLE)
-
-END ASSOCIATE
 
 END SUBROUTINE IFSTOWAM

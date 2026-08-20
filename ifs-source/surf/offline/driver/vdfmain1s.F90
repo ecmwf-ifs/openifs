@@ -1,7 +1,310 @@
+
+! (C) Copyright 1982- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!***
+
+!**   *VDFMAIN1S* - DOES THE VERTICAL EXCHANGE OF U,V,SLG,QT BY TURBULENCE.
+
+!     J.F.GELEYN       20/04/82   Original  
+!     C.A.BLONDIN      18/12/86
+!     A.C.M. BELJAARS  20/10/89   IFS-VERSION (TECHNICAL REVISION OF CY34)
+!     A.C.M. BELJAARS  26/03/90   OBUKHOV-L UPDATE 
+!     A.C.M. BELJAARS  30/09/98   SURFACE TILES 
+!     P. Viterbo       17/05/2000 Surface DDH for TILES
+!     D. Salmond       15/10/2001 FULLIMP mods
+!     S. Abdalla       27/11/2001 Passing Zi/L to waves
+!     A. Beljaars       2/05/2003 New tile coupling     
+!     P.Viterbo        24/05/2004 Change surface units
+!     M. Ko"hler        3/12/2004 Moist Advection-Diffusion
+!     P. Viterbo       17/06/2005 surf external library
+!     G. Balsamo       03/07/2006 add soil type
+!     G. Balsamo       25/08/2009 add lai clim
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL
+!     E. Dutra         10/10/2014  net longwave tiled 
+!     A. Agusti-Panareda 09/04/2021 atmospheric CO2 passed to land surface
+!     V. Huijnen       20/12/2022 atmospheric BVOC emissions
+
+!     PURPOSE.
+!     --------
+
+!          THIS ROUTINE COMPUTES THE PHYSICAL TENDENCIES OF THE FOUR
+!     PROGNOSTIC VARIABLES U,V,T AND Q DUE TO THE VERTICAL EXCHANGE BY
+!     TURBULENT (= NON-MOIST CONVECTIVE) PROCESSES. THESE TENDENCIES ARE
+!     OBTAINED AS THE DIFFERENCE BETWEEN THE RESULT OF AN IMPLICIT
+!     TIME-STEP STARTING FROM VALUES AT T-1 AND THESE T-1 VALUES. ALL
+!     THE DIAGNOSTIC COMPUTATIONS (EXCHANGE COEFFICIENTS, ...) ARE DONE
+!      FROM THE T-1 VALUES. AS A BY-PRODUCT THE ROUGHNESS LENGTH OVER SEA
+!     IS UPDATED ACCORDINGLY TO THE *CHARNOCK FORMULA. HEAT AND MOISTURE
+!     SURFACE FLUXES AND THEIR DERIVATIVES AGAINST TS, WS AND WL
+!     (THE LATTER WILL BE LATER WEIGHTED WITH THE SNOW FACTOR IN
+!     *VDIFF*), LATER TO BE USED FOR SOIL PROCESSES TREATMENT, ARE ALSO
+!     COMPUTED AS WELL AS A STABILITY VALUE TO BE USED AS A DIAGNOSTIC
+!     OF THE DEPTH OF THE WELL MIXED LAYER IN CONVECTIVE COMPUTATIONS.
+
+!     INTERFACE.
+!     ----------
+!          *VDIFF* TAKES THE MODEL VARIABLES AT T-1 AND RETURNS THE VALUES
+!     FOR THE PROGNOSTIC TIME T+1 DUE TO VERTICAL DIFFUSION.
+!     THE MODEL VARIABLES, THE MODEL DIMENSIONS AND THE DIAGNOSTICS DATA
+!     ARE PASSED AS SUBROUTINE ARGUMENTS. CONSTANTS THAT DO NOT CHANGE
+!     DURING A MODEL RUN (E.G. PHYSICAL CONSTANTS, SWITCHES ETC.) ARE
+!     STORED IN A SINGLE COMMON BLOCK *YOMVDF*, WHICH IS INITIALIZED
+!     BY SET-UP ROUTINE *SUVDF*.
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (INTEGER):
+
+!    *KIDIA*        START POINT
+!    *KFDIA*        END POINT
+!    *KLEV*         NUMBER OF LEVELS
+!    *KLON*         NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*        NUMBER OF SOIL LAYERS
+!    *KSTEP*        CURRENT TIME STEP INDEX
+!    *KTILES*       NUMBER OF TILES (I.E. SUBGRID AREAS WITH DIFFERENT 
+!                   OF SURFACE BOUNDARY CONDITION)
+!    *KVTYPES*      NUMBER OF biomes for land carbon
+!    *KDIAG*        NUMBER of diagnostic parameters
+!    *KTRAC*        Number of tracers
+!    *KLEVSN*       Number of snow layers (diagnostics) 
+!    *KLEVI*        Number of sea ice layers (diagnostics)
+!    *KDHVTLS*      Number of variables for individual tiles
+!    *KDHFTLS*      Number of fluxes for individual tiles
+!    *KDHVTSS*      Number of variables for snow energy budget
+!    *KDHFTSS*      Number of fluxes for snow energy budget
+!    *KDHVTTS*      Number of variables for soil energy budget
+!    *KDHFTTS*      Number of fluxes for soil energy budget
+!    *KDHVTIS*      Number of variables for sea ice energy budget
+!    *KDHFTIS*      Number of fluxes for sea ice energy budget
+
+!    *KTVL*         VEGETATION TYPE FOR LOW VEGETATION FRACTION
+!    *KCO2TYP*       TYPE OF PHOTOSYNTHESIS PATHWAY FOR LOW VEGETATION (C3/C4)
+!    *KTVH*         VEGETATION TYPE FOR HIGH VEGETATION FRACTION
+!    *KSOTY*        SOIL TYPE                                     (1-6)
+
+!    *KCNT*         Index of vdf sub steps.
+
+!     INPUT PARAMETERS (LOGICAL)
+!    *LDLAND*       LAND SEA MASK INDICATOR                       -
+
+!     INPUT PARAMETERS (REAL)
+
+!    *PTSPHY*       TIME STEP FOR THE PHYSICS
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+
+!    *PCVL*         LOW VEGETATION COVER                          -  
+!    *PCVH*         HIGH VEGETATION COVER                         -  
+!    *PCUR*         URBAN COVER (PASSIVE)                        (0-1)
+!    *PLAIL*        LOW VEGETATION LAI                           m2/m2
+!    *PLAIH*        HIGH VEGETATION LAI                          m2/m2
+!    *PLAILP* (FIX!)LOW VEGETATION LAI previous time step        m2/m2
+!    *PLAIHP* (FIX!)HIGH VEGETATION LAI previous time step       m2/m2
+
+!     *PSNM1M*       SNOW MASS (per unit area)                      kg/m**2
+!     *PRSNM1M*      SNOW DENSITY                                   kg/m**3
+
+
+!    *PUM1*         X-VELOCITY COMPONENT                          M/S
+!    *PVM1*         Y-VELOCITY COMPONENT                          M/S
+!    *PTM1*         TEMPERATURE                                   K
+!    *PQM1*         SPECIFIC HUMIDITY                             KG/KG
+!    *PLM1*         SPECIFIC CLOUD LIQUID WATER                   KG/KG
+!    *PIM1*         SPECIFIC CLOUD ICE                            KG/KG
+!    *PAM1*         CLOUD FRACTION                                1
+!    *PCM1*         TRACER CONCENTRATION                          KG/KG
+!    *PAPM1*        PRESSURE ON FULL LEVELS                       PA
+!    *PAPHM1*       PRESSURE ON HALF LEVELS                       PA
+!    *PGEOM1*       GEOPOTENTIAL                                  M2/S2
+!    *PGEOH*        GEOPOTENTIAL AT HALF LEVELS                   M2/S2
+!    *PTSKM1M*      SKIN TEMPERATURE                              K
+!    *PTSAM1M*      SURFACE TEMPERATURE                           K
+!    *PWSAM1M*      SOIL MOISTURE ALL LAYERS                      M**3/M**3
+!    *PSSRFL*       NET SHORTWAVE RADIATION FLUX AT SURFACE       W/M2
+!    *PSLRFL*       NET LONGWAVE RADIATION FLUX AT SURFACE        W/M2
+!    *PEMIS*        MODEL SURFACE LONGWAVE EMISSIVITY
+!    *PHRLW*        LONGWAVE HEATING RATE                         K/s
+!    *PHRSW*        SHORTWAVE HEATING RATE                        K/s
+!    *PTSN*         SNOW TEMPERATURE                              K
+!    *PTICE*        ICE TEMPERATURE (TOP SLAB)                    K
+!    *PHLICE*       LAKE ICE THICKNESS                            m
+!    *PTLICE*       LAKE ICE TEMPERATURE                          K
+!    *PTLWML*       LAKE MEAN WATER TEMPERATURE                   K
+!    *PSST*         (OPEN) SEA SURFACE TEMPERATURE                K
+!    *PFRTI*        TILE FRACTIONS                                (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!    *PALBTI*       BROADBAND ALBEDO FOR TILE FRACTIONS
+!    *PWLMX*        MAXIMUM SKIN RESERVOIR CAPACITY               kg/m**2
+!    *PCHAR*        CHARNOCK PARAMETER                            -
+!    *PCHARHQ       CHARNOCK PARAMETER FOR HEAT AND MOISTURE      -
+!    *PUCURR*       OCEAN CURRENT X_COMPONENT
+!    *PVCURR*       OCEAN CURRENT Y_COMPONENT
+!    *PUSTOKES*     SURFACE STOKES VELOCITY X_COMPONENT
+!    *PVSTOKES*     SURFACE STOKES VELOCITY Y_COMPONENT
+!    *PTSKRAD*      SKIN TEMPERATURE OF LATEST FULL RADIATION
+!                      TIMESTEP                                   K
+!    *PCFLX*        TRACER SURFACE FLUX                           kg/(m2 s)
+
+!    *PMU0*         LOCAL COSINE OF INSTANTANEOUS MEAN SOLAR ZENITH ANGLE
+
+
+!     INPUT PARAMETERS (LOGICAL):
+
+!     CONTRIBUTIONS TO BUDGETS (OUTPUT,REAL):
+
+!    *PVDIS*        DISSIPATION                                   W/M2
+!    *PAHFLEV*      LATENT HEAT FLUX  (SNOW/ICE FREE PART)        W/M2
+!    *PAHFLSB*      LATENT HEAT FLUX  (SNOW/ICE COVERED PART)     W/M2
+
+!     UPDATED PARAMETERS (REAL):
+
+!    *PTE*          TEMPERATURE TENDENCY                          K/S
+!    *PQE*          MOISTURE TENDENCY                             KG/(KG S)
+!    *PLE*          LIQUID WATER TENDENCY                         KG/(KG S)
+!    *PIE*          ICE WATER TENDENCY                            KG/(KG S)
+!    *PAE*          CLOUD FRACTION TENDENCY                       1/S)
+!    *PVOM*         MERIODINAL VELOCITY TENDENCY (DU/DT)          M/S2
+!    *PVOL*         LATITUDE TENDENCY            (DV/DT)          M/S2
+!    *PTENC*        TRACER TENDENCY                               KG/(KG S)
+!    *PTSKE1*       SKIN TEMPERATURE TENDENCY                     K/S
+!    *PZ0M*         AERODYNAMIC ROUGHNESS LENGTH                  M
+!    *PZ0H*         ROUGHNESS LENGTH FOR HEAT                     M
+
+!     UPDATED PARAMETERS FOR TILES (REAL): 
+
+!    *PUSTRTI*      SURFACE U-STRESS                              N/M2 
+!    *PVSTRTI*      SURFACE V-STRESS                              N/M2
+!    *PAHFSTI*      SURFACE SENSIBLE HEAT FLUX                    W/M2
+!    *PEVAPTI*      SURFACE MOISTURE FLUX                         KG/M2/S
+!    *PTSKTI*       SKIN TEMPERATURE                              K
+!    *PSLRFLTI*     Net longwave radiation                        W/m2 (only output here)
+
+!    UPDATED PARAMETERS FOR VEGETATION TYPES (REAL): 
+
+!    *PANDAYVT*     DAILY NET CO2 ASSIMILATION OVER CANOPY    KG_CO2/M2
+!    *PANFMVT*      MAXIMUM LEAF ASSIMILATION                KG_CO2/KG_AIR M/S  
+
+!     OUTPUT PARAMETERS (REAL):
+
+!    *PEVAPTIU*      SURFACE MOISTURE FLUX (unstressed low veg)    KG/M2/S
+!    *PFWSB*        EVAPORATION OF SNOW                           KG/(M**2*S)
+!    *PU10M*        U-COMPONENT WIND AT 10 M                      M/S
+!    *PV10M*        V-COMPONENT WIND AT 10 M                      M/S
+!    *P10NU*        U-COMPONENT NEUTRAL WIND AT 10 M              M/S
+!    *P10NV*        V-COMPONENT NEUTRAL WIND AT 10 M              M/S
+!    *PUST*         FRICTION VELOCITY                             M/S
+!    *PT2M*         TEMPERATURE AT 2M                             K
+!    *PD2M*         DEW POINT TEMPERATURE AT 2M                   K
+!    *PQ2M*         SPECIFIC HUMIDITY AT 2M                       KG/KG
+!    *PEXDIAG*      Extra diagnostic fields
+!    *PGUST*        GUST AT 10 M                                  M/S
+!    *PZIDLWV*      Zi/L used for gustiness in wave model         M/M
+!                   (NOTE: Positive values of Zi/L are set to ZERO)
+!    *PBLH*         PBL HEIGHT (dry diagnostic based on Ri#)      M
+!    *PZINV*        PBL HEIGHT (moist parcel, not for stable PBL) M
+!    *PSSRFLTI*     NET SHORTWAVE RADIATION FLUX AT SURFACE, FOR
+!                      EACH TILE                                  W/M2
+!    *PEVAPSNW*     EVAPORATION FROM SNOW UNDER FOREST            KG/(M2*S)
+!    *PSTRTU*       TURBULENT FLUX OF U-MOMEMTUM            KG*(M/S)/(M2*S)
+!    *PSTRTV*       TURBULENT FLUX OF V-MOMEMTUM            KG*(M/S)/(M2*S)
+!    *PDIFTS*       TURBULENT FLUX OF HEAT                         J/(M2*S)
+!    *PDIFTQ*       TURBULENT FLUX OF SPECIFIC HUMIDITY           KG/(M2*S)
+!    *PDIFTL*       TURBULENT FLUX OF LIQUID WATER                KG/(M2*S)
+!    *PDIFTI*       TURBULENT FLUX OF ICE WATER                   KG/(M2*S)
+
+!    *PKH*          TURB. DIFF. COEFF. FOR HEAT ABOVE SURF. LAY.  (M2/S)
+!                   IN SURFACE LAYER: CH*U                        (M/S)
+!    *PDHTLS*       Diagnostic array for tiles (see module yomcdh)
+!                      (Wm-2 for energy fluxes, kg/(m2s) for water fluxes)
+!    *PDHTSS*       Diagnostic array for snow T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!    *PDHTTS*       Diagnostic array for soil T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!    *PDHTIS*       Diagnostic array for ice T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+
+
+!    *PAN*          NET CO2 ASSIMILATION OVER CANOPY          KG_CO2/M2/S
+!    *PAG*          GROSS CO2 ASSIMILATION OVER CANOPY        KG_CO2/M2/S
+!    *PRD*          DARK RESPIRATION                          KG_CO2/M2/S
+!    *PRSOIL_STR*   RESPIRATION FROM SOIL AND STRUCTURAL BIOMASS KG_CO2/M2/S
+!    *PRECO*        ECOSYSTEM RESPIRATION                     KG_CO2/M2/S
+!    *PCO2FLUX*     CO2 FLUX                                  KG_CO2/M2/S
+!    *PCH4FLUX*     CH4 FLUX                                  KG_CO2/M2/S
+!    *PBVOCFLUX*    Biogenic VOC FLUX                         KG_Species/M2/S
+
+!     *PSNM1M*       SNOW MASS (per unit area)                      kg/m**2
+!     *PRSNM1M*      SNOW DENSITY                                   kg/m**3
+!     Additional parameters for flux boundary condtion (in 1D model):
+
+!    *LLSFCFLX*     If .TRUE. flux boundary condtion is used 
+!    *ZFSH1D*       Specified sensible heat flux (W/m2)
+!    *ZFLH1D*       Specified latent heat flux (W/m2)
+
+!     METHOD.
+!     -------
+
+!          FIRST AN AUXIALIARY VARIABLE CP(Q)T+GZ IS CREATED ON WHICH
+!     THE VERTICAL DIFFUSION PROCESS WILL WORK LIKE ON U,V AND Q. THEN
+!     ALONG THE VERTICAL AND AT THE SURFACE, EXCHANGE COEFFICIENTS (WITH
+!     THE DIMENSION OF A PRESSURE THICKNESS) ARE COMPUTED FOR MOMENTUM
+!     AND FOR HEAT (SENSIBLE PLUS LATENT). THE LETTERS M AND H ARE USED
+!     TO DISTINGUISH THEM AND THE COMPUTATION IS THE RESULT OF A
+!     CONDITIONAL MERGE BETWEEN THE STABLE AND THE UNSTABLE CASE
+!     (DEPENDING ON THE SIGN OF THE *RICHARDSON BULK NUMBER).
+!          IN THE SECOND PART OF THE ROUTINE THE IMPLICIT LINEAR
+!     SYSTEMS FOR U,V FIRST AND T,Q SECOND ARE SOLVED BY A *GAUSSIAN
+!     ELIMINATION BACK-SUBSTITUTION METHOD. FOR T AND Q THE LOWER
+!     BOUNDARY CONDITION DEPENDS ON THE SURFACE STATE.
+!     OVER LAND, TWO DIFFERENT REGIMES OF EVAPORATION PREVAIL:
+!     A STOMATAL RESISTANCE DEPENDENT ONE OVER THE VEGETATED PART
+!     AND A SOIL RELATIVE HUMIDITY DEPENDENT ONE OVER THE
+!     BARE SOIL PART OF THE GRID MESH.
+!     POTENTIAL EVAPORATION TAKES PLACE OVER THE SEA, THE SNOW
+!     COVERED PART AND THE LIQUID WATER COVERED PART OF THE
+!     GRID MESH AS WELL AS IN CASE OF DEW DEPOSITION.
+!          FINALLY ONE RETURNS TO THE VARIABLE TEMPERATURE TO COMPUTE
+!     ITS TENDENCY AND THE LATER IS MODIFIED BY THE DISSIPATION'S EFFECT
+!     (ONE ASSUMES NO STORAGE IN THE TURBULENT KINETIC ENERGY RANGE) AND
+!     THE EFFECT OF MOISTURE DIFFUSION ON CP. Z0 IS UPDATED AND THE
+!     SURFACE FLUXES OF T AND Q AND THEIR DERIVATIVES ARE PREPARED AND
+!     STORED LIKE THE DIFFERENCE BETWEEN THE IMPLICITELY OBTAINED
+!     CP(Q)T+GZ AND CP(Q)T AT THE SURFACE.
+
+!     EXTERNALS.
+!     ----------
+
+!     *VDFMAIN1S* CALLS SUCESSIVELY:
+!         *SURFEXCDRIVER*
+!         *VDFEXCU*
+!         *VDFDIFM*
+!         *VDFDIFH*
+!         *VDFDIFC*
+!         *VDFINCR*
+!         *VDFSDRV*
+!         *VDFPPCFL*
+!         *VDFUPDZ0*
+
+!     REFERENCE.
+!     ----------
+
+!          SEE VERTICAL DIFFUSION'S PART OF THE MODEL'S DOCUMENTATION
+!     FOR DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     ------------------------------------------------------------------
+
 !OPTIONS XOPT(HSFUN)
 SUBROUTINE VDFMAIN1S  ( CDCONF, &
  & KIDIA  , KFDIA  , KLON   , KLEV   , KLEVS  , KSTEP  , KTILES , KVTYPES, KDIAG, &
- & KTRAC  , KLEVSN , KLEVI  , KDHVTLS, KDHFTLS, KDHVTSS, KDHFTSS, &
+ & KTRAC  , KLEVSN , KLEVI  , LDLAND , KDHVTLS, KDHFTLS, KDHVTSS, KDHFTSS, &
  & KDHVTTS, KDHFTTS, KDHVTIS, KDHFTIS, &
  & KDHVCO2S,KDHFCO2S, KDHVVEGS,KDHFVEGS,  &
  & PMU0   , &
@@ -32,13 +335,6 @@ SUBROUTINE VDFMAIN1S  ( CDCONF, &
  ! DDH OUTPUTS
  & PDHTLS , PDHTSS , PDHTTS , PDHTIS, PDHCO2S,PDHVEGS )
 
-! (C) Copyright 1982- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !***
 
 !**   *VDFMAIN1S* - DOES THE VERTICAL EXCHANGE OF U,V,SLG,QT BY TURBULENCE.
@@ -122,6 +418,7 @@ SUBROUTINE VDFMAIN1S  ( CDCONF, &
 !    *KCNT*         Index of vdf sub steps.
 
 !     INPUT PARAMETERS (LOGICAL)
+!    *LDLAND*       LAND SEA MASK INDICATOR                       -
 
 !     INPUT PARAMETERS (REAL)
 
@@ -340,7 +637,7 @@ USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
                     & R5ALSCP  ,RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,&
                     & RTICECU  ,RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
 USE YOMJFH   , ONLY : N_VMASS
-USE YOEPHY   , ONLY : LVDFTRAC 
+USE YOEPHY   , ONLY : LVDFTRAC, LBLEND 
 USE YOMGF1S  , ONLY : RALT
 
 USE YOERDI   , ONLY : RCARDI ! C-TESSEL
@@ -375,6 +672,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
 INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA
 INTEGER(KIND=JPIM),INTENT(IN)    :: KSTEP 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY 
+LOGICAL           ,INTENT(IN)    :: LDLAND(KLON)
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTVL(KLON) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KCO2TYP(KLON) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTVH(KLON) 
@@ -556,6 +854,9 @@ REAL(KIND=JPRB) ::    ZCPTSTI(KLON,KTILES), ZQSTI(KLON,KTILES)  ,&
 REAL(KIND=JPRB) ::    ZG0(KLON,KTILES),&
                     & Z10NU(KLON), Z10NV(KLON), ZUST(KLON),&
                     & ZUSTOKES(KLON), ZVSTOKES(KLON) , PI10FGCV(KLON)
+!Tile depend
+REAL(KIND=JPRB) ::    ZZ0MTIW(KLON,KTILES)       , ZZ0HTIW(KLON,KTILES)       , ZZ0QTIW(KLON,KTILES),&
+                    & ZZZDLTI(KLON,KTILES), ZZQSATI(KLON,KTILES), ZZCPTSTI(KLON,KTILES)
 
 LOGICAL ::            LLRUNDRY(KLON)
 
@@ -574,6 +875,8 @@ REAL(KIND=JPRB) ::    ZATMCO2(KLON)
 
 !LOGICAL         ::    LNEMOLIMTHK
 LOGICAL         ::    LSICOUP
+
+REAL(KIND=JPRB) ::  ZPGP2DSPP(KLON)
 
 #include "surfexcdriver.h"
 #include "surfpp.h"
@@ -695,7 +998,7 @@ ZATMCO2=PCM1(:,KLEV,1)
 
 CALL SURFEXCDRIVER(YDSURF,CDCONF=CDCONF, &
  & KIDIA=KIDIA, KFDIA=KFDIA, KLON=KLON, KLEVS=KLEVS, KTILES=KTILES, KVTYPES=KVTYPES, KDIAG=KDIAG, &
- & KSTEP=KSTEP, KLEVSN=KLEVSN, KLEVI=KLEVI, KDHVTLS=KDHVTLS, KDHFTLS=KDHFTLS, &
+ & KSTEP=KSTEP, KLEVSN=KLEVSN, KLEVI=KLEVI, LDLAND=LDLAND, KDHVTLS=KDHVTLS, KDHFTLS=KDHFTLS, &
  & KDHVTSS=KDHVTSS, KDHFTSS=KDHFTSS, KDHVTTS=KDHVTTS, KDHFTTS=KDHFTTS, &
  & KDHVTIS=KDHVTIS, KDHFTIS=KDHFTIS, K_VMASS=N_VMASS, &
  & KDHVCO2S=KDHVCO2S, KDHFCO2S=KDHFCO2S,KDHVVEGS=KDHVVEGS,KDHFVEGS=KDHFVEGS, &
@@ -727,6 +1030,7 @@ CALL SURFEXCDRIVER(YDSURF,CDCONF=CDCONF, &
  & PCFHTI=ZCFHTI, PCFQTI=ZCFQTI, PCSATTI=ZCSATTI, PCAIRTI=ZCAIRTI, &
  & PCPTSTIU=ZCPTSTIU, PCSATTIU=ZCSATTIU, PCAIRTIU=ZCAIRTIU, & 
  & PRAQTI=ZRAQTI, PTSRF=ZTSRF,PLAMSK=ZLAMSK,&
+ & PZ0MTIW=ZZ0MTIW, PZ0HTIW=ZZ0HTIW, PZ0QTIW=ZZ0QTIW, PZDLTI=ZZZDLTI, PQSAPPTI=ZZQSATI, PCPTSPPTI=ZZCPTSTI, &
 ! output data, non-tiled
  & PKHLEV=PKH(:,KLEV), PKCLEV=ZKCLEV, PCFMLEV=ZCFM(:,KLEV), PKMFL=ZKMFL, PKHFL=ZKHFL, &
  & PKQFL=ZKQFL, PEVAPSNW=PEVAPSNW, PZ0MW=ZZ0MW, PZ0HW=ZZ0HW, PZ0QW=ZZ0QW, &
@@ -740,7 +1044,7 @@ CALL SURFEXCDRIVER(YDSURF,CDCONF=CDCONF, &
  & PDHVEGS=PDHVEGS,PEXDIAG=PEXDIAG,PDHCO2S=PDHCO2S, &
  & PRPLRG=PRPLRG, &
 ! LIM switch
- & LSICOUP=LSICOUP &
+ & LSICOUP=LSICOUP, LBLEND=LBLEND &
 ! & LNEMOLIMTHK=LNEMOLIMTHK &
  & )
 
@@ -1130,7 +1434,7 @@ ENDDO
 
 CALL SURFPP( YDSURF,KIDIA=KIDIA,KFDIA=KFDIA,KLON=KLON,KTILES=KTILES, &
  & KDHVTLS=KDHVTLS,KDHFTLS=KDHFTLS, &
- & PTSTEP=PTSPHY, &
+ & PTSTEP=PTSPHY, LPERT_COLDSKIN=.FALSE., &
 ! input
  & PFRTI=PFRTI, PAHFLTI=ZAHFLTI, PG0TI=ZG0, &
  & PSTRTULEV=PSTRTU(:,KLEV), PSTRTVLEV=PSTRTV(:,KLEV), PTSKM1M=PTSKM1M, &
@@ -1139,7 +1443,9 @@ CALL SURFPP( YDSURF,KIDIA=KIDIA,KFDIA=KFDIA,KLON=KLON,KTILES=KTILES, &
  & PAPHMS=PAPHM1(:,KLEV), PZ0MW=ZZ0MW, PZ0HW=ZZ0HW, PZ0QW=ZZ0QW, &
  & PZDL=ZZZDL, PQSAPP=ZZQSA, PBLEND=ZBLEND, PFBLEND=ZFBLEND, PBUOM=ZZBUOM, &
  & PZ0M=PZ0M, PEVAPSNW=PEVAPSNW,PSSRFLTI=PSSRFLTI, PSLRFL=PSLRFL, PSST=PSST, &
- & PUCURR=PUCURR, PVCURR=PVCURR, PUSTOKES=ZUSTOKES, PVSTOKES=ZVSTOKES, &
+ & PUCURR=PUCURR, PVCURR=PVCURR, PUSTOKES=ZUSTOKES, PVSTOKES=ZVSTOKES, PGP2DSPP=ZPGP2DSPP, &
+ ! tile depend
+ & PZ0MTIW=ZZ0MTIW, PZ0HTIW=ZZ0HTIW, PZ0QTIW=ZZ0QTIW, PZDLTI=ZZZDLTI, PQSAPPTI=ZZQSATI, PCPTSPPTI=ZZCPTSTI, &
 ! updated
  & PAHFSTI=PAHFSTI, PEVAPTI=PEVAPTI, PTSKE1=PTSKE1,PTSKTIP1=ZTSKTIP1, &
 ! output

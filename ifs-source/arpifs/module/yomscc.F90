@@ -11,8 +11,8 @@
 
 MODULE YOMSCC
 
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE PARCMA   , ONLY : JPMXOCT
+USE PARKIND1 , ONLY : JPIM, JPRB, JPRD
+USE PARCMA   , ONLY : JPMXOCT, JPMXOTP
 USE PARDIMO  , ONLY : JPXAMVPROD
 USE RTTOV_CONST, ONLY: NINST
 
@@ -45,7 +45,7 @@ SAVE
 !        P CHAMBON LF MEUNIER MF       24/04/2014
 !            BC_QCSAPHIR: add fixed bias correction coefficient for SAPHIR quality control
 !        BRUCE INGLEBY     ECMWF     25/04/2014
-!            addition of LBTEMDUP, RDUPD_BTEM/SURF, RDUPT_BTEM and RFACV_BTEM
+!            addition of LBTEMDUP, RDUPD_BTEM/SURF, RDUPT_BTEM and RFACV_TEMP
 !        CRISTINA LUPU    ECMWF     19/11/2014
 !            Updates to sensors and platform lists from rttov_consts
 !        GIOVANNA DE CHIARA  ECMWF     01/02/2015
@@ -58,9 +58,14 @@ SAVE
 !            base 43t2, updates for ScatSat-1 Scat sensor
 !        GIOVANNA DE CHIARA           04/2018
 !            base 45r1, LFSCAT_OUTERSWATH_REJ and LWSCAT_OUTERSWATH_REJ added for CFOSAT and WindRAD
-!                       HY-2A changed to HY-2B
+!                       HY-2B with HY-2A !CP update 10/18   
 !        Bruce Ingleby  2019-03-28  Add LAIRVSWITCH
+!        M MARTET C PAYAN  MF         09/01/2020
+!            base 43t2, XYSHIFT_THIBOX added
+!        CP                MF          03/12/2020
+!            base 48_main, scatterometer multi-grids support (50, 25 km,...)
 !        Marcin Chrust  2022-06-20  Add REDNMC
+!        Bruce Ingleby  2022-10-25  Add LT2_TAILS
 
 !     NAME      TYPE                  MEANING
 !     ----      ----                  -------
@@ -71,6 +76,7 @@ SAVE
 !     LSRERUN     L    RE-RUNNING IFS WITH A SECOND-HAND CMA-FILE (F)
 !     LTARGDROP   L    RELAX BACKGROUND CHECK FOR TARGETED DROPSONDES
 !     LAIRVSWITCH L    Change sign of v-wind if it seems wrong - B787 aircraft
+!     LT2_TAILS   L    T2m error tails (reduced weight for large differences)
 
 !     REDNMC     - Global scaling factor for background error standard deviations
 !     RMIND_TOV  - Minimum distance ( degrees ) between TOVS obs
@@ -86,7 +92,9 @@ SAVE
 !                      for surface wind speed
 !     RMIND_SATAM - Minimum distance (degrees) between SATAM obs
 !     RFIND_SATAM - Average distance (degrees) between SATAM obs
-!     RFIND_AIREP - Average distance (degrees) between AIREP obs
+!     RFIND_AIREP - Average distance (degrees) between AIREP obs - by flight
+!     RMIND_AIRCRAFT - Minimum distance (degrees) between AIRCRAFT obs - box thinning
+!     RFIND_AIRCRAFT - Average distance (degrees) between AIRCRAFT obs - box thinning
 !     RMIND_SCATT - Minimum distance (degrees) between SCAT obs
 !     RFIND_SCATT - Average distance (degrees) between SCAT obs
 !     RMIND_GPSRO - Minimum distance (degrees) between GPSRO obs
@@ -98,11 +106,21 @@ SAVE
 !     RDUPT_BTEM  - Maximum time diff (minutes) in BTEM duplicate check
 !     RDUPD_DROP  - Maximum distance (degrees) in BTEM DROP duplicate check
 !     RDUPT_DROP  - Maximum time diff (minutes) in BTEM DROP duplicate check
-!     RFACV_BTEM  - Vertical thinning factor for BTEM
+!     RFACV_TEMP  - Vertical thinning factor for BTEM (default for most radiosondes)
+!     RFACV_BDROP - Vertical thinning factor for BUFR Dropsonde
 !     NBTEMDUP    - if 0, then no special BTEM duplicate check
 !                 - if 1, then BTEM/TEMP duplicate check
 !                 - if 2, then BTEM/TEMPorBTEM duplicate check + BTEM thinning
-!     NTHINSCA    I    Thinning parameter for ERS scatterometer
+!     ASCAT_XYGRID ASCAT XYGRID RESOLUTION /LR=25000m/HR=12500m/XHR=5650m/ moved from yomersca for namelist control
+!     OSCAT_XGRID  OSCAT (OceanSat serie) XGRID RESOLUTION /LR=50000m/HR=25000m/
+!     HSCAT_XGRID  HSCAT XGRID RESOLUTION /LR=50000m/HR=25000m/
+!     SSCAT_XGRID  SSCAT XGRID RESOLUTION /LR=50000m/HR=25000m/
+!     FSCAT_XGRID  RFSCAT XGRID RESOLUTION /LR=50000m/HR=25000m/
+!     NTHINSCA    I    Thinning parameter for AMI/ASCAT scatterometers
+!     NTHINSCA_GEOM    I    Geometric thinning for scatterometers
+!       <0: thinning based on boxes (legacy algorithm)
+!       =0: purely geometric
+!       >0: boxes/geometric mix
 !     NSCAWSOLMAX - Maximum allowed number or ambigious scatterometer wind solutions
 !     LQSCATAZI   - if T, perform QC on azimuth diversity for QuikSCAT
 !     LOSCATAZI   - if T, perform QC on azimuth diversity for OCEANSAT2/3
@@ -111,11 +129,11 @@ SAVE
 !     LSSCATAZI   - if T, perform QC on azimuth diversity for ScatSAT
 !     LFSCATAZI   - if T, perform QC on azimuth diversity for RFSCAT
 !     LWSCATAZI   - if T, perform QC on azimuth diversity for WindRAD
-!     LOSCAT_OUTERSWATH_REJ - if T, OSCAT wvc 1,2,3,4 and 33,34,35,36 rejected
-!     LHSCAT_OUTERSWATH_REJ - if T, HSCAT wvc 1,2,3,4 and 35,36,37,38 rejected
+!     LOSCAT_OUTERSWATH_REJ - if T, OSCAT wvc 1,2,3,4 and 33,34,35,36 rejected, twice if HR
+!     LHSCAT_OUTERSWATH_REJ - if T, HSCAT wvc 1,2,3,4 and 35,36,37,38 rejected, twice if HR
 !     LRSCAT_OUTERSWATH_REJ - if T, RSCAT wvc 1,2 and 20,21 rejected
-!     LSSCAT_OUTERSWATH_REJ - if T, SSCAT wvc 1,2,3,4 and 35,36,37,38 rejected
-!     LFSCAT_OUTERSWATH_REJ - if T, FSCAT wvc 1,2,3,4 and 35,36,37,38 rejected !GDC for testing purposes
+!     LSSCAT_OUTERSWATH_REJ - if T, SSCAT wvc 1,2,3,4 and 35,36,37,38 rejected, twice if HR
+!     LFSCAT_OUTERSWATH_REJ - if T, FSCAT wvc 1,2,3 and 19, 20, 21 rejected, twice if HR
 !     LWSCAT_OUTERSWATH_REJ - if T, WSCAT wvc 1,2,3,4 and 35,36,37,38 rejected !GDC for testing purposes
 !     NSCAT5_RQC  - /1,2/ Quikscat RainQC based on /raincontamination,dist2cone/
 !     LDFS - if T, perturbation of all observations (active + passive) in order to perturbate also radar reflecivity data for AROME analysis
@@ -138,12 +156,14 @@ SAVE
 !     RGPSROTHIN - Vertical thinning distance [m] used for GPSRO thinning
 !     BC_QCSAPHIR - fixed bias correction coefficient for SAPHIR/Megha-Tropiques MW sounder quality control
 
+!     XYSHIFT_THIBOX - In thinning, coeff. for calculating a 2nd box shift from the 1st box size
+!      optimal when RMIND=RFIND and XYSHIFT_THIBOX=0.5 (0: no shift)
+
 LOGICAL :: LSCDPR
 LOGICAL :: LSCRE4D
 LOGICAL :: LSRERUN
 LOGICAL :: LTARGDROP
 LOGICAL :: LPERTURB
-LOGICAL :: LPERT_SATOB_CORR
 LOGICAL :: LQSCATAZI
 LOGICAL :: LOSCATAZI
 LOGICAL :: LHSCATAZI
@@ -152,6 +172,7 @@ LOGICAL :: LSSCATAZI
 LOGICAL :: LFSCATAZI
 LOGICAL :: LWSCATAZI
 LOGICAL :: LAIRVSWITCH
+LOGICAL :: LT2_TAILS
 LOGICAL :: LOSCAT_OUTERSWATH_REJ
 LOGICAL :: LHSCAT_OUTERSWATH_REJ
 LOGICAL :: LRSCAT_OUTERSWATH_REJ
@@ -172,6 +193,8 @@ REAL(KIND=JPRB) :: RMIND_SATOB
 REAL(KIND=JPRB) :: RFIND_SATOB
 REAL(KIND=JPRB) :: RMIND_SATAM
 REAL(KIND=JPRB) :: RFIND_SATAM
+REAL(KIND=JPRB) :: RMIND_AIRCRAFT
+REAL(KIND=JPRB) :: RFIND_AIRCRAFT
 REAL(KIND=JPRB) :: RFIND_AIREP
 REAL(KIND=JPRB) :: RMIND_SCATT
 REAL(KIND=JPRB) :: RFIND_SCATT
@@ -179,12 +202,14 @@ REAL(KIND=JPRB) :: RMIND_GPSRO
 REAL(KIND=JPRB) :: RFIND_GPSRO
 REAL(KIND=JPRB) :: RMIND_RADAR
 REAL(KIND=JPRB) :: RFIND_RADAR
+REAL(KIND=JPRB) :: ZRADARXSIG
 REAL(KIND=JPRB) :: RDUPD_SURF
 REAL(KIND=JPRB) :: RDUPD_BTEM
 REAL(KIND=JPRB) :: RDUPT_BTEM
 REAL(KIND=JPRB) :: RDUPD_DROP
 REAL(KIND=JPRB) :: RDUPT_DROP
-REAL(KIND=JPRB) :: RFACV_BTEM
+REAL(KIND=JPRB) :: RFACV_TEMP
+REAL(KIND=JPRB) :: RFACV_BDROP
 REAL(KIND=JPRB) :: FL_MAXSPEED
 REAL(KIND=JPRB), ALLOCATABLE :: SELAIREPPRE(:)
 REAL(KIND=JPRB) :: RAIREPTHIN
@@ -194,8 +219,21 @@ REAL(KIND=JPRB) :: RGPSROTHIN
 REAL(KIND=JPRB) :: BC_QCSAPHIR(1:6)
 REAL(KIND=JPRB) :: BC_QCMTVZAGY(1:29)
 REAL(KIND=JPRB) :: BC_QCAMSR2(1:14)
+REAL(KIND=JPRB) :: XYSHIFT_THIBOX(JPMXOTP)
+REAL(KIND=JPRD) :: ASCAT_XYGRID ,OSCAT_XGRID &
+ & ,HSCAT_XGRID ,SSCAT_XGRID ,FSCAT_XGRID
+
+INTEGER(KIND=JPIM) :: NTHIN_TOV
+INTEGER(KIND=JPIM) :: NTHIN_SSMI
+INTEGER(KIND=JPIM) :: NTHIN_RADAR
+INTEGER(KIND=JPIM) :: NTHIN_SATOB
+INTEGER(KIND=JPIM) :: NTHIN_SATAM
+INTEGER(KIND=JPIM) :: NTHIN_RAD1C(0:NINST-1)
+INTEGER(KIND=JPIM) :: NTHIN_SCATT
+INTEGER(KIND=JPIM) :: NTHIN_GPSRO
 
 INTEGER(KIND=JPIM) :: NTHINSCA
+INTEGER(KIND=JPIM) :: NTHINSCA_GEOM
 INTEGER(KIND=JPIM) :: NSCAWSOLMAX(JPMXOCT)
 INTEGER(KIND=JPIM) :: NSCAT5_RQC
 INTEGER(KIND=JPIM) :: NAENSEMBLE, NAEMEMBER
@@ -203,6 +241,7 @@ INTEGER(KIND=JPIM) :: NSATAM_THINPRODLST(JPXAMVPROD)
 INTEGER(KIND=JPIM) :: NSATAM_CHOSENQIBYPROD(JPXAMVPROD)
 INTEGER(KIND=JPIM) :: NBTEMDUP
 
+INTEGER(KIND=JPIM) :: NTHINSEC
 !-----------------------------------------------------------------------
 
 END MODULE YOMSCC

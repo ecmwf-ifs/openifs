@@ -113,13 +113,16 @@ SUBROUTINE SU0YOMB(YDFPOS,YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTC
 !        S. Massart   19-Feb-2019 Augmented control variable
 !        Y. Michel, MF,  Mar 2019 Extention of the control variable for sqrt EnVar
 !        C. Lupu 29-Mar-2019 Allow call to SUINSKTE
+!        L. Descamps, MF, Feb 2020 : Add a call to random parameters scheme for PEARP
 !        M. Leutbecher Oct-2020 SPP abstraction
+!        R. El Khatib 20-Sep-2021 Manage dependency between post-processor and surface fields objects
+!        R. El Khatib 18-Jul-2022 LAPL_ARPEGE in YRPHY
 !     ------------------------------------------------------------------
 
 USE TYPE_MODEL      , ONLY : MODEL
 USE GEOMETRY_MOD    , ONLY : GEOMETRY
 USE VARIABLES_MOD   , ONLY : VARIABLES, VARIABLES_CREATE, VARIABLES_DELETE
-USE FIELDS_MOD      , ONLY : FIELDS, FIELDS_CREATE, FIELDS_DELETE, FIELDS_CONTAIN
+USE FIELDS_MOD      , ONLY : FIELDS, FIELDS_CREATE, FIELDS_DELETE, FIELDS_CONTAIN,FIELDS_BACKSTITCH
 USE MTRAJ_MOD       , ONLY : MTRAJ
 USE PARKIND1        , ONLY : JPIM, JPRB
 USE YOMHOOK         , ONLY : LHOOK, DR_HOOK, JPHOOK
@@ -144,10 +147,10 @@ USE YOMINI          , ONLY : LDFI
 USE YOE_CUCONVCA    , ONLY : INI_CUCONVCA
 USE MODULE_RADTC_MIX, ONLY : YM_RADTC ,SUPTRTC
 
-
-
-
 USE YEMLBC_MODEL    , ONLY : SUELBC_INIT
+
+
+
 
 USE YOMIO_SERV      , ONLY : IO_SERV_C001
 USE YOM_GRIB_CODES  , ONLY : NGRBNOXLOG
@@ -159,26 +162,29 @@ USE VARBC_CLASS     , ONLY : CLASS_VARBC
 USE TOVSCV_MOD      , ONLY : TOVSCV
 USE TOVSCV_BGC_MOD  , ONLY : TOVSCV_BGC
 USE YOMSPJB         , ONLY : BACKGROUND, ALLOCATE_JB_REF_STATE
-USE YOMJBECV        , ONLY : LJB_ALPHA_CV, LECPHYSPARECV, READ_FG_ECV
+USE YOMJBECV        , ONLY : YRECVDATA, LJB_ALPHA_CV, LECPHYSPARECV, LSKTECV, LSSHECV
+USE YOMJBSFCECV     , ONLY : YRSKTECVDATA, YRSKTECVCFG, YRSKTECV, YRSSHECV
+USE YOMJBALPHACV_DATA,ONLY : YRJBALPHACV_CONF
 USE YOMJBPAR1DECV   , ONLY : SUPARECVMIN
 USE YOMJBECPHYSECV   ,ONLY : SUINFCE_ECPHYS, LSOLARCST
 USE MPL_MODULE      , ONLY : MPL_END, MPL_BARRIER
 USE IOSTREAM_MIX    , ONLY : IOSTREAM_STATS,YGBH
-USE DBASE_MOD   , ONLY : DBASE
-
+USE DBASE_MOD       , ONLY : DBASE
 USE FULLPOS         , ONLY : TFPOS
+USE YOMCFU          , ONLY : TCFU_KEYS
+USE YOMXFU          , ONLY : TXFU_KEYS
 USE YOMFP_SERV, ONLY : FP_SERV_C001
-USE CONTROL_VECTORS_MOD
-USE SPECTRAL_FIELDS_MOD
 USE YOMMODERR       , ONLY : SPCTLMODERR
 USE OBS_STORE_OPTIONS_MOD, ONLY : YDOBS_STORE_OPTIONS
+USE CONTROL_VECTORS_MOD  , ONLY : CONTROL_VECTOR, ALLOCATE_CTLVEC, DEALLOCATE_CTLVEC, CTLVEC_STRUCT,CTLVEC_STRUCT_ENS
+USE SPECTRAL_FIELDS_MOD  , ONLY : ALLOC_SPEC, CREATE_SPEC
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
 
 TYPE(TFPOS),       INTENT(OUT)   :: YDFPOS
 TYPE(GEOMETRY),    INTENT(INOUT) :: YDGEOMETRY
-TYPE(FIELDS),      INTENT(INOUT) :: YDFIELDS
+TYPE(FIELDS),      INTENT(INOUT), TARGET :: YDFIELDS
 TYPE(MTRAJ),       INTENT(INOUT) :: YDMTRAJ
 TYPE(MODEL),       INTENT(INOUT) :: YDMODEL
 TYPE(JO_TABLE),    INTENT(INOUT) :: YDJOT
@@ -193,18 +199,20 @@ CHARACTER (LEN=3)  :: CLMAX
 
 INTEGER(KIND=JPIM) :: ICONF
 
-LOGICAL :: LLDIMO, LL_ALLOC_RLANBUF
+LOGICAL :: LLDIMO, LL_ALLOC_RLANBUF, LL_ECVBAL
 
-INTEGER(KIND=JPIM) :: JGFL, ISTEP, JSTGLO, ICEND, IBL, ISIZEG, IWINLEN
+INTEGER(KIND=JPIM) :: JGFL, ISTEP, JSTGLO, ICEND, IBL, ISIZEG, IWINLEN, IVCLIX, IPPEDR
 INTEGER(KIND=JPIM) :: IGRIB(YDMODEL%YRML_GCONF%YRDIMF%NS3D+YDMODEL%YRML_GCONF%YRDIMF%NS2D)
 LOGICAL :: LLASTRAJ
 REAL(KIND=JPRB), ALLOCATABLE :: ZGMV5(:,:,:,:)
 REAL(KIND=JPRB), ALLOCATABLE :: ZGMV5S(:,:,:)
 REAL(KIND=JPRB), ALLOCATABLE :: ZGFL5(:,:,:,:)
 
+TYPE(TCFU_KEYS)        :: YLCFU_KEYS
+TYPE(TXFU_KEYS)        :: YLXFU_KEYS
 TYPE(CONTROL_VECTOR) :: YLTEMP
 TYPE(VARIABLES)      :: YL_VARS, YNLVARS
-TYPE(FIELDS)         :: YL_TRAJ, YLINFCE
+TYPE(FIELDS)         :: YL_TRAJ, YL_TRAJ_ECV,  YL_BG_ECV, YLINFCE
 !!$CHARACTER(LEN=9)   :: CLCONF
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
@@ -213,7 +221,31 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 #include "get_spp_conf.intfb.h"
 #include "gstats_output_ifs.intfb.h"
 #include "ini_spp.intfb.h"
-#include "sujbwavelet0.intfb.h"
+#include "inifger.intfb.h"
+#include "sualcan.intfb.h"
+#include "sualcos.intfb.h"
+#include "sualctv.intfb.h"
+#include "sualctv_ens.intfb.h"
+#include "sualdyn_ddh.intfb.h"
+#include "sualgco.intfb.h"
+#include "sualges.intfb.h"
+#include "suallt.intfb.h"
+#include "sualmdh.intfb.h"
+#include "suspvariables.intfb.h"
+#include "sualspa.intfb.h"
+#include "sualnud.intfb.h"
+#include "suanebuf.intfb.h"
+#include "sualtdh.intfb.h"
+#include "subfpos.intfb.h"
+#include "sufpcfu.intfb.h"
+#include "sufpxfu.intfb.h"
+#include "sufpsurf.intfb.h"
+#include "sumts.intfb.h"
+#include "mts_rtsetup.intfb.h"
+#include "sucfu.intfb.h"
+#include "sudfi.intfb.h"
+#include "sudimo.intfb.h"
+#include "sudyn.intfb.h"
 #include "suecges.intfb.h"
 #include "suejbbal.intfb.h"
 #include "suejbcov.intfb.h"
@@ -224,30 +256,35 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 #include "suemodjk.intfb.h"
 #include "suescal.intfb.h"
 #include "suevargp.intfb.h"
-#include "sueinfce.intfb.h"
-#include "suensdim.intfb.h"
-#include "suenscov.intfb.h"
-#include "suejbwavelet.intfb.h"
-#include "suejbwavelet_bmatrix.intfb.h"
-#include "sualdyn_ddh.intfb.h"
-#include "sualgco.intfb.h"
-#include "sualmdh.intfb.h"
-#include "suspvariables.intfb.h"
-#include "sualspa.intfb.h"
-#include "sualnud.intfb.h"
-#include "sualtdh.intfb.h"
-#include "subfpos.intfb.h"
-#include "sucfu.intfb.h"
-#include "sudyn.intfb.h"
 #include "sugrib.intfb.h"
 #include "su_grib_api.intfb.h"
 #include "suiau.intfb.h"
+#include "sunudglh.intfb.h"
+#include "suinfce.intfb.h"
+#include "suinskte.intfb.h"
+#include "sueinfce.intfb.h"
 #include "suinterpolator.intfb.h"
+#include "suensdim.intfb.h"
+#include "suenscov.intfb.h"
+#include "sufw.intfb.h"
 #include "suios.intfb.h"
 #include "suiostream.intfb.h"
+#include "sujb.intfb.h"
+#include "sujbbal.intfb.h"
+#include "sujbcov.intfb.h"
+#include "sujbwavelet0.intfb.h"
+#include "sujbwavelet.intfb.h"
+#include "sujbwavelet_stdevs.intfb.h"
+#include "sujbwavrenorm.intfb.h"
+#include "sujbwavstats.intfb.h"
+#include "sujbwavtrans.intfb.h"
+#include "sujq.intfb.h"
+#include "sujbchvar.intfb.h"
+#include "sulcz.intfb.h"
 #include "sulsforc.intfb.h"
 #include "sumcclag.intfb.h"
 #include "sumddh.intfb.h"
+#include "sumoderr.intfb.h"
 #include "sunddh.intfb.h"
 #include "suphy.intfb.h"
 #include "supp.intfb.h"
@@ -256,17 +293,27 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 #include "surlx.intfb.h"
 #include "susc2b.intfb.h"
 #include "susc2c.intfb.h"
+#include "suscal.intfb.h"
 #include "susimpr.intfb.h"
 #include "suspsdt.intfb.h"
 #include "suvareps.intfb.h"
 #include "suxfu.intfb.h"
+#include "su_subspace.intfb.h"
 #include "sumcuf.intfb.h"
+#include "suoaf.intfb.h"
+#include "suejbwavelet.intfb.h"
+#include "suejbwavelet_bmatrix.intfb.h"
 #include "io_serv_suiosctmpl.intfb.h"
 #include "allocate_empty_trajectory.intfb.h"
 #include "suintflex.intfb.h"
+#include "suallr.intfb.h"
 #include "fp_serv_suiosctmpl.intfb.h"
 #include "fp_serv_cpfpfilter.intfb.h"
-
+#include "setjbalphacv.intfb.h"
+#include "suinsfcecvcor.intfb.h"
+#include "suapl_arpege.intfb.h"
+#include "supertpar.intfb.h"
+#include "su_surf_flds.intfb.h"
 
 !!$#include "transinvh.intfb.h"
 !!$#include "suinif.intfb.h"
@@ -297,7 +344,10 @@ ASSOCIATE(NCHEM_ASSIM=>YGFL%NCHEM_ASSIM, NDIM5=>YGFL%NDIM5, YCOMP=>YGFL%YCOMP, &
  & NALLMS=>YDMP%NALLMS, NPTRLL=>YDMP%NPTRLL, NPTRMS=>YDMP%NPTRMS, &
  & NUMLL=>YDMP%NUMLL, NPSURF=>YDMP%NPSURF, &
  & LRCOEF=>YDRCOEF%LRCOEF, &
- & LRAYSP=>YDSIMPHL%LRAYSP)
+ & LRAYSP=>YDSIMPHL%LRAYSP, &
+ & NVIDS_ECV=>YRECVDATA%NVIDS_ECV, &
+ & VIDS_ECV=>YRECVDATA%VIDS_ECV)
+
 !     ------------------------------------------------------------------
 CALL GSTATS(39,0)
 CLINE='----------------------------------'
@@ -314,15 +364,11 @@ CALL SUIOS
 
 !*    Initialize Aladin Jk handling
 IF (LELAM.AND.(ICONF == 1)) THEN
- WRITE(NULOUT,*) '---- Set up Aladin Jk handling -',CLINE
- CALL SUEJK
+  WRITE(NULOUT,*) '---- Set up Aladin Jk handling -',CLINE
+  CALL SUEJK
 ELSE
   LEJK=.FALSE.
 ENDIF
-
-!*    Initialize DDH (Horizontal domains diagnostics)
-WRITE(NULOUT,*) '------ Set up DDH diagnostics --------',CLINE
-CALL SUNDDH(YDGEOMETRY,YDMODEL)
 
 IF (LBACKG .OR. LOBSC1 .OR. NCONF == 401 .OR. NCONF == 501 .OR. NCONF == 601 .OR. NCONF == 801 .OR. NCONF == 701) THEN
 
@@ -330,7 +376,7 @@ IF (LBACKG .OR. LOBSC1 .OR. NCONF == 401 .OR. NCONF == 501 .OR. NCONF == 601 .OR
     WRITE(NULOUT,*) '------ Set up Jb parameters ------------',CLINE
     ALLOCATE(JB_STRUCT)
     ALLOCATE(CVA_DATA)
- CALL SUJB(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMECV,YGFL,JB_STRUCT,CVA_DATA)
+    CALL SUJB(YDGEOMETRY,YGFL,JB_STRUCT,CVA_DATA)
   ENDIF
 ENDIF
 
@@ -348,8 +394,7 @@ CALL SUSPVARIABLES(YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA%LNHX,&
 IF(NCONF /= 901.AND.NCONF /= 923) THEN
   IGRIB(1:NS3D)=YDMODEL%YRML_GCONF%YRDIMF%NGRBSP3(:)
   IGRIB(NS3D+1:NS3D+NS2D)=YDMODEL%YRML_GCONF%YRDIMF%NGRBSP2(:)
-  WRITE(NULOUT,*)'-- Calling ALLOCATE_SPEC ',IGRIB(1:NS3D+NS2D)
-!!  CALL ALLOCATE_SPEC(YDFIELDS%YRSPEC, NFLEVL, NFLEVG, NUMP, MYMS, NSMAX, NMSMAX, NALLMS,&
+  WRITE(NULOUT,*)'-- Calling CREATE_SPEC ',IGRIB(1:NS3D+NS2D)
   CALL CREATE_SPEC(YDFIELDS%YRSPEC, NFLEVL, NFLEVG, NUMP, MYMS, NSMAX, NMSMAX, NALLMS,&
                    & NPTRMS, NUMLL, NPTRLL, NPSURF, NS3D, NS2D, IGRIB)
   CALL SUALSPA(YDGEOMETRY,YDMODEL%YRML_DYN%YRDYNA%LGRADSP)
@@ -390,7 +435,6 @@ SETUP_JB: IF (LBACKG .OR. LOBSC1 .OR. NCONF == 401 .OR. NCONF == 501 .OR. NCONF 
     & (LTRAJHR .AND. LIFSTRAJ)) THEN
     ALLOCATE(BACKGROUND)
   ENDIF
-!!  CALL ALLOCATE_SPEC(JB_STRUCT%JB_DATA%SPJB, YDGEOMETRY, JB_STRUCT%CONFIG%SPVARS)
   CALL ALLOC_SPEC(JB_STRUCT%JB_DATA%SPJB, YDGEOMETRY, JB_STRUCT%CONFIG%SPVARS)
   IF(NCONF == 801)CALL SUALLR(YDGEOMETRY,JB_STRUCT)
 
@@ -444,7 +488,7 @@ ENDIF
 IF (LDFI .OR. LJCDFI) THEN
   WRITE(NULOUT,*) '---- Set up DFI: SUDFI -----',CLINE
   CALL SUDFI(YDMODEL%YRML_PHY_EC%YREPHY,YDMODEL%YRML_GCONF%YRRIP,YDMODEL%YRML_PHY_MF%YRPHY, &
-    & YDMODEL%YRML_LBC%LTENC)
+   & YDMODEL%YRML_LBC%LTENC)
 ENDIF
 
 !*    Allocate OI CANARI grid points arrays
@@ -500,21 +544,7 @@ IF (.NOT.LR2D) THEN
 ! Fields for physics
   CALL YDFIELDS%YEC_PHYS_FIELDS%CREATE(YDGEOMETRY,YDMODEL%YRML_PHY_G%YRDPHY)
 
-  !*    Initialize special keys for the climate version 2nd part
-  WRITE(NULOUT,*) '---- Set up MCC climate model keys (lagged part) --',CLINE
-  CALL SUMCCLAG(YDGEM,YDMODEL%YRML_GCONF,YDMODEL%YRML_AOC,YDMODEL%YRML_CHEM%YRCOMPO, &
-       &  YDMODEL%YRML_CHEM%YRCHEM, YDMODEL%YRML_PHY_AER%YREAERSRC, &
-       &  YDMODEL%YRML_PHY_EC%YREPHY, NULOUT, YDSURF=YDSURF)
 ENDIF
-
-!*    Initialize cumulated fluxes requests
-WRITE(NULOUT,*) '------ Set up cumulated fluxes diags ---',CLINE
-CALL SUCFU(YDGEOMETRY,YDFIELDS%YRCFU,YDMODEL%YRML_GCONF%YRRIP,YDMODEL%YRML_PHY_RAD%YRERAD,YDMODEL%YRML_PHY_MF%YRPHY, &
- & NULOUT)
-
-!*    Initialize instantaneous fluxes requests
-WRITE(NULOUT,*) '------ Set up instantaneous fluxes diags ',CLINE
-CALL SUXFU(YDGEOMETRY,YDFIELDS%YRXFU,YDMODEL%YRML_GCONF%YRRIP,YDMODEL%YRML_PHY_MF%YRPHY,NULOUT)
 
 !*    Initialize variables for VAREPS (NB: must be called before SUGRIB)
 WRITE(NULOUT,*) '- Set up VAREPS configuration',CLINE
@@ -534,61 +564,33 @@ IF (NCONF /= 901 .AND. NCONF /= 903) THEN
   CALL SUSC2B(YDGEOMETRY,YDMODEL)
 ENDIF
 
-!*    Initialize forcing by coarser model: part A
-WRITE(NULOUT,*) '--- Set up forcing by coarser model part A ---------',CLINE
-CALL SUELBC_INIT(YDMODEL%YRML_DYN%YRDYNA,YDMODEL%YRML_LBC)
-
-!*    Initialize buffers for gridpoint scanning, part C
-IF (NCONF /= 901) THEN
-  WRITE(NULOUT,*) '---- Set up gridpoint scanning, part C ----',CLINE
-  CALL VARIABLES_CREATE(YNLVARS, .FALSE.)
-  CALL SUSC2C(YDGEOMETRY,YDMODEL%YRML_PHY_EC%YREPHY,YDMODEL%YRML_GCONF,YDMODEL%YRML_PHY_MF%YRPHY,&
-   & YDMODEL%YRML_DYN%YRDYNA,YDMODEL%YRML_LBC%LTENC,YNLVARS,YDFIELDS%YRGFL, &
-   & YDFIELDS%YRGMV,YDFIELDS%YRSURF)
-  CALL VARIABLES_DELETE(YNLVARS)
-ENDIF
 
 
-!*    Initialize forcing by coarser model: part C
-IF (LELAM) THEN
-  WRITE(NULOUT,*) '--- Set up forcing by coarser model part C ---------',CLINE
-  !OIFS - SUELBC_MODEL, _FIELDS, FIELDS_DIM exist in module
-  !        yelbc_model.F90, maybe could dummy this mod but
-  !        will have impact on other parts of code.
-  CALL ABOR1('OIFS - LAM calls to SUELBC_MODEL and SUELBC_FIELDS in su0yomb.F90 not supported in OIFS - Exit')
 
-ENDIF
+
 
 !*    Initialize IAU handling
 WRITE(NULOUT,*) '---- Set up IAU handling -',CLINE
 CALL SUIAU(YDMODEL%YRML_GCONF%YRRIP)
 
-!*    Initialize domains and masks for DDH
-
-CALL SUALMDH(YDGEM,YDMODEL%YRML_DIAG)
-
-IF ( LSDDH ) THEN
-  WRITE(NULOUT,*) '---- Set up DDH diagnostic domains ',CLINE
-  CALL SUMDDH(YDGEOMETRY,YDMODEL%YRML_DIAG)
-ENDIF
-
-IF (.NOT.LSDDH.AND.LRAYSP) THEN
-  WRITE(NULOUT,*) '---- Set up for simp.rad.if not ddh',CLINE
-  CALL SUSIMPR(YDGEOMETRY,YDMODEL%YRML_DIAG%YRMDDH)
-ENDIF
+!*    Initialize NUDGLH handling
+WRITE(NULOUT,*) '---- Set up NUDGLH handling -',CLINE
+CALL SUNUDGLH(YDMODEL%YRML_GCONF%YRRIP)
 
 !*    Initialize GRIB coding parameters
 WRITE(NULOUT,*) '---- Set up files : GRIB parameters -',CLINE
-CALL SUGRIB(YDDIM,YDMODEL%YRML_PHY_EC%YREPHY,YDMODEL%YRML_PHY_G%YRDPHY,YDMODEL%YRML_PHY_MF%YRPHY)
+CALL SUGRIB(YDMODEL%YRML_PHY_EC%YREPHY,YDMODEL%YRML_PHY_G%YRDPHY)
 
 !*    Full Post-processing (2nd part)
+IPPEDR=0
+IVCLIX=0
 IF (NFPOS /= 0) THEN
 
   WRITE(NULOUT,*) '- Set up F-post processing, bundled part',CLINE
   CALL SUBFPOS(YDFPOS,YDGEOMETRY,YDMODEL,NFPOS)
-
-  ! Objects to be subsequently constructed :
-
+  CALL SUFPCFU(YDFPOS,YLCFU_KEYS)
+  CALL SUFPXFU(YDFPOS,YLXFU_KEYS)
+  CALL SUFPSURF(YDFPOS,IPPEDR,IVCLIX)
   !* Initialize GRIB API templates from Fullpos geometry
   IF (NGRIBFILE==1 .OR..NOT.LARPEGEF) THEN
     IF (LGRIB_API) THEN
@@ -610,7 +612,73 @@ ELSE
   ELSE
     WRITE(NULOUT,*) 'Call to SU_GRIB_API switched off',CLINE
   ENDIF
+
 ENDIF
+IF (IPPEDR==1 .AND. YDMODEL%YRML_GCONF%YRRIP%NSTOP==0) THEN
+  IPPEDR=2 ! to read the model field of EDR in input
+ENDIF
+
+!*    Set up for surface grid-point fields
+WRITE(NULOUT,*) '---- Set up for surface grid-point fields ----',CLINE
+CALL SU_SURF_FLDS(YDGEOMETRY%YRDIMV,YDFIELDS%YRSURF,YDMODEL,KPPVCLIX=IVCLIX,KPPEDR=IPPEDR)
+
+IF (.NOT.LR2D) THEN
+  !*    Initialize special keys for the climate version 2nd part
+  WRITE(NULOUT,*) '---- Set up MCC climate model keys (lagged part) --',CLINE
+  CALL SUMCCLAG(YDGEM,YDMODEL%YRML_GCONF,YDMODEL%YRML_AOC,YDMODEL%YRML_CHEM%YRCOMPO, &
+       &  YDMODEL%YRML_CHEM%YRCHEM, YDMODEL%YRML_PHY_AER%YREAERSRC, &
+       &  YDMODEL%YRML_PHY_EC%YREPHY, NULOUT, YDSURF=YDSURF)
+ENDIF
+
+!*    Initialize DDH (Horizontal domains diagnostics)
+WRITE(NULOUT,*) '------ Set up DDH diagnostics --------',CLINE
+CALL SUNDDH(YDGEOMETRY,YDMODEL)
+
+!*    Initialize domains and masks for DDH
+
+CALL SUALMDH(YDGEM,YDMODEL%YRML_DIAG)
+
+IF ( LSDDH ) THEN
+  WRITE(NULOUT,*) '---- Set up DDH diagnostic domains ',CLINE
+  CALL SUMDDH(YDGEOMETRY,YDMODEL%YRML_DIAG)
+ENDIF
+
+IF (.NOT.LSDDH.AND.LRAYSP) THEN
+  WRITE(NULOUT,*) '---- Set up for simp.rad.if not ddh',CLINE
+  CALL SUSIMPR(YDGEOMETRY,YDMODEL%YRML_DIAG%YRMDDH)
+ENDIF
+
+!*    Initialize forcing by coarser model
+WRITE(NULOUT,*) '--- Set up forcing by coarser model part A ---------',CLINE
+CALL SUELBC_INIT(YDMODEL%YRML_DYN%YRDYNA,YDMODEL%YRML_LBC)
+
+!*    Initialize buffers for gridpoint scanning, part C
+WRITE(NULOUT,*) '---- Set up gridpoint scanning, part C ----',CLINE
+IF(LECV) THEN
+  CALL VARIABLES_CREATE(YNLVARS, .FALSE.,VIDS_ECV(1:NVIDS_ECV))
+ELSE
+  CALL VARIABLES_CREATE(YNLVARS, .FALSE.)
+ENDIF
+CALL SUSC2C(YDGEOMETRY,YDMODEL%YRML_PHY_EC%YREPHY,YDMODEL%YRML_GCONF,YDMODEL%YRML_PHY_MF%YRPHY, &
+ & YDMODEL%YRML_DYN%YRDYNA,YDMODEL%YRML_LBC%LTENC,YNLVARS,YDFIELDS%YRGFL, &
+ & YDFIELDS%YRGMV,YDFIELDS%YRSURF)
+
+IF (LELAM .AND. NCONF /= 923) THEN
+
+  !OIFS - SUELBC_MODEL, _FIELDS, FIELDS_DIM exist in module
+  !        yelbc_model.F90, maybe could dummy this mod but
+  !        will have impact on other parts of code.
+  CALL ABOR1('OIFS - LAM calls to SUELBC_MODEL and SUELBC_FIELDS in su0yomb.F90 not supported in OIFS - Exit')
+ENDIF
+
+!*    Initialize cumulated fluxes requests
+WRITE(NULOUT,*) '------ Set up cumulated fluxes diags ---',CLINE
+CALL SUCFU(YDGEOMETRY,YDFIELDS%YRCFU,YDMODEL%YRML_GCONF%YRRIP,YDMODEL%YRML_PHY_RAD%YRERAD,YDMODEL%YRML_PHY_MF%YRPHY, &
+ & NULOUT,YDCFUPP=YLCFU_KEYS)
+
+!*    Initialize instantaneous fluxes requests
+WRITE(NULOUT,*) '------ Set up instantaneous fluxes diags ',CLINE
+CALL SUXFU(YDGEOMETRY,YDFIELDS%YRXFU,YDMODEL%YRML_GCONF%YRRIP,YDMODEL%YRML_PHY_MF%YRPHY,NULOUT,YDXFUPP=YLXFU_KEYS)
 
 ! IOSTREAM
 CALL SUIOSTREAM
@@ -634,11 +702,11 @@ ENDIF
 IF (NCONF/100 /= 9 .AND. NCONF /= 1 .AND. NCONF /= 302 .AND. NCONF /= 201 .AND. NCONF /= 701) THEN
    IF(ASSOCIATED(JB_STRUCT)) THEN
      IF (.NOT.ASSOCIATED(CVA_DATA)) CALL ABOR1('Call SUALCTV, but CVA_DATA is not set up')
-     IF (LECPHYSPARECV) THEN
-       CVA_DATA%NVPARECV=YDMODEL%YRML_GCONF%YRDIMECV%NECV_1D
-     ELSE
+!     IF (LECPHYSPARECV) THEN
+!       CVA_DATA%NVPARECV=YDMODEL%YRML_GCONF%YRDIMECV%NECV_1D
+!     ELSE
        CVA_DATA%NVPARECV=0
-     ENDIF
+!     ENDIF
      IF (LENSCV) THEN
        WRITE(NULOUT,*) '-- Allocate ens. control variable-',CLINE
        !* SUALCTV_ENS needs to know about ens. size in sqrt. Envar scheme
@@ -649,7 +717,7 @@ IF (NCONF/100 /= 9 .AND. NCONF /= 1 .AND. NCONF /= 302 .AND. NCONF /= 201 .AND. 
      ENDIF
      WRITE(NULOUT,*) '-- Allocate static control variable-',CLINE
      ALLOCATE(CTLVEC_STRUCT)
-     CALL SUALCTV(YDGEOMETRY,CTLVEC_STRUCT,CVA_DATA,JB_STRUCT,YDMODEL%YRML_GCONF%YRDIMECV)
+     CALL SUALCTV(YDGEOMETRY,CTLVEC_STRUCT,CVA_DATA,JB_STRUCT)
    ELSE
      CALL ABOR1(' SU0YOMB: case where JB_STRUCT is used, but is not yet set up')
    ENDIF
@@ -728,6 +796,10 @@ IF (LLDIMO) THEN !JEB avoid calculating this with wavelet
  ENDIF
 ENDIF
 
+CALL FIELDS_CONTAIN(YDFIELDS,YDGEOMETRY,YDMODEL)
+IF (NCONF /= 901) THEN
+  CALL FIELDS_BACKSTITCH(YDFIELDS,YDGEOMETRY,YDMODEL,YNLVARS)
+ENDIF
 !*    Allocate Jb linearisation state
 IF (NCONF==131 .OR. NCONF/100==6 .OR. NCONF/100==8 .OR.&
   & (LTRAJHR .AND. LIFSTRAJ)) THEN
@@ -746,7 +818,8 @@ IF (LBACKG .OR. LOBSC1) THEN
   CALL SUJBCHVAR(YDVAB,YDDIMV,JB_STRUCT)
 ENDIF
 
-IF (LBACKG.OR.LSPBSBAL) THEN
+LL_ECVBAL=(LECV .AND. IABS(NCONF/100)==1 .AND. LJB_ALPHA_CV .AND. YRJBALPHACV_CONF%LALPHACV_UNBAL)
+IF (LBACKG.OR.LSPBSBAL.OR.LL_ECVBAL) THEN
   IF (LSPBSBAL.OR..NOT.JB_STRUCT%CONFIG%LJBENER) THEN
     WRITE(NULOUT,*) '---- Set up Jb balance operators --',CLINE
     IF(LELAM) THEN
@@ -775,16 +848,16 @@ IF (LBACKG) THEN
       WRITE(NULOUT,*) 'Wavelet Jb in Aladin: good luck!'
       CALL SUEJBWAVELET_BMATRIX(YDDIMV)
     ELSE
-      CALL SUEJBCOV(YDGEOMETRY,YDFIELDS,YL_TRAJ,JB_STRUCT)
-      !* Envar : ens. data and localization setup
-      IF (LENSCV) CALL SUENSCOV(YDGEOMETRY,YDFIELDS,YDMODEL)
+       CALL SUEJBCOV(YDGEOMETRY,YDFIELDS,YL_TRAJ,JB_STRUCT)
+       !* Envar : ens. data and localization setup
+       IF (LENSCV) CALL SUENSCOV(YDGEOMETRY,YDFIELDS,YDMODEL)
     ENDIF
   ELSE
     IF (JB_STRUCT%WJBCONF%LJBWAVELET) THEN
       IF ((.NOT.JB_STRUCT%WJBCONF%LJBWSTATS).OR.(JB_STRUCT%WJBCONF%LHYBRID_JB)) THEN
-        ! sujbwavelet must be called before sujbwavstats if LHYBRID_JB=T
+      ! sujbwavelet must be called before sujbwavstats if LHYBRID_JB=T
         CLFILE='wavelet.cv'
-        CALL SUJBWAVELET(YDGEOMETRY,YDFIELDS,YL_TRAJ,JB_STRUCT,CLFILE)
+        CALL SUJBWAVELET(YDGEOMETRY,JB_STRUCT,CLFILE)
         CALL SUJBWAVELET_STDEVS(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_CHEM%YRCHEM,JB_STRUCT)
       ENDIF
 
@@ -792,16 +865,16 @@ IF (LBACKG) THEN
         WRITE(NULOUT,*) '---- Calculate Wavelet Jb error covariances --',CLINE
         CALL SUJBWAVSTATS(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,JB_STRUCT)
 
-       IF(LBACKGERENORM)THEN
-       ! Option to reload the matrix and to compute renormalisation coeffs of wavelet B
-          WRITE(CLMAX,'(I3)') NSMAX
-          CLFILE='wavelet_out_T'//TRIM(ADJUSTL(CLMAX))//'.cv'
-          CALL SUJBWAVELET(YDGEOMETRY,YDFIELDS,YL_TRAJ,JB_STRUCT,CLFILE)
-          CALL SUJBWAVELET_STDEVS(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_CHEM%YRCHEM,JB_STRUCT)
-           WRITE(NULOUT,*) '---- Variational job: Compute renormalisation coefficient',&
-         & 'for the variance -------------------'
-          CALL SUJBWAVRENORM(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL%YRML_GCONF,JB_STRUCT)
-       ENDIF
+        IF(LBACKGERENORM)THEN
+        ! Option to reload the matrix and to compute renormalisation coeffs of wavelet B
+           WRITE(CLMAX,'(I3)') NSMAX
+           CLFILE='wavelet_out_T'//TRIM(ADJUSTL(CLMAX))//'.cv'
+           CALL SUJBWAVELET(YDGEOMETRY,JB_STRUCT,CLFILE)
+           CALL SUJBWAVELET_STDEVS(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_CHEM%YRCHEM,JB_STRUCT)
+            WRITE(NULOUT,*) '---- Variational job: Compute renormalisation coefficient',&
+          & 'for the variance -------------------'
+           CALL SUJBWAVRENORM(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL%YRML_GCONF,JB_STRUCT)
+        ENDIF
 
         ! The statistics file has been written and closed.
         ! Normal exit
@@ -867,13 +940,32 @@ IF (LBACKG) THEN
     ENDIF
     IF (.NOT.LELAM .AND. LECV .AND. IABS(NCONF/100)==1) THEN
       WRITE(NULOUT,*) '---- Set up JB extended control variable --',CLINE
-      CALL READ_FG_ECV(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMECV,YDFIELDS%YRSURF,LDBCK=.TRUE.)
-      CALL READ_FG_ECV(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMECV)
       IF (LECPHYSPARECV) THEN
-        CALL SUINFCE_ECPHYS(YDGEOMETRY,JB_STRUCT)
+        CALL SUINFCE_ECPHYS(YDGEOMETRY,YDFIELDS,JB_STRUCT)
         IF (LSOLARCST) CALL SUPARECVMIN(YDGEOMETRY)
       ENDIF
-      IF (LJB_ALPHA_CV) CALL SETJBALPHACV(YDGEOMETRY, YDMTRAJ, YDFIELDS, YDMODEL, BACKGROUND, JB_STRUCT)
+      IF (LJB_ALPHA_CV) THEN
+        CALL VARIABLES_CREATE(YL_VARS, .TRUE.,.TRUE.)
+        CALL FIELDS_CREATE(YL_BG_ECV,  YDGEOMETRY,YDMODEL,YL_VARS)
+        CALL FIELDS_CREATE(YL_TRAJ_ECV,YDGEOMETRY,YDMODEL,YL_VARS)
+        CALL VARIABLES_DELETE(YL_VARS)
+        CALL GET_TRAJ_GRID(YDGEOMETRY,YDMODEL%YRML_GCONF,BACKGROUND,YDGMV,YDGMV5,&
+         & YL_BG_ECV%YRGMV%GMV,YL_BG_ECV%YRGMV%GMVS,YL_BG_ECV%YRGFL%GFL,GET_NUPTRA())
+        IF (LTRAJHR) THEN
+          CALL GET_TRAJ_GRID(YDGEOMETRY,YDMODEL%YRML_GCONF,TRAJEC(0),YDGMV,YDGMV5,&
+           & YL_TRAJ_ECV%YRGMV%GMV,YL_TRAJ_ECV%YRGMV%GMVS,YL_TRAJ_ECV%YRGFL%GFL,GET_NUPTRA())
+        ELSE
+          CALL GET_TRAJ_GRID(YDGEOMETRY,YDMODEL%YRML_GCONF,BACKGROUND,YDGMV,YDGMV5,&
+           & YL_TRAJ_ECV%YRGMV%GMV,YL_TRAJ_ECV%YRGMV%GMVS,YL_TRAJ_ECV%YRGFL%GFL,GET_NUPTRA())
+        ENDIF
+        !
+        CALL SETJBALPHACV(YDGEOMETRY, YL_BG_ECV, YL_TRAJ_ECV, YDMODEL%YRML_GCONF, JB_STRUCT)
+        !
+        CALL FIELDS_DELETE(YL_BG_ECV)
+        CALL FIELDS_DELETE(YL_TRAJ_ECV)
+      ENDIF
+      IF (LSKTECV) CALL SUINSFCECVCOR(YDGEOMETRY, YRSKTECV)
+      IF (LSSHECV) CALL SUINSFCECVCOR(YDGEOMETRY, YRSSHECV)
     ENDIF
   ENDIF
 
@@ -891,7 +983,9 @@ ENDIF
 WRITE(NULOUT,'(A72)') '--- Set up stochastically perturbed parametrization tendencies '//CLINE
 WRITE(NULOUT,*)       '      SPPT a.k.a. stochastic physics with spectral pattern'
 CALL SUSPSDT(YDGEOMETRY,YDMODEL%YRML_GCONF%YRRIP,YDSPPT_CONFIG,YDSPPT)
-
+#ifndef WITHOUT_SURFEX
+CALL SUPERTPAR(YDMODEL%YRML_PHY_MF,YDMODEL%YRML_PHY_EC%YRECUMF,YDMODEL%YRML_PHY_RAD%YRERAD)
+#endif
 
 !*    Initialize scalar product
 IF(.NOT.(NCONF == 1.OR.NCONF == 302.OR.ICONF == 2.OR.ICONF == 9.OR.ICONF == 7 )) THEN
@@ -948,7 +1042,13 @@ CALL SETUP_GWDIAG(YDDIM)
 !    Set up flexible physics-dynamics interface
 WRITE(NULOUT,*) '---- Set up flexible physics-dynamics interface --',CLINE
 CALL SUINTFLEX(YGFL,YDMODEL%YRML_PHY_MF%YRARPHY,YDMODEL%YRML_PHY_MF%YRPHY)
-CALL FIELDS_CONTAIN(YDFIELDS,YDGEOMETRY,YDMODEL)
+
+
+IF (YDMODEL%YRML_PHY_MF%YRPHY%LAPL_ARPEGE) THEN
+  !     Check LAPL_ARPEGE consistency
+  WRITE(NULOUT,*) '------ Set up : LAPL_ARPEGE consistency ------',CLINE
+  CALL SUAPL_ARPEGE (YDMODEL, YDFIELDS%YRXFU, NULOUT)
+ENDIF
 
 WRITE(NULOUT,*) '-------------------------------------',CLINE
 WRITE(NULOUT,*) '------ END OF SETUPS at level 0 -----',CLINE

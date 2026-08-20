@@ -1,13 +1,21 @@
-! radiation_cloudless_lw.F90 - Longwave homogeneous cloudless solver
+! (C) Copyright 2019- ECMWF.
 !
-! Copyright (C) 2019 ECMWF
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+! radiation_cloudless_lw.F90 - Longwave homogeneous cloudless solver
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 
 module radiation_cloudless_lw
+
+public :: solver_cloudless_lw
 
 contains
 
@@ -18,6 +26,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     use radiation_config, only         : config_type
     use radiation_flux, only           : flux_type, indexed_sum_profile
     use radiation_two_stream, only     : calc_two_stream_gammas_lw, &
@@ -43,7 +52,7 @@ contains
     ! Planck function at each half-level and the surface
     real(jprb), intent(in), dimension(config%n_g_lw,nlev+1,istartcol:iendcol) :: &
          &  planck_hl
-  
+
     ! Emission (Planck*emissivity) and albedo (1-emissivity) at the
     ! surface at each longwave g-point
     real(jprb), intent(in), dimension(config%n_g_lw, istartcol:iendcol) &
@@ -107,7 +116,7 @@ contains
           ! transmission and emission
           call calc_no_scattering_transmittance_lw(ng, od(:,jlev,jcol), &
                &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1, jcol), &
-               &  transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))          
+               &  transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))
           ! Ensure that clear-sky reflectance is zero
           reflectance(:,jlev) = 0.0_jprb
         end if
@@ -125,7 +134,7 @@ contains
              &  transmittance, source_up, source_dn, &
              &  emission(:,jcol), albedo(:,jcol), &
              &  flux_up, flux_dn)
-          
+
       end if
 
       ! Sum over g-points to compute broadband fluxes
@@ -164,7 +173,7 @@ contains
     end do
 
     if (lhook) call dr_hook('radiation_cloudless_lw:solver_cloudless_lw',1,hook_handle)
-    
+
   end subroutine solver_cloudless_lw
 
 end module radiation_cloudless_lw

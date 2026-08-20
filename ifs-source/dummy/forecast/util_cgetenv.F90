@@ -10,5 +10,5 @@
 ! 
 
       subroutine util_cgetenv
-      call abor1(" should never be called")
-      end subroutine
+      call abor1("util_cgetenv should never be called")
+      end subroutine util_cgetenv

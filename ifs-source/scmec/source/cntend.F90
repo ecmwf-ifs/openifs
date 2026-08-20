@@ -1,10 +1,50 @@
 ! (C) Copyright 1995- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+
+!**** *CNTEND*  - Closes netCDF datafiles.
+
+!     Purpose.
+!     --------
+!          Data file closure after finishing the run.
+
+!***  Interface.
+!     ----------
+!        *CALL* *CNTEND
+
+!        Explicit arguments :
+!        --------------------
+!        None
+
+!        Implicit arguments :
+!        --------------------
+!        None
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk *KNMI*
+
+!     Modifications.
+!     --------------
+!        Original : 14/7/2000
+!
+!        E. DUTRA - New outuput file for lakes  04/07/2008
+!        E. Dutra : Coupling with cama-flood May 2019
+!     ------------------------------------------------------------------
+
 SUBROUTINE CNTEND
 
 !**** *CNTEND*  - Closes netCDF datafiles.

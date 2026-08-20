@@ -1,0 +1,153 @@
+! (C) Copyright 1989- ECMWF.
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! 
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction
+! 
+! (C) Copyright 1989- Meteo-France.
+! 
+
+#:set ranks  = [2, 3, 4]
+#:set shapes = ['', ':', ':,:', ':,:,:', ':,:,:,:', ':,:,:,:,:']
+#:set config_file = os.path.dirname(_THIS_FILE_) + '/surface_fields_config.yaml'
+#:set config = field_config.VariableConfiguration(config_file)
+#:set diagnostic = [field_config.VariableGroup(**group) for group in config.schema['diagnostic']]
+
+MODULE SURFACE_VIEWS_DIAGNOSTIC_MODULE
+  ! The SURFACE_VIEWS type contains namespaced access to groups of
+  ! array pointers according to individual surface variable groups.
+  !
+  !
+  ! Variable naming conventions
+  ! ---------------------------
+  ! The top-level type `SURFACE_VIEWS_TYPE` holds multiple group
+  ! types, each prefixed with `GSP_` for prognostic and `GSD_` for
+  ! diagnostic variable groups.
+  !
+  ! Each group type holds a list of array views (pointers to
+  ! sub-sections of the gobal array), each prefixed with `P` to
+  ! indicate a thread-local view pointer. The backend storage for each
+  ! of these view pointers is provided by `FIELD_2D/FIELD_3D` objects,
+  ! a reference to which is also stored on the group types and
+  ! prefixed with `F_`.
+
+USE PARKIND1, ONLY: JPIM, JPRB
+USE FIELD_MODULE, ONLY: FIELD_2RB, FIELD_3RB, FIELD_4RB, FIELD_2RB_PTR, &
+ &                      FIELD_3RB_PTR, FIELD_2RB_VIEW, FIELD_3RB_VIEW
+! Using global imports here, since fypp notation breaks cmake's dependency analysis
+USE SURFACE_VARIABLES_MOD
+
+IMPLICIT NONE
+
+#:for group in diagnostic
+TYPE SURFACE_VIEW_GROUP_${group.name}$
+#:set shape = shapes[group.dimension-1]
+#:for v in group.variables
+#:if v.array
+#:set array = (', ALLOCATABLE, DIMENSION(%s)' % shapes[v.array])
+  TYPE(FIELD_${group.dimension}$RB_VIEW)${array}$ :: ${'P%s' % v.name}$   ! ${v.comment}$
+#:else
+  REAL(KIND=JPRB), POINTER :: ${'P%s(%s)' % (v.name, shape)}$   ! ${v.comment}$
+  #:if v.array
+  #:else
+    #:if group.dimension == 2
+!>REAL(KIND=JPRB)          :: P${v.name}$ (YDCPG_OPTS%KLON)
+    #:elif group.dimension == 3
+!>REAL(KIND=JPRB)          :: P${v.name}$ (YDCPG_OPTS%KLON, YDCPG_OPTS%YRSURF%YSD_${group.short}$D%NLEVS)
+    #:endif
+  #:endif
+#:endif
+#:endfor
+  REAL(KIND=JPRB), POINTER :: PGROUP(:,${shape}$)
+
+  TYPE(SURFACE_VARIABLE_GROUP_${group.name}$), POINTER :: VARIABLE_GROUP
+#:for v in group.variables
+#:if v.array
+#:set array = (', ALLOCATABLE, DIMENSION(%s)' % shapes[v.array])
+  TYPE(FIELD_${group.dimension}$RB_PTR)${array}$ :: F_${v.name}$
+#:else
+  CLASS(FIELD_${group.dimension}$RB), POINTER :: F_${v.name}$=>NULL()
+#:endif
+#:endfor
+  CLASS(FIELD_${group.dimension+1}$RB), POINTER :: F_GROUP
+
+CONTAINS
+  PROCEDURE :: INIT => SURFACE_VIEW_GROUP_${group.name}$_INIT
+  PROCEDURE :: UPDATE_VIEW => SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW
+END TYPE SURFACE_VIEW_GROUP_${group.name}$
+
+#:endfor
+
+CONTAINS
+
+#:for group in diagnostic
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_INIT(SELF, VARIABLE_GROUP)
+    ! Constructor of the array view type for a surface variable group
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    TYPE(SURFACE_VARIABLE_GROUP_${group.name}$), TARGET, INTENT(INOUT) :: VARIABLE_GROUP
+    INTEGER(KIND=JPIM) :: I, J, MYSHAPE(2)
+
+    ! Create a view for the "T0" field only for diagnostic fields
+#:for v in group.variables
+#:if v.array == 1
+    IF (ALLOCATED(VARIABLE_GROUP%V${v.name}$)) THEN
+      ALLOCATE(SELF%P${v.name}$(SIZE(VARIABLE_GROUP%V${v.name}$)))
+      ALLOCATE(SELF%F_${v.name}$(SIZE(VARIABLE_GROUP%V${v.name}$)))
+      DO I=1, SIZE(VARIABLE_GROUP%V${v.name}$)
+        SELF%F_${v.name}$(I)%PTR => VARIABLE_GROUP%V${v.name}$(I)%FT0
+      END DO
+    END IF
+#:elif v.array == 2
+    IF (ALLOCATED(VARIABLE_GROUP%V${v.name}$)) THEN
+      MYSHAPE = SHAPE(VARIABLE_GROUP%V${v.name}$)
+      ALLOCATE(SELF%P${v.name}$(MYSHAPE(1), MYSHAPE(2)))
+      ALLOCATE(SELF%F_${v.name}$(MYSHAPE(1), MYSHAPE(2)))
+      DO J=1, MYSHAPE(2)
+        DO I=1, MYSHAPE(1)
+          SELF%F_${v.name}$(I,J)%PTR => VARIABLE_GROUP%V${v.name}$(I,J)%FT0
+        END DO
+      END DO
+    END IF
+#:else
+    SELF%F_${v.name}$ => VARIABLE_GROUP%V${v.name}$%FT0
+#:endif
+#:endfor
+    SELF%VARIABLE_GROUP => VARIABLE_GROUP
+    SELF%F_GROUP => VARIABLE_GROUP%F_GROUP
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_INIT
+
+  SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW(SELF, BLOCK_INDEX)
+    ! Extract local array views from field objects
+    CLASS(SURFACE_VIEW_GROUP_${group.name}$) :: SELF
+    INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+    INTEGER(KIND=JPIM) :: I, J
+
+    ! Set up the view pointer for the "T0" field
+#:for v in group.variables
+#:if v.array == 1
+    IF (ALLOCATED(SELF%F_${v.name}$)) THEN
+      DO I=1, SIZE(SELF%F_${v.name}$)
+        SELF%P${v.name}$(I)%P => SELF%F_${v.name}$(I)%PTR%GET_VIEW(BLOCK_INDEX)
+      END DO
+    END IF
+#:elif v.array == 2
+    IF (ALLOCATED(SELF%F_${v.name}$)) THEN
+      DO J=1, SIZE(SELF%F_${v.name}$, DIM=2)
+        DO I=1, SIZE(SELF%F_${v.name}$, DIM=1)
+          SELF%P${v.name}$(I,J)%P => SELF%F_${v.name}$(I,J)%PTR%GET_VIEW(BLOCK_INDEX)
+        END DO
+      END DO
+    END IF
+#:else
+    IF (ASSOCIATED(SELF%F_${v.name}$))  SELF%P${v.name}$ => SELF%F_${v.name}$%GET_VIEW(BLOCK_INDEX)
+#:endif
+#:endfor
+
+    IF (ASSOCIATED(SELF%F_GROUP))  SELF%PGROUP => SELF%F_GROUP%GET_VIEW(BLOCK_INDEX)
+  END SUBROUTINE SURFACE_VIEW_GROUP_${group.name}$_UPDATE_VIEW
+
+#:endfor
+  
+END MODULE SURFACE_VIEWS_DIAGNOSTIC_MODULE

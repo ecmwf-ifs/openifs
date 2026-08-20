@@ -1,3 +1,134 @@
+! (C) Copyright 1990- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *VSURF* - PREPARES SURFACE BOUNDARY CONDITION FOR T AND Q
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.    18-1-90
+!     Modified P.VITERBO AND A.C.M. BELJAARS  E.C.M.W.F.    16-3-93
+!     Modified ACM Beljaars  26-03-99  Tiling of the surface
+!     P. Viterbo     24-05-2004     Change surface units
+!     P. Viterbo ECMWF 12/05/2005 Externalize SURF
+!                     (based on VDFSURF)
+!     G. Balsamo ECMWF 22/05/2006   Evaporative fraction f(soil)
+!     G. Balsamo ECMWF 03/07/2006   Add soil type
+!     E. Dutra/G. Balsamo 01/05/2008   Add lake tile
+!     G. Balsamo ECMWF 9/3/2010 Bare ground evaporation
+!     S. Boussetta/G.Balsamo May 2009 Add lai
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL based on:
+!     M.H. Voogt (KNMI) "C-Tessel"  09/2005 
+!     S. Lafont "C-TESSEL" 18/05/2006
+!     S. Boussetta/G.Balsamo June 2010 Add soil moisture scaling factor for Reco
+!     S. Boussetta/G.Balsamo June 2011 modularisation of Ags call
+!     A. Beljaars      26/02/2014   compute unstressed evaporation
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     A. Agusti-Panareda Nov 2020  couple atm CO2 tracer with photosynthesis 
+!     A. Agusti-Panareda May 2021  Pass soil temperature to photosynthesis 
+!     A. Agusti-Panareda June 2021 Pass photosynthetic pathway for low vegetation (c3/c4)
+!     S. Boussetta     21/06/2022  Added Ronda (Ronda et al. 2002, J. App. Met.) SM stress function
+!     J. McNorton      24/08/2022  urban tile
+!     S. Boussetta     21/06/2022  Added LAI scaling by Cveg for Rc canopy resistance computaioin
+!     I. Ayan-Miguez   July 2023   Added PSSDP2 object for spatially distributed parameters
+!     V. Huijnen       31/10/2023  Add support for BVOC emissions
+
+!     PURPOSE
+!     -------
+
+!     PREPARE SURFACE BOUNDARY CONDITION FOR Q AND T, E.G. FRACTIONAL
+!     SURFACE COVER (SNOW AND VEGETATION), SATURATION SPECIFIC HUMIDITY
+!     AT THE SURFACE, RELATIVE HUMIDITY OVER BARE LAND AND THE STOMATAL
+!     RESISTANCE.
+
+!     INTERFACE
+!     ---------
+
+!     *VSURF* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILES*       NUMBER OF TILES
+!     *KLEVS*        NUMBER OF SOIL LAYERS
+!     *KTILE*        TILE INDEX
+!     *KTVL*         VEGETATION TYPE FOR LOW VEGETATION FRACTION
+!     *KCO2TYP*     TYPE OF PHOTOSYNTHETIC PATHWAY FOR LOW VEGETATION (C3/C4)
+!     *KTVH*         VEGETATION TYPE FOR HIGH VEGETATION FRACTION
+
+!     *JVTTL*        CROSS-REFERENCE BETWEEN TILES AND VEGETATION TYPES 
+
+
+!     *KSOTY*        SOIL TYPE (1-7) 
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PFRTI*      TILE FRACTIONS                                   (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!     *PLAIL*        LAI OF LOW VEGETATION
+!     *PLAIH*        LAI OF HIGH VEGETATION
+!     *PAVGPAR*      Average PAR
+!     *PISOP_EP*     Isoprene emission potential
+
+!     *PLAI*         LEAF AREA INDEX for both low and high                 (-)
+!     *PLAI_WET*     LEAF AREA INDEX for both low and high, incl. wet skin tile    (-)
+!     *PLAIP_WET*    LEAF AREA INDEX for both low and high, incl. wet skin tile, previous time step (-)
+!     *PMU0*        LOCAL COSINE OF INSTANTANEOUS MEAN SOLAR ZENITH ANGLE
+!     *PLAT*        Latitude (radians)
+
+!     *PTMLEV*      TEMPERATURE AT T-1, lowest model level
+!     *PQMLEV*      SPECIFIC HUMIDITY AT T-1, lowest model level
+!     *PCMLEV*      ATMOSPHERIC CO2 AT T-1, lowest model level
+!     *PAPHMS*      PRESSURE AT T-1, surface
+!     *PTSKM1M*      SURFACE TEMPERATURE
+!     *PWSAM1M*      SOIL MOISTURE ALL LAYERS                   M**3/M**3
+!     *PTSAM1M*      SOIL TEMPERATURE ALL LAYERS  
+!     *PSRFD*        DOWNWARD SHORT WAVE RADIATION FLUX AT SURFACE
+!     *PRAQ*         PRELIMINARY AERODYNAMIC RESISTANCE
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PQSAM*        SPECIFIC HUMIDITY AT THE SURFACE
+!     *PQS*          SATURATION Q AT SURFACE
+!     *PDQS*         DERIVATIVE OF SATURATION Q-CURVE AT SURFACE T
+!     *PWETB*        BARE SOIL RESISTANCE
+!     *PCPTS*        DRY STATIC ENRGY AT SURFACE
+!     *PWETL*        CANOPY RESISTANCE LOW VEGETATION
+!     *PWETLU*       CANOPY RESISTANCE LOW VEGETATION IN UNSTRESSED CONDITIONS
+!     *PWETH*        CANOPY RESISTANCE HIGH VEGETATION, SNOW FREE
+!     *PWETHS*       CANOPY RESISTANCE HIGH VEGETATION WITH SNOW
+!     *PEXDIAG*      Extra fields for potential pp of canopy
+
+
+!     *PDHVEGS*      Diagnostic array for vegetation (see module yomcdh)
+!     *PAN*          NET CO2 ASSIMILATION OVER CANOPY          KG_CO2/M2/S
+!                    positive downwards, to be changed for diagnostic output
+!     *PAG*          GROSS CO2 ASSIMILATION OVER CANOPY        KG_CO2/M2/S
+!                    positive downwards, to be changed for diagnostic output
+!     *PRD*          DARK RESPIRATION                          KG_CO2/M2/S
+!                    positive upwards
+!     *PBVOCFLUX*    Biogenic VOC flux                         KG_BVOC/M2/S
+!     *PBVOCDIAG*    Biogenic VOC flux diagnostics             [variable]
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
 MODULE VSURF_MOD
 CONTAINS
 SUBROUTINE VSURF(KIDIA,KFDIA,KLON,KTILES,KLEVS,KTILE,&
@@ -29,14 +160,6 @@ USE YOS_FLAKE, ONLY : TFLAKE
 USE YOS_URB  , ONLY : TURB
 USE COTWORESTRESS_MOD
 
-! (C) Copyright 1990- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !     ------------------------------------------------------------------
 
 !**   *VSURF* - PREPARES SURFACE BOUNDARY CONDITION FOR T AND Q
@@ -62,6 +185,9 @@ USE COTWORESTRESS_MOD
 !     A. Agusti-Panareda Nov 2020  couple atm CO2 tracer with photosynthesis 
 !     A. Agusti-Panareda May 2021  Pass soil temperature to photosynthesis 
 !     A. Agusti-Panareda June 2021 Pass photosynthetic pathway for low vegetation (c3/c4)
+!     S. Boussetta     21/06/2022  Added Ronda (Ronda et al. 2002, J. App. Met.) SM stress function
+!     J. McNorton      24/08/2022  urban tile
+!     S. Boussetta     21/06/2022  Added LAI scaling by Cveg for Rc canopy resistance computaioin
 
 !     PURPOSE
 !     -------
@@ -209,15 +335,15 @@ TYPE(TURB)        ,INTENT(IN)    :: YDURB
 !     ----- -------
 
 INTEGER(KIND=JPIM) :: JK, JL, JS
-REAL(KIND=JPRB) ::  ZLIQ(KLON,KLEVS), ZLIQR(KLON,KLEVS),ZF2(KLON),ZWROOT(KLON)
+REAL(KIND=JPRB) ::  ZLIQ(KLON,KLEVS), ZLIQR(KLON,KLEVS),ZF2(KLON),ZF21(KLON),ZWROOT(KLON)
 REAL(KIND=JPRB) ::  ZDSP(KLON),ZDMAXT(KLON)
 REAL(KIND=JPRB) ::  ZWET(KLON)
 REAL(KIND=JPRB) ::  ZTSK(KLON)
 REAL(KIND=JPRB) ::  ZEPSILON
 
 REAL(KIND=JPRB) ::  ZTSOIL(KLON)
-REAL(KIND=JPRB) ::  ZCOR, ZEPSF3, ZF, ZF1H, ZF1L, ZF2H, ZF2L, ZF2B, &
- & ZF3H, ZF3L, ZHSTRH, ZHSTRL, ZLAIH, ZLAIL, ZQSAIR, &
+REAL(KIND=JPRB) ::  ZCOR, ZEPSF3, ZF, ZF1H, ZF1L, ZF2H, ZF2L, ZF2B, ZF21H, ZF21L, ZF21B, &
+ & ZF3H, ZF3L, ZHSTRH, ZHSTRL, ZLAIH, ZLAIL, ZLAIHSC, ZLAILSC, ZQSAIR, &
  & ZRSMINH, ZRSMINL, ZRSMINB, ZRVA, ZRVB, ZSRFL, ZWROOTH, ZWROOTL, &
  & ZQWEVAP, ZWPWP, ZQWEVAPBARE, ZBARE, ZWPBARE,&
  & ZSALIN, ZRCLU
@@ -241,7 +367,7 @@ ASSOCIATE(RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RLSTT=>YDCST%RLSTT, &
  & LEAGS=>YDVEG%LEAGS, LECTESSEL=>YDVEG%LECTESSEL, RCEPSW=>YDVEG%RCEPSW, &
  & LEFARQUHAR=>YDVEG%LEFARQUHAR, LEAIRCO2COUP=>YDVEG%LEAIRCO2COUP, &
  & RVHSTR=>YDVEG%RVHSTR, RVLAI=>YDVEG%RVLAI, RVROOTSA=>YDVEG%RVROOTSA, &
- & RVRSMIN=>YDVEG%RVRSMIN, RURBRES=>YDURB%RURBRES)
+ & RVRSMIN=>YDVEG%RVRSMIN, RVCOV=>YDVEG%RVCOV,LEURBAN=>YDURB%LEURBAN, RURBRES=>YDURB%RURBRES)
 
 
 ! This is needed as unitialized values end up being passed around otherwise
@@ -337,9 +463,21 @@ ENDDO
     ZLAIL=PLAIL(JL)
     ZLAIH=PLAIH(JL)
 
+!   scaled leaf area index with cveg9= (rvcov)
+    IF(RVCOV(KTVL(JL)) /= 0.0_JPRB) THEN
+     ZLAILSC=PLAIL(JL)/RVCOV(KTVL(JL))
+    ELSE
+     ZLAILSC=PLAIL(JL)
+    ENDIF
+    IF(RVCOV(KTVH(JL)) /= 0.0_JPRB) THEN
+     ZLAIHSC=PLAIH(JL)/RVCOV(KTVH(JL))
+    ELSE
+     ZLAIHSC=PLAIH(JL)
+    ENDIF   
+
 !           bare ground fraction
     ZBARE=PFRTI(JL,8)
-    IF (KTILES .GT. 9) THEN
+    IF (LEURBAN) THEN
      ZBARE=PFRTI(JL,8)+PFRTI(JL,9)
     ENDIF
 !           soil moisture stress function : F2
@@ -361,13 +499,16 @@ ENDDO
        ELSE
           ZQWEVAPBARE=0._JPRB
        ENDIF
-       ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+       !ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+       ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+       ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
     ELSE
        ZWPWP=RWPWP
        ZQWEVAP=RQWEVAP
        ZWPBARE=(RWPWP*(1.0_JPRB-ZBARE)+0.05_JPRB*ZBARE)
        ZQWEVAPBARE=1._JPRB/(RWCAP-ZWPBARE)
-       ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+       ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+       ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
     ENDIF
 
     IF (PTSAM1M(JL,1) <= RTT ) THEN
@@ -375,8 +516,10 @@ ENDDO
        ZF2L=RCEPSW
        ZF2H=RCEPSW
     ELSE
-       ZF2L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
-       ZF2H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
+       ZF21L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
+       ZF21H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
+       ZF2L=2_JPRB*ZF21L-(ZF21L*ZF21L)
+       ZF2H=2_JPRB*ZF21H-(ZF21H*ZF21H)
     ENDIF
 
 
@@ -399,17 +542,29 @@ ENDDO
     ZF3L=MAX(ZEPSF3,MIN(1.0_JPRB,ZF3L))
     ZF3H=MAX(ZEPSF3,MIN(1.0_JPRB,ZF3H))
 
-    IF(ZLAIL /= 0.0_JPRB) THEN
-      PWETL(JL)=ZRSMINL/(ZLAIL*ZF1L*ZF2L*ZF3L)
+!    IF(ZLAIL /= 0.0_JPRB) THEN
+!      PWETL(JL)=ZRSMINL/(ZLAIL*ZF1L*ZF2L*ZF3L)
+!    ELSE
+!      PWETL(JL) =1.0E+6_JPRB
+!    ENDIF
+!   Use scaled LAI for canopy resistance computation
+    IF(ZLAILSC /= 0.0_JPRB) THEN
+      PWETL(JL)=ZRSMINL/(ZLAILSC*ZF1L*ZF2L*ZF3L)
     ELSE
       PWETL(JL) =1.0E+6_JPRB
     ENDIF
 
-
     PWETLU(JL)=ZRCLU/(ZF1L*ZF3L) !Pot. Evap. Canopy resist. calc.
 
-    IF(ZLAIH /= 0.0_JPRB) THEN
-      PWETH(JL)=ZRSMINH/(ZLAIH*ZF1H*ZF2H*ZF3H)
+!    IF(ZLAIH /= 0.0_JPRB) THEN
+!      PWETH(JL)=ZRSMINH/(ZLAIH*ZF1H*ZF2H*ZF3H)
+!    ELSE
+!      PWETH(JL)=1.0E+6_JPRB
+!    ENDIF
+
+!   Use scaled LAI for canopy resistance computation
+    IF(ZLAIHSC /= 0.0_JPRB) THEN
+      PWETH(JL)=ZRSMINH/(ZLAIHSC*ZF1H*ZF2H*ZF3H)
     ELSE
       PWETH(JL)=1.0E+6_JPRB
     ENDIF   
@@ -520,7 +675,7 @@ IF (KTILE==4 .OR. KTILE==6 .OR. KTILE==7 .OR. KTILE==8 .OR. KTILE==10) THEN
   DO JL=KIDIA,KFDIA
 !           bare ground fraction
     ZBARE=PFRTI(JL,8)
-    IF (KTILES .GT. 9) THEN
+    IF (LEURBAN) THEN
      ZBARE=PFRTI(JL,8)+PFRTI(JL,9)
     ENDIF
 !           soil moisture stress function : F2
@@ -542,13 +697,16 @@ IF (KTILE==4 .OR. KTILE==6 .OR. KTILE==7 .OR. KTILE==8 .OR. KTILE==10) THEN
        ELSE
           ZQWEVAPBARE=0._JPRB
        ENDIF
-       ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+       !ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+       ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+       ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
     ELSE
        ZWPWP=RWPWP
        ZQWEVAP=RQWEVAP
        ZWPBARE=(RWPWP*(1.0_JPRB-ZBARE)+0.05_JPRB*ZBARE)
        ZQWEVAPBARE=1._JPRB/(RWCAP-ZWPBARE)
-       ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+       ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+       ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
     ENDIF
 
     IF (PTSAM1M(JL,1) <= RTT ) THEN
@@ -556,8 +714,10 @@ IF (KTILE==4 .OR. KTILE==6 .OR. KTILE==7 .OR. KTILE==8 .OR. KTILE==10) THEN
        ZF2L=RCEPSW
        ZF2H=RCEPSW
     ELSE
-       ZF2L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
-       ZF2H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
+       ZF21L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
+       ZF21H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
+       ZF2L=2_JPRB*ZF21L-(ZF21L*ZF21L)
+       ZF2H=2_JPRB*ZF21H-(ZF21H*ZF21H)
     ENDIF
 
 !    ZF2L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
@@ -620,7 +780,8 @@ IF (KTILE==4 .OR. KTILE==6 .OR. KTILE==7 .OR. KTILE==8 .OR. KTILE==10) THEN
 !   if first soil layer temperature is freezing then shutdown transpiration
          ZF2(JL)=RCEPSW
       ELSE
-         ZF2(JL)=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOT(JL)-ZWPWP)*ZQWEVAP))
+         ZF21(JL)=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOT(JL)-ZWPWP)*ZQWEVAP))
+         ZF2(JL)=2_JPRB*ZF21(JL)-(ZF21(JL)*ZF21(JL))
       ENDIF
 
 !      ZF2(JL)=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOT(JL)-ZWPWP)*ZQWEVAP))
@@ -669,8 +830,8 @@ IF (KTILE==4 .OR. KTILE==6 .OR. KTILE==7 .OR. KTILE==8 .OR. KTILE==10) THEN
     DO JL=KIDIA,KFDIA 
 !           bare ground fraction
       ZBARE=PFRTI(JL,8)
-      IF ( KTILES .GT. 9 ) THEN
-       ZBARE=PFRTI(JL,8)+PFRTI(JL,9)
+      IF (LEURBAN) THEN
+       ZBARE=PFRTI(JL,8)+PFRTI(JL,10)
       ENDIF
       IF (LEVGEN) THEN
          JS=KSOTY(JL)
@@ -684,13 +845,16 @@ IF (KTILE==4 .OR. KTILE==6 .OR. KTILE==7 .OR. KTILE==8 .OR. KTILE==10) THEN
          ELSE
             ZQWEVAPBARE=0._JPRB
          ENDIF
-         ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+         ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQR(JL,1)-ZWPBARE)*ZQWEVAPBARE))
+         ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
       ELSE
          ZWPWP=RWPWP
          ZQWEVAP=RQWEVAP
          ZWPBARE=(RWPWP*(1.0_JPRB-ZBARE)+0.05_JPRB*ZBARE)
          ZQWEVAPBARE=1._JPRB/(RWCAP-ZWPBARE)
-         ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+         !ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+         ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+         ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
       ENDIF
       ZWET(JL)=ZRSMINB/ZF2B
 ! check on dew-fall conditions

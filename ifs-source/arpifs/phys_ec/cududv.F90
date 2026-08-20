@@ -1,13 +1,14 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 1986- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUDUDV &
- & ( YDECUMF,YDSPP_CONFIG, KIDIA,    KFDIA,    KLON,     KLEV, &
+ & ( YDCST, YDECUMF,YDSPP_CONFIG, KIDIA,    KFDIA,    KLON,     KLEV, &
  & KTOPM2,   KTYPE,    KCBOT,    KCTOP,    LDCUM,    PTSPHY,&
  & PAPH,     PAP,      PUEN,     PVEN,     PMFU,     PMFD,&
  & PMFUO,    PMFDO,    PUU,      PUD,      PVU,      PVD,  PGP2DSPP,&
@@ -84,20 +85,23 @@ SUBROUTINE CUDUDV &
 !      P.BECHTOLD        E.C.M.W.F.    11/02/05 IMPLICIT SOLVER
 !      M. Leutbecher&S.-J. Lock (Jan 2016) Introduced SPP scheme (LSPP)
 !      S.-J. Lock    Jul 2017    Extended SPP perturbations to include shallow convection
+!      L. Descamps 2020-02-25 Introduced perturbed parameter option for PEARP (LPERTPAR)
 !      M. Leutbecher & S. Lang Oct 2020    SPP abstraction and revision
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
-USE PARKIND1 , ONLY : JPIM     ,JPRB
-USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
-
-USE YOMCST   , ONLY : RG
-USE YOECUMF  , ONLY : TECUMF
-USE SPP_MOD     , ONLY : TSPP_CONFIG
-USE SPP_GEN_MOD , ONLY : SPP_PERT
+USE PARKIND1   , ONLY : JPIM , JPRB
+USE YOMHOOK    , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCST     , ONLY : TCST
+USE YOECUMF    , ONLY : TECUMF
+USE SPP_MOD    , ONLY : TSPP_CONFIG
+USE YOMPERTPAR , ONLY : LPERTPAR, LPERT_CUDUV, CUDU_MOD, CUDV_MOD
+USE SPP_GEN_MOD, ONLY : SPP_PERT, JPMXSCALES
 
 IMPLICIT NONE
 
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
 TYPE(TSPP_CONFIG) ,INTENT(IN)    :: YDSPP_CONFIG
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
@@ -133,13 +137,13 @@ INTEGER(KIND=JPIM) :: IPN1, IPN2
 TYPE(SPP_PERT)     :: PN1, PN2  ! SPP pertn. config. 
 
 REAL(KIND=JPRB) :: ZZP, ZIMP, ZTSPHY, ZU, ZV
-REAL(KIND=JPRB) :: ZMDU, ZMDV, ZLIMN2
+REAL(KIND=JPRB) :: ZMDU, ZMDV, ZLIMN2, ZLIMN21, ZLIMN22
 REAL(KIND=JPRB) :: ZXU, ZXV, ZXU_MAG, ZXV_MAG, ZN2, ZFAC
-REAL(KIND=JPRB), DIMENSION(:), ALLOCATABLE     :: ZRDU, ZRDV
-REAL(KIND=JPRB),   DIMENSION(:,:), ALLOCATABLE :: ZDUDT, ZDVDT, ZDP
-REAL(KIND=JPRB),   DIMENSION(:,:), ALLOCATABLE :: ZB,  ZR1,  ZR2
-LOGICAL,DIMENSION(:,:),   ALLOCATABLE :: LLCUMBAS
-
+REAL(KIND=JPRB), DIMENSION(KLON)      :: ZRDU, ZRDV
+REAL(KIND=JPRB), DIMENSION(KLON,KLEV) :: ZDUDT, ZDVDT, ZDP
+REAL(KIND=JPRB), DIMENSION(KLON,KLEV) :: ZB,  ZR1,  ZR2
+LOGICAL,DIMENSION(KLON,KLEV) :: LLCUMBAS
+LOGICAL     :: LLPPAR_CUDUV
 LOGICAL   :: LLPERT_CUDUDV, LLPERT_CUDUDVS ! SPP perturbation on?
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -148,13 +152,10 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('CUDUDV',0,ZHOOK_HANDLE)
 ASSOCIATE(RMFSOLUV=>YDECUMF%RMFSOLUV,RMFSOLRHS=>YDECUMF%RMFSOLRHS,RMFADVW=>YDECUMF%RMFADVW,&
+ & RG=>YDCST%RG, &
  &RMFADVWDD=>YDECUMF%RMFADVWDD)
 ZIMP=1.0_JPRB-RMFSOLUV
 ZTSPHY=1.0_JPRB/PTSPHY
-
-ALLOCATE(ZDUDT(KLON,KLEV))
-ALLOCATE(ZDVDT(KLON,KLEV))
-ALLOCATE(ZDP(KLON,KLEV))
 
 DO JL=KIDIA,KFDIA
   ZADVW(JL)=0.0_JPRB
@@ -261,10 +262,6 @@ ENDDO
      ! ZDUDT and ZDVDT correspond to the RHS ("constants") of the equation
      ! The solution is in ZR1 and ZR2
      
-      ALLOCATE(ZB(KLON,KLEV))
-      ALLOCATE(ZR1(KLON,KLEV))
-      ALLOCATE(ZR2(KLON,KLEV))
-      ALLOCATE(LLCUMBAS(KLON,KLEV))
       LLCUMBAS(:,:)=.FALSE.
       ZB(:,:)=1.0_JPRB
       ZMFUU(:,:)=0.0_JPRB
@@ -303,11 +300,12 @@ ENDDO
          &  KCTOP, LLCUMBAS, &
          &  ZMFUU,    ZB,    ZDVDT,   ZR2 )
 
-     ! prepare SPP perturbations
+     ! prepare SPP and RP perturbations
       IF (YDSPP_CONFIG%LSPP) THEN
         IPN1 = YDSPP_CONFIG%PPTR%CUDUDV
         LLPERT_CUDUDV= IPN1 > 0
-        IF (LLPERT_CUDUDV) THEN
+        LLPPAR_CUDUV=LPERTPAR.AND.LPERT_CUDUV
+        IF (LLPERT_CUDUDV .OR. LLPPAR_CUDUV) THEN
           PN1=YDSPP_CONFIG%SM%PN(IPN1)
           IPCUDU = PN1%MP
           IF (PN1%NRF == 1) THEN
@@ -315,6 +313,7 @@ ENDDO
           ELSE
             IPCUDV = IPCUDU+1
           ENDIF
+          ZLIMN21 = (PN1%XMAX(1)**2 + PN1%XMAX(2)**2) * SUM(PN1%SDEV(1:JPMXSCALES)**2) ! limit for norm squared (Xstdev)
         ENDIF
         IPN2 = YDSPP_CONFIG%PPTR%CUDUDVS
         LLPERT_CUDUDVS= IPN2 > 0
@@ -326,27 +325,33 @@ ENDDO
           ELSE
             IPCUDVS = IPCUDUS+1
           ENDIF
+          ZLIMN22 = (PN2%XMAX(1)**2 + PN2%XMAX(2)**2) * SUM(PN2%SDEV(1:JPMXSCALES)**2) ! limit for norm squared (Xstdev)
         ENDIF
       ELSE
         LLPERT_CUDUDV=.FALSE.
         LLPERT_CUDUDVS=.FALSE.
+        LLPPAR_CUDUV = .FALSE.
       ENDIF
 
       IF (LLPERT_CUDUDV .OR. LLPERT_CUDUDVS) THEN
         ZMDU   = 1.0_JPRB    ! mean      zonal momentum transport pdf
         ZMDV   = 1.0_JPRB    ! mean meridional momentum transport pdf
-        ZLIMN2 = 9.0_JPRB*PN1%SDEV**2    ! limit for norm squared (3 stdev)
-        ALLOCATE(ZRDU(KLON), ZRDV(KLON))
 
         DO JL=KIDIA,KFDIA
           IF ((KTYPE(JL)==1 .AND. LLPERT_CUDUDV) .OR. &
             & (KTYPE(JL)==2 .AND. LLPERT_CUDUDVS)) THEN  !perturb deep/shallow convection
 
             IF (KTYPE(JL)==1) THEN
-              ZXU=PGP2DSPP(JL, IPCUDU)
-              ZXV=PGP2DSPP(JL, IPCUDV)
-              ZXU_MAG = PN1%XMAG(1)
-              ZXV_MAG = PN1%XMAG(2)
+              IF (.NOT.LLPPAR_CUDUV) THEN
+                ZXU=PGP2DSPP(JL, IPCUDU)
+                ZXV=PGP2DSPP(JL, IPCUDV)
+                ZXU_MAG = PN1%XMAG(1)
+                ZXV_MAG = PN1%XMAG(2)
+              ELSE
+                ZXU=CUDU_MOD
+                ZXV=CUDV_MOD
+              ENDIF
+              ZLIMN2  = ZLIMN21
             ENDIF
 
             IF (KTYPE(JL)==2) THEN
@@ -354,6 +359,7 @@ ENDDO
               ZXV=PGP2DSPP(JL, IPCUDVS)
               ZXU_MAG = PN2%XMAG(1)
               ZXV_MAG = PN2%XMAG(2)
+              ZLIMN2  = ZLIMN22
             ENDIF
 
             ZN2=ZXU**2+ZXV**2
@@ -362,8 +368,13 @@ ENDDO
               ZXU = ZFAC*ZXU
               ZXV = ZFAC*ZXV
             ENDIF
-            ZRDU(JL)=ZMDU + ZXU_MAG*ZXU
-            ZRDV(JL)=ZMDV + ZXV_MAG*ZXV
+            IF(.NOT.LLPPAR_CUDUV) THEN
+              ZRDU(JL)=ZMDU + ZXU_MAG*ZXU
+              ZRDV(JL)=ZMDV + ZXV_MAG*ZXV
+            ELSE
+              ZRDU(JL)=ZMDU + ZXU
+              ZRDV(JL)=ZMDV + ZXV
+            ENDIF
           ELSE  !other convection - unperturbed
             ZRDU(JL)=ZMDU
             ZRDV(JL)=ZMDV
@@ -377,7 +388,7 @@ ENDDO
       DO JK=KTOPM2,KLEV
          DO JL=KIDIA,KFDIA
            IF(LLCUMBAS(JL,JK)) THEN
-             IF (LLPERT_CUDUDV) THEN  !Apply SPP perturbations
+             IF (LLPERT_CUDUDV.OR.LLPERT_CUDUDVS.OR.LLPPAR_CUDUV) THEN  !Apply SPP perturbations or RP perturbation
                PTENU(JL,JK)=PTENU(JL,JK)*(1.0_JPRB-RMFSOLRHS)+ZRDU(JL)*(ZR1(JL,JK)-PUEN(JL,JK))*ZTSPHY
                PTENV(JL,JK)=PTENV(JL,JK)*(1.0_JPRB-RMFSOLRHS)+ZRDV(JL)*(ZR2(JL,JK)-PVEN(JL,JK))*ZTSPHY
              ELSE
@@ -389,19 +400,8 @@ ENDDO
       ENDDO
 
 
-      DEALLOCATE(LLCUMBAS)
-      DEALLOCATE(ZR2)
-      DEALLOCATE(ZR1)
-      DEALLOCATE(ZB)
-      IF (LLPERT_CUDUDV) THEN
-        DEALLOCATE(ZRDU, ZRDV)
-      ENDIF
    ENDIF
 !----------------------------------------------------------------------
-
-DEALLOCATE(ZDP)
-DEALLOCATE(ZDVDT)
-DEALLOCATE(ZDUDT)
 
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('CUDUDV',1,ZHOOK_HANDLE)

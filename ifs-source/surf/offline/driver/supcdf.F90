@@ -1,8 +1,3 @@
-SUBROUTINE SUPCDF
-USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -10,6 +5,48 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SUPCDF * - Routine to initialize prognostic NetCDF output
+
+!     Purpose.
+!     --------
+!           Initialize NetCDF outputfile o_gg.nc
+!           Initialize NetCDF outputfile o_ocp.nc
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUPCDF
+
+!        Explicit arguments :
+!        --------------------
+!        none
+
+!     Method.
+!     -------
+!        Fields are stored in the model as NLON NLAT NLEVS TIME
+!        and written to the NetCDF file in reverse order
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd HURK (KNMI)
+
+!     Modifications.
+!     --------------
+!        Original     : 2000-7-14
+!        Y. Takaya (ECMWF) add ocean mixed layer model part
+!        Emanuel Dutra, May 2014: update netcd inteface and add netcdf4 
+
+SUBROUTINE SUPCDF
+USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+
+#ifdef DOC
 
 !**** *SUPCDF * - Routine to initialize prognostic NetCDF output
 

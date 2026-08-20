@@ -1,3 +1,101 @@
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+ !     ------------------------------------------------------------------
+
+!**   *SRFCOTWO* - DOES THE POST-PROCESSING OF CO2 VALUES
+
+!     Marita Voogt (KNMI)         16/09/2005
+!     Sebastien Lafont (ECMWF)    18/05/2006
+!     S. Boussetta/G.Balsamo June 2010 Add soil moisture scaling factor for Reco
+!     S. Boussetta/G.Balsamo October 2010 Add snowpack and cold season temeprature effects on respiration
+!     M. Kelbling and S. Thober (UFZ) 25/5/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP3 object for spatially distributed parameters
+
+!     PURPOSE
+!     -------
+
+!     POST-PROCESSING OF THE CO2 VALUES FROM VDFSURF
+
+!     INTERFACE
+!     ---------
+
+!     *SRFCOTWO* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KTILES*       NUMBER OF TILES (I.E. SUBGRID AREAS WITH DIFFERENT 
+!                    OF SURFACE BOUNDARY CONDITION)
+!     *KVTTL*        CROSS-REFERENCE BETWEEN TILES AND VEGETATION TYPES 
+!     *KCO2TYP*      TYPE OF PHOTOSYNTHETIC PATHWAY FOR LOW VEGETATION(C3/C4) (INDEX 1/2)
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTSTEP*       TIMESTEP
+!     *PTLEV*         TEMPERATURE AT T-1                            K
+!     *PQLEV*         SPECIFIC HUMIDITY AT T-1                      KG/KG 
+!     *PAPHMS*       PRESSURE AT T-1				   PA
+!     *PCVT*         VEGETATION TYPE FRACTION                    (0-1)
+!            1: LOW  : 0-1
+!            2: HIGH : 0-1
+!            3: needed for cross-reference with non-vegetation tiles: 0
+
+!     *PFRTI*        TILE FRACTION                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!     *PLAIVT*       LEAF AREA INDEX                                (-)
+!     *PWSOIL*       SOIL MOISTURE OF LAYER X (SEE CALL FROM VDFMAIN)
+!     *PTSOIL*       SOIL TEMPERATURE OF LAYER X (SEE CALL FROM VDFMAIN) 
+
+!     *PDSN*         Total Snow depth (m) 
+
+!     *PANTI*        NET CO2 ASSIMILATION OVER CANOPY          KG_CO2/M2/S
+!                    positive downwards, to be changed for diagnostic output
+!     *PAGTI*        GROSS CO2 ASSIMILATION OVER CANOPY        KG_CO2/M2/S
+!                    positive downwards, to be changed for diagnostic output
+!     *PRDTI*        DARK RESPIRATION                          KG_CO2/M2/S
+!                    positive upwards
+
+
+!     UPDATED PARAMETERS (REAL):
+
+!     *PANDAYVT*     DAILY NET CO2 ASSIM.OVER CANOPY PER VEGTYPE   KG_CO2/M2
+!     *PANFMVT*      MAXIMUM LEAF ASSIMILATION PER VEGTYPE    KG_CO2/KG_AIR M/S
+!     OUTPUT PARAMETERS (REAL):
+
+!     all positive upwards:
+!     *PAN*          NET CO2 ASSIMILATION OVER CANOPY          KG_CO2/M2/S
+!     *PAG*          GROSS CO2 ASSIMILATION OVER CANOPY        KG_CO2/M2/S
+!     *PRD*          DARK RESPIRATION                          KG_CO2/M2/S
+!     *PRSOIL_STR*   RESPIRATION FROM SOIL AND STRUCTURAL BIOMASS KG_CO2/M2/S
+!     *PRECO*        ECOSYSTEM RESPIRATION                     KG_CO2/M2/S
+
+!     *PCO2FLUX*     CO2 FLUX                                  KG_CO2/M2/S
+!     *PCH4FLUX*     CH4 FLUX                                  KG_CO2/M2/S
+
+!     *PDHCO2S*      Diagnostic array for CO2 (see module yomcdh) 
+!                      (kgCO2 m-2 s-1 for fluxes)
+
+
+!     METHOD
+!     ------
+
+!     TO BE DONE
+
+!     ------------------------------------------------------------------
+
 MODULE SRFCOTWO_MOD
 CONTAINS
 SUBROUTINE SRFCOTWO(KIDIA,KFDIA,KLON,KLEVS,KTILES,&
@@ -12,14 +110,6 @@ SUBROUTINE SRFCOTWO(KIDIA,KFDIA,KLON,KLEVS,KTILES,&
  & PANDAYVT,PANFMVT,&
  & PAG,PRD,PAN,PRSOIL_STR,PRECO,PCO2FLUX,PCH4FLUX,&
  & PDHCO2S)
-
- ! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
  !     ------------------------------------------------------------------
 
@@ -397,22 +487,16 @@ ZFSN(JL)=1._JPRB-ZCVS*(1._JPRB-exp(-2._JPRB*MAX(PDSN(JL),0._JPRB)))
 ZRQ10=2.5665_JPRB-0.05308_JPRB*ZTSOIL+0.00238_JPRB*ZTSOIL*ZTSOIL-0.00004_JPRB*ZTSOIL*ZTSOIL*ZTSOIL
 !ZRQ10=RQ10 previously fixed to 2.
 ZRQ10=MAX(ZRQ10,ZEPSR)
-  IF ((PLAT(JL)*180._JPRB/RPI) .GT. 25._JPRB) THEN
-     ZCH4S=RVCH4S(1)
-  ELSEIF ((PLAT(JL)*180._JPRB/RPI) .LT. -25._JPRB) THEN
-     ZCH4S=RVCH4S(3)
-  ELSE
-     ZCH4S=RVCH4S(2)
-  ENDIF
 
   ICTYPE=1
   IF (KCO2TYP(JL).EQ.4) THEN
       ICTYPE = 2
   ENDIF 
 
-! Correct scaling factor to fit climatology
- ZCH4S=ZCH4S*2.0_JPRB
-
+! Correct scaling factor to fit growth rate for 2018 (typical year)
+  !new climate.v021+(GIEMS+CAMA_V2)
+  ZCH4S=0.019354194163949404_JPRB 
+  
   DO JVT=1,NVTILES
 ! ! For low temperature season respiration should be lower (Q10 higher) (McDowell et al.Tree Physiology 20, 2000) 
 

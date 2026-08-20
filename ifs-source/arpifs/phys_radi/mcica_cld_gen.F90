@@ -43,8 +43,8 @@ IMPLICIT NONE
 ! PARAMETER
 
 
-TYPE(TEMCICA)      ,INTENT(INOUT):: YDEMCICA
-TYPE(TRIP)         ,INTENT(INOUT):: YDRIP
+TYPE(TEMCICA)      ,INTENT(IN) :: YDEMCICA
+TYPE(TRIP)         ,INTENT(IN) :: YDRIP
 REAL(KIND=JPRB), PARAMETER :: &
  & M2KM = 1.0_JPRB/1000.0_JPRB, & ! Convert meters to kilometers
  & CUT  = 0.001_JPRB              ! Cutoff for cloud amount    

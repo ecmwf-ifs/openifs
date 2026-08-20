@@ -7,6 +7,8 @@
 # nor does it submit to any jurisdiction
 
 
+
+
 if( NOT TARGET arpifs_intfb )
   ecbuild_generate_fortran_interfaces(
 
@@ -15,6 +17,8 @@ if( NOT TARGET arpifs_intfb )
     DIRECTORIES
         
         ${aladin_include}
+
+        ${var_include}
 
         arpifs/adiab
         arpifs/c9xx
@@ -55,41 +59,38 @@ if( NOT TARGET arpifs_intfb )
     DESTINATION arpifs
     INCLUDE_DIRS arpifs_intfb_includes
     PARALLEL ${FCM_PARALLEL}
+)
+endif()
+
+if( NOT TARGET fc_only_intfb ) 
+ecbuild_generate_fortran_interfaces(
+  TARGET fc_only_intfb
+  DIRECTORIES dummy_fc_only var
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/openifs
+  DESTINATION fc_only
+  INCLUDE_DIRS fc_only_intfb_includes
+  PARALLEL ${FCM_PARALLEL}  
   )
 endif()
-
-if( HAVE_OPENIFS_ONLY )
-  if( NOT TARGET openifs_intfb ) 
-    ecbuild_generate_fortran_interfaces(
-      TARGET openifs_intfb
-      DIRECTORIES dummy var
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/openifs
-      DESTINATION openifs
-      INCLUDE_DIRS openifs_intfb_includes
-      PARALLEL ${FCM_PARALLEL}  
-    )
-  endif() 
-endif()
-
-
-if( NOT TARGET wam_intfb )
+if( NOT TARGET openifs_intfb ) 
   ecbuild_generate_fortran_interfaces(
-    TARGET wam_intfb
-    DIRECTORIES Wam_oper
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/wam
-    DESTINATION wam
-    INCLUDE_DIRS wam_intfb_includes
-    PARALLEL ${FCM_PARALLEL}
+    TARGET openifs_intfb
+    DIRECTORIES dummy_oifs_only
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/openifs
+    DESTINATION openifs
+    INCLUDE_DIRS openifs_intfb_includes
+    PARALLEL ${FCM_PARALLEL}  
   )
-endif()
+endif() 
+
 
 if( NOT TARGET scmec_intfb )
-  ecbuild_generate_fortran_interfaces(
+ecbuild_generate_fortran_interfaces(
     TARGET scmec_intfb
     DIRECTORIES source 
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/scmec
     DESTINATION scmec
     INCLUDE_DIRS scmec_intfb_includes
     PARALLEL ${FCM_PARALLEL}
-  )
+)
 endif()

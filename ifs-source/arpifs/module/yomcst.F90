@@ -17,6 +17,153 @@ SAVE
 
 !     ------------------------------------------------------------------
 
+TYPE TCST
+!*    Common of physical constants
+!     You will find the meanings in the annex 1 of the documentation
+  
+! A1.0 Fundamental constants
+! * RPI          : number Pi
+! * RCLUM        : light velocity
+! * RHPLA        : Planck constant
+! * RKBOL        : Bolzmann constant
+! * RNAVO        : Avogadro number
+  REAL(KIND=JPRB) :: RPI
+  REAL(KIND=JPRB) :: RCLUM
+  REAL(KIND=JPRB) :: RHPLA
+  REAL(KIND=JPRB) :: RKBOL
+  REAL(KIND=JPRB) :: RNAVO
+  
+! A1.1 Astronomical constants
+! * RDAY         : duration of the solar day
+! * RDAYI        : invariant time unit of 86400s
+! * RHOUR        : duration of the solar hour 
+! * REA          : astronomical unit (mean distance Earth-sun)
+! * REPSM        : polar axis tilting angle
+! * RSIYEA       : duration of the sideral year
+! * RSIDAY       : duration of the sideral day
+! * ROMEGA       : angular velocity of the Earth rotation
+  REAL(KIND=JPRB) :: RDAY
+  REAL(KIND=JPRB) :: RDAYI
+  REAL(KIND=JPRB) :: RHOUR
+  REAL(KIND=JPRB) :: REA
+  REAL(KIND=JPRB) :: REPSM
+  REAL(KIND=JPRB) :: RSIYEA
+  REAL(KIND=JPRB) :: RSIDAY
+  REAL(KIND=JPRB) :: ROMEGA
+  
+! A1.2 Geoide
+! * RA           : Earth radius
+! * RG           : gravity constant
+! * R1SA         : 1/RA
+! * DEG2RAD      : 180./RPI
+  REAL(KIND=JPRB) :: RA
+  REAL(KIND=JPRB) :: RG
+  REAL(KIND=JPRB) :: R1SA
+  REAL(KIND=JPRB) :: DEG2RAD
+  
+! A1.3 Radiation
+! * RSIGMA       : Stefan-Bolzman constant
+! * RI0          : solar constant
+  REAL(KIND=JPRB) :: RSIGMA
+  REAL(KIND=JPRB) :: RI0
+  
+! A1.4 Thermodynamic gas phase
+! * R            : perfect gas constant
+! * RMD          : dry air molar mass
+! * RMV          : vapour water molar mass
+! * RMO3         : ozone molar mass
+! * RD           : R_dry (dry air constant)
+! * RV           : R_vap (vapour water constant)
+! * RCPD         : Cp_dry (dry air calorific capacity at constant pressure)
+! * RCPV         : Cp_vap (vapour calorific capacity at constant pressure)
+! * RCVD         : Cv_dry (dry air calorific capacity at constant volume)
+! * RCVV         : Cv_vap (vapour calorific capacity at constant volume)
+! * RKAPPA       : Kappa = R_dry/Cp_dry
+! * RETV         : R_vap/R_dry - 1
+! * RMCO2        : CO2 (carbon dioxide) molar mass
+! * RMCH4        : CH4 (methane) molar mass
+! * RMN2O        : N2O molar mass
+! * RMCO         : CO (carbon monoxide) molar mass
+! * RMHCHO       : HCHO molar mass
+! * RMNO2        : NO2 (nitrogen dioxide) molar mass
+! * RMSO2        : SO2 (sulfur dioxide) molar mass
+! * RMSO4        : SO4 (sulphate) molar mass
+! * RMCFC11      : CFC11 molar mass
+! * RMCFC12      : CFC12 molar mass
+! * RMHCFC12     : HCFC22 molar mass
+! * RMCCL4       : CCl4 molar mass
+  REAL(KIND=JPRB) :: R
+  REAL(KIND=JPRB) :: RMD
+  REAL(KIND=JPRB) :: RMV
+  REAL(KIND=JPRB) :: RMO3
+  REAL(KIND=JPRB) :: RD
+  REAL(KIND=JPRB) :: RV
+  REAL(KIND=JPRB) :: RCPD
+  REAL(KIND=JPRB) :: RCPV
+  REAL(KIND=JPRB) :: RCVD
+  REAL(KIND=JPRB) :: RCVV
+  REAL(KIND=JPRB) :: RKAPPA
+  REAL(KIND=JPRB) :: RETV
+  REAL(KIND=JPRB) :: RMCO2
+  REAL(KIND=JPRB) :: RMCH4
+  REAL(KIND=JPRB) :: RMN2O
+  REAL(KIND=JPRB) :: RMCO
+  REAL(KIND=JPRB) :: RMHCHO
+  REAL(KIND=JPRB) :: RMNO2
+  REAL(KIND=JPRB) :: RMSO2
+  REAL(KIND=JPRB) :: RMSO4
+  REAL(KIND=JPRB) :: RMCFC11
+  REAL(KIND=JPRB) :: RMCFC12
+  REAL(KIND=JPRB) :: RMHCFC22
+  REAL(KIND=JPRB) :: RMCCL4
+  
+! A1.5,6 Thermodynamic liquid,solid phases
+! * RCW          : Cw (calorific capacity of liquid water)
+! * RCS          : Cs (calorific capacity of solid water)
+  REAL(KIND=JPRB) :: RCW
+  REAL(KIND=JPRB) :: RCS
+  
+! A1.7 Thermodynamic transition of phase
+! * RATM         : pre_n = "normal" pressure
+! * RTT          : Tt = temperature of water fusion at "pre_n"
+! * RLVTT        : RLvTt = vaporisation latent heat at T=Tt
+! * RLSTT        : RLsTt = sublimation latent heat at T=Tt
+! * RLVZER       : RLv0 = vaporisation latent heat at T=0K
+! * RLSZER       : RLs0 = sublimation latent heat at T=0K
+! * RLMLT        : RLMlt = melting latent heat at T=Tt
+! * RDT          : Tt - Tx(ew-ei)
+  REAL(KIND=JPRB) :: RATM
+  REAL(KIND=JPRB) :: RTT
+  REAL(KIND=JPRB) :: RLVTT
+  REAL(KIND=JPRB) :: RLSTT
+  REAL(KIND=JPRB) :: RLVZER
+  REAL(KIND=JPRB) :: RLSZER
+  REAL(KIND=JPRB) :: RLMLT
+  REAL(KIND=JPRB) :: RDT
+  
+! A1.8 Curve of saturation
+! * RESTT        : es(Tt) = saturation vapour tension at T=Tt
+! * RGAMW        : Rgamw = (Cw-Cp_vap)/R_vap
+! * RBETW        : Rbetw = RLvTt/R_vap + Rgamw*Tt
+! * RALPW        : Ralpw = log(es(Tt)) + Rbetw/Tt + Rgamw*log(Tt)
+! * RGAMS        : Rgams = (Cs-Cp_vap)/R_vap
+! * RBETS        : Rbets = RLsTt/R_vap + Rgams*Tt
+! * RALPS        : Ralps = log(es(Tt)) + Rbets/Tt + Rgams*log(Tt)
+! * RALPD        : Ralpd = Ralps - Ralpw
+! * RBETD        : Rbetd = Rbets - Rbetw
+! * RGAMD        : Rgamd = Rgams - Rgamw
+  REAL(KIND=JPRB) :: RESTT
+  REAL(KIND=JPRB) :: RGAMW
+  REAL(KIND=JPRB) :: RBETW
+  REAL(KIND=JPRB) :: RALPW
+  REAL(KIND=JPRB) :: RGAMS
+  REAL(KIND=JPRB) :: RBETS
+  REAL(KIND=JPRB) :: RALPS
+  REAL(KIND=JPRB) :: RALPD
+  REAL(KIND=JPRB) :: RBETD
+  REAL(KIND=JPRB) :: RGAMD
+END TYPE TCST
+
 !*    Common of physical constants
 !     You will find the meanings in the annex 1 of the documentation
 
@@ -50,15 +197,18 @@ REAL(KIND=JPRB),PROTECTED :: RSIYEA
 REAL(KIND=JPRB),PROTECTED :: RSIDAY
 REAL(KIND=JPRB),PROTECTED :: ROMEGA
 
-! A1.2 Geoide
-! * RA           : Earth radius
-! * RG           : gravity constant
+! A1.2 Geoid
+! * RA           : Planetary radius
+! * RA_EARTH     : Earth radius
+! * RG           : Gravity constant
 ! * R1SA         : 1/RA
 ! * DEG2RAD      : 180./RPI
-REAL(KIND=JPRB),PROTECTED :: RA
-REAL(KIND=JPRB),PROTECTED :: RG
-REAL(KIND=JPRB),PROTECTED :: R1SA
-REAL(KIND=JPRB),PROTECTED :: DEG2RAD
+REAL(KIND=JPRB), PROTECTED :: RA
+REAL(KIND=JPRB), PROTECTED :: RA_EARTH
+REAL(KIND=JPRB), PROTECTED :: RG
+REAL(KIND=JPRB), PROTECTED :: R1SA
+REAL(KIND=JPRB), PROTECTED :: DEG2RAD
+REAL(KIND=JPRB), PROTECTED :: RAD2DEG
 
 ! A1.3 Radiation
 ! * RSIGMA       : Stefan-Bolzman constant
@@ -168,7 +318,92 @@ CHARACTER(LEN=8), PARAMETER :: CSNAN = &
 REAL(KIND=JPRB),PROTECTED :: RSNAN
 
 LOGICAL,PROTECTED :: L_HAS_BEEN_SETUP=.FALSE.
+
+TYPE (TCST), TARGET :: YRCST
+
+
 CONTAINS 
+
+SUBROUTINE TCST_INIT(YDCST)
+
+USE PARKIND1  ,ONLY : JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   JPHOOK, DR_HOOK
+
+IMPLICIT NONE
+
+TYPE(TCST), INTENT(IN) :: YDCST
+
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+IF (LHOOK) CALL DR_HOOK('YOMCST:TCST_INIT',0,ZHOOK_HANDLE)
+
+  RPI       =   YDCST%RPI      
+  RCLUM     =   YDCST%RCLUM    
+  RHPLA     =   YDCST%RHPLA    
+  RKBOL     =   YDCST%RKBOL    
+  RNAVO     =   YDCST%RNAVO    
+  RDAY      =   YDCST%RDAY     
+  RDAYI     =   YDCST%RDAYI    
+  RHOUR     =   YDCST%RHOUR    
+  REA       =   YDCST%REA      
+  REPSM     =   YDCST%REPSM    
+  RSIYEA    =   YDCST%RSIYEA   
+  RSIDAY    =   YDCST%RSIDAY   
+  ROMEGA    =   YDCST%ROMEGA   
+  RA        =   YDCST%RA       
+  RG        =   YDCST%RG       
+  R1SA      =   YDCST%R1SA     
+  DEG2RAD   =   YDCST%DEG2RAD  
+  RSIGMA    =   YDCST%RSIGMA   
+  RI0       =   YDCST%RI0      
+  R         =   YDCST%R        
+  RMD       =   YDCST%RMD      
+  RMV       =   YDCST%RMV      
+  RMO3      =   YDCST%RMO3     
+  RD        =   YDCST%RD       
+  RV        =   YDCST%RV       
+  RCPD      =   YDCST%RCPD     
+  RCPV      =   YDCST%RCPV     
+  RCVD      =   YDCST%RCVD     
+  RCVV      =   YDCST%RCVV     
+  RKAPPA    =   YDCST%RKAPPA   
+  RETV      =   YDCST%RETV     
+  RMCO2     =   YDCST%RMCO2    
+  RMCH4     =   YDCST%RMCH4    
+  RMN2O     =   YDCST%RMN2O    
+  RMCO      =   YDCST%RMCO     
+  RMHCHO    =   YDCST%RMHCHO   
+  RMNO2     =   YDCST%RMNO2    
+  RMSO2     =   YDCST%RMSO2    
+  RMSO4     =   YDCST%RMSO4    
+  RMCFC11   =   YDCST%RMCFC11  
+  RMCFC12   =   YDCST%RMCFC12  
+  RMHCFC22  =   YDCST%RMHCFC22 
+  RMCCL4    =   YDCST%RMCCL4   
+  RCW       =   YDCST%RCW      
+  RCS       =   YDCST%RCS      
+  RATM      =   YDCST%RATM     
+  RTT       =   YDCST%RTT      
+  RLVTT     =   YDCST%RLVTT    
+  RLSTT     =   YDCST%RLSTT    
+  RLVZER    =   YDCST%RLVZER   
+  RLSZER    =   YDCST%RLSZER   
+  RLMLT     =   YDCST%RLMLT    
+  RDT       =   YDCST%RDT      
+  RESTT     =   YDCST%RESTT    
+  RGAMW     =   YDCST%RGAMW    
+  RBETW     =   YDCST%RBETW    
+  RALPW     =   YDCST%RALPW    
+  RGAMS     =   YDCST%RGAMS    
+  RBETS     =   YDCST%RBETS    
+  RALPS     =   YDCST%RALPS    
+  RALPD     =   YDCST%RALPD    
+  RBETD     =   YDCST%RBETD    
+  RGAMD     =   YDCST%RGAMD    
+
+IF (LHOOK) CALL DR_HOOK('YOMCST:TCST_INIT',1,ZHOOK_HANDLE)
+
+END SUBROUTINE TCST_INIT
 
 SUBROUTINE SETUP_CONSTANTS(KULOUT,KPRINTLEV)
 
@@ -219,6 +454,7 @@ SUBROUTINE SETUP_CONSTANTS(KULOUT,KPRINTLEV)
 !      F. Vana  05-Mar-2015  Support for single precision
 !      M.Hamrud    : from SUCST
 !      R. Hogan 25-Jan-2019  Added molar masses of CFC11, CFC12, HCFC22 and CCl4
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPRD, JPIM     ,JPRB
@@ -237,6 +473,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KPRINTLEV
 !      -----------------------------------------------------------------
 
 INTEGER(KIND=JPIM) :: J
+TYPE(TCST) :: YDCST ! allows use of included functions. Sorry Doctor. REK.
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -251,6 +488,17 @@ NAMELIST/NAMSCEN/ RI0
 
 !      -----------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('YOMCST:SETUP_CONSTANTS',0,ZHOOK_HANDLE)
+ASSOCIATE(RPI=>YDCST%RPI, RCLUM=>YDCST%RCLUM, RHPLA=>YDCST%RHPLA, RKBOL=>YDCST%RKBOL, RNAVO=>YDCST%RNAVO, RDAY=>YDCST%RDAY, &
+ & RDAYI=>YDCST%RDAYI, RHOUR=>YDCST%RHOUR, REA=>YDCST%REA, REPSM=>YDCST%REPSM, RSIYEA=>YDCST%RSIYEA, RSIDAY=>YDCST%RSIDAY, &
+ & ROMEGA=>YDCST%ROMEGA, RA=>YDCST%RA, RG=>YDCST%RG, R1SA=>YDCST%R1SA, DEG2RAD=>YDCST%DEG2RAD, RSIGMA=>YDCST%RSIGMA, &
+ & RI0=>YDCST%RI0, R=>YDCST%R, RMD=>YDCST%RMD, RMV=>YDCST%RMV, RMO3=>YDCST%RMO3, RD=>YDCST%RD, RV=>YDCST%RV, RCPD=>YDCST%RCPD, &
+ & RCPV=>YDCST%RCPV, RCVD=>YDCST%RCVD, RCVV=>YDCST%RCVV, RKAPPA=>YDCST%RKAPPA, RETV=>YDCST%RETV, RMCO2=>YDCST%RMCO2, &
+ & RMCH4=>YDCST%RMCH4, RMN2O=>YDCST%RMN2O, RMCO=>YDCST%RMCO, RMHCHO=>YDCST%RMHCHO, RMNO2=>YDCST%RMNO2, RMSO2=>YDCST%RMSO2, &
+ & RMSO4=>YDCST%RMSO4, RMCFC11=>YDCST%RMCFC11, RMCFC12=>YDCST%RMCFC12, RMHCFC22=>YDCST%RMHCFC22, RMCCL4=>YDCST%RMCCL4, &
+ & RCW=>YDCST%RCW, RCS=>YDCST%RCS, RATM=>YDCST%RATM, RTT=>YDCST%RTT, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RLVZER=>YDCST%RLVZER, &
+ & RLSZER=>YDCST%RLSZER, RLMLT=>YDCST%RLMLT, RDT=>YDCST%RDT, RESTT=>YDCST%RESTT, RGAMW=>YDCST%RGAMW, RBETW=>YDCST%RBETW, &
+ & RALPW=>YDCST%RALPW, RGAMS=>YDCST%RGAMS, RBETS=>YDCST%RBETS, RALPS=>YDCST%RALPS, RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, &
+ & RGAMD=>YDCST%RGAMD)
 !      -----------------------------------------------------------------
 
 IF(L_HAS_BEEN_SETUP) CALL ABOR1('YOMCST:SETUP_CONSTANTS - ALREADY CALLED ONCE')
@@ -296,7 +544,8 @@ ENDIF
 !*       3.    DEFINE GEOIDE.
 !              --------------
 
-RA=6371229._JPRB*RPLRADI
+RA_EARTH=6371229._JPRB
+RA=RA_EARTH*RPLRADI
 IF( LAPE ) THEN
   RG=9.79764_JPRB*RPLRG
 ! intercomparison RA=6371000.
@@ -305,7 +554,7 @@ ELSE
 ENDIF
 R1SA=REAL(1.0_JPRB/REAL(RA,KIND(1.0_JPRB)),KIND(R1SA))
 DEG2RAD=RPI/180.0_JPRB
-
+RAD2DEG=180._JPRB/RPI
 !     ------------------------------------------------------------------
 
 !*       4.    DEFINE RADIATION CONSTANTS.
@@ -416,10 +665,11 @@ IF (KPRINTLEV >= 1) THEN
   WRITE(KULOUT,'(''  sideral day = '',E13.7,'' s'')')RSIDAY
   WRITE(KULOUT,'(''        omega = '',E13.7,'' s-1'')')ROMEGA
 
-  WRITE(KULOUT,'('' ***         Geoide         ***'')')
+  WRITE(KULOUT,'('' ***         Geoid          ***'')')
   WRITE(KULOUT,'(''      Gravity = '',E13.7,'' m s-2'')')RG
-  WRITE(KULOUT,'('' Earth radius = '',E13.7,'' m'')')RA
-  WRITE(KULOUT,'('' Inverse E.R. = '',E13.7,'' m'')')R1SA
+  WRITE(KULOUT,'('' Earth radius = '',E13.7,'' m'')')RA_EARTH
+  WRITE(KULOUT,'('' Plan. radius = '',E13.7,'' m'')')RA
+  WRITE(KULOUT,'('' Inverse P.R. = '',E13.7,'' m'')')R1SA
   WRITE(KULOUT,'('' ***        Radiation       ***'')')
   WRITE(KULOUT,'('' Stefan-Bol.  = '',E13.7,'' W m-2 K-4'')')  RSIGMA
   WRITE(KULOUT,'('' Solar const. = '',E13.7,'' W m-2'')')RI0
@@ -466,6 +716,14 @@ ENDIF
 ! NAN value
 RSNAN = TRANSFER (CSNAN, RSNAN)
 L_HAS_BEEN_SETUP = .TRUE.
+
+! Initialize module structure (it would be better to pass YRCST in argument to SETUP_CONSTANTS) :
+YRCST = YDCST
+
+! Initialize module individual variables from module structure :
+END ASSOCIATE
+CALL TCST_INIT(YDCST)
+
 !     ------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('YOMCST:SETUP_CONSTANTS',1,ZHOOK_HANDLE)
@@ -473,10 +731,16 @@ END SUBROUTINE SETUP_CONSTANTS
 
 
 SUBROUTINE RVEQUALSRD
+USE PARKIND1  ,ONLY : JPRB
+USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 IMPLICIT NONE
 !very dirty code used at MF with the switch LDRYTL. See cva1.F90
 !Need to be checked and hopefully removed soon...
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+IF (LHOOK) CALL DR_HOOK('YOMCST:RVEQUALSRD',0,ZHOOK_HANDLE)
 RV=RD
+YRCST%RV=YRCST%RD
+IF (LHOOK) CALL DR_HOOK('YOMCST:RVEQUALSRD',1,ZHOOK_HANDLE)
 END SUBROUTINE RVEQUALSRD
 !    ------------------------------------------------------------------
 END MODULE YOMCST

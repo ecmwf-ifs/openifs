@@ -6,10 +6,10 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE DDR_SURF_RES_GC_V2 (KCHEM_DRYDEP, PTS, PITM, PFRSO, &
+SUBROUTINE DDR_SURF_RES_GC_V2 (KCHEM_DRYDEP, PTS, PFRSO, &
                         &  PRSTO, KTILE, KTILE_NOWET, KVEG_GC, PLAI, &
                         &  CDNMS, PXCHEN, PXCHENXP, PXDIMO, PXCF0, &
-                        &  PCSZA, PCFRAC,PXMW, PRESS,KDEBUG, &
+                        &  PCSZA, PXMW, PRESS,KDEBUG, &
                         &  PWRC)
 !!    ---------
 !!         *COMP_SURF_RES_GC_V2* IS CALLED FROM *DEPVEL_GC*
@@ -37,7 +37,6 @@ SUBROUTINE DDR_SURF_RES_GC_V2 (KCHEM_DRYDEP, PTS, PITM, PFRSO, &
 !! INPUTS:
 !! -------
 !! PTS        : Surface temperature
-!! PITM       : Land/sea mask
 !! PFRSO      : Solar radiation
 !! PRSTO      : Stomatal resistances for water vapor(s.m-1)
 !! KTILE      : IFS TILE (1... 9) 
@@ -80,7 +79,6 @@ IMPLICIT NONE
 
   INTEGER(KIND=JPIM), INTENT(IN)    :: KCHEM_DRYDEP ! Extra switch
   REAL (KIND=JPRB), INTENT(IN)      :: PTS
-  REAL (KIND=JPRB), INTENT(IN)      :: PITM
   REAL (KIND=JPRB), INTENT(IN)      :: PFRSO
   REAL (KIND=JPRB), INTENT(IN)      :: PRSTO
   INTEGER (KIND=JPIM), INTENT(IN)   :: KVEG_GC,KTILE,KTILE_NOWET
@@ -91,7 +89,6 @@ IMPLICIT NONE
   REAL (KIND=JPRB), INTENT(IN)      :: PXDIMO ! Ratio between D_H2O / D_I MOLECULAR diffusivity
   REAL (KIND=JPRB), INTENT(IN)      :: PXCF0
   REAL (KIND=JPRB), INTENT(IN)      :: PCSZA
-  REAL (KIND=JPRB), INTENT(IN)      :: PCFRAC
   REAL (KIND=JPRB), INTENT(IN)      :: PXMW ! Molecular weight (in kg/mol)
   REAL (KIND=JPRB), INTENT(IN)      :: PRESS ! Surface pressure ! check - currently mid level pres
   INTEGER(KIND=JPIM), INTENT(IN)    :: KDEBUG ! debug output info if needed
@@ -218,8 +215,7 @@ ELSE
               ! COEFF = Polynomial coefficients for dry deposition
               ! LAI = Leaf area index
               ! PCSZA / SUNCOS = Cosine of solar zenith angle
-              ! PCFRAC = cloud cover fraction
-              ZGFACI = 1._JPRB / BIO_FIT(PLAI, PCSZA, PCFRAC)
+              ZGFACI = 1._JPRB / BIO_FIT(PLAI, PCSZA)
           ENDIF
           ZI = ZI * ZGFACT * ZGFACI
       ENDIF
@@ -262,8 +258,8 @@ ELSE
     ZD_TEMP3 = 1._JPRB / (ZAC + ZGSX)
     ZD_TEMP4 = 1._JPRB / (ZDC + ZCLX)
 
-    ! IF (KDEBUG==1) WRITE(NULERR,'(a10,6es12.5)')'WRC contrib=',ZIXX, ZLUXX, ZAC, ZGSX,ZDC,ZCLX
     PWRC = 1.0e+0_JPRB/(ZD_TEMP1 + ZD_TEMP2 + ZD_TEMP3 + ZD_TEMP4)
+     IF (KDEBUG==1) WRITE(*,'(a10,6es12.5)')'WRC contrib=',ZIXX, ZLUXX, ZAC, ZGSX,ZDC,ZCLX,PWRC
 
  ENDIF
  ! If ozone and water then limit between 1 and 999999
@@ -328,14 +324,14 @@ FUNCTION DIFFG( PTS, PRESS, PXM)
 
 END FUNCTION DIFFG
 
-FUNCTION BIO_FIT( PPXLAI, PPSUNCOS, PPCFRAC) 
+FUNCTION BIO_FIT( PPXLAI, PPSUNCOS) 
     ! Function to compute the light correction for surface deposition
 
     USE DRYDEP_PAR_GC, ONLY: COEFF, NPOLY      ! Baldocchi drydep coefficients
 
     REAL (KIND=JPRB), INTENT(IN)       :: PPXLAI     ! Leaf area index [cm2/cm2]
     REAL (KIND=JPRB), INTENT(IN)       :: PPSUNCOS   ! Cosine( Solar Zenith Angle )
-    REAL (KIND=JPRB), INTENT(IN)       :: PPCFRAC    ! Cloud fraction [unitless]
+    ! REAL (KIND=JPRB), INTENT(IN)       :: PPCFRAC    ! Cloud fraction [unitless]
 
     REAL (KIND=JPRB)                   :: BIO_FIT ! Resultant light correction
 
@@ -343,7 +339,8 @@ FUNCTION BIO_FIT( PPXLAI, PPSUNCOS, PPCFRAC)
 
     REAL (KIND=JPRB), DIMENSION (IKK)  :: ZTERM
     REAL (KIND=JPRB), DIMENSION (NPOLY):: ZREALTERM
-    REAL (KIND=JPRB)                   :: ZLAI,ZCFRAC,ZSUNCOS
+    REAL (KIND=JPRB)                   :: ZLAI,ZSUNCOS
+    REAL (KIND=JPRB),PARAMETER         :: ZCFRAC=0.05
     INTEGER (KIND=JPIM)                :: IK, IK1, IK2, IK3
 
     REAL(KIND=JPHOOK) ::    ZHOOK_HANDLE
@@ -359,12 +356,12 @@ FUNCTION BIO_FIT( PPXLAI, PPSUNCOS, PPCFRAC)
     ! Make sure the variables are within normal range
     ZLAI = MIN(PPXLAI,11._JPRB) ! Do not have a reference as to why this is set to 11
     ZSUNCOS = MIN(PPSUNCOS, 1._JPRB)
-    ZCFRAC = MIN(PPCFRAC,1._JPRB)
+    ! ZCFRAC = MIN(PPCFRAC,1._JPRB)
 
     ! Make sure each variable is above a minimum
     ZLAI = MAX(ZLAI, 0.2_JPRB)
     ZSUNCOS = MAX(ZSUNCOS,0.05_JPRB)
-    ZCFRAC = MAX(ZCFRAC,0._JPRB)
+    ! ZCFRAC = MAX(ZCFRAC,0._JPRB)
 
     ! Scaling factor LAI
     ZLAI = ZLAI / 11._JPRB

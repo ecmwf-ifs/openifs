@@ -1,16 +1,17 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2001- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUBASEN &
- & (YDEPHLI, YDECLDP,  YDECUMF,  YDSPP_CONFIG, &
- & KIDIA,    KFDIA,    KLON,     KLEV,   KINDEX,  LDMIXS,&
+ & (PPLDARE, PPLRG,    YDTHF, YDCST, YDEPHLI, YDECLDP,  YDECUMF, YDSPP_CONFIG, &
+ & KIDIA,    KFDIA,    KLON,     KLEV,  KINDEX,  LDMIXS, LDLAND, LDTDKMF, &
  & PTENH,    PQENH,    PGEOH,    PAPH,&
- & PQHFL,    PAHFS,    PGP2DSPP, PKMFL,&
+ & PQHFL,    PAHFS,    PTENQA,   PGP2DSPP, PKMFL,&
  & PTEN,     PQEN,     PQSEN,    PGEO,&
  & PTU,      PQU,      PLU,      PWU2H,  PWUBASE,&
  & KLAB,     LDCUM,    LDSC,     KCBOT,    KBOTSC,&
@@ -49,6 +50,8 @@ SUBROUTINE CUBASEN &
 
 !    INPUT PARAMETERS (LOGICAL):
 !    *LDMIXS*        WEAK (FALSE) OR STRONG (TRUE) CLOUD MIXING FOR SURFACE PARCEL ONLY
+!    *LDLAND*       LAND/SEA MASK: TRUE FOR LAND
+!    *LDTDKMF*      Arpege tuning (if TRUE)
 
 !    INPUT PARAMETERS (REAL):
 
@@ -61,6 +64,7 @@ SUBROUTINE CUBASEN &
 !    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)        KG/(SM2)
 !    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
 !    *PKMFL*        SURFACE KINEMATIC MOMENTUM FLUX              M2/S2  
+!    *PTENQA*       TOTAL ADVECTIVE MOISTURE TENDENCY            KG/KG/S 
 
 !    *PGEOH*        GEOPOTENTIAL ON HALF LEVELS                   M2/S2
 !    *PAPH*         PROVISIONAL PRESSURE ON HALF LEVELS             PA
@@ -68,8 +72,6 @@ SUBROUTINE CUBASEN &
 !    *PQEN*         PROVISIONAL ENVIRONMENT SPEC. HUMIDITY (T+1)  KG/KG
 !    *PQSEN*        PROVISIONAL ENVIRONMENT SATU. HUMIDITY (T+1)  KG/KG
 !    *PGEO*         GEOPOTENTIAL                                  M2/S2
-!    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)        KG/(SM2)
-!    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
 !    *PGP2DSPP*     Standard stochastic variable (mean=0, SD=1)
 
 !    UPDATED PARAMETERS (REAL):
@@ -119,26 +121,30 @@ SUBROUTINE CUBASEN &
 !      M. Leutbecher & S.-J. Lock (Jan 2016) Introduced SPP scheme (LSPP)
 !      S.-J. Lock (01 Nov 2016) SPP bug fix for ENTRORG perturbations
 !      M. Leutbecher (Oct 2020) SPP abstraction
+!      20210913 : Modifications for Arpege Y.Bouteloup (LDTDKMF)
+!      R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
+!      P Bechtold (02/2023) Revision of parcel perturbations including advection 
 !----------------------------------------------------------------------
 
 USE YOEPHLI   , ONLY : TEPHLI
 USE PARKIND1  , ONLY : JPIM, JPRB
 USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCST    , ONLY : RCPD, RETV, RD, RG, RLVTT, RLSTT, RTT  
+USE YOMCST    , ONLY : TCST
 USE PARPHY    , ONLY : RKAP
 USE YOECUMF   , ONLY : TECUMF
 USE YOECLDP   , ONLY : TECLDP
-USE YOETHF    , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, &
- &                     R5ALVCP, R5ALSCP, RALVDCP, RALSDCP, RALFDCP, RTWAT, RTICE, RTICECU, &
- &                     RTWAT_RTICECU_R, RTWAT_RTICE_R  
-USE YOMDYNCORE, ONLY : RPLRG, RPLDARE
+USE YOETHF    , ONLY : TTHF
 USE SPP_MOD        , ONLY : TSPP_CONFIG
 USE SPP_GEN_MOD    , ONLY : SPP_PERT
 
 IMPLICIT NONE
 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLDARE
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLRG
 TYPE(TECLDP)      ,INTENT(IN)    :: YDECLDP
 TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
 TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 TYPE(TSPP_CONFIG) ,INTENT(IN)    :: YDSPP_CONFIG
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
@@ -147,8 +153,11 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
 INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KINDEX
 LOGICAL           ,INTENT(IN)    :: LDMIXS
+LOGICAL           ,INTENT(IN)    :: LDLAND(KLON)
+LOGICAL           ,INTENT(IN)    :: LDTDKMF
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENH(KLON,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PQENH(KLON,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENQA(KLON,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOH(KLON,KLEV+1) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PQHFL(KLON,KLEV+1) 
@@ -185,7 +194,7 @@ LOGICAL :: LLPERT_ENTRORG, LLPERT_ENTSTPC1  ! SPP perturbation on?
 
 
 
-INTEGER(KIND=JPIM) :: ICALL, IK, IS, JK, JL, JKK, JKT1, JKT2, JKT, JKB
+INTEGER(KIND=JPIM) :: IK, IS, JK, JL, JKK, JKT1, JKT2, JKT, JKB
 INTEGER(KIND=JPIM) :: IPENTRORG, IPENTSTPC1
 
 REAL(KIND=JPRB)    :: ZS(KLON,KLEV), ZSENH(KLON,KLEV+1), ZQENH(KLON,KLEV+1), ZSUH (KLON,KLEV),&
@@ -231,8 +240,11 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('CUBASEN',0,ZHOOK_HANDLE)
 ASSOCIATE(RLMIN=>YDECLDP%RLMIN, &
+ & RCPD=>YDCST%RCPD, RD=>YDCST%RD, RETV=>YDCST%RETV, RG=>YDCST%RG, &
+ & R4IES=>YDTHF%R4IES, R4LES=>YDTHF%R4LES, R5IES=>YDTHF%R5IES, R5LES=>YDTHF%R5LES, &
+ & RALFDCP=>YDTHF%RALFDCP, &
  & ENTRORG=>YDECUMF%ENTRORG, ENTSTPC1=>YDECUMF%ENTSTPC1, ENTSTPC2=>YDECUMF%ENTSTPC2, &
- & ENTSTPC3=>YDECUMF%ENTSTPC3, NJKT2=>YDECUMF%NJKT2, RDEPTHS=>YDECUMF%RDEPTHS)
+ & ENTSTPC3=>YDECUMF%ENTSTPC3, NJKT2=>YDECUMF%NJKT2, NJKT6=>YDECUMF%NJKT6, RDEPTHS=>YDECUMF%RDEPTHS)
 ZAW    = 1.0_JPRB
 ZBW    = 1.0_JPRB
 
@@ -326,7 +338,7 @@ DO JKK=KLEV,JKT1,-1 ! Big external loop for level testing:
       DO JL=KIDIA,KFDIA
         IF (LLGO_ON(JL)) THEN
           ZRHO  = PAPH(JL,JKK+1)/(RD*(PTEN(JL,JKK)*(1.0_JPRB+RETV*PQEN(JL,JKK))))
-          ZKHVFL= (PAHFS(JL,JKK+1)*ZRCPD+RETV*PTEN(JL,JKK)*PQHFL(JL,JKK+1))/(ZRHO*RPLRG*RPLDARE)
+          ZKHVFL= (PAHFS(JL,JKK+1)*ZRCPD+RETV*PTEN(JL,JKK)*PQHFL(JL,JKK+1))/(ZRHO*PPLRG*PPLDARE)
           ZUST  = MAX( SQRT(PKMFL(JL)), 0.1_JPRB )
           ZWS   = ZUST**3._JPRB - 1.5_JPRB*RKAP*ZKHVFL*(PGEOH(JL,KLEV)-PGEOH(JL,KLEV+1))/PTEN(JL,KLEV)
           ZTEX(JL)= 0.0_JPRB
@@ -334,8 +346,10 @@ DO JKK=KLEV,JKT1,-1 ! Big external loop for level testing:
           IF( ZKHVFL < 0.0_JPRB ) THEN
             ZWS =1.2_JPRB*ZWS**.3333_JPRB
             ILAB(JL,JKK)= 1
-            ZTEX(JL)   = MAX(-1.5_JPRB*PAHFS(JL,JKK+1)/(ZRHO*ZWS*RCPD*RPLRG*RPLDARE),ZTEXC)
-            ZQEX(JL)   = MAX(-1.5_JPRB*PQHFL(JL,JKK+1)/(ZRHO*ZWS*RPLRG*RPLDARE),ZQEXC)
+            ZTEX(JL)   = MAX(-1.5_JPRB*PAHFS(JL,JKK+1)/(ZRHO*ZWS*RCPD*PPLRG*PPLDARE),ZTEXC)
+            ZQEX(JL)   = MAX(-1.5_JPRB*PQHFL(JL,JKK+1)/(ZRHO*ZWS*PPLRG*PPLDARE),ZQEXC)
+            ZTEX(JL)   = MIN(ZTEX(JL), 1.0_JPRB)
+            ZQEX(JL)   = MIN(ZQEX(JL), 5.E-4_JPRB)
             ZQU (JL,JKK) = ZQENH(JL,JKK) + ZQEX(JL)
             ZSUH (JL,JKK)= ZSENH(JL,JKK) + RCPD*ZTEX(JL)
             ZTU (JL,JKK) = (ZSENH(JL,JKK)-PGEOH(JL,JKK))*ZRCPD + ZTEX(JL)
@@ -365,9 +379,18 @@ DO JKK=KLEV,JKT1,-1 ! Big external loop for level testing:
           ZQEXC=1.E-4_JPRB
           IF(JKK==KLEV-1) THEN
             ZTEXC=MAX(ZTEXC,ZTEX(JL))
-            ZTEXC=MIN(ZTEXC, 1.0_JPRB)
             ZQEXC=MAX(ZQEXC,ZQEX(JL))
-            ZQEXC=MIN(ZQEXC, 5.E-4_JPRB)
+            IF (LDTDKMF) THEN
+               ZTEXC=MIN(ZTEXC, 3.0_JPRB)
+               ZQEXC=MIN(ZQEXC, 2.E-3_JPRB)
+            ELSE
+               ZTEXC=MIN(ZTEXC, 1.0_JPRB)
+               ZQEXC=MIN(ZQEXC, 5.E-4_JPRB)
+            ENDIF
+          ENDIF
+         !additional perturbation if humidity advection
+          IF(LDLAND(JL).AND.JKK<KLEV-1.AND.JKK>NJKT6.AND.ZQENH(JL,JKK)/PQSEN(JL,JKK)<0.9_JPRB) THEN
+             ZQEXC=ZQEXC+MIN(3.E-4_JPRB,MAX(0._JPRB,PTENQA(JL,JKK)*600._JPRB))
           ENDIF
           ZQU (JL,JKK) = ZQENH(JL,JKK) + ZQEXC
           ZSUH (JL,JKK) = ZSENH(JL,JKK) + RCPD*ZTEXC
@@ -432,10 +455,14 @@ DO JKK=KLEV,JKT1,-1 ! Big external loop for level testing:
         IF (LLGO_ON(JL)) THEN
           IS         = IS+1
           ZDZ(JL)    = (PGEOH(JL,JK) - PGEOH(JL,JK+1))*ZRG
-          ZEPS       = ZXENTSTPC1/((PGEO(JL,JK)-PGEOH(JL,KLEV+1))*ZRG*RPLRG) + ENTSTPC2
-          IF(LDMIXS.AND.KINDEX==KLEV.AND.ZLU(JL,JK+1)>0.0_JPRB) ZEPS=ZEPS*ENTSTPC3
-          ZMIX(JL)   = 0.5_JPRB*ZDZ(JL)*RPLRG*ZEPS
-          ZMIX(JL)   = MIN(1.0_JPRB, ZMIX(JL))
+          IF (LDTDKMF) THEN
+             ZEPS       = ZXENTSTPC1/((PGEOH(JL,JK)-PGEOH(JL,KLEV+1))*ZRG*PPLRG) + ENTSTPC2
+          ELSE
+             ZEPS       = ZXENTSTPC1/((PGEO(JL,JK)-PGEOH(JL,KLEV+1))*ZRG*PPLRG) + ENTSTPC2
+             IF(LDMIXS.AND.KINDEX==KLEV.AND.ZLU(JL,JK+1)>0.0_JPRB) ZEPS=ZEPS*ENTSTPC3
+          ENDIF
+          ZMIX(JL)   = 0.5_JPRB*ZDZ(JL)*PPLRG*ZEPS
+          IF (.NOT. LDTDKMF)  ZMIX(JL)   = MIN(1.0_JPRB, ZMIX(JL))
           ZQF = (PQENH(JL,JK+1) + PQENH(JL,JK))*0.5_JPRB
           ZSF = (ZSENH(JL,JK+1) + ZSENH(JL,JK))*0.5_JPRB
           ZTMP = 1.0_JPRB/(1.0_JPRB+ZMIX(JL))
@@ -482,11 +509,10 @@ DO JKK=KLEV,JKT1,-1 ! Big external loop for level testing:
     IF (IS == 0) EXIT
      
     IK=JK
-    ICALL=1
      
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,    KLEV,      IK,&
-     &   ZPH,      ZTU,      ZQU,     LLGO_ON,   ICALL)  
+     & ( YDTHF, YDCST, YDEPHLI,  KIDIA,    KFDIA,    KLON,    KLEV,      IK,&
+     &   ZPH,      ZTU,      ZQU,     LLGO_ON,   1)  
    
    !DIR$ IVDEP
    !OCL NOVREC

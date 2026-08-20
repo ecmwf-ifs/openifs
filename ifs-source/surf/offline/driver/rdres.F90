@@ -1,8 +1,3 @@
-SUBROUTINE RDRES(LOPLEFT)
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -10,6 +5,44 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *RDRES*   - Routine to read restart file
+
+!     Purpose.
+!     --------
+!           Initialize model from restart file
+
+!***  Interface.
+!     ----------
+!        *CALL* *RDRES
+
+!     Explicit arguments :
+!     --------------------
+!         LOPLEFT: FLAG INDICATING WHETHER MORE POINTS NEED TO BE DONE
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk KNMI
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-18
+
+SUBROUTINE RDRES(LOPLEFT)
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+
+#ifdef DOC
 
 !**** *RDRES*   - Routine to read restart file
 

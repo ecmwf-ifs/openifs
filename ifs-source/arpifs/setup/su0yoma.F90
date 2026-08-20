@@ -9,7 +9,7 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
-SUBROUTINE SU0YOMA(YDGEOMETRY,YDSURF,YDMODEL)
+SUBROUTINE SU0YOMA(YDGEOMETRY,YDMODEL)
 
 !**** *SU0YOMA*  - INITIALIZE LEVEL 0 COMMONS AND SOME HIGHER (PART 1)
 
@@ -80,26 +80,21 @@ SUBROUTINE SU0YOMA(YDGEOMETRY,YDSURF,YDMODEL)
 !      R. El Khatib 17-Aug-2016 move suoph up from su0yomb to su0yoma and move down sufa
 !      S. Massart   19-Feb-2019 Augmented control variable
 !      F. Vana      11-Sep-2020 Cleaning & moving SLAVEPP setup to better location
+!      R. El Khatib 07-Jul-2021 move SETUP_CLMICST to suphmf
 !     ------------------------------------------------------------------
 
 USE TYPE_MODEL         , ONLY : MODEL
 USE GEOMETRY_MOD       , ONLY : GEOMETRY
-USE SURFACE_FIELDS_MIX , ONLY : TSURF
 USE PARKIND1           , ONLY : JPIM, JPRB
 USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMLUN             , ONLY : NULOUT
 USE YOMCT0             , ONLY : LMINIM, LR2D, NCONF, LOBSC1
-USE YOMCLMICST         , ONLY : SETUP_CLMICST
-
-USE YOMSATSIM,    ONLY : NSATSIM
-
 
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
 
 TYPE(GEOMETRY), INTENT(INOUT) :: YDGEOMETRY
-TYPE(TSURF)   , INTENT(INOUT) :: YDSURF
 TYPE(MODEL)   , INTENT(INOUT) :: YDMODEL
 CHARACTER (LEN = 35) ::  CLINE
 INTEGER(KIND=JPIM) :: IGFLCONF
@@ -114,23 +109,17 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 #include "sudimf2.intfb.h"
 #include "sudim_traj.intfb.h"
 #include "sudyna.intfb.h"
-
-
-
-
 #include "suechk.intfb.h"
 #include "sufa.intfb.h"
 #include "sugeometry.intfb.h"
 #include "sugfl.intfb.h"
+#include "suiomi.intfb.h"
 #include "sumcc.intfb.h"
 #include "sunud.intfb.h"
 #include "surip.intfb.h"
-
-
-
+#include "susatsim.intfb.h"
 #include "sutrajp.intfb.h"
 #include "suoph.intfb.h"
-#include "su_surf_flds.intfb.h"
 
 !     ------------------------------------------------------------------
 
@@ -155,8 +144,7 @@ CALL SUGEOMETRY(YDGEOMETRY)
 !*       4. "MODEL" PART SET-UP.
 !           --------------------
 WRITE(NULOUT,*) '--- Set up dynamics part A ---------',CLINE
-CALL SUDYNA(YDGEOMETRY%YRDIM,YDMODEL%YRML_DYN%YRDYNA,YDGEOMETRY%YRCVER%LVERTFE, &
- & YDGEOMETRY%YRCVER%NDLNPR,YDGEOMETRY%LNONHYD_GEOM,NULOUT)
+CALL SUDYNA(YDGEOMETRY,YDMODEL%YRML_DYN%YRDYNA,NULOUT)
 
 !*    Initialize YOMRIP variables
 WRITE(NULOUT,*) '------ Set up YOMRIP variables ',CLINE
@@ -204,21 +192,6 @@ ELSE
   IGFLCONF=NCONF
 ENDIF
 CALL SUGFL(YDGEOMETRY%YRDIMV,YDMODEL,IGFLCONF)
-
-!*    Enable simulated satellite images in forecast mode only
-IF (NCONF == 1 .AND. .NOT. LOBSC1) THEN
-
-
-
-
-  NSATSIM=0
-
-ENDIF
-
-!*    Set up for surface grid-point fields
-WRITE(NULOUT,*) '---- Set up for surface grid-point fields ----',CLINE
-CALL SU_SURF_FLDS(YDGEOMETRY%YRDIMV,YDSURF,YDMODEL)
-
 !*    Initialize number of fields dimensions (part 2)
 WRITE(NULOUT,*) '------ Set up number of fields dimensions, part 2  ------',CLINE
 CALL SUDIMF2(YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA)
@@ -233,19 +206,9 @@ ENDIF
 WRITE(NULOUT,*) '------ Set up gridpoint diagnostics ----',CLINE
 CALL SUECHK(YDGEOMETRY,YDMODEL%YRML_GCONF%YRDIMF)
 
-!*    Initialize extended control variable options
-WRITE(NULOUT,*) '--- Set up ECV geometry ---------',CLINE
-
-
-
-
 !*    Initialize diagnostics on physical tendencies
 WRITE(NULOUT,*) '------ Set up diagnostics on phys. tendencies -',CLINE
 CALL SUCHET(YDGEOMETRY%YRDIMV)
-
-!*    Initialise constants of microphysics scheme ICE3
-WRITE(NULOUT,*) '------ Set up  constants of microphysics scheme ICE3 -',CLINE
-CALL SETUP_CLMICST
 
 !*    Allocate grid point and spectral arrays
 WRITE(NULOUT,*) '------ Set up : array allocations ------',CLINE

@@ -6,7 +6,7 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE DDR_SURF_RES_GC ( PTS, PITM, PFRSO, &
+SUBROUTINE DDR_SURF_RES_GC ( PTS, PFRSO, &
                         &  PRSTO, KTILE, KTILE_NOWET, KVEG_GC, PLAI, &
                         &  CDNMS, PXCHEN, PXCHENXP, PXDIMO, PXCF0, &
                         &  PWRC)
@@ -38,7 +38,6 @@ SUBROUTINE DDR_SURF_RES_GC ( PTS, PITM, PFRSO, &
 !! INPUTS:
 !! -------
 !! PTS        : Surface temperature
-!! PITM       : Land/sea mask
 !! PFRSO      : Solar radiation
 !! PRSTO      : Stomatal resistances for water vapor(s.m-1)
 !! KTILE      : IFS TILE (1... 9) 
@@ -69,7 +68,7 @@ SUBROUTINE DDR_SURF_RES_GC ( PTS, PITM, PFRSO, &
 !!
 !!    V. Huijnen / D. Finch, October 2020: introduction of loop over tiles, 
 !!                                         and use of GEOS-Chem specific LUT variables.
-
+!!    Add Urban tile    J. McNorton                        24 August 2022
 
 USE PARKIND1 ,ONLY : JPIM, JPRB
 USE DRYDEP_PAR_GC  ,ONLY : PPRMAX, ZEPS2,ZGSS_W, ZLUSW, & ! GEOS-Chem specific parameters
@@ -82,7 +81,6 @@ IMPLICIT NONE
   ! INTEGER (KIND=JPIM), INTENT(IN) :: KL, KLON
 
   REAL (KIND=JPRB), INTENT(IN)      :: PTS
-  REAL (KIND=JPRB), INTENT(IN)      :: PITM
   REAL (KIND=JPRB), INTENT(IN)      :: PFRSO
   REAL (KIND=JPRB), INTENT(IN)      :: PRSTO
   INTEGER (KIND=JPIM), INTENT(IN)   :: KVEG_GC,KTILE,KTILE_NOWET
@@ -123,7 +121,7 @@ IF  (  ANY( (/ "HNO3","H2O2" /)   ==  CDNMS ) ) THEN
 
   ! no temperature correction over sea / water 
     ZTCOR = 0.0_JPRB
-    IF (PTS < 271.0_JPRB .AND. ANY( KTILE == (/ 2 , 4, 5, 6, 7, 8/) ))  THEN
+    IF (PTS < 271.0_JPRB .AND. ANY( KTILE == (/ 2 , 4, 5, 6, 7, 8, 10/) ))  THEN
       ZTS=MAX(PTS, 260._JPRB)
       ZTCOR = MIN(PPRMAX, 1000.0_JPRB * EXP(-ZTS + 269.0_JPRB) )
     ENDIF 
@@ -197,7 +195,7 @@ ELSE
        END SELECT
 
 ! Ice, snow , bare ground, snow on vegetation 
-    CASE ( 2, 5, 7, 8 )        
+    CASE ( 2, 5, 7, 8, 10 )        
       ! introduce special case for melting - see tm5 code 
   
       !       2.3.1  Input resistances (see table 19.2) | is it OK to also  ztcor for the bare ground ? 

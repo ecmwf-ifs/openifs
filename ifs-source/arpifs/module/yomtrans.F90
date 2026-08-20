@@ -35,11 +35,15 @@ SAVE
 !     LUSEFLT,LUSERPNM,LKEEPRPNM - see TRANS package
 !     LALLOPERM : allocate certain arrays permanently
 !     LFFTW     : Use FFTW if true (see TRANS package)
+!     NSTACK_MEMORY_TR : optional memory strategy in gridpoint transpositions
+!     = 0 : prefer heap (slower but less memory consuming)
+!     > 0 : prefer stack (faster but more memory consuming)
 
 
 INTEGER(KIND=JPIM) :: NPROMATR
 INTEGER(KIND=JPIM) :: NEPROMATR
 INTEGER(KIND=JPIM) :: NMAX_RESOL
+INTEGER(KIND=JPIM) :: NSTACK_MEMORY_TR = 0
 REAL(KIND=JPRB) :: RDISTR_E 
 LOGICAL         :: LMONO_TRANS
 LOGICAL         :: LUSEFLT

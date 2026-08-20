@@ -1,10 +1,16 @@
 ! radiation_spartacus_sw.F90 - SPARTACUS shortwave solver
 !
-! Copyright (C) 2014-2019 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive albedos at g-points
@@ -26,6 +32,8 @@
 !   2019-02-10  R. Hogan  Renamed "encroachment" to "entrapment"
 
 module radiation_spartacus_sw
+
+  public
 
 contains
 
@@ -61,6 +69,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     use radiation_io, only             : nulout
     use radiation_config, only         : config_type, IPdfShapeGamma, &
          &  IEntrapmentZero, IEntrapmentEdgeOnly, IEntrapmentExplicit, &
@@ -74,8 +83,7 @@ contains
          &                               indexed_sum, add_indexed_sum
     use radiation_matrix
     use radiation_two_stream, only     : calc_two_stream_gammas_sw, &
-         &  calc_reflectance_transmittance_sw, calc_frac_scattered_diffuse_sw, &
-         &  SwDiffusivity
+         &  calc_reflectance_transmittance_sw, calc_frac_scattered_diffuse_sw
     use radiation_constants, only      : Pi, GasConstantDryAir, &
          &                               AccelDueToGravity
 
@@ -1293,7 +1301,7 @@ end if
                 do jreg = 1,nreg
                   transfer_scaling = 1.0_jprb - (1.0_jprb - config%overhang_factor) & 
                        &  * cloud%overlap_param(jcol,jlev-1) &
-                       &  * min(region_fracs(jreg,jlev,jcol), region_fracs(jreg,jlev-1,jcol))
+                       &  * min(region_fracs(jreg,jlev,jcol), region_fracs(jreg,jlev-1,jcol)) &
                        &  / max(config%cloud_fraction_threshold, region_fracs(jreg,jlev,jcol))
                   do jreg4 = 1,nreg
                     if (.not. (jreg4 == jreg .and. jreg4 /= jreg2)) then

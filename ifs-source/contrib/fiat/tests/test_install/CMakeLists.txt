@@ -12,10 +12,14 @@ project( fiat_test_install VERSION 0.0.0 LANGUAGES Fortran )
 
 find_package( fiat REQUIRED )
 
+if( TARGET parkind_dp )
 ecbuild_add_executable( TARGET  main_dp
                         SOURCES main.F90
                         LIBS    fiat parkind_dp )
+endif()
 
+if( TARGET parkind_sp )
 ecbuild_add_executable( TARGET  main_sp
                         SOURCES main.F90
                         LIBS    fiat parkind_sp )
+endif()

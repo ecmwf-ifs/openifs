@@ -45,6 +45,7 @@ MODULE GFL_SUBS_MOD
 !        2013-11, D. Degrauwe: INTFLEX attributes.
 !        F. Vana       20-Feb-2019 New attribute for quintic vertical interpolation
 !        F. Vana       11-Sep-2020 SLAVEPP and (semi) prognostic cloud
+!        F. Vana       (Jan 2023)  Printing more attributes
 !-------------------------------------------------------------------------
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
@@ -665,6 +666,7 @@ IF(ASSOCIATED(YGFL%YLASTCOMP)) THEN
     WRITE(NULOUT,*)' LTRAJIO=',YPTRC%LTRAJIO,' LDIAG=',YPTRC%LDIAG,' LGPINGP=',YPTRC%LGPINGP
     WRITE(NULOUT,*)' CSLINT=',YPTRC%CSLINT,' WENO_ALPHA=',YPTRC%WENO_ALPHA,&
      & ' LTHERMACT=',YPTRC%LTHERMACT,' R=',YPTRC%R,' RCP=',YPTRC%RCP
+    WRITE(NULOUT,*)' LMASSFIX=',YPTRC%LMASSFIX,' NOPTMFBC=',YGFL%NOPTMFBC,' BETAMFBC=',YPTRC%BETAMFBC
     WRITE(NULOUT,*)' LWATER=',YPTRC%LWATER,&
      & ' LPRECIP=',YPTRC%LPRECIP,' RLZER=',YPTRC%RLZER
     WRITE(NULOUT,*)' MP=',YPTRC%MP,' MPL=',YPTRC%MPL,&

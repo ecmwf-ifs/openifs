@@ -1,0 +1,166 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+
+MODULE FIELD_${RANK}$${SUFF}$_UTIL_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList (ranks=[RANK], kinds=['JP' + SUFF])
+
+USE FIELD_MODULE
+USE FIELD_ACCESS_MODULE
+
+IMPLICIT NONE
+
+#:for method in ['LOAD', 'SAVE', 'DIFF', 'COPY', 'WIPE', 'HOST', 'CRC64']
+INTERFACE ${method}$
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${method}$_${ft.name}$
+#:if method not in ['DIFF', 'CRC64']
+  MODULE PROCEDURE ${method}$_${ft.name}$_PTR
+  MODULE PROCEDURE ${method}$_${ft.name}$_VIEW
+#:endif
+#:endfor
+END INTERFACE
+
+#:endfor
+
+CONTAINS
+
+#:for ft in fieldTypeList
+INTEGER*8 FUNCTION CRC64_${ft.name}$ (YD)
+CLASS (${ft.name}$), POINTER :: YD
+
+INTEGER*8 :: ICRC, ILEN
+${ft.type}$, POINTER :: PTR(${ft.shape}$)
+EXTERNAL :: CRC64
+
+ICRC = 0
+
+IF (ASSOCIATED (YD)) THEN
+
+  PTR => GET_HOST_DATA_RDONLY (YD)
+  ILEN = SIZE (PTR)
+  CALL CRC64 (PTR, ILEN, ICRC)
+
+ENDIF
+
+CRC64_${ft.name}$ = ICRC
+
+END FUNCTION
+
+SUBROUTINE LOAD_${ft.name}$ (KLUN, YD)
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+CLASS (${ft.name}$), POINTER :: YD
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE
+
+SUBROUTINE SAVE_${ft.name}$ (KLUN, YD)
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+CLASS (${ft.name}$), POINTER :: YD
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE
+
+SUBROUTINE DIFF_${ft.name}$ (CDMESS, YD, YO)
+CHARACTER (LEN=*), INTENT(IN) :: CDMESS
+CLASS (${ft.name}$), POINTER :: YD, YO
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE
+
+SUBROUTINE COPY_${ft.name}$ (SELF, LDCREATED)
+CLASS (${ft.name}$), POINTER :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDCREATED
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE 
+
+SUBROUTINE WIPE_${ft.name}$ (SELF, LDDELETED)
+CLASS (${ft.name}$) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDDELETED
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE 
+
+SUBROUTINE HOST_${ft.name}$ (SELF)
+CLASS (${ft.name}$), POINTER :: SELF
+
+CALL SELF%SYNC_HOST_RDWR ()
+
+END SUBROUTINE 
+
+SUBROUTINE LOAD_${ft.name}$_VIEW (KLUN, YD)
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+CLASS (${ft.name}$_VIEW) :: YD
+! Do nothing
+END SUBROUTINE
+
+SUBROUTINE SAVE_${ft.name}$_VIEW (KLUN, YD)
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+CLASS (${ft.name}$_VIEW) :: YD
+! Do nothing
+END SUBROUTINE
+
+SUBROUTINE COPY_${ft.name}$_VIEW (SELF, LDCREATED)
+CLASS (${ft.name}$_VIEW) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDCREATED
+! Do nothing
+END SUBROUTINE 
+
+SUBROUTINE WIPE_${ft.name}$_VIEW (SELF, LDDELETED)
+CLASS (${ft.name}$_VIEW) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDDELETED
+! Do nothing
+END SUBROUTINE 
+
+SUBROUTINE HOST_${ft.name}$_VIEW (SELF)
+CLASS (${ft.name}$_VIEW) :: SELF
+! Do nothing
+END SUBROUTINE 
+
+SUBROUTINE LOAD_${ft.name}$_PTR (KLUN, YD)
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+CLASS (${ft.name}$_PTR) :: YD
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE
+
+SUBROUTINE SAVE_${ft.name}$_PTR (KLUN, YD)
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+CLASS (${ft.name}$_PTR) :: YD
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE
+
+SUBROUTINE COPY_${ft.name}$_PTR (SELF, LDCREATED)
+CLASS (${ft.name}$_PTR) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDCREATED
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE 
+
+SUBROUTINE WIPE_${ft.name}$_PTR (SELF, LDDELETED)
+CLASS (${ft.name}$_PTR) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDDELETED
+#include "abor1.intfb.h"
+CALL ABOR1 ('NOT IMPLEMENTED')
+END SUBROUTINE 
+
+SUBROUTINE HOST_${ft.name}$_PTR (SELF)
+CLASS (${ft.name}$_PTR) :: SELF
+
+IF (ASSOCIATED (SELF%PTR)) THEN
+  CALL HOST (SELF%PTR)
+ENDIF
+
+END SUBROUTINE 
+
+#:endfor
+
+END MODULE

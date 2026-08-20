@@ -1,6 +1,3 @@
-SUBROUTINE WRTCLIM
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
-USE YOMHOOK   ,ONLY : DR_HOOK, JPHOOK  ,LHOOK
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -9,6 +6,46 @@ USE YOMHOOK   ,ONLY : DR_HOOK, JPHOOK  ,LHOOK
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+!**** *WRTCLIM*  - writes fixed climate fields to NetCDF files
+
+!     Purpose.
+!     --------
+!        writes out fixed climate fields
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTCLIM
+
+!     Explicit arguments :
+!     --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk (KNMI)
+
+!     Modifications.
+!     --------------
+!        original: 14/7/2000
+!        I. Ayan-Miguez (BSC) June 2023: Added surface spatially distributed parameters
+
+SUBROUTINE WRTCLIM
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
+USE YOMHOOK   ,ONLY : DR_HOOK, JPHOOK  ,LHOOK
 !**** *WRTCLIM*  - writes fixed climate fields to NetCDF files
 
 !     Purpose.

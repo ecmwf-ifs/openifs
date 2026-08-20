@@ -28,7 +28,7 @@
 SUBROUTINE TM5_KPP_Rates ( PTM5_RATES, PTM5_PHOTO,PRCONST )
 
    USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  , ONLY : JPIM     ,JPRB, JPRD
+   USE PARKIND1  , ONLY : JPIM     ,JPRB
 
  USE TM5_CHEM_MODULE, ONLY :  NREAC, &
   !* reaction rates
@@ -66,7 +66,7 @@ SUBROUTINE TM5_KPP_Rates ( PTM5_RATES, PTM5_PHOTO,PRCONST )
 
   REAL(KIND=JPRB) , intent(in)           :: PTM5_RATES(NREAC)
   REAL(KIND=JPRB) , intent(in)           :: PTM5_PHOTO(NPHOTO)
-  REAL(KIND=JPRD) , intent(out)          :: PRCONST(NREACT)
+  REAL(KIND=JPRB) , intent(out)          :: PRCONST(NREACT)
   
 
 !*       0.5   LOCAL VARIABLES

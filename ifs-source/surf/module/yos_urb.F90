@@ -1,4 +1,3 @@
-MODULE YOS_URB
 
 ! (C) Copyright 2005- ECMWF.
 !
@@ -26,6 +25,35 @@ MODULE YOS_URB
 
 !     REFERENCE.
 !     Urban scheme based on Macdonald 1998, Harman 2004, Oleson 2008 and Porson 2010
+!     !     Original    J. McNorton      Aug 2022
+
+!     MODIFICATIONS
+!     -------------
+!==============================================================================
+
+! Modules used : 
+
+MODULE YOS_URB
+
+!------------------------------------------------------------------------------
+
+!     PURPOSE
+!     -------
+! Declare parameters used for urban tile
+
+!     INTERFACE.
+!     ----------
+!     CALLLED FROM *SUSURF*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     Urban scheme based on Macdonald 1998, Harman 2004, Oleson 2008 and Porson 2010
+!     !     Original    J. McNorton      Aug 2022
 
 !     MODIFICATIONS
 !     -------------
@@ -111,9 +139,7 @@ REAL (KIND = JPRB):: RURBSAT        ! URBAN SOIL WATER CONTENT AT SATURATION
 REAL (KIND = JPRB):: RURBSRES       ! URBAN SOIL WATER CONTENT RESIDUAL
 
 
-
-LOGICAL           :: LURBAN         ! True when using urban scheme for energy balance (not used)
-LOGICAL           :: LURBUI         ! True when using building heating scheme for energy balance (not used)
+LOGICAL           :: LEURBAN        ! True when using urban scheme for energy balance 
 
 END TYPE TURB
 

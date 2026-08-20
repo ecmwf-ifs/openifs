@@ -1,16 +1,79 @@
-MODULE SUGRIDMLM_MOD
-
-CONTAINS
-SUBROUTINE SUGRIDMLM(LD_LOCMLTKE,KCOM,YDMLM)
+!
 !
 ! (C) Copyright 2010- ECMWF.
-!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
 
+!***  DETERMINES CONSTANTS AND CONSTANT ARRAYS OF MIXED LAYER MODEL
+!
+!
+!     AUTHOR: PETER A.E.M. JANSSEN, OCTOBER 2010
+!     ------
+!
+!
+!     PURPOSE.
+!     --------
+!
+!         SETS UP THE VERTICAL GRID AND FORCING FUNCTIONS F AND R.
+!
+!**   INTERFACE.
+!     ----------
+!
+!         CALL SUGRIDMLM(LD_LOCMLTKE,KCOM)
+!         
+!         INPUT:
+!         -----
+!
+!         *LD_LOCMLTKE*  LOGICAL       IF TRUE OC_MLM MODEL IS RUN
+!         *KCOM*         INTEGER       NUMBER OF VERTICAL LEVELS
+!         
+!         OUTPUT WRITTEN TO MODULE YOS_MLM
+!         ------
+!
+!         *KLEVO*    INTEGER       NUMBER OF VERTICAL LAYERS
+!         *Z*        REAL          VERTICAL COORDINATE ARRAY
+!         *DELZ*     REAL          INCREMENT IN DEPTH
+!         *R*        REAL          RADIATION FORCING FUNCTION TAKEN FROM
+!                                  SOLOVIEV (1982)
+!         *F*        REAL          SHAPE FUNCTION FOR WAVE-INDUCED STRESS
+!                                  DUE TO WAVE BREAKING
+!
+!     METHOD.
+!     -------
+!          THE TOP OF THE OCEAN STARTS AT Z(1) WHILE THE BOTTOM OF THE 
+!          MIXED LAYER CORRESPONDS TO Z(KLEVO+1)
+!
+!
+!     EXTERNALS.
+!     ----------
+!
+!         NO EXTERNALS.
+!
+!     REFERENCE.
+!     ----------
+!      
+!         MIXED LAYER MODELLING, WAVE BREAKING AND THE GENERATION OF 
+!         LANGMUIR CIRCULATION  BY P.A.E.M. JANSSEN, 12 OCTOBER 2010.
+!
+!
+!     HEALTH WARNING
+!     --------------
+!
+!         CODE IS WRITTEN ASSUMING DEPTH Z IS POSITIVE (Z => -Z)		
+!
+!----------------------------------------------------------------------
+!
+!
+
+MODULE SUGRIDMLM_MOD
+
+CONTAINS
+SUBROUTINE SUGRIDMLM(LD_LOCMLTKE,KCOM,YDMLM)
+!
+!
 !***  DETERMINES CONSTANTS AND CONSTANT ARRAYS OF MIXED LAYER MODEL
 !
 !

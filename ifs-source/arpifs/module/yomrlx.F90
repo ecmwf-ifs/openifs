@@ -45,9 +45,6 @@ SAVE
 ! XRLXLP : relaxation coefficient for log(surf pressure)
 ! XRLXO3 : relaxation coefficient for ozone (altitude)
 
-! CRLXPATHGG : path to gridpoint relaxation file location
-! CRLXPATHSH : path to spectral relaxation file location
-
 ! ALATRLX1 : northern limit
 ! ALATRLX2 : southern limit
 ! ALONRLX1 : western limit in [0,360]
@@ -79,9 +76,6 @@ LOGICAL :: LRLXQI
 LOGICAL :: LRLXQL
 LOGICAL :: LRLXQC
 LOGICAL :: LRLXO3
-
-CHARACTER(LEN=512) :: CRLXPATHGG
-CHARACTER(LEN=512) :: CRLXPATHSH
 
 REAL(KIND=JPRB) :: XRLXVO
 REAL(KIND=JPRB) :: XRLXDI

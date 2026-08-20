@@ -1,6 +1,3 @@
-SUBROUTINE SUCDFRES
-
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -8,6 +5,45 @@ SUBROUTINE SUCDFRES
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SUCDFFL * - Routine to initialize NetCDF output
+
+!     Purpose.
+!     --------
+!           Initialize NetCDF outputfile restartout.nc (restart output file)
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUCDFRES
+
+!     Explicit arguments :
+!     --------------------
+!        none
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd HURK (KNMI)
+
+!     Modifications.
+!     --------------
+!        Original     : 2000-7-17
+!       E. Dutra     2008, add FLAKE restart fields
+!       E. Dutra     11/2009 add LAI restart
+!       Emanuel Dutra, June 2014: update netcd inteface and add netcdf4 
+!       Anna Agusti-Panareda, June 2021: Add C3/C4 photosynthetic pathway type (Ctype)
+
+SUBROUTINE SUCDFRES
+
+#ifdef DOC
 
 !**** *SUCDFFL * - Routine to initialize NetCDF output
 

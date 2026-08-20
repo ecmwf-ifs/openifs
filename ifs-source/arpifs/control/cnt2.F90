@@ -54,6 +54,7 @@ SUBROUTINE CNT2(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,YDGOM5,Y
 !      P. Lean      17 Aug 2016  OOPS cleaning: ODB by argument
 !      P. Lean      22 Mar 2017  OOPS cleaning: Jo-table by argument
 !      M. Chrust     3 Jan 2020  OOPS cleaning: Model error config by argument
+!      R. El Khatib 16-Aug-2021 Remove cnt3_wait
 !     ------------------------------------------------------------------
 
 USE TYPE_MODEL    , ONLY : MODEL
@@ -62,11 +63,6 @@ USE FIELDS_MOD    , ONLY : FIELDS
 USE MTRAJ_MOD     , ONLY : MTRAJ
 USE PARKIND1      , ONLY : JPRB, JPIM
 USE YOMHOOK       , ONLY : LHOOK,   DR_HOOK, JPHOOK
-USE YOMCT0        , ONLY : LECMWF, NFPOS
-USE SUPPDATE_MOD  , ONLY : IDATEF_CFNISH
-USE YOMRIP0       , ONLY : NINDAT, NSSSSS
-USE YOMOPH0       , ONLY : CFNISH, CFNIGG
-USE YOMLUN        , ONLY : NINISH
 USE JO_TABLE_MOD  , ONLY : JO_TABLE
 USE YOMVAR        , ONLY : LMODERR
 USE VARBC_CLASS   , ONLY : CLASS_VARBC
@@ -89,15 +85,11 @@ TYPE(CLASS_SUPERGOM),INTENT(INOUT), OPTIONAL :: YDGOM5
 CLASS(DBASE)        ,INTENT(INOUT), OPTIONAL :: YDODB
 TYPE (TFPOS)        ,INTENT(IN)   , OPTIONAL :: YDFPOS
 
-INTEGER (KIND=JPIM) :: ICNT3
-
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
-#include "cnt3_wait.intfb.h"
 #include "cnt3.intfb.h"
 #include "su2yom.intfb.h"
 #include "suinimoderr.intfb.h"
-#include "filedate.intfb.h"
 !     ------------------------------------------------------------------
 
 !*       1.    Initialization.
@@ -116,46 +108,7 @@ IF (LMODERR) CALL SUINIMODERR(YDGEOMETRY,YDMODEL%YRML_GCONF%YRRIP,YGMODERRCONF)
 !*       2.    Call level 3 control routine.
 !              -----------------------------
 
-IF (LECMWF.OR.NFPOS==0) THEN
-
-  CALL CNT3(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,YDGOM5,YDODB,YDFPOS=YDFPOS)
-
-ELSE
-
-  ICNT3 = 0
-
-  DO
-
-! Wait for next file; ICNT3 is updated :
-! - ICNT3 =  0 : regular case : single iteration
-! - ICNT3 =  N : N-th iteration
-! - ICNT3 = -1 : stop now
-
-    CALL CNT3_WAIT (ICNT3)
-
-
-    IF (ICNT3 > 0) THEN
-
-    ! Reset model date
-
-      IDATEF_CFNISH = 0
-
-      CALL FILEDATE(CDFILESH=CFNISH,CDFILEGG=CFNIGG,KUNIT=NINISH,KUDATE=NINDAT,KUSSSS=NSSSSS)
-
-    ENDIF
-
-! Stop
-
-    IF (ICNT3 < 0) EXIT
-
-    CALL CNT3(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,YDGOM5,YDODB,YDFPOS=YDFPOS)
-
-! Single iteration (usual case)
-
-    IF (ICNT3 == 0) EXIT
-
-  ENDDO
-ENDIF
+CALL CNT3(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,YDGOM5,YDODB,YDFPOS=YDFPOS)
 
 !     ------------------------------------------------------------------
 

@@ -58,28 +58,28 @@
 SUBROUTINE TM5_KPP_INTEGRATOR( PTIN, PTOUT, &
    & KCNTRL_U, PRCNTRL_U, KSTATUS_U, PRSTATUS_U, KERR_U, PVAR, PRCONST, PCFACTOR )
 
-   USE PARKIND1  ,ONLY : JPIM, JPRB, JPRD
-   USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,  ONLY : JPIM, JPRB
+   USE YOMHOOK,   ONLY : LHOOK, DR_HOOK, JPHOOK
    USE TM5_KPP_Parameters, ONLY: NVAR, NREACT, NHEXIT
    USE TM5_KPP_Global,     ONLY: RTOL, ATOL,STEPMIN
 
    IMPLICIT NONE
 
-   REAL(KIND=JPRD), INTENT(IN) :: PTIN  ! Start Time
+   REAL(KIND=JPRB), INTENT(IN) :: PTIN  ! Start Time
    REAL(KIND=JPRB), INTENT(IN) :: PTOUT ! End Time
    ! Optional input parameters and statistics
    INTEGER(KIND=JPIM),    INTENT(IN),  OPTIONAL :: KCNTRL_U(20)
-   REAL(KIND=JPRD), INTENT(IN),  OPTIONAL :: PRCNTRL_U(20)
+   REAL(KIND=JPRB), INTENT(IN),  OPTIONAL :: PRCNTRL_U(20)
    INTEGER(KIND=JPIM),       INTENT(OUT), OPTIONAL :: KSTATUS_U(20)
-   REAL(KIND=JPRD), INTENT(OUT), OPTIONAL :: PRSTATUS_U(20)
+   REAL(KIND=JPRB), INTENT(OUT), OPTIONAL :: PRSTATUS_U(20)
    INTEGER(KIND=JPIM), INTENT(OUT), OPTIONAL :: KERR_U
 
-   REAL(KIND=JPRD),       INTENT(INOUT) :: PVAR(NVAR)
-   REAL(KIND=JPRD),       INTENT(IN)    :: PRCONST(NREACT)
+   REAL(KIND=JPRB),       INTENT(INOUT) :: PVAR(NVAR)
+   REAL(KIND=JPRB),       INTENT(IN)    :: PRCONST(NREACT)
    REAL(KIND=JPRB),       INTENT(IN)    :: PCFACTOR
 
-   REAL(KIND=JPRD) :: ZTOUT
-   REAL(KIND=JPRD) :: ZRCNTRL(20), ZRSTATUS(20)
+   REAL(KIND=JPRB) :: ZTOUT
+   REAL(KIND=JPRB) :: ZRCNTRL(20), ZRSTATUS(20)
    INTEGER(KIND=JPIM)     :: ICNTRL(20), ISTATUS(20), IERR
 
    ! INTEGER(KIND=JPIM), SAVE :: Ntotal = 0
@@ -93,9 +93,9 @@ SUBROUTINE TM5_KPP_INTEGRATOR( PTIN, PTOUT, &
 #endif
 
    ICNTRL(:)   = 0
-   ZRCNTRL(:)  = 0.0_JPRD
+   ZRCNTRL(:)  = 0.0_JPRB
    ISTATUS(:)  = 0
-   ZRSTATUS(:) = 0.0_JPRD
+   ZRSTATUS(:) = 0.0_JPRB
    ZTOUT=PTOUT ! Convert to DP
 
     !~~~> fine-tune the integrator:
@@ -250,41 +250,41 @@ SUBROUTINE TM5_KPP_ROSENBROCK(PY,PRCONST, PTSTART,PTEND, &
 !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  USE TM5_KPP_Parameters, only:NREACT,NVAR 
-  USE TM5_KPP_Global, only : ROUNDOFF_STORE
+  USE TM5_KPP_Parameters, ONLY: NREACT, NVAR 
+  USE TM5_KPP_Global,     ONLY: ROUNDOFF_STORE
   ! USE TM5_KPP_LinearAlgebra
-  USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+  USE YOMHOOK,    ONLY : LHOOK, DR_HOOK, JPHOOK
   USE YOMLUN,     ONLY : NULERR
-  USE PARKIND1  , ONLY : JPIM   ,JPRB  ,JPRD
+  USE PARKIND1,   ONLY : JPIM, JPRB
   IMPLICIT NONE
 
 !~~~>  Arguments
-   REAL(KIND=JPRD), INTENT(INOUT) :: PY(NVAR)
-   REAL(KIND=JPRD), INTENT(IN)    :: PRCONST(NREACT)
-   REAL(KIND=JPRD), INTENT(IN)    :: PTSTART,PTEND
-   REAL(KIND=JPRD), INTENT(IN)    :: PABSTOL(NVAR),PRELTOL(NVAR)
+   REAL(KIND=JPRB), INTENT(INOUT) :: PY(NVAR)
+   REAL(KIND=JPRB), INTENT(IN)    :: PRCONST(NREACT)
+   REAL(KIND=JPRB), INTENT(IN)    :: PTSTART,PTEND
+   REAL(KIND=JPRB), INTENT(IN)    :: PABSTOL(NVAR),PRELTOL(NVAR)
    INTEGER(KIND=JPIM),       INTENT(IN)    :: KCNTRL(20)
-   REAL(KIND=JPRD), INTENT(IN)    :: PRCNTRL(20)
+   REAL(KIND=JPRB), INTENT(IN)    :: PRCNTRL(20)
    INTEGER(KIND=JPIM),       INTENT(INOUT) :: KSTATUS(20)
    REAL(KIND=JPRB), INTENT(IN)    :: PCFACTOR
-   REAL(KIND=JPRD), INTENT(INOUT) :: PRSTATUS(20)
+   REAL(KIND=JPRB), INTENT(INOUT) :: PRSTATUS(20)
    INTEGER(KIND=JPIM), INTENT(OUT)   :: KERR
 !~~~>  Parameters of the Rosenbrock method, up to 6 stages
    INTEGER(KIND=JPIM) ::  IROS_S, IrosMethod
    INTEGER(KIND=JPIM), PARAMETER :: IRS2=1, IRS3=2, IRS4=3, IRD3=4, IRD4=5
-   REAL(KIND=JPRD) :: Z_ROS_A(15), Z_ROS_C(15), Z_ROS_M(6), Z_ROS_E(6), &
+   REAL(KIND=JPRB) :: Z_ROS_A(15), Z_ROS_C(15), Z_ROS_M(6), Z_ROS_E(6), &
 &                    Z_ROS_ALPHA(6), Z_ROS_GAMMA(6), Z_ROS_ELO
    LOGICAL :: LL_ROS_NEWF(6)
    CHARACTER(LEN=12) :: CL_ROS_NAME
 !~~~>  Local variables
-   REAL(KIND=JPRD) :: ZRoundoff, ZFacMin, ZFacMax, ZFacRej, ZFacSafe
-   REAL(KIND=JPRD) :: ZHmin, ZHmax, ZHstart
-   REAL(KIND=JPRD) :: ZTexit
+   REAL(KIND=JPRB) :: ZRoundoff, ZFacMin, ZFacMax, ZFacRej, ZFacSafe
+   REAL(KIND=JPRB) :: ZHmin, ZHmax, ZHstart
+   REAL(KIND=JPRB) :: ZTexit
    INTEGER(KIND=JPIM)       :: i, IUplimTol, KMax_no_steps
    LOGICAL       :: LD_Autonomous, LD_VectorTol
 !~~~>   Parameters
-   REAL(KIND=JPRD), PARAMETER :: ZERO = 0.0_JPRD
-   REAL(KIND=JPRD), PARAMETER :: ZDeltaMin = 1.0E-5_JPRD
+   REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0_JPRB
+   REAL(KIND=JPRB), PARAMETER :: ZDeltaMin = 1.0E-5_JPRB
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #endif
@@ -393,7 +393,7 @@ SUBROUTINE TM5_KPP_ROSENBROCK(PY,PRCONST, PTSTART,PTEND, &
    ENDIF
 !~~~>  Step size can be changed s.t.  FacMin < Hnew/Hold < FacMax
    IF (PRCNTRL(4) == ZERO) THEN
-      ZFacMin = 0.2_JPRD
+      ZFacMin = 0.2_JPRB
    ELSEIF (PRCNTRL(4) > ZERO) THEN
       ZFacMin = PRCNTRL(4)
    ELSE
@@ -405,7 +405,7 @@ SUBROUTINE TM5_KPP_ROSENBROCK(PY,PRCONST, PTSTART,PTEND, &
       RETURN
    ENDIF
    IF (PRCNTRL(5) == ZERO) THEN
-      ZFacMax = 6.0_JPRD
+      ZFacMax = 6.0_JPRB
    ELSEIF (PRCNTRL(5) > ZERO) THEN
       ZFacMax = PRCNTRL(5)
    ELSE
@@ -418,7 +418,7 @@ SUBROUTINE TM5_KPP_ROSENBROCK(PY,PRCONST, PTSTART,PTEND, &
    ENDIF
 !~~~>   FacRej: Factor to decrease step after 2 succesive rejections
    IF (PRCNTRL(6) == ZERO) THEN
-      ZFacRej = 0.1_JPRD
+      ZFacRej = 0.1_JPRB
    ELSEIF (PRCNTRL(6) > ZERO) THEN
       ZFacRej = PRCNTRL(6)
    ELSE
@@ -431,7 +431,7 @@ SUBROUTINE TM5_KPP_ROSENBROCK(PY,PRCONST, PTSTART,PTEND, &
    ENDIF
 !~~~>   FacSafe: Safety Factor in the computation of new step size
    IF (PRCNTRL(7) == ZERO) THEN
-      ZFacSafe = 0.9_JPRD
+      ZFacSafe = 0.9_JPRB
    ELSEIF (PRCNTRL(7) > ZERO) THEN
       ZFacSafe = PRCNTRL(7)
    ELSE
@@ -444,8 +444,8 @@ SUBROUTINE TM5_KPP_ROSENBROCK(PY,PRCONST, PTSTART,PTEND, &
    ENDIF
 !~~~>  Check if tolerances are reasonable
     DO i=1,IUplimTol
-      IF ( (PABSTOL(i) <= ZERO) .OR. (PRELTOL(i) <= 10.0_JPRD*ZRoundoff) &
-&         .OR. (PRELTOL(i) >= 1.0_JPRD) ) THEN
+      IF ( (PABSTOL(i) <= ZERO) .OR. (PRELTOL(i) <= 10.0_JPRB*ZRoundoff) &
+&         .OR. (PRELTOL(i) >= 1.0_JPRB) ) THEN
         WRITE(NULERR,*) ' AbsTol(',i,') = ',PABSTOL(i)
         WRITE(NULERR,*) ' RelTol(',i,') = ',PRELTOL(i)
         CALL ROS_ERRORMSG(-5,PTstart,ZERO,KERR)
@@ -481,11 +481,11 @@ CONTAINS !  SUBROUTINES internal to Rosenbrock
 !    Handles all error messages
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   
   
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM, JPRB,   JPRD
+   USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1  ,ONLY : JPIM, JPRB
    USE YOMLUN    ,ONLY : NULERR
    
-   REAL(KIND=JPRD), INTENT(IN) :: PT, PH
+   REAL(KIND=JPRB), INTENT(IN) :: PT, PH
    INTEGER(KIND=JPIM), INTENT(IN)  :: K_Code
    INTEGER(KIND=JPIM), INTENT(OUT) :: KERR
 #ifdef WITH_COMPO_DR_HOOK
@@ -547,8 +547,8 @@ CONTAINS !  SUBROUTINES internal to Rosenbrock
 !      and its coefficients ros_{A,C,M,E,Alpha,Gamma}
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  , ONLY : JPIM  , JPRB   ,JPRD
+   USE YOMHOOK,    ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,   ONLY : JPIM, JPRB
    USE TM5_KPP_Parameters, ONLY : NREACT,NVAR,NHEXIT,LU_NONZERO, NSTP,Nfun,Njac,Nacc,&
 &      Nhnew,Ntexit,Nrej  
    USE CIFS_KPP_IntParam, ONLY : VMR_BAD_LARGE
@@ -556,41 +556,41 @@ CONTAINS !  SUBROUTINES internal to Rosenbrock
   IMPLICIT NONE
 
 !~~~> Input: the initial condition at Tstart; Output: the solution at T
-   REAL(KIND=JPRD), INTENT(INOUT) :: PY(NVAR)
+   REAL(KIND=JPRB), INTENT(INOUT) :: PY(NVAR)
 !~~~> Input: reaction rates
-   REAL(KIND=JPRD), INTENT(IN) ::PRCONST(NREACT)
+   REAL(KIND=JPRB), INTENT(IN) ::PRCONST(NREACT)
 ! Density (molec/cm3)
    REAL(KIND=JPRB), INTENT(IN) :: PCFACTOR
 !~~~> Input: integration interval
-   REAL(KIND=JPRD), INTENT(IN) :: PTSTART,PTEND
+   REAL(KIND=JPRB), INTENT(IN) :: PTSTART,PTEND
 !~~~> Output: time at which the solution is returned (T=TENDIF success)
-   REAL(KIND=JPRD), INTENT(OUT) ::  PT
+   REAL(KIND=JPRB), INTENT(OUT) ::  PT
 !~~~> Input: tolerances
-   REAL(KIND=JPRD), INTENT(IN) ::  PABSTOL(NVAR), PRELTOL(NVAR)
+   REAL(KIND=JPRB), INTENT(IN) ::  PABSTOL(NVAR), PRELTOL(NVAR)
 !~~~> Input: integration parameters
    LOGICAL, INTENT(IN) :: LD_Autonomous, LD_VectorTol
-   REAL(KIND=JPRD), INTENT(IN) :: PHstart, PHmin, PHmax
+   REAL(KIND=JPRB), INTENT(IN) :: PHstart, PHmin, PHmax
    INTEGER(KIND=JPIM), INTENT(IN) :: KMax_no_steps
-   REAL(KIND=JPRD), INTENT(IN) :: PRoundoff, PFacMin, PFacMax, PFacRej, PFacSafe
+   REAL(KIND=JPRB), INTENT(IN) :: PRoundoff, PFacMin, PFacMax, PFacRej, PFacSafe
 !~~~> Output: Error indicator
    INTEGER(KIND=JPIM), INTENT(OUT) :: KERR
 ! ~~~~ Local variables
-   REAL(KIND=JPRD) :: ZYnew(NVAR), ZFcn0(NVAR), ZFcn(NVAR)
-   REAL(KIND=JPRD) :: ZK(NVAR*IROS_S), ZdFdT(NVAR)
+   REAL(KIND=JPRB) :: ZYnew(NVAR), ZFcn0(NVAR), ZFcn(NVAR)
+   REAL(KIND=JPRB) :: ZK(NVAR*IROS_S), ZdFdT(NVAR)
 #ifdef FULL_ALGEBRA    
-   REAL(KIND=JPRD) :: ZJac0(NVAR,NVAR), ZGhimj(NVAR,NVAR)
+   REAL(KIND=JPRB) :: ZJac0(NVAR,NVAR), ZGhimj(NVAR,NVAR)
 #else
-   REAL(KIND=JPRD) :: ZJac0(LU_NONZERO), ZGhimj(LU_NONZERO)
+   REAL(KIND=JPRB) :: ZJac0(LU_NONZERO), ZGhimj(LU_NONZERO)
 #endif
-   REAL(KIND=JPRD) :: ZH, ZHnew, ZHC, ZHG, ZFac, ZTau
-   REAL(KIND=JPRD) :: ZErr, ZYerr(NVAR)
+   REAL(KIND=JPRB) :: ZH, ZHnew, ZHC, ZHG, ZFac, ZTau
+   REAL(KIND=JPRB) :: ZErr, ZYerr(NVAR)
    INTEGER(KIND=JPIM) :: KPIVOT(NVAR), K_Direction, ioffset, j, istage
    LOGICAL :: LL_RejectLastH, LL_RejectMoreH, LL_Singular
 !~~~>  Local parameters
-   REAL(KIND=JPRD), PARAMETER :: ZERO = 0.0_JPRD, Z_ONE  = 1.0_JPRD
-   REAL(KIND=JPRD), PARAMETER :: ZDeltaMin = 1.0E-5_JPRD
+   REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0_JPRB, Z_ONE  = 1.0_JPRB
+   REAL(KIND=JPRB), PARAMETER :: ZDeltaMin = 1.0E-5_JPRB
 !~~~>  Locally called functions
-!    REAL(KIND=JPRD) WLAMCH
+!    REAL(KIND=JPRB) WLAMCH
 !    EXTERNAL WLAMCH
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #ifdef WITH_COMPO_DR_HOOK
@@ -605,7 +605,7 @@ CONTAINS !  SUBROUTINES internal to Rosenbrock
    PT = PTSTART
    PRSTATUS(Nhexit) = ZERO
    ZH = MIN( MAX(ABS(PHmin),ABS(PHstart)) , ABS(PHmax) )
-   IF (ABS(ZH) <= 10.0_JPRD*PRoundoff) ZH = ZDeltaMin
+   IF (ABS(ZH) <= 10.0_JPRB*PRoundoff) ZH = ZDeltaMin
 
    IF (PTEND  >=  PTSTART) THEN
      K_Direction = +1
@@ -643,7 +643,7 @@ TimeLoop: DO WHILE ( (K_Direction > 0).AND.((PT-PTEND)+PRoundoff <= ZERO) &
 #endif
       RETURN
    ENDIF
-   IF ( ((PT+0.1_JPRD*ZH) == PT).OR.(ZH <= PRoundoff) ) THEN  ! Step size too small
+   IF ( ((PT+0.1_JPRB*ZH) == PT).OR.(ZH <= PRoundoff) ) THEN  ! Step size too small
       CALL ROS_ERRORMSG(-7,PT,ZH,KERR)
 #ifdef WITH_COMPO_DR_HOOK
       IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:TM5_KPP_ROS_INTEGRATOR',1,ZHOOK_HANDLE) 
@@ -696,8 +696,8 @@ Stage: DO istage = 1, IROS_S
          !slim CALL WCOPY(N,PY,1,Ynew,1)
          ZYnew(1:NVAR) = PY(1:NVAR)
          DO j = 1, istage-1
-           CALL TM5_KPP_WAXPY(NVAR,Z_ROS_A((istage-1)*(istage-2)/2+j), &
-&            ZK(NVAR*(j-1)+1),1,ZYnew,1)
+            CALL TM5_KPP_WAXPY(NVAR,Z_ROS_A((istage-1)*(istage-2)/2+j), &
+ &            ZK(NVAR*(j-1)+1),1,ZYnew,1)
          ENDDO
          ZTau = PT + Z_ROS_Alpha(istage)*K_Direction*ZH
          CALL TM5_KPP_FunTemplate(ZTau,ZYnew,ZFcn,PRCONST)
@@ -722,7 +722,7 @@ Stage: DO istage = 1, IROS_S
    !slim: CALL WCOPY(N,PY,1,Ynew,1)
    ZYnew(1:NVAR) = PY(1:NVAR)
    DO j=1,IROS_S
-         CALL TM5_KPP_WAXPY(NVAR,Z_ROS_M(j),ZK(NVAR*(j-1)+1),1,ZYnew,1)
+     CALL TM5_KPP_WAXPY(NVAR,Z_ROS_M(j),ZK(NVAR*(j-1)+1),1,ZYnew,1)
    ENDDO
 
 !~~~>  Compute the error estimation
@@ -784,24 +784,24 @@ Stage: DO istage = 1, IROS_S
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  REAL(KIND=JPRD) FUNCTION TM5_KPP_ros_ErrorNorm ( PY, PYnew, PYerr, &
+  REAL(KIND=JPRB) FUNCTION TM5_KPP_ros_ErrorNorm ( PY, PYnew, PYerr, &
 &                               PABSTOL, PRELTOL, LD_VectorTol )
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !~~~> Computes the "scaled norm" of the error vector Yerr
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  , ONLY : JPIM     ,JPRD
+   USE YOMHOOK,   ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,  ONLY : JPIM, JPRB
    USE TM5_KPP_Parameters, ONLY : NVAR
    IMPLICIT NONE
 
 ! Input arguments
-   REAL(KIND=JPRD), INTENT(IN) :: PY(NVAR), PYnew(NVAR), &
+   REAL(KIND=JPRB), INTENT(IN) :: PY(NVAR), PYnew(NVAR), &
 &          PYerr(NVAR), PABSTOL(NVAR), PRELTOL(NVAR)
    LOGICAL, INTENT(IN) ::  LD_VectorTol
 ! Local variables
-   REAL(KIND=JPRD) :: ZErr, ZScale, ZYmax
+   REAL(KIND=JPRB) :: ZErr, ZScale, ZYmax
    INTEGER(KIND=JPIM)  :: i
-   REAL(KIND=JPRD), PARAMETER :: ZERO = 0.0_JPRD
+   REAL(KIND=JPRB), PARAMETER :: ZERO = 0.0_JPRB
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #endif
@@ -822,7 +822,7 @@ Stage: DO istage = 1, IROS_S
    ENDDO
    ZErr  = SQRT(ZErr/NVAR)
 
-   TM5_KPP_ros_ErrorNorm = MAX(ZErr,1.0E-10_JPRD)
+   TM5_KPP_ros_ErrorNorm = MAX(ZErr,1.0E-10_JPRB)
 #ifdef WITH_COMPO_DR_HOOK
    IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:TM5_KPP_ROS_ERRORNORM',1,ZHOOK_HANDLE) 
 #endif
@@ -836,18 +836,18 @@ Stage: DO istage = 1, IROS_S
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !~~~> The time partial derivative of the function by finite differences
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  , ONLY : JPIM  ,JPRB   ,JPRD
+   USE YOMHOOK,    ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,   ONLY : JPIM, JPRB
    USE TM5_KPP_PARAMETERS, ONLY : NREACT,Nfun,NVAR
    IMPLICIT NONE
 
 !~~~> Input arguments
-   REAL(KIND=JPRD), INTENT(IN) :: PT, PRoundoff, PY(NVAR), PFcn0(NVAR),PRCONST(NREACT)
+   REAL(KIND=JPRB), INTENT(IN) :: PT, PRoundoff, PY(NVAR), PFcn0(NVAR),PRCONST(NREACT)
 !~~~> Output arguments
-   REAL(KIND=JPRD), INTENT(OUT) :: PdFdT(NVAR)
+   REAL(KIND=JPRB), INTENT(OUT) :: PdFdT(NVAR)
 !~~~> Local variables
-   REAL(KIND=JPRD) :: ZDelta
-   REAL(KIND=JPRD), PARAMETER :: Z_ONE = 1.0_JPRD, ZDeltaMin = 1.0E-6_JPRD
+   REAL(KIND=JPRB) :: ZDelta
+   REAL(KIND=JPRB), PARAMETER :: Z_ONE = 1.0_JPRB, ZDeltaMin = 1.0E-6_JPRB
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #endif
@@ -878,35 +878,35 @@ Stage: DO istage = 1, IROS_S
 !       -half the step size if LU decomposition fails and retry
 !       -exit after 5 consecutive fails
 ! --- --- --- --- --- --- --- --- --- --- --- --- ---
-   USE YOMHOOK,    ONLY : LHOOK,   DR_HOOK, JPHOOK
+   USE YOMHOOK,    ONLY : LHOOK, DR_HOOK, JPHOOK
    USE YOMLUN,     ONLY : NULOUT
-   USE PARKIND1,   ONLY : JPIM  , JPRB   ,JPRD
+   USE PARKIND1,   ONLY : JPIM, JPRB
    USE TM5_KPP_JACOBIANSP, ONLY : LU_DIAG
    USE TM5_KPP_PARAMETERS, ONLY : LU_NONZERO,NVAR, Nsng
    IMPLICIT NONE
 
 !~~~> Input arguments
 #ifdef FULL_ALGEBRA    
-   REAL(KIND=JPRD), INTENT(IN) ::  PJac0(NVAR,NVAR)
+   REAL(KIND=JPRB), INTENT(IN) ::  PJac0(NVAR,NVAR)
 #else
-   REAL(KIND=JPRD), INTENT(IN) ::  PJac0(LU_NONZERO)
+   REAL(KIND=JPRB), INTENT(IN) ::  PJac0(LU_NONZERO)
 #endif   
-   REAL(KIND=JPRD), INTENT(IN) ::  Pgam
+   REAL(KIND=JPRB), INTENT(IN) ::  Pgam
    INTEGER(KIND=JPIM), INTENT(IN) ::  K_Direction
 !~~~> Output arguments
 #ifdef FULL_ALGEBRA    
-   REAL(KIND=JPRD), INTENT(OUT) :: PGhimj(NVAR,NVAR)
+   REAL(KIND=JPRB), INTENT(OUT) :: PGhimj(NVAR,NVAR)
 #else
-   REAL(KIND=JPRD), INTENT(OUT) :: PGhimj(LU_NONZERO)
+   REAL(KIND=JPRB), INTENT(OUT) :: PGhimj(LU_NONZERO)
 #endif   
    LOGICAL, INTENT(OUT) ::  LD_Singular
    INTEGER(KIND=JPIM), INTENT(OUT) ::  KPIVOT(NVAR)
 !~~~> Inout arguments
-   REAL(KIND=JPRD), INTENT(INOUT) :: PH   ! step size is decreased when LU fails
+   REAL(KIND=JPRB), INTENT(INOUT) :: PH   ! step size is decreased when LU fails
 !~~~> Local variables
    INTEGER(KIND=JPIM)  :: i, ising, INconsecutive
-   REAL(KIND=JPRD) :: Zghinv
-   REAL(KIND=JPRD), PARAMETER :: Z_ONE  = 1.0_JPRD, ZHALF = 0.5_JPRD
+   REAL(KIND=JPRB) :: Zghinv
+   REAL(KIND=JPRB), PARAMETER :: Z_ONE  = 1.0_JPRB, ZHALF = 0.5_JPRB
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #endif
@@ -973,16 +973,15 @@ Stage: DO istage = 1, IROS_S
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !  Template for the LU decomposition
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   USE YOMHOOK,    ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1,   ONLY : JPIM     ,JPRB, JPRD
+   USE YOMHOOK,    ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,   ONLY : JPIM, JPRB
    USE TM5_KPP_PARAMETERS, ONLY : NVAR,LU_NONZERO , Ndec
    IMPLICIT NONE
 !~~~> Inout variables
 #ifdef FULL_ALGEBRA    
-   REAL(KIND=JPRD), INTENT(INOUT) :: PA(NVAR,NVAR)
+   REAL(KIND=JPRB), INTENT(INOUT) :: PA(NVAR,NVAR)
 #else   
-   REAL(KIND=JPRD), INTENT(INOUT) :: PA(LU_NONZERO)
-   REAL(KIND=JPRD)                :: ZA(LU_NONZERO)
+   REAL(KIND=JPRB), INTENT(INOUT) :: PA(LU_NONZERO)
 #endif
 !~~~> Output variables
    INTEGER(KIND=JPIM), INTENT(OUT) :: KPIVOT(NVAR), KSING
@@ -997,14 +996,7 @@ Stage: DO istage = 1, IROS_S
 #ifdef FULL_ALGEBRA    
    CALL  DGETRF( N, N, PA, N, KPIVOT, KSING )
 #else   
-   IF (JPRD==JPRD) THEN
-     CALL TM5_KPP_KppDecomp ( PA, KSING )
-   ELSE
-     ! Cast SP into DP variable..
-     ZA(:)=PA(:)
-     CALL TM5_KPP_KppDecomp ( ZA, KSING )
-     PA(:)=ZA(:)
-   ENDIF
+   CALL TM5_KPP_KppDecomp ( PA, KSING )
    KPIVOT(1) = 1
 #endif
    KSTATUS(Ndec) = KSTATUS(Ndec) + 1
@@ -1020,15 +1012,15 @@ Stage: DO istage = 1, IROS_S
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 !  Template for the forward/backward substitution (using pre-computed LU decomposition)
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM,    JPRB, JPRD
+   USE YOMHOOK,   ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,  ONLY : JPIM, JPRB
    USE TM5_KPP_PARAMETERS, ONLY : NVAR,LU_NONZERO, Nsol
    IMPLICIT NONE
 !~~~> Input variables
-   REAL(KIND=JPRD), INTENT(IN) :: PA(LU_NONZERO)
+   REAL(KIND=JPRB), INTENT(IN) :: PA(LU_NONZERO)
    INTEGER(KIND=JPIM), INTENT(IN) :: KPIVOT(NVAR)
 !~~~> InOut variables
-   REAL(KIND=JPRD), INTENT(INOUT) :: PB(NVAR)
+   REAL(KIND=JPRB), INTENT(INOUT) :: PB(NVAR)
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #endif
@@ -1058,10 +1050,10 @@ Stage: DO istage = 1, IROS_S
 ! --- AN L-STABLE METHOD, 2 stages, order 2
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM,  JPRB,  JPRD
+   USE YOMHOOK,   ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,  ONLY : JPIM, JPRB
    IMPLICIT NONE
-   REAL(KIND=JPRD) :: Zg
+   REAL(KIND=JPRB) :: Zg
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 #endif
@@ -1069,7 +1061,7 @@ Stage: DO istage = 1, IROS_S
 #ifdef WITH_COMPO_DR_HOOK
    IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:ROS2',0,ZHOOK_HANDLE) 
 #endif
-    Zg = 1.0_JPRD + 1.0_JPRD/SQRT(2.0_JPRD)
+    Zg = 1.0_JPRB + 1.0_JPRB/SQRT(2.0_JPRB)
     IrosMethod = IRS2
 !~~~> Name of the method
     CL_ROS_NAME = 'ROS-2'
@@ -1083,24 +1075,24 @@ Stage: DO istage = 1, IROS_S
 !       A(i,j) = Z_ROS_A( (i-1)*(i-2)/2 + j )
 !       C(i,j) = Z_ROS_C( (i-1)*(i-2)/2 + j )
 
-    Z_ROS_A(1) = (1.0_JPRD)/Zg
-    Z_ROS_C(1) = (-2.0_JPRD)/Zg
+    Z_ROS_A(1) = (1.0_JPRB)/Zg
+    Z_ROS_C(1) = (-2.0_JPRB)/Zg
 !~~~> Does the stage i require a new function evaluation (LL_ROS_NEWF(i)=TRUE)
 !   or does it re-use the function evaluation from stage i-1 (LL_ROS_NEWF(i)=FALSE)
     LL_ROS_NEWF(1) = .TRUE.
     LL_ROS_NEWF(2) = .TRUE.
 !~~~> M_i = Coefficients for new step solution
-    Z_ROS_M(1)= (3.0_JPRD)/(2.0_JPRD*Zg)
-    Z_ROS_M(2)= (1.0_JPRD)/(2.0_JPRD*Zg)
+    Z_ROS_M(1)= (3.0_JPRB)/(2.0_JPRB*Zg)
+    Z_ROS_M(2)= (1.0_JPRB)/(2.0_JPRB*Zg)
 ! E_i = Coefficients for error estimator
-    Z_ROS_E(1) = 1.0_JPRD/(2.0_JPRD*Zg)
-    Z_ROS_E(2) = 1.0_JPRD/(2.0_JPRD*Zg)
+    Z_ROS_E(1) = 1.0_JPRB/(2.0_JPRB*Zg)
+    Z_ROS_E(2) = 1.0_JPRB/(2.0_JPRB*Zg)
 !~~~> Z_ROS_ELO = estimator of local order - the minimum between the
 !    main and the embedded scheme orders plus one
-    Z_ROS_ELO = 2.0_JPRD
+    Z_ROS_ELO = 2.0_JPRB
 !~~~> Y_stage_i ~ Y( T + H*Alpha_i )
-    Z_ROS_Alpha(1) = 0.0_JPRD
-    Z_ROS_Alpha(2) = 1.0_JPRD
+    Z_ROS_Alpha(1) = 0.0_JPRB
+    Z_ROS_Alpha(2) = 1.0_JPRB
 !~~~> Gamma_i = \sum_j  gamma_{i,j}
     Z_ROS_GAMMA(1) = Zg
     Z_ROS_GAMMA(2) =-Zg
@@ -1117,8 +1109,8 @@ Stage: DO istage = 1, IROS_S
 ! --- AN L-STABLE METHOD, 3 stages, order 3, 2 function evaluations
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM,  JPRB,  JPRD
+   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1, ONLY : JPIM, JPRB
   IMPLICIT NONE
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
@@ -1141,37 +1133,37 @@ Stage: DO istage = 1, IROS_S
 !       A(i,j) = Z_ROS_A( (i-1)*(i-2)/2 + j )
 !       C(i,j) = Z_ROS_C( (i-1)*(i-2)/2 + j )
 
-   Z_ROS_A(1)= 1.0_JPRD
-   Z_ROS_A(2)= 1.0_JPRD
-   Z_ROS_A(3)= 0.0_JPRD
+   Z_ROS_A(1)= 1.0_JPRB
+   Z_ROS_A(2)= 1.0_JPRB
+   Z_ROS_A(3)= 0.0_JPRB
 
-   Z_ROS_C(1) = -0.10156171083877702091975600115545E+01_JPRD
-   Z_ROS_C(2) =  0.40759956452537699824805835358067E+01_JPRD
-   Z_ROS_C(3) =  0.92076794298330791242156818474003E+01_JPRD
+   Z_ROS_C(1) = -0.10156171083877702091975600115545E+01_JPRB
+   Z_ROS_C(2) =  0.40759956452537699824805835358067E+01_JPRB
+   Z_ROS_C(3) =  0.92076794298330791242156818474003E+01_JPRB
 !~~~> Does the stage i require a new function evaluation (LL_ROS_NEWF(i)=TRUE)
 !   or does it re-use the function evaluation from stage i-1 (LL_ROS_NEWF(i)=FALSE)
    LL_ROS_NEWF(1) = .TRUE.
    LL_ROS_NEWF(2) = .TRUE.
    LL_ROS_NEWF(3) = .FALSE.
 !~~~> M_i = Coefficients for new step solution
-   Z_ROS_M(1) =  0.1E+01_JPRD
-   Z_ROS_M(2) =  0.61697947043828245592553615689730E+01_JPRD
-   Z_ROS_M(3) = -0.42772256543218573326238373806514_JPRD
+   Z_ROS_M(1) =  0.1E+01_JPRB
+   Z_ROS_M(2) =  0.61697947043828245592553615689730E+01_JPRB
+   Z_ROS_M(3) = -0.42772256543218573326238373806514_JPRB
 ! E_i = Coefficients for error estimator
-   Z_ROS_E(1) =  0.5_JPRD
-   Z_ROS_E(2) = -0.29079558716805469821718236208017E+01_JPRD
-   Z_ROS_E(3) =  0.22354069897811569627360909276199_JPRD
+   Z_ROS_E(1) =  0.5_JPRB
+   Z_ROS_E(2) = -0.29079558716805469821718236208017E+01_JPRB
+   Z_ROS_E(3) =  0.22354069897811569627360909276199_JPRB
 !~~~> Z_ROS_ELO = estimator of local order - the minimum between the
 !    main and the embedded scheme orders plus 1
-   Z_ROS_ELO = 3.0_JPRD
+   Z_ROS_ELO = 3.0_JPRB
 !~~~> Y_stage_i ~ Y( T + H*Alpha_i )
-   Z_ROS_Alpha(1)= 0.0_JPRD
-   Z_ROS_Alpha(2)= 0.43586652150845899941601945119356_JPRD
-   Z_ROS_Alpha(3)= 0.43586652150845899941601945119356_JPRD
+   Z_ROS_Alpha(1)= 0.0_JPRB
+   Z_ROS_Alpha(2)= 0.43586652150845899941601945119356_JPRB
+   Z_ROS_Alpha(3)= 0.43586652150845899941601945119356_JPRB
 !~~~> Gamma_i = \sum_j  gamma_{i,j}
-   Z_ROS_GAMMA(1)= 0.43586652150845899941601945119356_JPRD
-   Z_ROS_GAMMA(2)= 0.24291996454816804366592249683314_JPRD
-   Z_ROS_GAMMA(3)= 0.21851380027664058511513169485832E+01_JPRD
+   Z_ROS_GAMMA(1)= 0.43586652150845899941601945119356_JPRB
+   Z_ROS_GAMMA(2)= 0.24291996454816804366592249683314_JPRB
+   Z_ROS_GAMMA(3)= 0.21851380027664058511513169485832E+01_JPRB
 
 #ifdef WITH_COMPO_DR_HOOK
    IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:ROS3',1,ZHOOK_HANDLE) 
@@ -1193,8 +1185,8 @@ Stage: DO istage = 1, IROS_S
 !      SPRINGER-VERLAG (1990)
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM, JPRB,   JPRD
+   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1, ONLY : JPIM, JPRB
    IMPLICIT NONE
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
@@ -1216,19 +1208,19 @@ Stage: DO istage = 1, IROS_S
 !       A(i,j) = Z_ROS_A( (i-1)*(i-2)/2 + j )
 !       C(i,j) = Z_ROS_C( (i-1)*(i-2)/2 + j )
 
-   Z_ROS_A(1) = 0.2000000000000000E+01_JPRD
-   Z_ROS_A(2) = 0.1867943637803922E+01_JPRD
-   Z_ROS_A(3) = 0.2344449711399156_JPRD
+   Z_ROS_A(1) = 0.2000000000000000E+01_JPRB
+   Z_ROS_A(2) = 0.1867943637803922E+01_JPRB
+   Z_ROS_A(3) = 0.2344449711399156_JPRB
    Z_ROS_A(4) = Z_ROS_A(2)
    Z_ROS_A(5) = Z_ROS_A(3)
-   Z_ROS_A(6) = 0.0_JPRD
+   Z_ROS_A(6) = 0.0_JPRB
 
-   Z_ROS_C(1) =-0.7137615036412310E+01_JPRD
-   Z_ROS_C(2) = 0.2580708087951457E+01_JPRD
-   Z_ROS_C(3) = 0.6515950076447975_JPRD
-   Z_ROS_C(4) =-0.2137148994382534E+01_JPRD
-   Z_ROS_C(5) =-0.3214669691237626_JPRD
-   Z_ROS_C(6) =-0.6949742501781779_JPRD
+   Z_ROS_C(1) =-0.7137615036412310E+01_JPRB
+   Z_ROS_C(2) = 0.2580708087951457E+01_JPRB
+   Z_ROS_C(3) = 0.6515950076447975_JPRB
+   Z_ROS_C(4) =-0.2137148994382534E+01_JPRB
+   Z_ROS_C(5) =-0.3214669691237626_JPRB
+   Z_ROS_C(6) =-0.6949742501781779_JPRB
 !~~~> Does the stage i require a new function evaluation (LL_ROS_NEWF(i)=TRUE)
 !   or does it re-use the function evaluation from stage i-1 (LL_ROS_NEWF(i)=FALSE)
    LL_ROS_NEWF(1)  = .TRUE.
@@ -1236,28 +1228,28 @@ Stage: DO istage = 1, IROS_S
    LL_ROS_NEWF(3)  = .TRUE.
    LL_ROS_NEWF(4)  = .FALSE.
 !~~~> M_i = Coefficients for new step solution
-   Z_ROS_M(1) = 0.2255570073418735E+01_JPRD
-   Z_ROS_M(2) = 0.2870493262186792_JPRD
-   Z_ROS_M(3) = 0.4353179431840180_JPRD
-   Z_ROS_M(4) = 0.1093502252409163E+01_JPRD
+   Z_ROS_M(1) = 0.2255570073418735E+01_JPRB
+   Z_ROS_M(2) = 0.2870493262186792_JPRB
+   Z_ROS_M(3) = 0.4353179431840180_JPRB
+   Z_ROS_M(4) = 0.1093502252409163E+01_JPRB
 !~~~> E_i  = Coefficients for error estimator
-   Z_ROS_E(1) =-0.2815431932141155_JPRD
-   Z_ROS_E(2) =-0.7276199124938920E-01_JPRD
-   Z_ROS_E(3) =-0.1082196201495311_JPRD
-   Z_ROS_E(4) =-0.1093502252409163E+01_JPRD
+   Z_ROS_E(1) =-0.2815431932141155_JPRB
+   Z_ROS_E(2) =-0.7276199124938920E-01_JPRB
+   Z_ROS_E(3) =-0.1082196201495311_JPRB
+   Z_ROS_E(4) =-0.1093502252409163E+01_JPRB
 !~~~> Z_ROS_ELO  = estimator of local order - the minimum between the
 !    main and the embedded scheme orders plus 1
-   Z_ROS_ELO  = 4.0_JPRD
+   Z_ROS_ELO  = 4.0_JPRB
 !~~~> Y_stage_i ~ Y( T + H*Alpha_i )
-   Z_ROS_Alpha(1) = 0.0_JPRD
-   Z_ROS_Alpha(2) = 0.1145640000000000E+01_JPRD
-   Z_ROS_Alpha(3) = 0.6552168638155900_JPRD
+   Z_ROS_Alpha(1) = 0.0_JPRB
+   Z_ROS_Alpha(2) = 0.1145640000000000E+01_JPRB
+   Z_ROS_Alpha(3) = 0.6552168638155900_JPRB
    Z_ROS_Alpha(4) = Z_ROS_Alpha(3)
 !~~~> Gamma_i = \sum_j  gamma_{i,j}
-   Z_ROS_GAMMA(1) = 0.5728200000000000_JPRD
-   Z_ROS_GAMMA(2) =-0.1769193891319233E+01_JPRD
-   Z_ROS_GAMMA(3) = 0.7592633437920482_JPRD
-   Z_ROS_GAMMA(4) =-0.1049021087100450_JPRD
+   Z_ROS_GAMMA(1) = 0.5728200000000000_JPRB
+   Z_ROS_GAMMA(2) =-0.1769193891319233E+01_JPRB
+   Z_ROS_GAMMA(3) = 0.7592633437920482_JPRB
+   Z_ROS_GAMMA(4) =-0.1049021087100450_JPRB
 #ifdef WITH_COMPO_DR_HOOK
    IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:ROS4',1,ZHOOK_HANDLE) 
 #endif
@@ -1270,8 +1262,8 @@ Stage: DO istage = 1, IROS_S
 ! --- A STIFFLY-STABLE METHOD, 4 stages, order 3
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM, JPRB,   JPRD
+   USE YOMHOOK,  ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1, ONLY : JPIM, JPRB
    IMPLICIT NONE
 
 #ifdef WITH_COMPO_DR_HOOK
@@ -1294,19 +1286,19 @@ Stage: DO istage = 1, IROS_S
 !       A(i,j) = Z_ROS_A( (i-1)*(i-2)/2 + j )
 !       C(i,j) = Z_ROS_C( (i-1)*(i-2)/2 + j )
 
-   Z_ROS_A(1) = 0.0_JPRD
-   Z_ROS_A(2) = 2.0_JPRD
-   Z_ROS_A(3) = 0.0_JPRD
-   Z_ROS_A(4) = 2.0_JPRD
-   Z_ROS_A(5) = 0.0_JPRD
-   Z_ROS_A(6) = 1.0_JPRD
+   Z_ROS_A(1) = 0.0_JPRB
+   Z_ROS_A(2) = 2.0_JPRB
+   Z_ROS_A(3) = 0.0_JPRB
+   Z_ROS_A(4) = 2.0_JPRB
+   Z_ROS_A(5) = 0.0_JPRB
+   Z_ROS_A(6) = 1.0_JPRB
 
-   Z_ROS_C(1) = 4.0_JPRD
-   Z_ROS_C(2) = 1.0_JPRD
-   Z_ROS_C(3) =-1.0_JPRD
-   Z_ROS_C(4) = 1.0_JPRD
-   Z_ROS_C(5) =-1.0_JPRD
-   Z_ROS_C(6) =-(8.0_JPRD/3.0_JPRD)
+   Z_ROS_C(1) = 4.0_JPRB
+   Z_ROS_C(2) = 1.0_JPRB
+   Z_ROS_C(3) =-1.0_JPRB
+   Z_ROS_C(4) = 1.0_JPRB
+   Z_ROS_C(5) =-1.0_JPRB
+   Z_ROS_C(6) =-(8.0_JPRB/3.0_JPRB)
 
 !~~~> Does the stage i require a new function evaluation (LL_ROS_NEWF(i)=TRUE)
 !   or does it re-use the function evaluation from stage i-1 (LL_ROS_NEWF(i)=FALSE)
@@ -1315,28 +1307,28 @@ Stage: DO istage = 1, IROS_S
    LL_ROS_NEWF(3)  = .TRUE.
    LL_ROS_NEWF(4)  = .TRUE.
 !~~~> M_i = Coefficients for new step solution
-   Z_ROS_M(1) = 2.0_JPRD
-   Z_ROS_M(2) = 0.0_JPRD
-   Z_ROS_M(3) = 1.0_JPRD
-   Z_ROS_M(4) = 1.0_JPRD
+   Z_ROS_M(1) = 2.0_JPRB
+   Z_ROS_M(2) = 0.0_JPRB
+   Z_ROS_M(3) = 1.0_JPRB
+   Z_ROS_M(4) = 1.0_JPRB
 !~~~> E_i  = Coefficients for error estimator
-   Z_ROS_E(1) = 0.0_JPRD
-   Z_ROS_E(2) = 0.0_JPRD
-   Z_ROS_E(3) = 0.0_JPRD
-   Z_ROS_E(4) = 1.0_JPRD
+   Z_ROS_E(1) = 0.0_JPRB
+   Z_ROS_E(2) = 0.0_JPRB
+   Z_ROS_E(3) = 0.0_JPRB
+   Z_ROS_E(4) = 1.0_JPRB
 !~~~> Z_ROS_ELO  = estimator of local order - the minimum between the
 !    main and the embedded scheme orders plus 1
-   Z_ROS_ELO  = 3.0_JPRD
+   Z_ROS_ELO  = 3.0_JPRB
 !~~~> Y_stage_i ~ Y( T + H*Alpha_i )
-   Z_ROS_Alpha(1) = 0.0_JPRD
-   Z_ROS_Alpha(2) = 0.0_JPRD
-   Z_ROS_Alpha(3) = 1.0_JPRD
-   Z_ROS_Alpha(4) = 1.0_JPRD
+   Z_ROS_Alpha(1) = 0.0_JPRB
+   Z_ROS_Alpha(2) = 0.0_JPRB
+   Z_ROS_Alpha(3) = 1.0_JPRB
+   Z_ROS_Alpha(4) = 1.0_JPRB
 !~~~> Gamma_i = \sum_j  gamma_{i,j}
-   Z_ROS_GAMMA(1) = 0.5_JPRD
-   Z_ROS_GAMMA(2) = 1.5_JPRD
-   Z_ROS_GAMMA(3) = 0.0_JPRD
-   Z_ROS_GAMMA(4) = 0.0_JPRD
+   Z_ROS_GAMMA(1) = 0.5_JPRB
+   Z_ROS_GAMMA(2) = 1.5_JPRB
+   Z_ROS_GAMMA(3) = 0.0_JPRB
+   Z_ROS_GAMMA(4) = 0.0_JPRB
 
 #ifdef WITH_COMPO_DR_HOOK
    IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:RODAS3',1,ZHOOK_HANDLE) 
@@ -1354,8 +1346,8 @@ Stage: DO istage = 1, IROS_S
 !      SPRINGER-VERLAG (1996)
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  ,ONLY : JPIM, JPRB,   JPRD
+   USE YOMHOOK,   ONLY : LHOOK, DR_HOOK, JPHOOK
+   USE PARKIND1,  ONLY : JPIM, JPRB
    IMPLICIT NONE
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
@@ -1371,20 +1363,20 @@ Stage: DO istage = 1, IROS_S
     IROS_S = 6
 
 !~~~> Y_stage_i ~ Y( T + H*Alpha_i )
-    Z_ROS_Alpha(1) = 0.000_JPRD
-    Z_ROS_Alpha(2) = 0.386_JPRD
-    Z_ROS_Alpha(3) = 0.210_JPRD
-    Z_ROS_Alpha(4) = 0.630_JPRD
-    Z_ROS_Alpha(5) = 1.000_JPRD
-    Z_ROS_Alpha(6) = 1.000_JPRD
+    Z_ROS_Alpha(1) = 0.000_JPRB
+    Z_ROS_Alpha(2) = 0.386_JPRB
+    Z_ROS_Alpha(3) = 0.210_JPRB
+    Z_ROS_Alpha(4) = 0.630_JPRB
+    Z_ROS_Alpha(5) = 1.000_JPRB
+    Z_ROS_Alpha(6) = 1.000_JPRB
 
 !~~~> Gamma_i = \sum_j  gamma_{i,j}
-    Z_ROS_GAMMA(1) = 0.2500000000000000_JPRD
-    Z_ROS_GAMMA(2) =-0.1043000000000000_JPRD
-    Z_ROS_GAMMA(3) = 0.1035000000000000_JPRD
-    Z_ROS_GAMMA(4) =-0.3620000000000023E-01_JPRD
-    Z_ROS_GAMMA(5) = 0.0_JPRD
-    Z_ROS_GAMMA(6) = 0.0_JPRD
+    Z_ROS_GAMMA(1) = 0.2500000000000000_JPRB
+    Z_ROS_GAMMA(2) =-0.1043000000000000_JPRB
+    Z_ROS_GAMMA(3) = 0.1035000000000000_JPRB
+    Z_ROS_GAMMA(4) =-0.3620000000000023E-01_JPRB
+    Z_ROS_GAMMA(5) = 0.0_JPRB
+    Z_ROS_GAMMA(6) = 0.0_JPRB
 
 !~~~> The coefficient matrices A and C are strictly lower triangular.
 !   The lower triangular (subdiagonal) elements are stored in row-wise order:
@@ -1392,53 +1384,53 @@ Stage: DO istage = 1, IROS_S
 !   The general mapping formula is:  A(i,j) = Z_ROS_A( (i-1)*(i-2)/2 + j )
 !                  C(i,j) = Z_ROS_C( (i-1)*(i-2)/2 + j )
 
-    Z_ROS_A(1) = 0.1544000000000000E+01_JPRD
-    Z_ROS_A(2) = 0.9466785280815826_JPRD
-    Z_ROS_A(3) = 0.2557011698983284_JPRD
-    Z_ROS_A(4) = 0.3314825187068521E+01_JPRD
-    Z_ROS_A(5) = 0.2896124015972201E+01_JPRD
-    Z_ROS_A(6) = 0.9986419139977817_JPRD
-    Z_ROS_A(7) = 0.1221224509226641E+01_JPRD
-    Z_ROS_A(8) = 0.6019134481288629E+01_JPRD
-    Z_ROS_A(9) = 0.1253708332932087E+02_JPRD
-    Z_ROS_A(10) =-0.6878860361058950_JPRD
+    Z_ROS_A(1) = 0.1544000000000000E+01_JPRB
+    Z_ROS_A(2) = 0.9466785280815826_JPRB
+    Z_ROS_A(3) = 0.2557011698983284_JPRB
+    Z_ROS_A(4) = 0.3314825187068521E+01_JPRB
+    Z_ROS_A(5) = 0.2896124015972201E+01_JPRB
+    Z_ROS_A(6) = 0.9986419139977817_JPRB
+    Z_ROS_A(7) = 0.1221224509226641E+01_JPRB
+    Z_ROS_A(8) = 0.6019134481288629E+01_JPRB
+    Z_ROS_A(9) = 0.1253708332932087E+02_JPRB
+    Z_ROS_A(10) =-0.6878860361058950_JPRB
     Z_ROS_A(11) = Z_ROS_A(7)
     Z_ROS_A(12) = Z_ROS_A(8)
     Z_ROS_A(13) = Z_ROS_A(9)
     Z_ROS_A(14) = Z_ROS_A(10)
-    Z_ROS_A(15) = 1.0_JPRD
+    Z_ROS_A(15) = 1.0_JPRB
 
-    Z_ROS_C(1) =-0.5668800000000000E+01_JPRD
-    Z_ROS_C(2) =-0.2430093356833875E+01_JPRD
-    Z_ROS_C(3) =-0.2063599157091915_JPRD
-    Z_ROS_C(4) =-0.1073529058151375_JPRD
-    Z_ROS_C(5) =-0.9594562251023355E+01_JPRD
-    Z_ROS_C(6) =-0.2047028614809616E+02_JPRD
-    Z_ROS_C(7) = 0.7496443313967647E+01_JPRD
-    Z_ROS_C(8) =-0.1024680431464352E+02_JPRD
-    Z_ROS_C(9) =-0.3399990352819905E+02_JPRD
-    Z_ROS_C(10) = 0.1170890893206160E+02_JPRD
-    Z_ROS_C(11) = 0.8083246795921522E+01_JPRD
-    Z_ROS_C(12) =-0.7981132988064893E+01_JPRD
-    Z_ROS_C(13) =-0.3152159432874371E+02_JPRD
-    Z_ROS_C(14) = 0.1631930543123136E+02_JPRD
-    Z_ROS_C(15) =-0.6058818238834054E+01_JPRD
+    Z_ROS_C(1) =-0.5668800000000000E+01_JPRB
+    Z_ROS_C(2) =-0.2430093356833875E+01_JPRB
+    Z_ROS_C(3) =-0.2063599157091915_JPRB
+    Z_ROS_C(4) =-0.1073529058151375_JPRB
+    Z_ROS_C(5) =-0.9594562251023355E+01_JPRB
+    Z_ROS_C(6) =-0.2047028614809616E+02_JPRB
+    Z_ROS_C(7) = 0.7496443313967647E+01_JPRB
+    Z_ROS_C(8) =-0.1024680431464352E+02_JPRB
+    Z_ROS_C(9) =-0.3399990352819905E+02_JPRB
+    Z_ROS_C(10) = 0.1170890893206160E+02_JPRB
+    Z_ROS_C(11) = 0.8083246795921522E+01_JPRB
+    Z_ROS_C(12) =-0.7981132988064893E+01_JPRB
+    Z_ROS_C(13) =-0.3152159432874371E+02_JPRB
+    Z_ROS_C(14) = 0.1631930543123136E+02_JPRB
+    Z_ROS_C(15) =-0.6058818238834054E+01_JPRB
 
 !~~~> M_i = Coefficients for new step solution
     Z_ROS_M(1) = Z_ROS_A(7)
     Z_ROS_M(2) = Z_ROS_A(8)
     Z_ROS_M(3) = Z_ROS_A(9)
     Z_ROS_M(4) = Z_ROS_A(10)
-    Z_ROS_M(5) = 1.0_JPRD
-    Z_ROS_M(6) = 1.0_JPRD
+    Z_ROS_M(5) = 1.0_JPRB
+    Z_ROS_M(6) = 1.0_JPRB
 
 !~~~> E_i  = Coefficients for error estimator
-    Z_ROS_E(1) = 0.0_JPRD
-    Z_ROS_E(2) = 0.0_JPRD
-    Z_ROS_E(3) = 0.0_JPRD
-    Z_ROS_E(4) = 0.0_JPRD
-    Z_ROS_E(5) = 0.0_JPRD
-    Z_ROS_E(6) = 1.0_JPRD
+    Z_ROS_E(1) = 0.0_JPRB
+    Z_ROS_E(2) = 0.0_JPRB
+    Z_ROS_E(3) = 0.0_JPRB
+    Z_ROS_E(4) = 0.0_JPRB
+    Z_ROS_E(5) = 0.0_JPRB
+    Z_ROS_E(6) = 1.0_JPRB
 
 !~~~> Does the stage i require a new function evaluation (LL_ROS_NEWF(i)=TRUE)
 !   or does it re-use the function evaluation from stage i-1 (LL_ROS_NEWF(i)=FALSE)
@@ -1451,7 +1443,7 @@ Stage: DO istage = 1, IROS_S
 
 !~~~> Z_ROS_ELO  = estimator of local order - the minimum between the
 !        main and the embedded scheme orders plus 1
-    Z_ROS_ELO = 4.0_JPRD
+    Z_ROS_ELO = 4.0_JPRB
 #ifdef WITH_COMPO_DR_HOOK
    IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:RODAS4',1,ZHOOK_HANDLE) 
 #endif
@@ -1465,8 +1457,8 @@ SUBROUTINE TM5_KPP_FunTemplate( PT, PY, PYdot,PRCONST )
 !  Template for the ODE function call.
 !  Updates the rate coefficients (and possibly the fixed species) at each call
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- USE YOMHOOK,   ONLY : LHOOK,   DR_HOOK, JPHOOK
- USE PARKIND1,  ONLY : JPIM, JPRB,   JPRD
+ USE YOMHOOK,   ONLY : LHOOK, DR_HOOK, JPHOOK
+ USE PARKIND1,  ONLY : JPIM, JPRB
  USE TM5_KPP_Parameters, ONLY: NVAR,NREACT
  USE TM5_KPP_Global, ONLY: FIX
 
@@ -1475,11 +1467,11 @@ SUBROUTINE TM5_KPP_FunTemplate( PT, PY, PYdot,PRCONST )
 ! USE TM5_KPP_Function, ONLY: Fun
 ! USE TM5_KPP_Rates, ONLY: Update_SUN, Update_RCONST
 !~~~> Input variables
-   REAL(KIND=JPRD),INTENT(IN) :: PT, PY(NVAR),PRCONST(NREACT)
+   REAL(KIND=JPRB),INTENT(IN) :: PT, PY(NVAR),PRCONST(NREACT)
 !~~~> Output variables
-   REAL(KIND=JPRD), INTENT(OUT) :: PYdot(NVAR)
+   REAL(KIND=JPRB), INTENT(OUT) :: PYdot(NVAR)
 !~~~> Local variables
-!   REAL(KIND=JPRD) :: ZTold
+!   REAL(KIND=JPRB) :: ZTold
 
 #ifdef WITH_COMPO_DR_HOOK
    REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
@@ -1510,8 +1502,8 @@ SUBROUTINE TM5_KPP_JacTemplate( PT, PY, PJcb, PRCONST )
 !  Template for the ODE Jacobian call.
 !  Updates the rate coefficients (and possibly the fixed species) at each call
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-   USE PARKIND1  , ONLY : JPIM     ,JPRD, JPRB
+ USE YOMHOOK,    ONLY : LHOOK, DR_HOOK, JPHOOK
+ USE PARKIND1,   ONLY : JPIM, JPRB
  USE TM5_KPP_Parameters, ONLY: NVAR, NREACT, LU_NONZERO
  USE TM5_KPP_Global, ONLY: FIX
  USE TM5_KPP_JacobianSP, ONLY: LU_IROW, LU_ICOL
@@ -1520,13 +1512,13 @@ SUBROUTINE TM5_KPP_JacTemplate( PT, PY, PJcb, PRCONST )
 ! USE TM5_KPP_Rates, ONLY: Update_SUN, Update_RCONST
    IMPLICIT NONE
 !~~~> Input variables
-    REAL(KIND=JPRD), INTENT(IN) :: PT, PY(NVAR),PRCONST(NREACT)
+    REAL(KIND=JPRB), INTENT(IN) :: PT, PY(NVAR),PRCONST(NREACT)
 !~~~> Output variables
 #ifdef FULL_ALGEBRA    
-    REAL(kind=JPRD)             :: ZJV(LU_NONZERO)
-    REAL(kind=JPRD),INTENT(OUT) ::  PJcb(NVAR,NVAR)
+    REAL(kind=JPRB)             :: ZJV(LU_NONZERO)
+    REAL(kind=JPRB),INTENT(OUT) ::  PJcb(NVAR,NVAR)
 #else
-    REAL(KIND=JPRD), INTENT(OUT) :: PJcb(LU_NONZERO)
+    REAL(KIND=JPRB), INTENT(OUT) :: PJcb(LU_NONZERO)
 #endif   
 !~~~> Local variables
 #ifdef FULL_ALGEBRA    
@@ -1549,7 +1541,7 @@ IF (LHOOK) CALL DR_HOOK('TM5_KPP_ROSENBROCK:TM5_KPP_JACTEMPLATE',0,ZHOOK_HANDLE)
     CALL TM5_KPP_Jacobian(PY, FIX, PRCONST, ZJV)
     DO j=1,NVAR
       DO i=1,NVAR
-         PJcb(i,j) = 0.0_JPRD
+         PJcb(i,j) = 0.0_JPRB
       ENDDO
     ENDDO
     DO i=1,LU_NONZERO

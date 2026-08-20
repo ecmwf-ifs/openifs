@@ -1,15 +1,16 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 1986- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUDTDQN &
- & (YDEPHLI, YDPHNC,   YDECUMF,  YDEPHY,&
+ & (YDTHF, YDCST, YDEPHLI, YDPHNC,   YDECUMF,  YDEPHY,&
  & KIDIA,    KFDIA,    KLON,     KLEV,&
- & KTOPM2,   KTYPE,    KCTOP,    KCBOT,    KDTOP,    LDCUM,    LDDRAF,   LSCVFLAG, PTSPHY,&
+ & KTOPM2,   KTYPE,    KCTOP,    KCBOT,    KDTOP,  LDTDKMF,  LDCUM,    LDDRAF,   LSCVFLAG, PTSPHY,&
  & PAPH,     PAP  ,    PGEOH,    PGEO,&
  & PTEN,     PTENH,    PQEN,     PQENH,    PQSEN,&
  & PLGLAC,   PLUDE,    PLUDELI,  PSNDE,    PMFU,     PMFD,&
@@ -94,16 +95,14 @@ SUBROUTINE CUDTDQN &
 !      05-10-13       : implicit solution P.BECHTOLD
 !      10-11-17       : allow to substract subbsidence (dyn) P. Bechtold
 !      28-12-21       : correction for enthalpy conservation ice phase P. Bechtold
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !---------------------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG       ,RCPD     ,RLVTT    ,RLSTT    ,RLMLT    ,RTT
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                    R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
- &                    RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
- &                    RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOMCST   , ONLY : TCST
+USE YOETHF   , ONLY : TTHF  
 USE YOECUMF  , ONLY : TECUMF
 USE YOEPHY   , ONLY : TEPHY
 USE YOEPHLI  , ONLY : TEPHLI
@@ -111,10 +110,12 @@ USE YOPHNC   , ONLY : TPHNC
 
 IMPLICIT NONE
 
-TYPE(TECUMF)      ,INTENT(INOUT) :: YDECUMF
-TYPE(TEPHLI)      ,INTENT(INOUT) :: YDEPHLI
-TYPE(TEPHY)       ,INTENT(INOUT) :: YDEPHY
-TYPE(TPHNC)       ,INTENT(INOUT) :: YDPHNC
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
+TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
+TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
+TYPE(TEPHY)       ,INTENT(IN)    :: YDEPHY
+TYPE(TPHNC)       ,INTENT(IN)    :: YDPHNC
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA 
@@ -126,6 +127,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KCBOT(KLON)
 INTEGER(KIND=JPIM),INTENT(IN)    :: KDTOP(KLON) 
 LOGICAL           ,INTENT(INOUT) :: LDCUM(KLON)
 LOGICAL           ,INTENT(IN)    :: LDDRAF(KLON) 
+LOGICAL           ,INTENT(IN)    :: LDTDKMF
 LOGICAL           ,INTENT(IN)    :: LSCVFLAG(KLON) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1) 
@@ -165,9 +167,9 @@ REAL(KIND=JPRB)    :: ZALV(KLON,KLEV), ZALV2(KLON,KLEV), ZINT(KLON), ZINT2(KLON)
 REAL(KIND=JPRB) :: ZMFUS(KLON,KLEV), ZMFUQ(KLON,KLEV),&
                   &ZMFDS(KLON,KLEV), ZMFDQ(KLON,KLEV), ZADVW(KLON)
 
-REAL(KIND=JPRB),   DIMENSION(:,:), ALLOCATABLE :: ZDTDT, ZDQDT, ZDP
-REAL(KIND=JPRB),   DIMENSION(:,:), ALLOCATABLE :: ZB,    ZR1,   ZR2
-LOGICAL,           DIMENSION(:,:), ALLOCATABLE :: LLCUMBAS
+REAL(KIND=JPRB),   DIMENSION(KLON,KLEV) :: ZDTDT, ZDQDT, ZDP
+REAL(KIND=JPRB),   DIMENSION(KLON,KLEV) :: ZB,    ZR1,   ZR2
+LOGICAL,           DIMENSION(KLON,KLEV) :: LLCUMBAS
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 #include "cubidiag.intfb.h"
@@ -177,6 +179,8 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('CUDTDQN',0,ZHOOK_HANDLE)
 ASSOCIATE(RMFSOLTQ=>YDECUMF%RMFSOLTQ, RMFSOLRHS=>YDECUMF%RMFSOLRHS, &
  & LPHYLIN=>YDEPHLI%LPHYLIN, RLPTRC=>YDEPHLI%RLPTRC, &
+ & RCPD=>YDCST%RCPD, RG=>YDCST%RG, RLMLT=>YDCST%RLMLT, RLSTT=>YDCST%RLSTT, &
+ & RLVTT=>YDCST%RLVTT, &
  & LEPCLD=>YDEPHY%LEPCLD, LENCLD2=>YDPHNC%LENCLD2, RMFADVW=>YDECUMF%RMFADVW, &
  & LEPCLD2=>YDPHNC%LEPCLD2, RMFADVWDD=>YDECUMF%RMFADVWDD, &
  & LMFENTHCONS=>YDECUMF%LMFENTHCONS)
@@ -191,11 +195,6 @@ DO JL=KIDIA,KFDIA
   ZADVW(JL)=0.0_JPRB
   IF(KTYPE(JL)==1) ZADVW(JL)=RMFADVW
 ENDDO
-
-ALLOCATE(ZDTDT(KLON,KLEV))
-ALLOCATE(ZDQDT(KLON,KLEV))
-ALLOCATE(ZDP(KLON,KLEV))
-
 
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
@@ -318,19 +317,35 @@ DO JK=KTOPM2,KLEV
           ZALV(JL,JK)=ZOEALFA*RLVTT+(1.0_JPRB-ZOEALFA)*RLSTT
           ZALV2(JL,JK)=ZALV(JL,JK)
         ENDIF
-        ZDTDT(JL,JK)=ZDP(JL,JK)*ZORCPD*&
-         & (ZMFUS(JL,JK+1)-ZMFUS(JL,JK)+&
-         & ZMFDS(JL,JK+1)-ZMFDS(JL,JK)&
-         & +(RLMLT*(PLGLAC(JL,JK)-PDPMEL(JL,JK))&
-         & -ZALV(JL,JK)*(PMFUL(JL,JK+1)-PMFUL(JL,JK))+ZALV2(JL,JK)*PDMFUP(JL,JK))*(1.0_JPRB-ZINT(JL))&
-         & +RLVTT*(PLUDELI(JL,JK,1)+PSNDE(JL,JK,1)) &
-         & +RLSTT*(PLUDELI(JL,JK,2)+PSNDE(JL,JK,2)) )
+        IF (LDTDKMF) THEN
+          ZDTDT(JL,JK)=ZDP(JL,JK)*ZORCPD*&
+           & (ZMFUS(JL,JK+1)-ZMFUS(JL,JK)+&
+           & ZMFDS(JL,JK+1)-ZMFDS(JL,JK)&
+           & +RLMLT*PLGLAC(JL,JK)&
+           & -RLMLT*PDPMEL(JL,JK)&
+           & -ZALV(JL,JK)*(PMFUL(JL,JK+1)-PMFUL(JL,JK)-&
+           & PLUDE(JL,JK)-PDMFUP(JL,JK)))
 
-        ZDQDT(JL,JK)=ZDP(JL,JK)*&
-         & (ZMFUQ(JL,JK+1)-ZMFUQ(JL,JK)+&
-         & ZMFDQ(JL,JK+1)-ZMFDQ(JL,JK)+&
-         & PMFUL(JL,JK+1)-PMFUL(JL,JK)-&
-         & PLUDE(JL,JK)-PDMFUP(JL,JK)-PSNDE(JL,JK,1)-PSNDE(JL,JK,2))  
+          ZDQDT(JL,JK)=ZDP(JL,JK)*&
+           & (ZMFUQ(JL,JK+1)-ZMFUQ(JL,JK)+&
+           & ZMFDQ(JL,JK+1)-ZMFDQ(JL,JK)+&
+           & PMFUL(JL,JK+1)-PMFUL(JL,JK)-&
+           & PLUDE(JL,JK)-PDMFUP(JL,JK))  
+        ELSE
+          ZDTDT(JL,JK)=ZDP(JL,JK)*ZORCPD*&
+           & (ZMFUS(JL,JK+1)-ZMFUS(JL,JK)+&
+           & ZMFDS(JL,JK+1)-ZMFDS(JL,JK)&
+           & +(RLMLT*(PLGLAC(JL,JK)-PDPMEL(JL,JK))&
+           & -ZALV(JL,JK)*(PMFUL(JL,JK+1)-PMFUL(JL,JK))+ZALV2(JL,JK)*PDMFUP(JL,JK))*(1.0_JPRB-ZINT(JL))&
+           & +RLVTT*(PLUDELI(JL,JK,1)+PSNDE(JL,JK,1)) &
+           & +RLSTT*(PLUDELI(JL,JK,2)+PSNDE(JL,JK,2)) )
+
+          ZDQDT(JL,JK)=ZDP(JL,JK)*&
+           & (ZMFUQ(JL,JK+1)-ZMFUQ(JL,JK)+&
+           & ZMFDQ(JL,JK+1)-ZMFDQ(JL,JK)+&
+           & PMFUL(JL,JK+1)-PMFUL(JL,JK)-&
+           & PLUDE(JL,JK)-PDMFUP(JL,JK)-PSNDE(JL,JK,1)-PSNDE(JL,JK,2))  
+        ENDIF
       ENDIF
     ENDDO
 
@@ -382,10 +397,6 @@ ELSE
      ! ZDTDT and ZDQDT correspond to the RHS ("constants") of the equation
      ! The solution is in ZR1 and ZR2
 
-      ALLOCATE(ZB(KLON,KLEV))
-      ALLOCATE(ZR1(KLON,KLEV))
-      ALLOCATE(ZR2(KLON,KLEV))
-      ALLOCATE(LLCUMBAS(KLON,KLEV))
       LLCUMBAS(:,:)=.FALSE.
       ZB(:,:)=1.0_JPRB
       ZMFUS(:,:)=0.0_JPRB
@@ -405,11 +416,16 @@ ELSE
              ELSE
                ZB(JL,JK)=1.0_JPRB
              ENDIF
-             ZZP=RG*(PMFU(JL,JK)+RMFADVWDD*PMFD(JL,JK))/(PAP(JL,JK)-PAP(JL,IM))*PTSPHY*ZADVW(JL)
-             ZS=ZZP*(PTEN(JL,IM)-PTEN(JL,JK)+ZORCPD*(PGEO(JL,IM)-PGEO(JL,JK)) )
-             ZQ=ZZP*(PQEN(JL,IM)-PQEN(JL,JK))
-             ZDTDT(JL,JK) = (ZDTDT(JL,JK)+PTENT(JL,JK)*RMFSOLRHS)*PTSPHY+PTEN(JL,JK)-ZS
-             ZDQDT(JL,JK) = (ZDQDT(JL,JK)+PTENQ(JL,JK)*RMFSOLRHS)*PTSPHY+PQEN(JL,JK)-ZQ
+             IF (LDTDKMF) THEN
+               ZDTDT(JL,JK) = ZDTDT(JL,JK)*PTSPHY+PTEN(JL,JK)
+               ZDQDT(JL,JK) = ZDQDT(JL,JK)*PTSPHY+PQEN(JL,JK)
+             ELSE
+               ZZP=RG*(PMFU(JL,JK)+RMFADVWDD*PMFD(JL,JK))/(PAP(JL,JK)-PAP(JL,IM))*PTSPHY*ZADVW(JL)
+               ZS=ZZP*(PTEN(JL,IM)-PTEN(JL,JK)+ZORCPD*(PGEO(JL,IM)-PGEO(JL,JK)) )
+               ZQ=ZZP*(PQEN(JL,IM)-PQEN(JL,JK))
+               ZDTDT(JL,JK) = (ZDTDT(JL,JK)+PTENT(JL,JK)*RMFSOLRHS)*PTSPHY+PTEN(JL,JK)-ZS
+               ZDQDT(JL,JK) = (ZDQDT(JL,JK)+PTENQ(JL,JK)*RMFSOLRHS)*PTSPHY+PQEN(JL,JK)-ZQ
+             ENDIF  
            ENDIF
          ENDDO
       ENDDO
@@ -429,24 +445,20 @@ ELSE
       DO JK=KTOPM2,KLEV
          DO JL=KIDIA,KFDIA
            IF(LLCUMBAS(JL,JK)) THEN
-             PTENT(JL,JK)=PTENT(JL,JK)*(1.0_JPRB-RMFSOLRHS)+(ZR1(JL,JK)-PTEN(JL,JK))*ZTSPHY
-             PTENQ(JL,JK)=PTENQ(JL,JK)*(1.0_JPRB-RMFSOLRHS)+(ZR2(JL,JK)-PQEN(JL,JK))*ZTSPHY
+             IF (LDTDKMF) THEN
+               PTENT(JL,JK)=PTENT(JL,JK)+(ZR1(JL,JK)-PTEN(JL,JK))*ZTSPHY
+               PTENQ(JL,JK)=PTENQ(JL,JK)+(ZR2(JL,JK)-PQEN(JL,JK))*ZTSPHY
+             ELSE
+               PTENT(JL,JK)=PTENT(JL,JK)*(1.0_JPRB-RMFSOLRHS)+(ZR1(JL,JK)-PTEN(JL,JK))*ZTSPHY
+               PTENQ(JL,JK)=PTENQ(JL,JK)*(1.0_JPRB-RMFSOLRHS)+(ZR2(JL,JK)-PQEN(JL,JK))*ZTSPHY
+             ENDIF
              PENTH(JL,JK)=(ZR1(JL,JK)-PTEN(JL,JK))*ZTSPHY
            ENDIF
          ENDDO
       ENDDO
 
-      DEALLOCATE(LLCUMBAS)
-      DEALLOCATE(ZR2)
-      DEALLOCATE(ZR1)
-      DEALLOCATE(ZB)
-
 !----------------------------------------------------------------------
 ENDIF
-
-DEALLOCATE(ZDP)
-DEALLOCATE(ZDQDT)
-DEALLOCATE(ZDTDT)
 
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('CUDTDQN',1,ZHOOK_HANDLE)

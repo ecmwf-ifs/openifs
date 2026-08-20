@@ -1,10 +1,16 @@
 ! radiation_overlap.F90 - Module to compute cloud overlap quantities
 !
-! Copyright (C) 2014-2018 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-10-23  R. Hogan  Renamed single-character variables
@@ -276,7 +282,8 @@ contains
        &     cloud_fraction_threshold, cloud_cover, use_beta_overlap)
 
     use parkind1,     only : jprb
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,      only : lhook, dr_hook, jphook
+
     ! Number of levels and regions
     integer,  intent(in) :: nlev, nreg
 

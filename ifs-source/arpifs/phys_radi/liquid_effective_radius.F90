@@ -1,10 +1,12 @@
-! (C) Copyright 2015- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE LIQUID_EFFECTIVE_RADIUS &
      & (YDERAD,YDECLDP,YDSPP_CONFIG,YGFL,KIDIA, KFDIA, KLON, KLEV, &
      &  PPRESSURE, PTEMPERATURE, PCLOUD_FRAC, PQ_LIQ, PQ_RAIN, &
@@ -47,10 +49,10 @@ IMPLICIT NONE
 ! INPUT ARGUMENTS
 
 ! *** Array dimensions and ranges
-TYPE(TECLDP)      ,INTENT(INOUT):: YDECLDP
-TYPE(TERAD)       ,INTENT(INOUT):: YDERAD
-TYPE(TSPP_CONFIG) ,INTENT(IN)   :: YDSPP_CONFIG
-TYPE(TYPE_GFLD)   ,INTENT(INOUT):: YGFL
+TYPE(TECLDP)      ,INTENT(IN) :: YDECLDP
+TYPE(TERAD)       ,INTENT(IN) :: YDERAD
+TYPE(TSPP_CONFIG) ,INTENT(IN) :: YDSPP_CONFIG
+TYPE(TYPE_GFLD)   ,INTENT(IN) :: YGFL
 INTEGER(KIND=JPIM),INTENT(IN) :: KIDIA    ! Start column to process
 INTEGER(KIND=JPIM),INTENT(IN) :: KFDIA    ! End column to process
 INTEGER(KIND=JPIM),INTENT(IN) :: KLON     ! Number of columns
@@ -84,7 +86,6 @@ REAL(KIND=JPRB), PARAMETER :: PP_MAX_RE_UM = 30.0_JPRB
 
 ! LOCAL VARIABLES
 INTEGER(KIND=JPIM) :: IRADLP ! ID of effective radius scheme to use
-INTEGER(KIND=JPIM) :: IACTIVE_AEROSOL ! Number of active aerosol
 REAL(KIND=JPRB) :: ZCCN    ! CCN concentration (units?)
 
 REAL(KIND=JPRB) :: ZSPECTRAL_DISPERSION
@@ -114,11 +115,12 @@ IF (LHOOK) CALL DR_HOOK('LIQUID_EFFECTIVE_RADIUS',0,ZHOOK_HANDLE)
 
 ! -------------------------------------------------------------------
 
-! Reproduce logic from RADLSWR
-IACTIVE_AEROSOL = YGFL%NACTAERO
-IF (YGFL%NACTAERO == 0 .AND. YDERAD%NAERMACC == 1) IACTIVE_AEROSOL = YDERAD%NMCVAR
+! Liquid optical properties from namelist / suecrad.F90
 IRADLP = YDERAD%NRADLP
-IF (IACTIVE_AEROSOL >= 12 .AND. YDECLDP%NAERCLD > 0 ) IRADLP=3 
+! Or tie to prognostic scheme, noting that this is not implemented yet...
+IF ((YGFL%NACTAERO > 0 .OR. YDERAD%NAERMACC == 1) .AND. YDECLDP%NAERCLD > 0) THEN
+  IRADLP = 3
+ENDIF
 
 ! Do we apply SPP perturbations?
 IF (YDSPP_CONFIG%LSPP) THEN

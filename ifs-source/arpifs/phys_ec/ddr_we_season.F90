@@ -43,6 +43,7 @@ SUBROUTINE DDR_WE_SEASON(kidia, kfdia, klon, kmonth, plat, &
 !!    -------------
 !!    Original    July 1999
 !!    adapted for IFS land classes , J. Flemming 1.6.2015
+!!    Add Urban tile    J. McNorton                        24 August 2022
 !!
 !!-------------------------------------------------------------------------------
 
@@ -172,7 +173,7 @@ IF (LHOOK) CALL DR_HOOK('DDR_WE_SEASON',0,ZHOOK_HANDLE)
               IF (IVEG_IFS ==  18_JPIM)  KVEG_WE(JL) =  6_JPIM 
               IF (IVEG_IFS ==  19_JPIM)  KVEG_WE(JL) =  6_JPIM 
               KSEASON(JL) = 4_JPIM   
-           CASE (8)
+           CASE (8,10)
               KVEG_WE(JL) = 8_JPIM 
         END SELECT
 

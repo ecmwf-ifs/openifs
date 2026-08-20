@@ -39,7 +39,7 @@ IMPLICIT NONE
 !------------------------------Arguments--------------------------------
 
 TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
-TYPE(TERAD)       ,INTENT(INOUT) :: YDERAD
+TYPE(TERAD)       ,INTENT(IN)    :: YDERAD
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON! Number of atmospheres (longitudes) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
 INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA

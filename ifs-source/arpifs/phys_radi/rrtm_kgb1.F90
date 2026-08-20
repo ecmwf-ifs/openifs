@@ -1,4 +1,13 @@
-SUBROUTINE RRTM_KGB1
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+SUBROUTINE RRTM_KGB1(CDIRECTORY)
 
 !     Originally by Eli J. Mlawer, Atmospheric & Environmental Research.
 !     BAND 1:  10-250 cm-1 (low - H2O; high - H2O)
@@ -8,15 +17,15 @@ SUBROUTINE RRTM_KGB1
 !     ABozzo May 2013 update to RRTMG v4.85
 !     band 1:  10-350 cm-1
 !     T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
-!      F. Vana  05-Mar-2015  Support for single precision
+!     F. Vana  05-Mar-2015  Support for single precision
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
-USE YOMLUN    ,ONLY : NULRAD
+USE YOMLUN    ,ONLY : NULRAD, NULOUT
 USE MPL_MODULE,ONLY : MPL_BROADCAST
 USE YOMTAG    ,ONLY : MTAGRAD
-USE YOMMP0    , ONLY : NPROC, MYPROC
+USE YOMMP0    ,ONLY : NPROC, MYPROC
 
 USE YOERRTO1 , ONLY : KAO     ,KBO     ,SELFREFO   ,FRACREFAO ,&
  & FRACREFBO  ,FORREFO, KAO_MN2, KBO_MN2, KAO_D, KBO_D
@@ -25,33 +34,25 @@ USE YOERRTO1 , ONLY : KAO     ,KBO     ,SELFREFO   ,FRACREFAO ,&
 
 IMPLICIT NONE
 
-CHARACTER(LEN = 512) :: CLZZZ
-CHARACTER(LEN = 512) :: CLF1
-CHARACTER(LEN = 32) :: CL
+CHARACTER(LEN=*), INTENT(IN) :: CDIRECTORY
+
+CHARACTER(LEN=512) :: CLF1
+
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 #include "abor1.intfb.h"
 
-
 IF (LHOOK) CALL DR_HOOK('RRTM_KGB1',0,ZHOOK_HANDLE)
 
 IF( MYPROC==1 )THEN
-  CALL GET_ENVIRONMENT_VARIABLE("DATA",CLZZZ)
-  IF(CLZZZ /= " ") THEN
-    CLF1=TRIM(CLZZZ)//"/ifsdata/RADRRTM"
-    WRITE(0,'(1x,a)')'Reading '//TRIM(CLF1)
+  CLF1 = TRIM(CDIRECTORY) // "/RADRRTM"
+  WRITE(NULOUT,'(a,a)') 'Reading RRTMG longwave data file ', TRIM(CLF1)
 #ifdef LITTLE_ENDIAN
-    OPEN(NULRAD,FILE=CLF1,FORM="UNFORMATTED",ACTION="READ",ERR=1000,CONVERT='BIG_ENDIAN')
+  OPEN(NULRAD,FILE=TRIM(CLF1),FORM="UNFORMATTED",ACTION="READ",ERR=1000,CONVERT='BIG_ENDIAN')
 #else
-    OPEN(NULRAD,FILE=CLF1,FORM="UNFORMATTED",ACTION="READ",ERR=1000)
+  OPEN(NULRAD,FILE=TRIM(CLF1),FORM="UNFORMATTED",ACTION="READ",ERR=1000)
 #endif
-  ELSE
-#ifdef LITTLE_ENDIAN
-    OPEN(NULRAD,FILE='RADRRTM',FORM="UNFORMATTED",ACTION="READ",ERR=1000,CONVERT='BIG_ENDIAN')
-#else
-    OPEN(NULRAD,FILE='RADRRTM',FORM="UNFORMATTED",ACTION="READ",ERR=1000)
-#endif
-  ENDIF
+
   READ(NULRAD,ERR=1001) KAO_D,KBO_D
   ! Convert the data into model actual precision.
   KAO = REAL(KAO_D,JPRB)

@@ -1,3 +1,101 @@
+
+! (C) Copyright 2017- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFWS_INIT_SL* - Snow warm start multi-layer 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE SETUP PARAMETERS USED IN THE
+!          OTHER WARM START ROUTINE BASED ON NSNMLWS VALUE
+
+!**   INTERFACE.
+!     ----------
+!          *SURFWS_INIT_SL* IS CALLED FROM *SURFWS_CTL*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+                     
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       Length of arrays
+!    *KLEVSN*     Snow vertical levels
+!    *KLEVMID*    Snow middle levels (surfws_init)
+!    *NCL*        Number of clusters
+
+
+!     INPUT PARAMETERS (REAL):
+!    *ZSNPERT*    snow depth threshold for glaciers
+!    *PMU0*       Cosine of solar zenith angle
+!    *PSDOR*      sub grid scale orography   (m)
+!    *ZDSNTOT*    Total snow depth                            (m)
+!    *ZSNDEPTH*   Snow depth of each layer wrt 0              (m)
+!    *ZDSNR*      Snow depth per layer (full) wrt 0           (m)
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PTSOIL*     soil temperature top layer t-1       (K)
+!    *PTSKIN*     skin temperature t-1                 (K)
+!    *PTSN*       SNOW TEMPERATURE single layer               (K)
+!    *PSSN*       SNOW MASS        single layer               (kg m-2)
+!    *PRSN*       SNOW DENSITY     single layer               (kg m-3)
+!    *PASN*       Snow albedo                                 (K)
+
+!     OUTPUT PARAMETERS (REAL)
+!    *PTSNTOP*    Snow temperature top layer                  (K)
+!    *PTSNBOTTOM* Snow temperature bottom layer               (K)
+!    *PTSNMIDDLE* Snow temperature KLEVMID layer              (K)
+!    *PRSNTOP*    Snow density top layer                      (kg m-3)
+!    *PRSNMAX*    Snow density MAX allowed                    (kg m-3)
+!    *PSADEPTH*   Soil depth top layer                        (m)
+!    *PACTDEPTH*  Active snow depth                           (m)
+!    *PTCONSTAVG* Constants for temperature exp function
+!    *PTCONSTSTD* Constants for temperature energy adj
+!    *PRCONSTAVG* Constants for density exp function
+!    *PRCONSTSTD* Constants for density energy adj
+!    *PRSNTOP*    Snow density top layer
+
+!    OUTPUT PARAMETERS (INTEGER)
+!    *KLEVMID*    Snow middle levels 
+!    *PTMINCL*    Cluster index for temperature exp function
+!    *PRMINCL*    Cluster index for density exp function
+
+!     OUTPUT PARAMETERS (REAL, WARM START):
+!    *PTSNWS*        Snow tempeature warm start (initialised)
+!    *PRSNWS*        Snow density    warm start (initialised)
+!    *PSSNWS*        Snow mass       warm start (initialised)
+!    *PWSNWS*        Snow liq water  warm start (initialised)
+
+!     INPUT/OUTPUT PARAMETERS
+!    *KLEVSNA*    Snow vertical Active levels
+
+!     METHOD.
+!     -------
+!     Values of exp functions are pre-computed with k-cluster 
+!     algorithm, see Arduini et al. 2019. 
+!     Snow density top layer is computed with linear regression,
+!     with pre-computed parameters.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          Arduini et al. (2019)
+
+!     Modifications:
+!     Original   G. Arduini      ECMWF     28/07/2017
+
+!     ------------------------------------------------------------------
+
 MODULE SURFWS_INIT_SL_MOD
 CONTAINS
 
@@ -20,14 +118,6 @@ USE YOS_CST  , ONLY : TCST
 USE YOS_SOIL , ONLY : TSOIL
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2017- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SURFWS_INIT_SL* - Snow warm start multi-layer 
 !     PURPOSE.

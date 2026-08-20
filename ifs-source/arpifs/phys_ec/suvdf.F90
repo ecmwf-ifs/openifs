@@ -1,10 +1,45 @@
 ! (C) Copyright 1989- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+
+!     ------------------------------------------------------------------
+
+!**   *SUVDF* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOEVDF*
+
+!     A.C.M. BELJAARS         E.C.M.W.F.       2/11/89
+
+!     PURPOSE
+!     -------
+
+!          THIS ROUTINE INITIALIZES THE CONSTANTS IN COMMON BLOCK
+!     *YOEVDF*
+
+!     INTERFACE.
+!     ----------
+
+!     CALL *SUVDF* FROM *SUPHEC*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     NONE.
+
+!     REFERENCE.
+!     ----------
+
+!     MODIFICATIONS
+!     -------------
+!     J.-J. MORCRETTE         E.C.M.W.F.      91/07/14
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     ------------------------------------------------------------------
+
 SUBROUTINE SUVDF(YDVDF)
 
 !     ------------------------------------------------------------------
@@ -41,6 +76,7 @@ SUBROUTINE SUVDF(YDVDF)
 !        M.Hamrud      01-Oct-2003 CY28 Cleaning
 !        A. Beljaars      Jan-2014 Inclusion of WDS numerics
 !        P. Bechtold      Dec-2014 Inclusion of namelist call
+!        U. Andrae        Dec-2020 Add HARMONIE-AROME parameters
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPRB,JPIM
@@ -54,7 +90,7 @@ USE YOMLUN    , ONLY : NULOUT, NULNAM
 
 IMPLICIT NONE
 REAL(KIND=JPRB),POINTER :: RLAM
-REAL(KIND=JPRB),POINTER :: RVDIFTS
+REAL(KIND=JPRB),POINTER :: RVDIFTS, RFAC_TWO_COEF, RZC_H, RZL_INF
 REAL(KIND=JPRB),POINTER :: RTOFDALPHA
 REAL(KIND=JPRB),POINTER :: REISTHSC
 LOGICAL,POINTER         :: LWDS 
@@ -77,6 +113,10 @@ ASSOCIATE(REPS1WDS=>YDVDF%REPS1WDS,REPS2WDS=>YDVDF%REPS2WDS,&
  & RETAWDS=>YDVDF%RETAWDS)
 RLAM => YDVDF%RLAM
 RVDIFTS => YDVDF%RVDIFTS
+RFAC_TWO_COEF => YDVDF%RFAC_TWO_COEF
+RZC_H => YDVDF%RZC_H
+RZL_INF => YDVDF%RZL_INF
+
 LWDS => YDVDF%LWDS
 NSUBST => YDVDF%NSUBST
 REISTHSC=>YDVDF%REISTHSC
@@ -107,6 +147,9 @@ ZC2=1._JPRB+1._JPRB/ZC1
 REPS1WDS=ZC2*(ZP+1._JPRB/ZC1+SQRT(ZP*(ZC1-1._JPRB)+0.5_JPRB))
 REPS2WDS=ZC2*(ZP+1._JPRB/ZC1-SQRT(ZP*(ZC1-1._JPRB)+0.5_JPRB))
 RETAWDS =ZC2*(1._JPRB+ZP)
+RFAC_TWO_COEF = 2.0_JPRB
+RZC_H = 0.11_JPRB
+RZL_INF = 40._JPRB
 
 
 ! Set number of substeps for vertical diffusion
@@ -120,7 +163,8 @@ IF (LWDS) THEN
 ENDIF
 
 WRITE(NULOUT,*)'SUVDF: LWDS=',LWDS,' NSUBST=',NSUBST,' RVDIFTS=',RVDIFTS,' RLAM=',RLAM,&
-      &' RTOFDALPHA=',RTOFDALPHA
+  &  ' RFAC_TWO_COEF=',RFAC_TWO_COEF,' RZC_H=',RZC_H,' RZL_INF=',RZL_INF, &
+  &  ' RTOFDALPHA=',RTOFDALPHA
 
 !     ------------------------------------------------------------------
 END ASSOCIATE

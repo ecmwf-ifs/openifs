@@ -1,3 +1,68 @@
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFSN_RSN* - Snow albedo
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE CONTROLS THE ALBEDO EVOLUTION
+!          As a single prognostic snowpack for seasonal snow and land ice is used,
+!          the two different contributions are weighted by PCIL for sub-grid ice.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_ASN* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+
+
+!     INPUT PARAMETERS (REAL):
+!     *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LLNOSNOW*   NO-SNOW/SNOW MASK (TRUE IF NO-SNOW)
+!    *LDNH*       TRUE FOR NORTHERN HEMISPHERE
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PASNM1M*    SNOW ALBEDO                                      0-1
+!    *PTSNM1M*    TEMPERATURE OF SNOW LAYER                        K
+!    *PSNOWF*     TOTAL SNOW FLUX AT THE SURFACE                 KG/M**2/S
+!    *PMSN*       DIFFERENCE BETWEEN LATENT HEAT OF MELTING      J/m**2
+!                 AND LATENT HEAT OF FREEZING. PROXY FOR MELTING COND 
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PASN*       SNOW ALBEDO                                      0-1
+!     
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   E. Dutra      ECMWF     04/12/2015
+!                G. Arduini    ECMWF     01/09/2021
+!                G. Arduini    ECMWF     Sept 2024 snow over land-ice
+
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_ASN_MOD
 CONTAINS
 SUBROUTINE SRFSN_ASN(KIDIA,KFDIA,KLON,PTMST,LLNOSNOW,PASNM1M,&
@@ -9,14 +74,6 @@ USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 
 USE YOS_SOIL , ONLY : TSOIL 
 USE YOS_CST  , ONLY : TCST
-! (C) Copyright 2015- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !**** *SRFSN_RSN* - Snow albedo
 !     PURPOSE.
 !     --------

@@ -1,10 +1,12 @@
-! (C) Copyright 2016- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+
 SUBROUTINE CLOUD_OVERLAP_DECORR_LEN &
      & (YDECLD,KIDIA, KFDIA, KLON, PGEMU, KDECOLAT, &
      &  PDECORR_LEN_EDGES_KM, PDECORR_LEN_WATER_KM, PDECORR_LEN_RATIO)
@@ -27,6 +29,9 @@ SUBROUTINE CLOUD_OVERLAP_DECORR_LEN &
 !
 ! MODIFICATIONS
 ! -------------
+! -------------
+! L. Descamps, M-F, Feb 2020 : Two hard-coded values are tranformed into
+! parameters that can be perturbed in random parameters scheme for PEARP
 !
 ! -------------------------------------------------------------------
 
@@ -34,7 +39,7 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMCST   , ONLY : RPI
 USE YOECLD   , ONLY : TECLD
-
+USE YOERAD   , ONLY : YRERAD
 ! -------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -42,7 +47,7 @@ IMPLICIT NONE
 ! INPUT ARGUMENTS
 
 ! *** Array dimensions and ranges
-TYPE(TECLD)       ,INTENT(INOUT):: YDECLD
+TYPE(TECLD)       ,INTENT(IN) :: YDECLD
 INTEGER(KIND=JPIM),INTENT(IN) :: KIDIA    ! Start column to process
 INTEGER(KIND=JPIM),INTENT(IN) :: KFDIA    ! End column to process
 INTEGER(KIND=JPIM),INTENT(IN) :: KLON     ! Number of columns
@@ -50,7 +55,7 @@ INTEGER(KIND=JPIM),INTENT(IN) :: KLON     ! Number of columns
 ! *** Configuration variable controlling the overlap scheme
 INTEGER(KIND=JPIM),INTENT(IN) :: KDECOLAT
 
-! *** Single-level variables 
+! *** Single-level variables
 REAL(KIND=JPRB),   INTENT(IN) :: PGEMU(KLON) ! Sine of latitude
 
 ! OUTPUT ARGUMENTS
@@ -59,7 +64,7 @@ REAL(KIND=JPRB),   INTENT(IN) :: PGEMU(KLON) ! Sine of latitude
 ! *** in km
 REAL(KIND=JPRB), INTENT(OUT)           :: PDECORR_LEN_EDGES_KM(KLON)
 REAL(KIND=JPRB), INTENT(OUT), OPTIONAL :: PDECORR_LEN_WATER_KM(KLON)
-  
+
 ! Ratio of water-content to cloud-edge decorrelation lengths
 REAL(KIND=JPRB), INTENT(OUT), OPTIONAL :: PDECORR_LEN_RATIO
 
@@ -69,14 +74,18 @@ REAL(KIND=JPRB) :: ZRADIANS_TO_DEGREES, ZABS_LAT_DEG, ZCOS_LAT
 
 INTEGER(KIND=JPIM) :: JL
 
+REAL(KIND=JPRB)  :: ZCA,ZCB
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 ! -------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('CLOUD_OVERLAP_DECORR_LEN',0,ZHOOK_HANDLE)
   
+ASSOCIATE(RCADECOR=>YRERAD%RCADECOR, RCBDECOR=>YRERAD%RCBDECOR)
 ! -------------------------------------------------------------------
-
+ZCA=RCADECOR
+ZCB=RCBDECOR
+! -------------------------------------------------------------------
 IF (KDECOLAT == 0) THEN
 
   ! Decorrelation lengths are constant values
@@ -102,7 +111,8 @@ ELSE
     DO JL = KIDIA,KFDIA
       ! Shonk et al. (2010) but smoothed over the equator
       ZCOS_LAT = COS(ASIN(PGEMU(JL)))
-      PDECORR_LEN_EDGES_KM(JL) = 0.75_JPRB + 2.149_JPRB * ZCOS_LAT*ZCOS_LAT
+!      PDECORR_LEN_EDGES_KM(JL) = 0.75_JPRB + 2.149_JPRB * ZCOS_LAT*ZCOS_LAT
+      PDECORR_LEN_EDGES_KM(JL) =ZCA+(ZCB*ZCOS_LAT*ZCOS_LAT)
     ENDDO
   ENDIF
 
@@ -119,7 +129,8 @@ ELSE
 ENDIF
 
 ! -------------------------------------------------------------------
-
+END ASSOCIATE
+! -------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('CLOUD_OVERLAP_DECORR_LEN',1,ZHOOK_HANDLE)
 
 END SUBROUTINE CLOUD_OVERLAP_DECORR_LEN

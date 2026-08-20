@@ -1,13 +1,52 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 1987- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
-! 
-! (C) Copyright 1989- Meteo-France.
-! 
+! nor does it submit to any jurisdiction.
+
+!**** *SURIP * - Routine to initialize the common YOMRIP
+
+!     Purpose.
+!     --------
+!           Initialize and print the common YOMRIP
+
+!**   Interface.
+!     ----------
+!        *CALL* *SURIP(KULOUT)
+
+!        Explicit arguments :
+!        --------------------
+!        KULOUT : Logical unit of the output
+
+!        Implicit arguments :
+!        --------------------
+!        COMMON YOMRIP
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the IFS
+
+!     Author.
+!     -------
+!        Mats Hamrud and Philippe Courtier  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 87-10-15
+!        Modified DEC 1992 by K. YESSAD: changing RDTFLS2 into RTDT (=PTDT).
+!        Modified by R. EL Khatib : 93-04-02 Set-up defaults controled by LECMWF
+!        Modified by R. El Khatib  :93-05-06 Set-up through command line
+!     ------------------------------------------------------------------
+
 SUBROUTINE SURIP(YDDIM,YDDYNA,YDRIP,PTSTEP)
 
 !**** *SURIP * - Routine to initialize the module YOMRIP.
@@ -85,7 +124,6 @@ CHARACTER(LEN=8),   POINTER :: CSTOP
 INTEGER(KIND=JPIM) :: ISECSPERDAY = 3600*24, ISECSPERHOUR = 3600
 
 #include "namrip.nam.h"
-
 #include "abor1.intfb.h"
 #include "posnam.intfb.h"
 #include "sudefo_tstep.intfb.h"
@@ -173,23 +211,45 @@ IF (CSTOP /= '-9') THEN
   ENDIF
 ENDIF
 
+TDT=TSTEP
+
+IF (TSTEP_TRAJ < 0) THEN
+  WRITE(NULOUT,*) "TSTEP_TRAJ < 0, reset to TSTEP=",TSTEP
+  TSTEP_TRAJ=TSTEP
+ENDIF
+
+!      ----------------------------------------------------------------
+
+!*       3.    PRINT NAMELIST VARIABLES.
+!              -------------------------
+
+WRITE(UNIT=NULOUT,FMT='('' Printings for module YOMRIP '')')
+WRITE(UNIT=NULOUT,FMT='('' TSTEP  = '',E14.7,'' TDT    = '',E14.7)') TSTEP,TDT
+WRITE(UNIT=NULOUT,FMT='('' TSTEP_TRAJ = '',E14.7)') TSTEP_TRAJ
+WRITE(UNIT=NULOUT,FMT='('' NSTART = '',I6)') NSTART
+WRITE(UNIT=NULOUT,FMT='('' NSTOP  = '',I6)') NSTOP
+WRITE(UNIT=NULOUT,FMT='('' NFOST  = '',I6)') NFOST
+
 !     ------------------------------------------------------------------
 
-!*       3     CHECKINGS AND ADDITIONAL SETUP
+!*       4     CHECKINGS AND ADDITIONAL SETUP
 !              ------------------------------
 
 !*       3.1  Timesteps.
 
-IF (TSTEP_TRAJ<0) TSTEP_TRAJ=TSTEP
 IF (TSTEP /= 0._JPRB) THEN
-  IF (MOD(TSTEP_TRAJ,TSTEP)/=0) CALL ABOR1('SURIP: TSTEP_TRAJ has to be a multiple of TSTEP')
-ENDIF
+  IF (MOD(TSTEP_TRAJ,TSTEP) /= 0) CALL ABOR1('SURIP: TSTEP_TRAJ has to be a multiple of TSTEP')
 
-TDT=TSTEP
+  IF (MOD(NSTOP*TSTEP,TSTEP_TRAJ) > TSTEP_TRAJ*1.E-6.AND.&
+    MOD(NSTOP*(TSTEP+EPSILON(0._JPRB)),TSTEP_TRAJ) > TSTEP_TRAJ*1.E-6) THEN
+    WRITE(NULERR,*) "TSTEP_TRAJ and mod:",TSTEP_TRAJ,MOD(NSTOP*TSTEP,TSTEP_TRAJ)
+    CALL ABOR1('SURIP: NSTOP*TSTEP has to be a multiple of TSTEP_TRAJ')
+  ENDIF
+ENDIF
 
 !*       3.2  Number of timesteps.
 
-IF (L4DVAR .AND. .NOT.(NCONF==131 .AND. NSTOP>1)) THEN
+IF (L4DVAR.AND..NOT.(NCONF==131.AND.NSTOP > 1)) THEN
   ! L4DVAR can be T only if (NCONF=131 and NSTOP>1).
   CALL ABOR1('SURIP: Inconsistency between L4DVAR and NSTOP!')
 ENDIF
@@ -230,18 +290,6 @@ RDTS62=0._JPRB
 RDTS22=0._JPRB
 
 RTDT=0._JPRB
-
-!      ----------------------------------------------------------------
-
-!*       4.    PRINT NAMELIST VARIABLES.
-!              -------------------------
-
-WRITE(UNIT=NULOUT,FMT='('' Printings for module YOMRIP '')')
-WRITE(UNIT=NULOUT,FMT='('' TSTEP  = '',E14.8,'' TDT    = '',E14.8)') TSTEP,TDT
-WRITE(UNIT=NULOUT,FMT='('' TSTEP_TRAJ = '',E14.8)') TSTEP_TRAJ
-WRITE(UNIT=NULOUT,FMT='('' NSTART = '',I6)') NSTART
-WRITE(UNIT=NULOUT,FMT='('' NSTOP  = '',I6)') NSTOP
-WRITE(UNIT=NULOUT,FMT='('' NFOST  = '',I6)') NFOST
 
 !     ------------------------------------------------------------------
 END ASSOCIATE

@@ -1,3 +1,61 @@
+
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**   *SUSSOIL* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOESOIL*
+
+!     PURPOSE
+!     -------
+!          THIS ROUTINE INITIALIZES THE CONSTANTS IN COMMON BLOCK
+!     *YOESOIL*
+
+!     INTERFACE.
+!     ----------
+!     CALL *SUSURF* FROM *SUPHEC*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+!        *CPTAVE* IS CALLED TO GET SOIL VALUES FOR EACH OF 3 BROAD
+!                                     TEXTURAL CLASSES
+
+!     REFERENCE.
+!     ----------
+
+!     Original    A.C.M. BELJAARS         E.C.M.W.F.      89/11/02
+
+!     MODIFICATIONS
+!     -------------
+!     J.-J. MORCRETTE         E.C.M.W.F.      91/07/14
+!     P. VITERBO              E.C.M.W.F.       8/10/93
+!     P. Viterbo     99-03-26    Tiling of the land surface
+!     C. Fischer 00-12-20 Meteo-France recode initialization of rdat to avoid
+!                         memory overflow on SUN workstation
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     P. Viterbo    24-05-2004      Change surface units
+!     P. Viterbo   ECMWF   03-12-2004  Include user-defined RTHRFRTI
+!     G. Balsamo   ECMWF   08-01-2006  Include Van Genuchten Hydro.
+!     G. Balsamo   ECMWF   11-01-2006  Include sub-grid scale runoff
+!     E. Dutra             12-11.2008  Include new snow parameterization
+!     E. Dutra             16-11-2009  snow 2009 cleaning
+!     G. Balsamo           21-12-2009  snow albedo retuning after spectral fix
+!      F. Vana  05-Mar-2015  Support for single precision
+!     G. Arduini           17-01-2019  snowML wind-induced densification 
+!     R. Hogan             26-02-2019  Revert "compensation for albedo correction" (led to snow overestimate)
+!     R. Hogan             07-03-2019  Permanent-snow albedo RALFMINPSN no longer hard coded
+!     I. Ayan-Miguez (BSC) Oct 2023:   Move derived spatially distributed parameters to surf/module/susdp_deriv_ctl_mod.F90 routine
+
+
+!     ------------------------------------------------------------------
+
 MODULE SUSSOIL_MOD
 CONTAINS
 SUBROUTINE SUSSOIL(PTHRFRTI,LD_LEVGEN,LD_LESSRO,LD_LESN09,LD_LESNML,PNSNMLWS,&
@@ -8,14 +66,6 @@ USE YOS_DIM   , ONLY : TDIM, JPTEXT
 USE YOS_CST   , ONLY : TCST
 USE YOS_SOIL  , ONLY : TSOIL
 USE CPTAVE_MOD
-
-! (C) Copyright 1989- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**   *SUSSOIL* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOESOIL*
 
@@ -462,7 +512,8 @@ RSIMP=1._JPRB
 !     CONSTANTS FOR SOIL WATER FREEZING
 
 RTF1=RTT+1.0_JPRB
-RTF2=RTT-3._JPRB
+!*RTF2=RTT-3._JPRB
+RTF2=RTT-1._JPRB
 RTF3=0.5_JPRB*(RTF1+RTF2)
 RTF4=RPI/(RTF1-RTF2)
 
@@ -556,12 +607,13 @@ RSNDTDESTROI=150.0_JPRB
 
 IF(.NOT.ALLOCATED(YDSOIL%RSNDTDESTC_ML)) ALLOCATE(YDSOIL%RSNDTDESTC_ML(NCSNEC))
 IF (NCSNEC == 1) THEN
-  YDSOIL%RSNDTDESTC_ML=(/0.288_JPRB/)   !  
+  YDSOIL%RSNDTDESTC_ML=(/0.046_JPRB/)   !  
 ELSEIF(NCSNEC==5)THEN
-  YDSOIL%RSNDTDESTC_ML=(/ 0.112_JPRB, 0.152_JPRB, 0.192_JPRB, 0.288_JPRB, 0.488_JPRB/)
+  !*YDSOIL%RSNDTDESTC_ML=(/ 0.112_JPRB, 0.152_JPRB, 0.192_JPRB, 0.288_JPRB, 0.488_JPRB/)
+  YDSOIL%RSNDTDESTC_ML=(/ 0.046_JPRB, 0.046_JPRB, 0.046_JPRB, 0.046_JPRB, 0.046_JPRB/)
 ELSE
-  YDSOIL%RSNDTDESTC_ML(1:NCSNEC)=0.288_JPRB
-  YDSOIL%RSNDTDESTC_ML(1)=0.112_JPRB
+  YDSOIL%RSNDTDESTC_ML(1:NCSNEC)=0.046_JPRB
+  YDSOIL%RSNDTDESTC_ML(1)=0.046_JPRB
 ENDIF
 ! Shortwave absorption by snowpack parameters
 SSAG1=0.16E-3_JPRB

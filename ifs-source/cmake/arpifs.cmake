@@ -12,6 +12,7 @@ if( NOT HAVE_MGRIDS )
   list( APPEND arpifs_exclude arpifs/mgrids/* )
 endif()
 
+
 ecbuild_list_add_pattern(LIST arpifs.${PREC}_src GLOB
 
     arpifs/*
@@ -28,59 +29,32 @@ ecbuild_list_add_pattern(LIST arpifs.${PREC}_src GLOB
 
     # Circular dependency sources from wam. Defined in wam.cmake
     ${wam_ifs_srcs}
-    ${wamassi_ifs_srcs}
+
+    #Meteo-France routine, which could also be handled as a dummy
+    aladin/nudging/nudglhprecip.F90
 )
 
-ecbuild_list_exclude_pattern(LIST arpifs.${PREC}_src REGEX
+# Static arpifs source exclude list removed for OpenIFS minimisation.
 
-    arpifs/programs/*
+# Selectively add back files that are required for forecast-only or
+# OpenIFS-only but have been removed in the folder exclusions above
 
-    ${arpifs_exclude}
+include(arpifs_fc_include)
 
-    # Not used, contain undefined references to {push,pop}{integer,real}array_
-    arpifs/op_obs/vertdisc_ad.F90
-    arpifs/op_obs/kernel_pbp_ad.F90
-    arpifs/op_obs/pushreal8.F90
-    arpifs/op_obs/popreal8.F90
-    arpifs/op_obs/pushinteger4.F90
-    arpifs/op_obs/popinteger4.F90
-    arpifs/op_obs/popboolean.F90
-
-    # FIXME: remove scat dependency on arpifs
-    arpifs/module/yomersca.F90
-
-    # FIXME[IFS-DDD]: circular dependency between arpifs & satrad
-    arpifs/module/yommwave.F90
-
-    # Included in grib_mean.x
-    arpifs/utility/grib_mean.f90
-    arpifs/utility/link.f90
-)
-
-list(APPEND arpifs.${PREC}_src
-    openifs/dummy_ifsobs/dbase_mod.F90
-)
-ecbuild_list_add_pattern(LIST arpifs.${PREC}_src GLOB
-# need to add the local copy of emos libs so that arpifs can build
-# with both forecast-only and openifs-only
-  openifs/emos/common/*
-)
+list(APPEND arpifs_public_libs fc_only_intfb)
 
 # Some #include dependencies need to be satisfied,
 # even though the actual satrad routine is replaced with a dummy.
 list(APPEND arpifs_private_includes satrad/interface openifs/emos)
 
 
-list(APPEND arpifs_public_libs wam.${PREC})
+include(arpifs_oifs_include)
 
-# Add the openifs "smart" dummies, which are built in arpifs, rather than 
-  # dummy to ensure consistent generation of fortran interface blocks, when 
-  # compared to the full build. 
-  ecbuild_list_add_pattern(LIST arpifs.${PREC}_src GLOB
-    openifs/dummy/*
-  )
+# Needs to be a public libn so that master can access openifs_intfb 
+# which permits the dummies inclusion in master.F90
+list(APPEND arpifs_public_libs openifs_intfb) 
 
-  list(APPEND arpifs_public_libs openifs_intfb) 
+
 
 # Intel 18.* has problems compiling arpifs/oops/fields_io_mod, which is only used by OOPS.
 # OOPS not being tested with Intel 18, we exclude the file for this compiler major version
@@ -88,40 +62,49 @@ if(CMAKE_Fortran_COMPILER_ID MATCHES "Intel")
   if( CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 19)
     ecbuild_list_exclude_pattern(LIST ifs.${PREC}_src REGEX
       arpifs/oops/fields_io_mod*
-      arpifs/control/cprep4.F90
+      arpifs/control/cprep4.F90 
     )
   endif()
 endif()
 
 ecbuild_add_library(
   TARGET  arpifs.${PREC}
-  SOURCES ${arpifs.${PREC}_src}
+  SOURCES ${arpifs.${PREC}_src} 
 
   DEFINITIONS ${IFS_DEFINITIONS}
 
   PUBLIC_INCLUDES
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/arpifs/common>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/arpifs/function>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/etrans/interface>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mse/interface>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mse/externals>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/biper/interface>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mpa/conv/interface>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mpa/micro/interface>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mpa/turb/interface>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mpa/chem/interface>
 
   PRIVATE_INCLUDES
     arpifs/namelist
     arpifs/ald_inc/namelist
-    arpifs/ald_inc/interface
     arpifs/ald_inc/function
     arpifs/var
+    blacklist/include
     ${arpifs_private_includes}
 
   PUBLIC_LIBS arpifs_intfb surf.${PREC} trans.${PREC}
     ${arpifs_public_libs}
-    algor.${PREC} ${IFSAUX_LIBRARIES} fckit
+    algor.${PREC} ${ECWAM_LIBRARIES} ${IFSAUX_LIBRARIES} fckit
+    field_api_${prec}
     ${ECCODES_LIBRARIES} ${ATLAS_LIBRARIES}
     ${MULTIO_LIBRARIES} ${FDB_LIBRARIES}
     ${NEMOVAR_LIBRARIES}
     NetCDF::NetCDF_Fortran # [IFS-HHH] for radiation/module/easy_netcdf.F90
+    ecflow_lightf
 
   PRIVATE_LIBS
     ${arpifs_private_libs}
-    wam_intfb
     ${LAPACK_LIBRARIES}
 )
 
@@ -147,15 +130,8 @@ ecbuild_add_executable( TARGET ifsMASTER.${PREC}
   DEFINITIONS ${IFS_DEFINITIONS}
   SOURCES arpifs/programs/master.F90
   INCLUDES ${FCKIT_INCLUDE_DIRS}
-  LIBS arpifs.${PREC} wam.${PREC}
+  LIBS arpifs.${PREC} ${BLACKLIST_LIBRARIES}
   LINKER_LANGUAGE Fortran
   CONDITION HAVE_MPI
  )
 
-
-if( NOT TARGET grib_mean.x )
-  ecbuild_add_executable(TARGET grib_mean.x
-    SOURCES arpifs/utility/grib_mean.f90 arpifs/utility/link.f90
-    INCLUDES ${ECCODES_INCLUDE_DIRS}
-    LIBS ${IFSAUX_LIBRARIES} ${ECCODES_LIBRARIES})
-endif()

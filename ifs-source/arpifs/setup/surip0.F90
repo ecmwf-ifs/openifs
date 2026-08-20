@@ -52,6 +52,7 @@ SUBROUTINE SURIP0(KULOUT, KDAT, KSSS)
 !      Modified : 2011-Mar A.Alias LASTRF added to prevent drift in insolation
 !      Y. Bouteloup (Feb 2011) : Add RCODECF  ,RSIDECF  ,RCOVSRF  ,RSIVSRF
 !      K. Yessad (July 2014) : Move model-independent variables from YOMRIP/SURIP.
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB, JPRD
@@ -59,7 +60,7 @@ USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMARG   , ONLY : NSUPERSEDE, NUDATE, NUSSSS
 USE YOMLUN   , ONLY : NULNAM
 USE YOMRIP0  , ONLY : NINDAT, NSSSSS, RTIMST, LASTRF
-USE YOMCST   , ONLY : RDAY, REA, REPSM
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMDYNCORE,ONLY : LAPE
 
 !     ------------------------------------------------------------------
@@ -88,6 +89,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SURIP0',0,ZHOOK_HANDLE)
+ASSOCIATE(RDAY=>YDCST%RDAY, REA=>YDCST%REA, REPSM=>YDCST%REPSM)
 !     ------------------------------------------------------------------
 
 !*       1.    SET DEFAULT VALUES.
@@ -176,5 +178,6 @@ WRITE(KULOUT,'('' Eq. of time        : '',F12.5,'' s'')') ZET
 
 !     ------------------------------------------------------------------
 
+END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('SURIP0',1,ZHOOK_HANDLE)
 END SUBROUTINE SURIP0

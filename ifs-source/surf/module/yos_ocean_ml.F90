@@ -1,6 +1,3 @@
-MODULE YOS_OCEAN_ML
-
-! YOS_OCEAN_ML : Data Module for the Ocean Mixed Layer Model.
 
 ! (C) Copyright 2005- ECMWF.
 !
@@ -9,6 +6,12 @@ MODULE YOS_OCEAN_ML
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!---------------------------------------------------------------------
+
+MODULE YOS_OCEAN_ML
+
+! YOS_OCEAN_ML : Data Module for the Ocean Mixed Layer Model.
 
 !---------------------------------------------------------------------
 

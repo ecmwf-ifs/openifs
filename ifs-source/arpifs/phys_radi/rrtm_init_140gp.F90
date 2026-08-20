@@ -1,5 +1,14 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 !***************************************************************************
-SUBROUTINE RRTM_INIT_140GP
+SUBROUTINE RRTM_INIT_140GP(CDIRECTORY)
 !***************************************************************************
 !     Reformatted for F90 by JJMorcrette, ECMWF, 980714
 
@@ -7,7 +16,7 @@ SUBROUTINE RRTM_INIT_140GP
 
 ! Parameters
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
-USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
+USE YOMHOOK   ,ONLY : LHOOK, DR_HOOK, JPHOOK
 
 USE PARRRTM  , ONLY : JPBAND   ,JPG
 USE YOERRTM  , ONLY : JPGPT
@@ -19,6 +28,9 @@ USE YOERRTRWT, ONLY : FREFA    ,FREFB    ,FREFADF  ,FREFBDF   ,RWGT
 !USE YOMLUN   , ONLY : NULOUT
 
 IMPLICIT NONE
+
+CHARACTER(LEN=*), INTENT(IN) :: CDIRECTORY
+
 REAL(KIND=JPRB) :: ZWTSM(JPG)
 
 INTEGER(KIND=JPIM) :: I, IBND, IG, IGC, IGCSM, IND, IPR, IPRSM, IPT
@@ -70,7 +82,7 @@ CALL SURRTFTR
 
 ! Read the absorption-related coefficients over the 16 x 16 g-points
 
-CALL RRTM_KGB1
+CALL RRTM_KGB1(CDIRECTORY)
 CALL RRTM_KGB2
 CALL RRTM_KGB3
 CALL RRTM_KGB4
@@ -106,36 +118,22 @@ ENDDO
 !  Compute relative weighting for new g-point combinations.
 
 IGCSM = 0
-!WRITE(NULOUT,9001) JPBAND,JPG,JPGPT
-9001 FORMAT(1X,'rrtm_init JPBAND=',I3,' JPG=',I3,' JPGPT=',I3)
 DO IBND = 1,JPBAND
   IPRSM = 0
-!  WRITE(NULOUT,9002) IBND,NGC(IBND)
-9002 FORMAT(1X,'rrtm_init NGC(',I3,')=',I3)
   IF (NGC(IBND) < 16) THEN
     DO IGC = 1,NGC(IBND)
       IGCSM = IGCSM + 1
       ZWTSUM = 0.0_JPRB
-!      WRITE(NULOUT,9003) IGC,IGCSM,NGN(IGCSM)
-9003  FORMAT(1X,'rrtm_init IGC=',I3,' NGN(',I3,')=',I3)
       DO IPR = 1, NGN(IGCSM)
         IPRSM = IPRSM + 1
-!        WRITE(NULOUT,9004) IPR,IPRSM,WT(IPRSM)
-9004    FORMAT(1X,'rrtm_init IPR=',I3,' WT(',I3,')=',E14.7)
         ZWTSUM = ZWTSUM + WT(IPRSM)
       ENDDO
-!      WRITE(NULOUT,9005) IGC,ZWTSUM
-9005  FORMAT(1X,'rrtm_init WTSM(',I3,')=',E14.7)
       ZWTSM(IGC) = ZWTSUM
     ENDDO
 
-!    WRITE(NULOUT,9006) IBND,NG(IBND)
-9006 FORMAT(1X,'rrtm_init NG(',I3,')=',I3)
     DO IG = 1,NG(IBND)
       IND = (IBND-1)*16 + IG
       RWGT(IND) = WT(IG)/ZWTSM(NGM(IND))
-!      WRITE(NULOUT,9007) IND,NGM(IND),IG,WT(IG),ZWTSM(NGM(IND)),IND,RWGT(IND)
-9007 FORMAT(1X,'rrtm_init NGM(',I3,')=',I3,' WT(',I3,')=',E13.7,' WTSM=',E13.7,' RWGT(',I3,')=',E13.7)
     ENDDO
   ELSE
     DO IG = 1,NG(IBND)

@@ -48,15 +48,16 @@ SUBROUTINE SIGPOST(KTIME)
 ! Modifications
 ! -------------
 !      R. El Khatib 10-Dec-2015 KSTEP in argument (OOPS)
-!      R. El Khatib : 23-Aug-2016 fullpos-arpege stamp file moved away
+!      R. El Khatib : 23-Aug-2016 fullpos-arpege stamp file moved away 
 ! End Modifications
 !      ----------------------------------------------------------------
 
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMLUN   , ONLY : NULOUT
-USE YOMCT0   , ONLY : LSMSSIG  , CMETER
-USE YOMMP0   , ONLY : MYPROC
+USE PARKIND1     , ONLY : JPIM, JPRB
+USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMLUN       , ONLY : NULOUT, NULERR
+USE YOMCT0       , ONLY : LSMSSIG  , CMETER
+USE YOMMP0       , ONLY : MYPROC
+USE ECFLOW_LIGHT , ONLY : ECFLOW_LIGHT_UPDATE_METER
 
 !      ----------------------------------------------------------------
 
@@ -64,22 +65,35 @@ IMPLICIT NONE
 
 INTEGER(KIND=JPIM), INTENT(IN) :: KTIME
 
-CHARACTER (LEN = 40) ::  CLSETEV
-CHARACTER (LEN = 256) ::  CLSMSNAME,CLECFNAME,CLMULTIO
+CHARACTER (LEN = 256) ::  CLMULTIO
 
-CHARACTER (LEN = 7), PARAMETER :: CL_CPENV='SMSNAME'
-CHARACTER (LEN = 8), PARAMETER :: CL_CPENV_ECF='ECF_NAME'
 CHARACTER (LEN = 19), PARAMETER :: CL_CPENV_MULTIO='MULTIO_NOTIFY_FLUSH'
 
-INTEGER(KIND=JPIM) :: ICPLEN,ICPLEN_ECF, IPPTR, ISTAT
+INTEGER(KIND=JPIM) :: ICPLEN, IPPTR
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+CHARACTER(LEN = 64) :: METER_NAME
+INTEGER(KIND=JPIM)  :: METER_VALUE
+INTEGER(KIND=JPIM)  :: ERROR
+CHARACTER(LEN = 16) :: ERROR_STR
 
 !      ----------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SIGPOST',0,ZHOOK_HANDLE)
 !      ----------------------------------------------------------------
-  !OIFS/FC-only - Call to uti_cgetenv removed because routine is part of odb, may cause issues
 
+CALL GET_ENVIRONMENT_VARIABLE(CL_CPENV_MULTIO, CLMULTIO, LENGTH=ICPLEN)
+IF(ICPLEN==0) CLMULTIO = 'NOMULTIO'
+! CLMULTIO="                                             "
+! CALL UTIL_CGETENV(CL_CPENV_MULTIO, 'NOMULTIO', CLMULTIO, ICPLEN)
+IF (ICPLEN > 0.AND.CLMULTIO(1:8) /= 'NOMULTIO' ) THEN
+  IF (CLMULTIO(1:8) /= 'JUSTBARR' ) THEN
+     IF(MYPROC == 1) THEN
+        IPPTR=INT(REAL(KTIME,JPRB)/3600._JPRB)
+        CALL IMULTIO_NOTIFY_STEP(IPPTR)
+     ENDIF
+  ENDIF
+ENDIF
 
 !*       3.15   Signal SMS event for completion of post_processing
 
@@ -87,29 +101,15 @@ IF(LSMSSIG) THEN
   CALL GSTATS(1940,0)
   IF(MYPROC == 1) THEN
     IPPTR=INT(REAL(KTIME,JPRB)/3600._JPRB)
-    WRITE(CLSETEV,' (A25,'' step '',I8,''&'') ') CMETER,IPPTR
-    CLSMSNAME="                                             "
-    CLECFNAME="                                             "
-    CALL GET_ENVIRONMENT_VARIABLE(NAME=CL_CPENV, VALUE=CLSMSNAME, LENGTH=ICPLEN, STATUS=ISTAT)
-    IF (ISTAT /= 0) THEN
-      CLSMSNAME='NOSMS'
-      ICPLEN=5
-    ENDIF
-    CALL GET_ENVIRONMENT_VARIABLE(NAME=CL_CPENV_ECF, VALUE=CLECFNAME, LENGTH=ICPLEN_ECF, STATUS=ISTAT)
-    IF (ISTAT /= 0) THEN
-      CLECFNAME='NOECF'
-      ICPLEN=5
-    ENDIF
-    IF ((ICPLEN > 0.AND.CLSMSNAME(1:5) /= 'NOSMS') .OR.  &
-       &(ICPLEN_ECF > 0.AND.CLECFNAME(1:5) /= 'NOECF')    ) THEN
-      CALL SYSTEM(CLSETEV)
-      WRITE(UNIT=NULOUT,FMT='(A25,I8,'' posted '')') CMETER,IPPTR
-    ELSE
-      WRITE(UNIT=NULOUT,&
-       & FMT='(A25,I8,&
-       & '' not posted  because neither SMSNAME nor ECF_NAME  is defined. LEN='',&
-       & I3,A16,A16)') CMETER,IPPTR, ICPLEN, CLSMSNAME, CLECFNAME
-    ENDIF
+
+    METER_NAME = "step"
+    METER_VALUE = IPPTR
+
+    WRITE(NULERR,FMT='("Setting task meter """,A,""" to value """,I0,"""")') TRIM(METER_NAME),METER_VALUE
+    ERROR = ECFLOW_LIGHT_UPDATE_METER(METER_NAME, METER_VALUE)
+
+    WRITE(ERROR_STR, *) ERROR
+    WRITE(NULERR,FMT='("Update task meter finished, with result """,A,"""")') ERROR_STR
   ENDIF
   CALL GSTATS(1940,1)
 ENDIF

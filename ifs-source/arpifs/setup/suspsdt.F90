@@ -64,6 +64,7 @@ SUBROUTINE SUSPSDT(YDGEOMETRY,YDRIP,YDCONF,YDSPPT)
 !        2017-Oct     SJ Lock     :     Options to reduce frequency of pattern updates
 !        2019-Mar:     S Lang     :     Added option to shift seed
 !        2022-May      S Lang     :     Enabled option to remove cloud sat adjustement from perturbed tendencies
+!        2024-Aug     M Leutbecher:     Use abstract level type (AL) for random fields
 !     ------------------------------------------------------------------
 
 USE GEOMETRY_MOD        , ONLY : GEOMETRY
@@ -641,7 +642,7 @@ IF (YDCONF%LSPSDT) THEN
     CALL SET_ARP2D(YDSPPT%YSPSDT_AR1(J2D), ZSDEV2D(:,:,J2D), ZPHI2D )
 
     IF (YDCONF%LRDPATINIT_SDT) THEN
-      CALL READ_SPEC_GRIB(YDMP, YDCONF%CIPATINIT_SDT(J2D), YDSPPT%YSPSDT_AR1(J2D)%SF)
+      CALL READ_SPEC_GRIB(YDMP, YDCONF%CIPATINIT_SDT(J2D), YDSPPT%YSPSDT_AR1(J2D)%SF, CDLEVTYPE="AL")
     ELSE
       CALL EVOLVE_ARP(YDSPPT%YSPSDT_AR1(J2D), LDINIT=.TRUE.)
     ENDIF
@@ -649,7 +650,7 @@ IF (YDCONF%LSPSDT) THEN
     CALL SUM_ARPS(YDSPPT%YSPSDT_AR1(J2D))
 
     IF (YDCONF%LWRITE_ARP) THEN
-      CALL WRITE_SPEC_GRIB(YDGEOMETRY,YDRIP,YDCONF%COPATSP_SDT(J2D),YDSPPT%YSPSDT_AR1(J2D)%SF)
+      CALL WRITE_SPEC_GRIB(YDGEOMETRY,YDRIP,YDCONF%COPATSP_SDT(J2D),YDSPPT%YSPSDT_AR1(J2D)%SF, CDLEVTYPE="AL")
     ENDIF
 
     WRITE(NULOUT,'(''      SPECTRAL NORMS: Pattern '',I2,'' from seed '',I15)') J2D, YDSPPT%NSEED_SDT(J2D)

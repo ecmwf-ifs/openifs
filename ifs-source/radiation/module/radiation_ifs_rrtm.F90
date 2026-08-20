@@ -1,10 +1,16 @@
 ! radiation_ifs_rrtm.F90 - Interface to IFS implementation of RRTM-G
 !
-! Copyright (C) 2015-2019 ECMWF
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive "surface" dummy argument
@@ -19,23 +25,22 @@ module radiation_ifs_rrtm
 
   implicit none
 
-  public  :: setup_gas_optics, gas_optics, planck_function
+  public  :: setup_gas_optics, gas_optics, planck_function, set_gas_units
 
 contains
 
   !---------------------------------------------------------------------
   ! Setup the IFS implementation of RRTM-G gas absorption model
-  subroutine setup_gas_optics(YDERDI, config, directory)
+  subroutine setup_gas_optics(config, directory)
 
     use yoerrtm,   only : jpglw
     use yoesrtm,   only : jpgsw
     use yoerrtftr, only : ngb_lw => ngb
     use yoesrtm,   only : ngb_sw => ngbsw
-    use yomhook,  only           : lhook, dr_hook, jphook
-    use radiation_config
-    USE YOERDI   , ONLY : TERDI
+    use yomhook,   only : lhook, dr_hook, jphook
 
-    TYPE(TERDI)       ,INTENT(INOUT):: YDERDI
+    use radiation_config
+
     type(config_type), intent(inout), target :: config
     character(len=*), intent(in)     :: directory
 
@@ -62,7 +67,7 @@ contains
     
     real(jphook) :: hook_handle
 
-#include "surdi.intfb.h"
+!#include "surdi.intfb.h"
 #include "surrtab.intfb.h"
 #include "surrtpk.intfb.h"
 #include "surrtrf.intfb.h"
@@ -75,13 +80,17 @@ contains
     ! the IFS these will have been set up already; otherwise set them
     ! up now.
     if (config%do_setup_ifsrrtm) then
-      call SURDI(YDERDI)
+      !call SURDI
       call SURRTAB
       call SURRTPK
       call SURRTRF
-      call RRTM_INIT_140GP
-      call SRTM_INIT
+      call RRTM_INIT_140GP(directory)
+      call SRTM_INIT(directory)
     end if
+
+    ! Cloud and aerosol properties can only be defined per band
+    config%do_cloud_aerosol_per_sw_g_point = .false.
+    config%do_cloud_aerosol_per_lw_g_point = .false.
 
     config%n_g_sw = jpgsw
     config%n_g_lw = jpglw
@@ -91,18 +100,16 @@ contains
     ! Wavenumber ranges of each band may be needed so that the user
     ! can compute UV and photosynthetically active radiation for a
     ! particular wavelength range
-    allocate(config%wavenumber1_sw(config%n_bands_sw))
-    allocate(config%wavenumber2_sw(config%n_bands_sw))
-    allocate(config%wavenumber1_lw(config%n_bands_lw))
-    allocate(config%wavenumber2_lw(config%n_bands_lw))
-    config%wavenumber1_lw = (/ 10, 350, 500, 630, 700, 820, 980, 1080, 1180, 1390, 1480, &
-         &  1800, 2080, 2250, 2380, 2600 /)
-    config%wavenumber2_lw = (/ 350, 500, 630, 700, 820, 980, 1080, 1180, 1390, 1480, 1800, &
-         &  2080, 2250, 2380, 2600, 3250 /)
-    config%wavenumber1_sw = (/ 2600, 3250, 4000, 4650, 5150, 6150, 7700, 8050, 12850, &
-         &  16000 , 22650, 29000, 38000, 820 /)
-    config%wavenumber2_sw = (/ 3250, 4000, 4650, 5150, 6150, 7700, 8050, 12850, 16000, &
-         &  22650, 29000, 38000, 50000, 2600 /)
+    call config%gas_optics_sw%spectral_def%allocate_bands_only( &
+         &  [2600.0_jprb, 3250.0_jprb, 4000.0_jprb, 4650.0_jprb, 5150.0_jprb, 6150.0_jprb, 7700.0_jprb, &
+         &   8050.0_jprb, 12850.0_jprb, 16000.0_jprb, 22650.0_jprb, 29000.0_jprb, 38000.0_jprb, 820.0_jprb], &
+         &  [3250.0_jprb, 4000.0_jprb, 4650.0_jprb, 5150.0_jprb, 6150.0_jprb, 7700.0_jprb, 8050.0_jprb, &
+         &   12850.0_jprb, 16000.0_jprb, 22650.0_jprb, 29000.0_jprb, 38000.0_jprb, 50000.0_jprb, 2600.0_jprb])
+    call config%gas_optics_lw%spectral_def%allocate_bands_only( &
+         &  [10.0_jprb, 350.0_jprb, 500.0_jprb, 630.0_jprb, 700.0_jprb, 820.0_jprb, 980.0_jprb, 1080.0_jprb, &
+         &   1180.0_jprb, 1390.0_jprb, 1480.0_jprb, 1800.0_jprb, 2080.0_jprb, 2250.0_jprb, 2380.0_jprb, 2600.0_jprb], &
+         &  [350.0_jprb, 500.0_jprb, 630.0_jprb, 700.0_jprb, 820.0_jprb, 980.0_jprb, 1080.0_jprb, 1180.0_jprb, &
+         &   1390.0_jprb, 1480.0_jprb, 1800.0_jprb, 2080.0_jprb, 2250.0_jprb, 2380.0_jprb, 2600.0_jprb, 3250.0_jprb])
 
     allocate(config%i_band_from_g_sw          (config%n_g_sw))
     allocate(config%i_band_from_g_lw          (config%n_g_lw))
@@ -142,7 +149,7 @@ contains
 
     ! The i_spec_* variables are used solely for storing spectral
     ! data, and this can either be by band or by g-point
-    if (config%do_save_spectral_flux) then
+    if (config%do_save_spectral_flux .or. config%do_toa_spectral_flux) then
       if (config%do_save_gpoint_flux) then
         config%n_spec_sw = config%n_g_sw
         config%n_spec_lw = config%n_g_lw
@@ -191,7 +198,6 @@ contains
     USE PARRRTM  , ONLY : JPBAND, JPXSEC, JPINPX 
     USE YOERRTM  , ONLY : JPGPT_LW => JPGPT
     USE YOESRTM  , ONLY : JPGPT_SW => JPGPT  
-    USE YOMDIMV  , ONLY : TDIMV
     use yomhook  , only : lhook, dr_hook, jphook
 
     use radiation_config,         only : config_type, ISolverSpartacus
@@ -232,9 +238,6 @@ contains
     ! g-points
     real(jprb), dimension(config%n_g_sw,istartcol:iendcol), &
          &   intent(out), optional :: incoming_sw
-
-    ! Structure holding number of levels
-    TYPE(TDIMV) :: YDDIMV
 
     real(jprb) :: incoming_sw_scale(istartcol:iendcol)
 
@@ -352,19 +355,23 @@ contains
     ZONEMINUS = 1.0_jprb - 1.0e-6_jprb
     ZONEMINUS_ARRAY = ZONEMINUS
 
-    ! RRTM/SRTM levels indicated, strangely, in two ways
-    YDDIMV%NFLEVG = nlev
-
-    pressure_fl(istartcol:iendcol,:) &
-         &  = 0.5_jprb * (thermodynamics%pressure_hl(istartcol:iendcol,istartlev:iendlev) &
-         &               +thermodynamics%pressure_hl(istartcol:iendcol,istartlev+1:iendlev+1))
-    temperature_fl(istartcol:iendcol,:) &
-         &  = 0.5_jprb * (thermodynamics%temperature_hl(istartcol:iendcol,istartlev:iendlev) &
-         &               +thermodynamics%temperature_hl(istartcol:iendcol,istartlev+1:iendlev+1))
+    do jlev=1,nlev
+      do jcol= istartcol,iendcol
+        pressure_fl(jcol,jlev) &
+            &  = 0.5_jprb * (thermodynamics%pressure_hl(jcol,jlev+istartlev-1) &
+            &               +thermodynamics%pressure_hl(jcol,jlev+istartlev))
+        temperature_fl(jcol,jlev) &
+            &  = 0.5_jprb * (thermodynamics%temperature_hl(jcol,jlev+istartlev-1) &
+            &               +thermodynamics%temperature_hl(jcol,jlev+istartlev))
+      end do
+    end do
     
     ! Check we have gas mixing ratios in the right units
     call gas%assert_units(IMassMixingRatio)
 
+    ! Warning: O2 is hard-coded within the following function so the
+    ! user-provided concentrations of this gas are ignored for both
+    ! the longwave and shortwave
     CALL RRTM_PREPARE_GASES &
          & ( istartcol, iendcol, ncol, nlev, &
          &   thermodynamics%pressure_hl(:,istartlev:iendlev+1), &
@@ -385,7 +392,7 @@ contains
          &  ZPAVEL , ZTAVEL , ZPZ , ZTZ, IREFLECT)  
 
     CALL RRTM_SETCOEF_140GP &
-         &( YDDIMV, istartcol, iendcol, nlev , ZCOLDRY  , ZWBRODL , ZWKL , &
+         &( istartcol, iendcol, nlev , ZCOLDRY  , ZWBRODL , ZWKL , &
          &  ZFAC00 , ZFAC01   , ZFAC10 , ZFAC11 , ZFORFAC,ZFORFRAC,INDFOR, JP, JT, JT1 , &
          &  ZCOLH2O, ZCOLCO2  , ZCOLO3 , ZCOLN2O, ZCOLCH4, ZCOLO2,ZCO2MULT , ZCOLBRD, & 
          &  ILAYTROP,ILAYSWTCH, ILAYLOW, ZPAVEL , ZTAVEL , ZSELFFAC, ZSELFFRAC, INDSELF, &
@@ -394,10 +401,10 @@ contains
          &  ZRAT_H2ON2O, ZRAT_H2ON2O_1, ZRAT_H2OCH4, ZRAT_H2OCH4_1, &
          &  ZRAT_N2OCO2, ZRAT_N2OCO2_1, ZRAT_O3CO2, ZRAT_O3CO2_1)   
 
-    ZTAUAERL = 0.0_jprb
+    ZTAUAERL(istartcol:iendcol,:,:) = 0.0_jprb
 
     CALL RRTM_GAS_OPTICAL_DEPTH &
-         &( YDDIMV, istartcol, iendcol, nlev, ZOD_LW, ZPAVEL, ZCOLDRY, ZCOLBRD, ZWX ,&
+         &( istartcol, iendcol, nlev, ZOD_LW, ZPAVEL, ZCOLDRY, ZCOLBRD, ZWX ,&
          &  ZTAUAERL, ZFAC00 , ZFAC01, ZFAC10 , ZFAC11 , ZFORFAC,ZFORFRAC,INDFOR, &
          &  JP, JT, JT1, ZONEMINUS ,&
          &  ZCOLH2O , ZCOLCO2, ZCOLO3, ZCOLN2O, ZCOLCH4, ZCOLO2,ZCO2MULT ,&
@@ -426,7 +433,7 @@ contains
         ! the surface
         lw_emission = lw_emission * (1.0_jprb - lw_albedo)
       else
-      ! Longwave emission has already been computed
+        ! Longwave emission has already been computed
         if (config%use_canopy_full_spectrum_lw) then
           lw_emission = transpose(single_level%lw_emission(istartcol:iendcol,:))
         else
@@ -438,7 +445,6 @@ contains
     end if
 
     if (config%i_solver_lw == ISolverSpartacus) then
-      !    if (.true.) then
       ! We need to rearrange the gas optics info in memory: reordering
       ! the g points in order of approximately increasing optical
       ! depth (for efficient 3D processing on only the regions of the
@@ -474,7 +480,7 @@ contains
     end if
     
     CALL SRTM_SETCOEF &
-         & ( YDDIMV, istartcol, iendcol, nlev,&
+         & ( istartcol, iendcol, nlev,&
          & ZPAVEL  , ZTAVEL,&
          & ZCOLDRY , ZWKL,&
          & ILAYTROP,&
@@ -501,19 +507,25 @@ contains
     
     ! Scale the incoming solar per band, if requested
     if (config%use_spectral_solar_scaling) then
-      ZINCSOL(istartcol:iendcol,:) = ZINCSOL(istartcol:iendcol,:) &
-         & * spread(single_level%spectral_solar_scaling(config%i_band_from_reordered_g_sw), &
-         &                                              1,iendcol-istartcol+1)
+      do jg = 1,JPGPT_SW
+        do jcol = istartcol,iendcol 
+          ZINCSOL(jcol,jg) = ZINCSOL(jcol,jg) * &
+            &   single_level%spectral_solar_scaling(config%i_band_from_reordered_g_sw(jg))
+        end do
+      end do
     end if
 
     ! Scaling factor to ensure that the total solar irradiance is as
     ! requested.  Note that if the sun is below the horizon then
     ! ZINCSOL will be zero.
     if (present(incoming_sw)) then
-      incoming_sw_scale = 1.0_jprb
       do jcol = istartcol,iendcol
         if (single_level%cos_sza(jcol) > 0.0_jprb) then
+! Added for DWD (2020)
+!NEC$ nounroll
           incoming_sw_scale(jcol) = single_level%solar_irradiance / sum(ZINCSOL(jcol,:))
+        else
+          incoming_sw_scale(jcol) = 1.0_jprb
         end if
       end do
     end if
@@ -538,17 +550,18 @@ contains
       end do
     else
       ! G points have not been reordered
-      do jg = 1,config%n_g_sw
+      do jcol = istartcol,iendcol
         do jlev = 1,nlev
-          do jcol = istartcol,iendcol
+          do jg = 1,config%n_g_sw
             ! Check for negative optical depth
             od_sw (jg,nlev+1-jlev,jcol) = max(config%min_gas_od_sw, ZOD_SW(jcol,jlev,jg))
             ssa_sw(jg,nlev+1-jlev,jcol) = ZSSA_SW(jcol,jlev,jg)
           end do
         end do
         if (present(incoming_sw)) then
-          incoming_sw(jg,:) &
-               &  = incoming_sw_scale(:) * ZINCSOL(:,jg)
+          do jg = 1,config%n_g_sw
+            incoming_sw(jg,jcol) = incoming_sw_scale(jcol) * ZINCSOL(jcol,jg)
+          end do
         end if
       end do
     end if
@@ -569,7 +582,8 @@ contains
     USE YOERRTM  , ONLY : JPGPT_LW => JPGPT
     use yoerrtwn, only : totplnk, delwave
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook, only : lhook, dr_hook, jphook
+
     use radiation_config,         only : config_type, ISolverSpartacus
     use radiation_thermodynamics, only : thermodynamics_type
     !use radiation_gas
@@ -595,7 +609,7 @@ contains
     ! Temperature (K) of a half-level
     real(jprb) :: temperature
 
-    real(jprb) :: factor
+    real(jprb) :: factor, planck_tmp(istartcol:iendcol,config%n_g_lw)
     real(jprb) :: ZFLUXFAC
 
     integer :: jlev, jgreorder, jg, ig, iband, jband, jcol, ilevoffset
@@ -680,7 +694,10 @@ contains
         else
           do jg = 1,config%n_g_lw
             iband = config%i_band_from_g_lw(jg)
-            planck_hl(jg,jlev,:) = planck_store(:,iband) * PFRAC(:,jg,nlev+2-jlev)
+            planck_tmp(:,jg) = planck_store(:,iband) * PFRAC(:,jg,nlev+2-jlev)
+          end do
+          do jcol = istartcol,iendcol
+            planck_hl(:,jlev,jcol) = planck_tmp(jcol,:)
           end do
         end if
       end if
@@ -701,7 +718,8 @@ contains
     USE YOERRTM  , ONLY : JPGPT_LW => JPGPT
     use yoerrtwn, only : totplnk, delwave
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook, only : lhook, dr_hook, jphook
+
     use radiation_config,         only : config_type, ISolverSpartacus
     !    use radiation_gas
 

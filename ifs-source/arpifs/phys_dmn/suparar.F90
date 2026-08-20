@@ -2,15 +2,15 @@
 
 SUBROUTINE SUPARAR(YDGEOMETRY,YGFL,YDML_PHY_MF,KULOUT)
 
-!**** *SUPARAR*   - Initialize common parameters used in physics for AROME 
+!**** *SUPARAR*   - Initialize common parameters used in physics for AROME
 !                   and SURFEX
 
 !     Purpose.
 !     --------
 !           Initialize MODD_PARAMETERS, MODD_CST, MODD_CONF,
-!           MODD_RAIN_ICE_DESCR, MODD_RAIN_ICE_PARAM, MODD_BUDGET  
+!           MODD_RAIN_ICE_DESCR, MODD_RAIN_ICE_PARAM, MODD_BUDGET
 !           parameters used in meso_NH Physics and aladin/meso_NH physics
-!           interface 
+!           interface
 
 !**   Interface.
 !     ----------
@@ -33,7 +33,7 @@ SUBROUTINE SUPARAR(YDGEOMETRY,YGFL,YDML_PHY_MF,KULOUT)
 
 !     Reference.
 !     ----------
-!        Documentation AROME 
+!        Documentation AROME
 
 !     Author.
 !     -------
@@ -55,6 +55,7 @@ SUBROUTINE SUPARAR(YDGEOMETRY,YGFL,YDML_PHY_MF,KULOUT)
 !     2014-05-27: J.M. Piriou: default values of XCQVR and GQVPLIM.
 !     Nov. 2014: Y. Seity, add LFPREC3D for MOCAGE
 !     Nov 2016, S. Riette: New ICE3/ICE4 parameters
+!     Jan 2021, C.Wittmann: add LDEPSG,RDEPSRED+RDEPGRED
 ! End Modifications
 !-------------------------------------------------------------------------------
 
@@ -101,7 +102,6 @@ REAL(KIND=JPRB) , POINTER ::  XDETR_DRY
 CHARACTER (LEN=4)  ::  CMF_UPDRAFT
 LOGICAL            , POINTER ::  LMIXUV
 LOGICAL            , POINTER ::  LLCRIT
-LOGICAL            , POINTER ::  LTOTPREC
 INTEGER(KIND=JPIM) , POINTER ::  NREFROI1
 REAL(KIND=JPRB) , POINTER ::  XTAUSIGMF
 LOGICAL , POINTER ::  LCRIAUTI
@@ -121,9 +121,16 @@ LOGICAL , POINTER ::  LDIAGWMAX
 REAL(KIND=JPRB) , POINTER ::  XPRES_UV
 CHARACTER (LEN=4) ::  CSUBG_AUCV_RC
 REAL(KIND=JPRB) , POINTER ::  XALP_PERT
-LOGICAL , POINTER ::  LOCND2
-LOGICAL , POINTER ::  LHARATU
-LOGICAL , POINTER :: LGRSN
+LOGICAL , POINTER :: LOCND2
+LOGICAL , POINTER :: LSTATNW
+LOGICAL , POINTER :: LHARATU
+LOGICAL , POINTER :: LKOGAN
+LOGICAL , POINTER :: LHGT_QS
+LOGICAL , POINTER :: LMODICEDEP
+LOGICAL , POINTER :: LICERAD
+LOGICAL , POINTER :: LTOTPREC
+LOGICAL , POINTER :: LTOTPRECL
+REAL(KIND=JPRB), DIMENSION(:), POINTER :: RFRMIN
 INTEGER(KIND=JPIM) , POINTER ::  NPRINTFR
 REAL(KIND=JPRB) , POINTER ::  XCQVR
 CHARACTER(LEN=4) ::  CMICRO
@@ -166,15 +173,21 @@ CHARACTER(LEN=1) :: CFRAC_ICE_ADJUST
 CHARACTER(LEN=1) :: CFRAC_ICE_SHALLOW_MF
 LOGICAL , POINTER  :: LSEDIM_AFTER
 REAL(KIND=JPRB) , POINTER  :: XSPLIT_MAXCFL
+LOGICAL , POINTER  :: LDEPOSC
+REAL(KIND=JPRB) , POINTER  :: XVDEPOSC
+LOGICAL, POINTER :: LDEPSG
+REAL(KIND=JPRB), POINTER :: RDEPSRED
+REAL(KIND=JPRB), POINTER :: RDEPGRED
 
 #include "namparar.nam.h"
 #include "abor1.intfb.h"
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SUPARAR',0,ZHOOK_HANDLE)
-!Associate for variables not in the include namelists nor allocated in the routine 
+!Associate for variables not in the include namelists nor allocated in the routine
 ASSOCIATE(MACPRS=>YDML_PHY_MF%YRPARAR%MACPRS, MACPRR=>YDML_PHY_MF%YRPARAR%MACPRR, &
  & MINPRR=>YDML_PHY_MF%YRPARAR%MINPRR, MINPRS=>YDML_PHY_MF%YRPARAR%MINPRS, &
+
  & XSW_BANDS=>YDML_PHY_MF%YRPARAR%XSW_BANDS, MALBSCA=>YDML_PHY_MF%YRPARAR%MALBSCA, &
  & MVQS=>YDML_PHY_MF%YRPARAR%MVQS, MINPRG=>YDML_PHY_MF%YRPARAR%MINPRG,XLAMBDA=>YDML_PHY_MF%YRPARAR%XLAMBDA, &
  & NGPAR=>YDML_PHY_MF%YRPARAR%NGPAR, LOWARM=>YDML_PHY_MF%YRPARAR%LOWARM, &
@@ -183,7 +196,7 @@ ASSOCIATE(MACPRS=>YDML_PHY_MF%YRPARAR%MACPRS, MACPRR=>YDML_PHY_MF%YRPARAR%MACPRR
  & MLSM=>YDML_PHY_MF%YRPARAR%MLSM, MVTS=>YDML_PHY_MF%YRPARAR%MVTS, MGZ0H=>YDML_PHY_MF%YRPARAR%MGZ0H, &
  & MCD=>YDML_PHY_MF%YRPARAR%MCD, &
  & XR=>YDML_PHY_MF%YRPARAR%XR, MGZ0=>YDML_PHY_MF%YRPARAR%MGZ0, MACPRG=>YDML_PHY_MF%YRPARAR%MACPRG, &
- & MSWDIR=>YDML_PHY_MF%YRPARAR%MSWDIR, MSNOW=>YDML_PHY_MF%YRPARAR%MSNOW, MFRTHDS=>YDML_PHY_MF%YRPARAR%MFRTHDS, &
+ & MSWDIR=>YDML_PHY_MF%YRPARAR%MSWDIR, MSNOW=>YDML_PHY_MF%YRPARAR%MSNOW, &
  & NDTCHEM=>YDML_PHY_MF%YRPARAR%NDTCHEM, MRAIN=>YDML_PHY_MF%YRPARAR%MRAIN, MVEMIS=>YDML_PHY_MF%YRPARAR%MVEMIS, &
  & NRR=>YDML_PHY_MF%YRPARAR%NRR, &
  & LMSE=>YDML_PHY_MF%YRARPHY%LMSE, LMPA=>YDML_PHY_MF%YRARPHY%LMPA, &
@@ -216,7 +229,13 @@ LQVTOP => YDPARAR%LQVTOP
 XBETA1 => YDPARAR%XBETA1
 NPTP => YDPARAR%NPTP
 LOCND2 => YDPARAR%LOCND2
-LGRSN => YDPARAR%LGRSN
+LKOGAN => YDPARAR%LKOGAN
+LHGT_QS => YDPARAR%LHGT_QS
+LMODICEDEP => YDPARAR%LMODICEDEP
+LICERAD => YDPARAR%LICERAD
+LTOTPREC => YDPARAR%LTOTPREC
+LTOTPRECL => YDPARAR%LTOTPRECL
+RFRMIN => YDPARAR%RFRMIN
 XCQVR => YDPARAR%XCQVR
 XFRAC_UP_MAX => YDPARAR%XFRAC_UP_MAX
 XB => YDPARAR%XB
@@ -238,7 +257,6 @@ LOSIGMAS => YDPARAR%LOSIGMAS
 GQVTOP => YDPARAR%GQVTOP
 LMIXUV => YDPARAR%LMIXUV
 LLCRIT => YDPARAR%LLCRIT
-LTOTPREC => YDPARAR%LTOTPREC
 XALPHA_MF => YDPARAR%XALPHA_MF
 XPRES_UV => YDPARAR%XPRES_UV
 LOLSMC => YDPARAR%LOLSMC
@@ -246,6 +264,7 @@ NDIAGWMAX => YDPARAR%NDIAGWMAX
 LOSUBG_COND => YDPARAR%LOSUBG_COND
 RADGR => YDPARAR%RADGR
 LFPREC3D => YDPARAR%LFPREC3D
+LSTATNW => YDPARAR%LSTATNW
 LHARATU => YDPARAR%LHARATU
 XTSTEP_TS => YDPARAR%XTSTEP_TS
 XMRSTEP => YDPARAR%XMRSTEP
@@ -261,6 +280,12 @@ LCONVHG => YDPARAR%LCONVHG
 LCRFLIMIT => YDPARAR%LCRFLIMIT
 LSEDIM_AFTER => YDPARAR%LSEDIM_AFTER
 XSPLIT_MAXCFL => YDPARAR%XSPLIT_MAXCFL
+LDEPOSC => YDPARAR%LDEPOSC
+XVDEPOSC => YDPARAR%XVDEPOSC
+LDEPSG => YDPARAR%LDEPSG
+RDEPSRED => YDPARAR%RDEPSRED
+RDEPGRED => YDPARAR%RDEPGRED
+
 !     ------------------------------------------------------------------
 
 !         1. Set implicit default values for YOMPARAR
@@ -299,8 +324,8 @@ NPRINTFR=3600*36
 ! for squall line academic case
 LSQUALL=.FALSE.
 NREFROI1=1
-NREFROI2=1 
-VSQUALL=0._JPRB 
+NREFROI2=1
+VSQUALL=0._JPRB
 NPTP=1
 LDIAGWMAX=.FALSE.
 NDIAGWMAX=1
@@ -309,9 +334,30 @@ LOLSMC=.FALSE.
 LOTOWNC=.FALSE.
 
 LOCND2=.FALSE.
-LGRSN=.FALSE.
+LKOGAN=.FALSE.
+LHGT_QS=.FALSE.
+LMODICEDEP=.FALSE.
+LICERAD=.FALSE.
 RADGR=0._JPRB
 RADSN=0._JPRB
+
+! Tuning and modication of graupeln etc:
+RFRMIN(1:6)=0.
+RFRMIN(7:9)=1.
+RFRMIN(10) =10.
+RFRMIN(11) =1.
+RFRMIN(12) =0.
+RFRMIN(13) =1.0E-15
+RFRMIN(14) =120.
+RFRMIN(15) =1.0E-4
+RFRMIN(16:20)=0.
+RFRMIN(21:22)=1.
+RFRMIN(23)=0.5
+RFRMIN(24)=1.5
+RFRMIN(25)=30.
+RFRMIN(26:38)=0.
+RFRMIN(39)=0.25
+RFRMIN(40)=0.15
 
 ! default option for Mass Flux Scheme (Pergaud et al)
 CMF_UPDRAFT = 'EDKF'
@@ -322,25 +368,26 @@ LMIXUV= .TRUE.
 !default option in EDMFm mass-flux scheme:
 LLCRIT=.FALSE.
 LTOTPREC=.FALSE.
+LTOTPRECL=.FALSE.
 
 !  Default for Mass Flux Scheme tuning variables
 
 XALP_PERT   = 0.3_JPRB  ! coefficient for the perturbation of
-                   ! theta_l and r_t at the first level of 
+                   ! theta_l and r_t at the first level of
                    ! the updraft
-XABUO       = 1._JPRB   ! coefficient of the buoyancy term in the w_up equation  
+XABUO       = 1._JPRB   ! coefficient of the buoyancy term in the w_up equation
 XBENTR      = 1._JPRB   ! coefficient of the entrainment term in the w_up equation
 XBDETR      = 0._JPRB   ! coefficient of the detrainment term in the w_up equation
-XCMF        = 0.065_JPRB! coefficient for the mass flux at the first level 
-                                ! of the updraft (closure) 
+XCMF        = 0.065_JPRB! coefficient for the mass flux at the first level
+                                ! of the updraft (closure)
 XENTR_MF    = 0.035_JPRB! entrainment constant (m/Pa) = 0.2 (m)
 XCRAD_MF    = 50._JPRB  ! cloud radius in cloudy part
-XENTR_DRY   = 0.55_JPRB ! coefficient for entrainment in dry part 
+XENTR_DRY   = 0.55_JPRB ! coefficient for entrainment in dry part
 XDETR_DRY   = 10._JPRB  ! coefficient for detrainment in dry part
 XDETR_LUP   = 1._JPRB   !  coefficient for detrainment in dry part
 XKCF_MF     = 2.75_JPRB ! coefficient for cloud fraction
 XKRC_MF     = 1._JPRB   ! coefficient for convective rc
-XTAUSIGMF   = 600._JPRB  
+XTAUSIGMF   = 600._JPRB
 XPRES_UV    = 0.5_JPRB  ! coefficient for pressure term in wind mixing
 XFRAC_UP_MAX= 0.33_JPRB ! maximum Updraft fraction
 XALPHA_MF = 2._JPRB     ! coefficient for updraft fraction in STA2 cloud scheme
@@ -387,7 +434,16 @@ CFRAC_ICE_ADJUST='T' ! Ice/liquid partition rule to use in adjustment
 CFRAC_ICE_SHALLOW_MF='T' ! Ice/liquid partition rule to use in shallow_mf
 LSEDIM_AFTER=.FALSE. ! Sedimentation done after microphysics
 XSPLIT_MAXCFL=0.8
+LDEPOSC=.FALSE.  ! water deposition on vegetation
+XVDEPOSC=0.02    ! deposition speed (2 cm.s-1)
+LDEPSG=.FALSE.   ! activate tuning of deposition of snow/graupel (RDEPSRED,RDEPGRED)
+RDEPSRED=1.0     
+RDEPGRED=1.0
+
 !
+! set up cloud scheme
+LSTATNW=.FALSE.
+
 ! for turbulence scheme
 XLINI=0._JPRB ! 0.1 in Meso-NH
 LHARATU=.FALSE.
@@ -405,6 +461,12 @@ READ (NULNAM,NAMPARAR)
 IF (.NOT.LOCND2) THEN
    RADGR=0._JPRB
    RADSN=0._JPRB
+ENDIF
+IF (LHARATU .AND. CMF_UPDRAFT == 'EDKF') THEN
+  CALL ABOR1('Combination LHARATU and EDKF not valid!')
+ENDIF
+IF (.NOT. LHARATU .AND. LSTATNW ) THEN
+  CALL ABOR1('LSTATNW only tested in combination with HARATU and EDMFm!')
 ENDIF
 
 ! Work-around for PGI compiler bug
@@ -427,7 +489,7 @@ ENDIF
 IF ( CMICRO /= 'ICE3' .AND. CMICRO /= 'ICE4' .AND. &
    & CMICRO /= 'LIMA' .AND. CMICRO /= 'OLD3' .AND. CMICRO /= 'OLD4') THEN
   CALL ABOR1("AROME Microphysics must be ICE3, ICE4, LIMA, OLD3 or OLD4")
-ENDIF 
+ENDIF
 IF ( (CMICRO == 'ICE4' .OR. CMICRO == 'OLD4') .AND. .NOT.YH%LACTIVE ) THEN
   CALL ABOR1("ICE4 and OLD4 microphysics requires activation of YH in NAMGFL")
 ENDIF
@@ -470,6 +532,9 @@ ENDIF
 IF (LFPREC3D.AND.YGFL%NGFL_EZDIAG < 4) THEN
   CALL ABOR1 ("With LFPREC3D NGFL_EZDIAG should be >= 4 !")
 ENDIF
+IF (LOCND2 .AND. LDEPSG) THEN
+  CALL ABOR1 ("LDEPSG must not be activated together with LOCND2")
+ENDIF 
 
 !       3.Initialisation du buffer contenant les variables pseudo-historiques
 
@@ -478,10 +543,10 @@ ENDIF
 NGPAR=0
 INDEF=NUNDEFLD
 MINPRR=INDEF
-MACPRR=INDEF
 MINPRS=INDEF
-MACPRS=INDEF
 MINPRG=INDEF
+MACPRR=INDEF
+MACPRS=INDEF
 MACPRG=INDEF
 MALBDIR=INDEF
 MALBSCA=INDEF
@@ -520,7 +585,7 @@ IF (LMPA) THEN
   ENDIF
 ELSE
   IF (LMSE) THEN
-    NGPAR=8
+    NGPAR=9
     MRAIN=1
     MSNOW=2
     MVTS=3
@@ -541,7 +606,7 @@ ELSE
   ENDIF
 ENDIF
 
-! allocation du buffer 
+! allocation du buffer
 IF (NGPAR /= 0) THEN
   ALLOCATE (GPARBUF (YDGEOMETRY%YRDIM%NPROMA, NGPAR, YDGEOMETRY%YRDIM%NGPBLKS))
 ENDIF
@@ -556,22 +621,23 @@ WRITE(UNIT=KULOUT,FMT='('' CSUBG_RC_RR_ACCR = '',A80,&
 & '' CSUBG_RR_EVAP  = '',A80, '' CSUBG_PR_PDF = '',A80)')&
 & CSUBG_RC_RR_ACCR, CSUBG_RR_EVAP, CSUBG_PR_PDF
 WRITE(UNIT=KULOUT,FMT='('' NREFROI1 = '',I3,&
- & '' NREFROI2 = '',I3,'' VSQUALL = '',f6.2)')NREFROI1, NREFROI2,VSQUALL  
+ & '' NREFROI2 = '',I3,'' VSQUALL = '',f6.2)')NREFROI1, NREFROI2,VSQUALL
 WRITE(UNIT=KULOUT,FMT='('' NGPAR = '',I3,&
  & '' MINPRR = '',I3,'' MACPRR = '',I3,'' MINPRS = '',I3,&
  & '' MACPRS = '',I3,'' MINPRG = '',I3,'' MACPRG = '',I3)')&
- & NGPAR,MINPRR,MACPRR,MINPRS,MACPRS,MINPRG,MACPRG  
+ & NGPAR,MINPRR,MACPRR,MINPRS,MACPRS,MINPRG,MACPRG
+WRITE(UNIT=KULOUT,FMT='('' MCD = '',I3,'' MRAIN = '',I3,'' MSNOW = '',I3)') MCD, MRAIN, MSNOW
 WRITE(UNIT=KULOUT,FMT='('' MSWDIR = '',I3,&
  & '' MSWDIF = '',I3)')MSWDIR,MSWDIF
 WRITE(UNIT=KULOUT,FMT='('' MALBDIR = '',I3,&
 & '' MALBSCA = '',I3,'' MVTS = '',I3,'' MVQS = '',I3,'' MVEMIS = '',I3,&
-& '', MLSM = '',I3,'' MGZ0 = '',I3,'' MGZ0H = '',I3,''NSWB_MNH = '',I3)')&
+& '', MLSM = '',I3,'' MGZ0 = '',I3,'' MGZ0H = '',I3,'' NSWB_MNH = '',I3)')&
  & MALBDIR,MALBSCA,MVTS,MVQS,MVEMIS,MLSM,MGZ0,MGZ0H,NSWB_MNH
-WRITE(UNIT=KULOUT,FMT='('' NPRINTFR = '',I3, ''NPTP = '',I3)')&
+WRITE(UNIT=KULOUT,FMT='('' NPRINTFR = '',I3, '' NPTP = '',I3)')&
  & NPRINTFR,NPTP
 WRITE(UNIT=KULOUT,FMT='('' LDIAGWMAX = '',L5,&
  & '' NDIAGWMAX = '',I3,'' NDTCHEM = '',I3)')&
- & LDIAGWMAX, NDIAGWMAX,NDTCHEM  
+ & LDIAGWMAX, NDIAGWMAX,NDTCHEM
 WRITE(UNIT=KULOUT,FMT='('' NRR = '',I3,&
  & '' NRRL = '',I3,'' NRRI = '',I3)')&
  & NRR, NRRL, NRRI
@@ -584,7 +650,7 @@ WRITE(UNIT=KULOUT,FMT='(&
 WRITE(UNIT=KULOUT,FMT='('' CMF_UPDRAFT = '',A4,&
  & '' CMF_CLOUD  = '',A4)')&
  & CMF_UPDRAFT,CMF_CLOUD
- 
+
 WRITE(UNIT=KULOUT,FMT='(''Mass Flux Scheme tuning variables :'')')
 WRITE(UNIT=KULOUT,FMT='(''XALP_PERT = '',F6.3,'' XABUO = '',F6.3,'' XBENTR = '',F6.3,&
 &'' XBDETR = '',F6.3,'' XCMF = '',F6.3,'' XENTR_MF = '',F6.3,'' XCRAD_MF = '',F6.3,&
@@ -614,11 +680,23 @@ WRITE(UNIT=KULOUT,FMT='('' CFRAC_ICE_ADJUST = '',A1,&
 WRITE(UNIT=KULOUT,FMT='('' XSPLIT_MAXCFL = '',f6.2)') XSPLIT_MAXCFL
 WRITE(UNIT=KULOUT,FMT='('' LSEDIM_AFTER = '',L5)') LSEDIM_AFTER
 WRITE(UNIT=KULOUT,FMT=*) 'XCQVR=',XCQVR,' GQVPLIM=',GQVPLIM,' GQVTOP=',GQVTOP,' LQVTOP=',LQVTOP
+WRITE(UNIT=KULOUT,FMT='('' LLCRIT = '',L5)') LLCRIT
+WRITE(UNIT=KULOUT,FMT='('' LTOTPREC = '',L5)') LTOTPREC
+WRITE(UNIT=KULOUT,FMT='('' LTOTPRECL = '',L5)') LTOTPRECL
 WRITE(UNIT=KULOUT,FMT='('' LOCND2 = '',L5)') LOCND2
-WRITE(UNIT=KULOUT,FMT='('' LGRSN = '',L5)') LGRSN
+WRITE(UNIT=KULOUT,FMT='('' LKOGAN = '',L5)') LKOGAN
+WRITE(UNIT=KULOUT,FMT='('' LHGT_QS = '',L5)') LHGT_QS
+WRITE(UNIT=KULOUT,FMT='('' LSTATNW = '',L5)') LSTATNW
+WRITE(UNIT=KULOUT,FMT='('' LMODICEDEP = '',L5)') LMODICEDEP
 WRITE(UNIT=KULOUT,FMT='('' RADSN = '',f6.2)') RADSN
 WRITE(UNIT=KULOUT,FMT='('' RADGR = '',f6.2)') RADGR
+WRITE(UNIT=KULOUT,FMT='('' RFRMIN = '',40E10.3)') RFRMIN
 WRITE(UNIT=KULOUT,FMT='('' LHARATU = '',L2)') LHARATU
+WRITE(UNIT=KULOUT,FMT='('' LICERAD = '',L5)') LICERAD
+WRITE(UNIT=KULOUT,FMT='('' LDEPOSC = '',L5)') LDEPOSC
+WRITE(UNIT=KULOUT,FMT='('' XVDEPOSC = '',f6.2)') XVDEPOSC
+WRITE(UNIT=KULOUT,FMT='('' LDEPSG = '',L2,'' RDEPSRED = '',F6.2,'' RDEPGRED = '',F6.2&
+&)') LDEPSG,RDEPSRED,RDEPGRED
 
 
 ! -----------------------------------------------------------------------

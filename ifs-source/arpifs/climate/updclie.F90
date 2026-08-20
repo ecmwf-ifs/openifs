@@ -107,6 +107,7 @@ USE DISGRID_MOD                   , ONLY : DISGRID_SEND, DISGRID_RECV
 USE GRIB_API_INTERFACE            , ONLY : IGRIB_OPEN_FILE, IGRIB_NEW_FROM_FILE, IGRIB_ERROR_MESSAGE,&
  &                                         JPGRIB_END_OF_FILE, JPGRIB_SUCCESS, IGRIB_GET_VALUE, IGRIB_RELEASE,&
  &                                         IGRIB_CLOSE_FILE, IGRIB_SET_VALUE
+USE BYTES_IO_MOD                  , ONLY : BYTES_IO_FLUSH, BYTES_IO_READ, BYTES_IO_WRITE
 
 !     ------------------------------------------------------------------
 
@@ -226,7 +227,6 @@ ASSOCIATE(NACTAERO=>YGFL%NACTAERO, &
 !     ------------------------------------------------------------------
 
 LLFIRST=YDMCC%LFIRSTUPD
-YDMCC%LFIRSTUPD=.FALSE.
 
 !*
 !     1. SETTING CONSTANT VALUES.
@@ -786,13 +786,13 @@ IF (LMCC04 .AND. (NOACOMM/=5) .AND. (.NOT.LNEMOCOUP)) THEN
 
       ISTEP = NSTEP
       IF ((NOACOMM==2) .OR. (NOACOMM==4)) THEN
-        CALL PBWRITE(YDCOU%NCULF(0),ISTEP,NINTLEN,IRET)
-        CALL PBFLUSH(YDCOU%NCULF(0))
+        CALL BYTES_IO_WRITE(YDCOU%NCULF(0),ISTEP,NINTLEN,IRET)
+        CALL BYTES_IO_FLUSH(YDCOU%NCULF(0))
         IF (IRET<=0) THEN
-          WRITE(NULERR,*) 'PBWRITE retcode is ', IRET
-          CALL ABOR1('UPDCLIE: fatal error in PBWRITE')
+          WRITE(NULERR,*) 'BYTES_IO_WRITE retcode is ', IRET
+          CALL ABOR1('UPDCLIE: fatal error in BYTES_IO_WRITE')
         ELSE
-          WRITE(NULOUT,*) 'PBWRITE number of bytes written is ', IRET
+          WRITE(NULOUT,*) 'BYTES_IO_WRITE number of bytes written is ', IRET
         ENDIF
         WRITE(NULOUT,*) 'OASIS signalled via pipes'
       ENDIF
@@ -805,8 +805,8 @@ IF (LMCC04 .AND. (NOACOMM/=5) .AND. (.NOT.LNEMOCOUP)) THEN
   IF (MYPROC==1) THEN
     IF (LLFIRST) THEN
       IF (NOACOMM==2) THEN
-        CALL PBREAD(YDCOU%NCULF(1),ICSTEP,NINTLEN,IRET)
-        CALL PBREAD(YDCOU%NCULF(2),ICSTEP,NINTLEN,IRET)
+        CALL BYTES_IO_READ(YDCOU%NCULF(1),ICSTEP,NINTLEN,IRET)
+        CALL BYTES_IO_READ(YDCOU%NCULF(2),ICSTEP,NINTLEN,IRET)
       ELSEIF (NOACOMM==3) THEN
 !      Read of SST will be semaphored automatically
       ELSEIF (NOACOMM==4) THEN
@@ -815,9 +815,9 @@ IF (LMCC04 .AND. (NOACOMM/=5) .AND. (.NOT.LNEMOCOUP)) THEN
         ISST2 = 0
         LLDONE = .FALSE.
         DO WHILE (.NOT.LLDONE)
-          IF (ISST1==0) CALL PBREAD(YDCOU%NCULF(1),ICSTEP,NINTLEN,IRET)
+          IF (ISST1==0) CALL BYTES_IO_READ(YDCOU%NCULF(1),ICSTEP,NINTLEN,IRET)
           IF (IRET>0) ISST1 = 1
-          IF (ISST2==0) CALL PBREAD(YDCOU%NCULF(2),ICSTEP,NINTLEN,IRET)
+          IF (ISST2==0) CALL BYTES_IO_READ(YDCOU%NCULF(2),ICSTEP,NINTLEN,IRET)
           IF (IRET>0) ISST2 = 1
           IF (ISST1*ISST2==0) THEN
             IA = IA + 1
@@ -1681,7 +1681,7 @@ DO JSTGLO = 1, NGPTOT, NPROMA
             SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = ZSTL2
             SP_SB(JROF,3,YSP_SB%YT%MP,IBL) = ZSTL3
             SP_SB(JROF,4,YSP_SB%YT%MP,IBL) = ZSTL4
-          ELSE IF (LEOCML) THEN
+          ELSEIF (LEOCML) THEN
             ! For KPP
             SP_SB(JROF,1,YSP_SB%YT%MP,IBL) = ZSTL
             SP_SB(JROF,2,YSP_SB%YT%MP,IBL) = ZSTL

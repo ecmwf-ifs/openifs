@@ -126,7 +126,6 @@ TYPE(TYPE_SFL_COMM) :: YLCOM
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 #include "abor1.intfb.h"
-#include "modgrin.intfb.h"
 #include "modgrinml.intfb.h"
 
 

@@ -1,3 +1,104 @@
+
+! (C) Copyright 1999- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**** *SRFSN* - CONTAINS SNOW PARAMETRIZATION 
+!     PURPOSE.
+!     --------
+!          COMPUTES CHANGES IN SNOW TEMPERATURE AND DEPTH
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_LWEXP* IS CALLED FROM *SURFTSTP*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF TILES
+!    *KLEVSN*     Number of snow layers (diagnostics) 
+!    *KDHVTSS*    Number of variables for snow energy budget
+!    *KDHFTSS*    Number of fluxes for snow energy budget
+!    *KDHVSSS*    Number of variables for snow water budget
+!    *KDHFSSS*    Number of fluxes for snow water budget
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg/m**2
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PWSNM1M*    SNOW LIQUID WATER CONTENT                    kg/m**2
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION                             KG/M**2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+
+!    *PTSFC*      CONVECTIVE THROUGHFALL AT THE SURFACE        KG/M**2/S
+!    *PTSFL*      LARGE SCALE THROUGHFALL AT THE SURFACE       KG/M**2/S
+!    *PTSRF*      TEMPERATURE (LAST LEVEL)                     K
+
+!     PARAMETERS AT T+1 :
+!    *PSSN*       SNOW MASS (per unit area)                    kg/m**2
+!    *PTSN*       SNOW TEMPERATURE                               K
+!    *PWSN*       SNOW LIQUID WATER CONTENT                    kg/m**2
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+!    *PMSN*       FLUX OF MELT WATER FROM SNOW TO SOIL       KG/M**2/S (#)
+!    *PEMSSN*     EVAPORATIVE MISMATCH RESULTING FROM
+!                  CLIPPING THE SNOW TO ZERO (AFTER P-E)     KG/M**2/S
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+!    *PPMSNINT*   INTERNAL PHASE CHANGE     (needed by srfsn_rsn)w.m-2 
+
+! (#) THOSE TWO QUANTITIES REPRESENT THE WHOLE GRID-BOX. IN RELATION
+!       TO THE DOCUMENTATION, THEY ARE PGSN=Fr_s*G_s, PMSN=Fr_s*M_s
+
+!     METHOD.
+!     -------
+!          THE HEAT AND WATER BUDGET OF A SNOW SLAB ON TOP OF THE
+!          SOIL IS CONSIDERED AS THE RESULT OF NET SURFACE HEATING, 
+!          DIFFUSION OF HEAT, SNOWFALL AND SNOW MELT. ALBEDO 
+!          AND DENSITY EVOLVE ACCORDING TO SIMPLE RELAXATION EQUATIONS
+!          (SEE DOUVILLE ET AL., CLIM. DYN., 12, 21-35, 1995).
+!          FOR DETAILS SEE DOCUMENTATION. 
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     ORIGINAL :
+!     P.VITERBO/A.BELJAARS      E.C.M.W.F.     20/02/1999
+!     MODIFIED BY
+!     P. Viterbo    Surface DDH for TILES      17/05/2000
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo     24-05-2004     Change surface units
+!     E. Dutra       11/11/2008     Inclusion of prognostic liquid water content+rainfall
+!                                   REMOVE OF SNOW DENSITY AND ALBEDO CALCULATION - SRFSN_RSN
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_LWEXP_MOD
 CONTAINS
 SUBROUTINE SRFSN_LWEXP(KIDIA  , KFDIA  , KLON   ,PTMST  ,&
@@ -18,13 +119,6 @@ USE YOS_VEG   , ONLY : TVEG
 USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_FLAKE , ONLY : TFLAKE
 
-! (C) Copyright 1999- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**** *SRFSN* - CONTAINS SNOW PARAMETRIZATION 
 !     PURPOSE.
 !     --------

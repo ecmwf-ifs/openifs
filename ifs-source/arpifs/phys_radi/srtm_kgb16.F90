@@ -1,4 +1,13 @@
-SUBROUTINE SRTM_KGB16
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
+SUBROUTINE SRTM_KGB16(CDIRECTORY)
 
 !     Originally by J.Delamere, Atmospheric & Environmental Research.
 !     Revision: 2.4
@@ -7,12 +16,12 @@ SUBROUTINE SRTM_KGB16
 !     R. Elkhatib 12-10-2005 Split for faster and more robust compilation.
 !     G.Mozdzynski March 2011 read constants from files
 !     T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
-!      F. Vana  05-Mar-2015  Support for single precision
+!     F. Vana  05-Mar-2015  Support for single precision
 !     ------------------------------------------------------------------
 
 USE PARKIND1  , ONLY : JPRB
 USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMLUN    , ONLY : NULRAD
+USE YOMLUN    , ONLY : NULRAD, NULOUT
 USE YOMMP0    , ONLY : NPROC, MYPROC
 USE MPL_MODULE, ONLY : MPL_BROADCAST
 USE YOMTAG    , ONLY : MTAGRAD
@@ -23,8 +32,8 @@ USE YOESRTA16 , ONLY : KA, KB, SELFREF, FORREF, SFLUXREF, RAYL, STRRAT1, LAYREFF
 
 IMPLICIT NONE
 
-! KURUCZ
-CHARACTER(LEN = 512) :: CLZZZ
+CHARACTER(LEN=*), INTENT(IN) :: CDIRECTORY
+
 CHARACTER(LEN = 512) :: CLF1
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -33,22 +42,14 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('SRTM_KGB16',0,ZHOOK_HANDLE)
 
 IF( MYPROC==1 )THEN
-  CALL GET_ENVIRONMENT_VARIABLE("DATA",CLZZZ)
-  IF(CLZZZ /= " ") THEN
-    CLF1=TRIM(CLZZZ)//"/ifsdata/RADSRTM"
-    WRITE(0,'(1x,a)')'Reading '//TRIM(CLF1)
+  CLF1 = TRIM(CDIRECTORY) // "/RADSRTM"
+  WRITE(NULOUT,'(a,a)')'Reading RRTMG shortwave data file ', TRIM(CLF1)
 #ifdef LITTLE_ENDIAN
-    OPEN(NULRAD,FILE=CLF1,FORM="UNFORMATTED",ACTION="READ",ERR=1000,CONVERT='BIG_ENDIAN')
+  OPEN(NULRAD,FILE=TRIM(CLF1),FORM="UNFORMATTED",ACTION="READ",ERR=1000,CONVERT='BIG_ENDIAN')
 #else
-    OPEN(NULRAD,FILE=CLF1,FORM="UNFORMATTED",ACTION="READ",ERR=1000)
+  OPEN(NULRAD,FILE=TRIM(CLF1),FORM="UNFORMATTED",ACTION="READ",ERR=1000)
 #endif
-  ELSE
-#ifdef LITTLE_ENDIAN
-    OPEN(NULRAD,FILE='RADSRTM',FORM="UNFORMATTED",ACTION="READ",ERR=1000,CONVERT='BIG_ENDIAN')
-#else
-    OPEN(NULRAD,FILE='RADSRTM',FORM="UNFORMATTED",ACTION="READ",ERR=1000)
-#endif
-  ENDIF
+  
   READ(NULRAD,ERR=1001) KA_D,KB_D
   KA = REAL(KA_D,JPRB)
   KB = REAL(KB_D,JPRB)

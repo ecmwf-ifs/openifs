@@ -25,6 +25,7 @@ SUBROUTINE FPWRNCF(CDFPNCF,KSTEP,PTSTEP)
 !      Original : 01-10-2014
 !      R. El Khatib 10-Dec-2015 KSTEP in argument (OOPS)
 !      R. El Khatib 17-Oct-2017 pathname (to support multiple objects)
+!      R. El Khatib 20-Jan-2021 disable action if the file name is blank
 
 
 USE PARKIND1, ONLY : JPRB, JPIM
@@ -48,7 +49,7 @@ REAL (KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK ('FPWRNCF',0,ZHOOK_HANDLE)
 
-
+IF (CDFPNCF /= ' ') THEN
   IF (MYPROC == 1)  THEN
     CALL GSTATS(1941,0)
     IF (PRESENT(KSTEP)) THEN
@@ -68,6 +69,7 @@ IF (LHOOK) CALL DR_HOOK ('FPWRNCF',0,ZHOOK_HANDLE)
     CLOSE(UNIT=NULFPOS,STATUS='KEEP')
     CALL GSTATS(1941,1)
   ENDIF
+ENDIF
 
 IF (LHOOK) CALL DR_HOOK ('FPWRNCF',1,ZHOOK_HANDLE)
 

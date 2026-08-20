@@ -105,6 +105,15 @@ TYPE(FULLPOS_TYPE) :: FQTUR ! Flux form source term for turbulence -moisture
 TYPE(FULLPOS_TYPE) :: FSTUR ! Flux form source term for turbulence -enthalpy 
 TYPE(FULLPOS_TYPE) :: EDR   ! Eddy dissipation rate
 !---------------------
+TYPE(FULLPOS_TYPE) :: CATTI1  ! Ellrod1 indice of turbulence for Aviation  
+TYPE(FULLPOS_TYPE) :: EDRDC   ! Turbulence for Aviation from combinaison
+TYPE(FULLPOS_TYPE) :: CATTI1H ! Ellrod1 max over high levels 
+TYPE(FULLPOS_TYPE) :: CATTI1M ! Ellrod1 max over medium levels 
+TYPE(FULLPOS_TYPE) :: EDRDCH  ! Turbulence for Aviation (Max over High Levels)
+TYPE(FULLPOS_TYPE) :: EDRDCM  ! Turbulence for Aviation (Max over Med Levels)
+TYPE(FULLPOS_TYPE) :: EDRDCL  ! Turbulence for Aviation (Max over Low Levels)
+TYPE(FULLPOS_TYPE) :: ICING   ! Icing indice for Aviation
+TYPE(FULLPOS_TYPE) :: ICINGX  ! Max of Icing indice for Aviation
 
 TYPE(FULLPOS_TYPE) :: FUA(JPOSVX2)       ! Free upper air fields
 TYPE(FULLPOS_TYPE) :: EXT(JPOSSCVA)      ! Extra-GFL variables (former passive scalars)
@@ -149,9 +158,12 @@ TYPE(FULLPOS_TYPE) :: TX    ! Maximum temperature at 2 meters
 TYPE(FULLPOS_TYPE) :: TN    ! Minimum temperature at 2 meters
 TYPE(FULLPOS_TYPE) :: CAPE  ! CAPE (Convective available potential energy)
 TYPE(FULLPOS_TYPE) :: CIEN  ! CIEN (Convective inhibition energy)
+TYPE(FULLPOS_TYPE) :: MUMLCAPE! MUMLCAPE (Mixed Layer Convective available potential energy)
+TYPE(FULLPOS_TYPE) :: MLCAPE! MLCAPE (Mixed Layer Convective available potential energy)
 TYPE(FULLPOS_TYPE) :: STRMMU! Storm motion - u component
 TYPE(FULLPOS_TYPE) :: STRMMV! Storm motion - v component
 TYPE(FULLPOS_TYPE) :: SRH   ! Storm relative helicity
+TYPE(FULLPOS_TYPE) :: UH    ! Updraft helicity
 TYPE(FULLPOS_TYPE) :: MOCO  ! MOCON (Moisture convergence)
 TYPE(FULLPOS_TYPE) :: TWV   ! Total water vapour content in a vertical column
 TYPE(FULLPOS_TYPE) :: UGST  ! U gusts
@@ -172,6 +184,11 @@ TYPE(FULLPOS_TYPE) :: HUN   ! Recomputed minimum relative moisture at 2 meters
 TYPE(FULLPOS_TYPE) :: SREX  ! Recomputed maximum simulated reflectivities in mm/h
 TYPE(FULLPOS_TYPE) :: SREDBX! Recomputed maximum simulated reflectivities in dBZ
 TYPE(FULLPOS_TYPE) :: TOPR  ! Pressure of top of reflectivities
+TYPE(FULLPOS_TYPE) :: PCLDCEIL ! Pressure of ceil of clouds
+TYPE(FULLPOS_TYPE) :: HCLDCEIL ! Height of ceil of clouds
+TYPE(FULLPOS_TYPE) :: PCLDBASE ! Pressure of base of clouds
+TYPE(FULLPOS_TYPE) :: HCLDBASE ! Height of base of clouds
+TYPE(FULLPOS_TYPE) :: PCLDTOP  ! Pressure of top of clouds
 TYPE(FULLPOS_TYPE) :: IET   ! Isobaric equivalent temperature (for ALARO)
 TYPE(FULLPOS_TYPE) :: SMC   ! Forecast surface moisture convergence
 TYPE(FULLPOS_TYPE) :: ASMC  ! Analysed surface moisture convergence
@@ -197,6 +214,22 @@ TYPE(FULLPOS_TYPE) :: MSAT9C5
 TYPE(FULLPOS_TYPE) :: MSAT9C6
 TYPE(FULLPOS_TYPE) :: MSAT9C7
 TYPE(FULLPOS_TYPE) :: MSAT9C8     ! Meteosat 9 SEVIRI channels 5 to 8
+TYPE(FULLPOS_TYPE) :: MSAT10C1
+TYPE(FULLPOS_TYPE) :: MSAT10C2
+TYPE(FULLPOS_TYPE) :: MSAT10C3
+TYPE(FULLPOS_TYPE) :: MSAT10C4     ! Meteosat 10 SEVIRI channels 1 to 4
+TYPE(FULLPOS_TYPE) :: MSAT10C5
+TYPE(FULLPOS_TYPE) :: MSAT10C6
+TYPE(FULLPOS_TYPE) :: MSAT10C7
+TYPE(FULLPOS_TYPE) :: MSAT10C8     ! Meteosat 10 SEVIRI channels 5 to 8
+TYPE(FULLPOS_TYPE) :: MSAT11C1
+TYPE(FULLPOS_TYPE) :: MSAT11C2
+TYPE(FULLPOS_TYPE) :: MSAT11C3
+TYPE(FULLPOS_TYPE) :: MSAT11C4     ! Meteosat 11 SEVIRI channels 1 to 4
+TYPE(FULLPOS_TYPE) :: MSAT11C5
+TYPE(FULLPOS_TYPE) :: MSAT11C6
+TYPE(FULLPOS_TYPE) :: MSAT11C7
+TYPE(FULLPOS_TYPE) :: MSAT11C8     ! Meteosat 11 SEVIRI channels 5 to 8
 TYPE(FULLPOS_TYPE) :: GOES11C1
 TYPE(FULLPOS_TYPE) :: GOES11C2
 TYPE(FULLPOS_TYPE) :: GOES11C3
@@ -205,14 +238,48 @@ TYPE(FULLPOS_TYPE) :: GOES12C1
 TYPE(FULLPOS_TYPE) :: GOES12C2
 TYPE(FULLPOS_TYPE) :: GOES12C3
 TYPE(FULLPOS_TYPE) :: GOES12C4 ! GOES 12 Imager channels 1 to 4
+TYPE(FULLPOS_TYPE) :: GOES15C1
+TYPE(FULLPOS_TYPE) :: GOES15C2
+TYPE(FULLPOS_TYPE) :: GOES15C3
+TYPE(FULLPOS_TYPE) :: GOES15C4 ! GOES 15 Imager channels 1 to 4
+TYPE(FULLPOS_TYPE) :: GOES16C1 ! GOES 16 ABI channels 1 to 10
+TYPE(FULLPOS_TYPE) :: GOES16C2 ! |
+TYPE(FULLPOS_TYPE) :: GOES16C3 ! v
+TYPE(FULLPOS_TYPE) :: GOES16C4
+TYPE(FULLPOS_TYPE) :: GOES16C5
+TYPE(FULLPOS_TYPE) :: GOES16C6
+TYPE(FULLPOS_TYPE) :: GOES16C7
+TYPE(FULLPOS_TYPE) :: GOES16C8
+TYPE(FULLPOS_TYPE) :: GOES16C9
+TYPE(FULLPOS_TYPE) :: GOES16C10
+TYPE(FULLPOS_TYPE) :: GOES17C1 ! GOES 17 ABI channels 1 to 10
+TYPE(FULLPOS_TYPE) :: GOES17C2 ! |
+TYPE(FULLPOS_TYPE) :: GOES17C3 ! v
+TYPE(FULLPOS_TYPE) :: GOES17C4
+TYPE(FULLPOS_TYPE) :: GOES17C5
+TYPE(FULLPOS_TYPE) :: GOES17C6
+TYPE(FULLPOS_TYPE) :: GOES17C7
+TYPE(FULLPOS_TYPE) :: GOES17C8
+TYPE(FULLPOS_TYPE) :: GOES17C9
+TYPE(FULLPOS_TYPE) :: GOES17C10
 TYPE(FULLPOS_TYPE) :: MTSAT1C1
 TYPE(FULLPOS_TYPE) :: MTSAT1C2
 TYPE(FULLPOS_TYPE) :: MTSAT1C3
 TYPE(FULLPOS_TYPE) :: MTSAT1C4 ! MTSAT-1R Imager channels 1 to 4
+TYPE(FULLPOS_TYPE) :: HIMA8C1 ! Himawawri 8 AHI channels 1 to 10
+TYPE(FULLPOS_TYPE) :: HIMA8C2 ! |
+TYPE(FULLPOS_TYPE) :: HIMA8C3 ! v
+TYPE(FULLPOS_TYPE) :: HIMA8C4
+TYPE(FULLPOS_TYPE) :: HIMA8C5
+TYPE(FULLPOS_TYPE) :: HIMA8C6
+TYPE(FULLPOS_TYPE) :: HIMA8C7
+TYPE(FULLPOS_TYPE) :: HIMA8C8
+TYPE(FULLPOS_TYPE) :: HIMA8C9
+TYPE(FULLPOS_TYPE) :: HIMA8C10
                                                                    
-TYPE(FULLPOS_TYPE) :: LCL  ! Lifting Condensation level
-TYPE(FULLPOS_TYPE) :: FCL  ! Free convection level
-TYPE(FULLPOS_TYPE) :: EL   ! Equilibrium level
+TYPE(FULLPOS_TYPE) :: LCL  ! Lifting Condensation level (geopotential height)
+TYPE(FULLPOS_TYPE) :: FCL  ! Free convection level (geopotential height)
+TYPE(FULLPOS_TYPE) :: EL   ! Equilibrium level (geopotential height)
 TYPE(FULLPOS_TYPE) :: TCVS ! Temperature of convection
 
 TYPE(FULLPOS_TYPE) :: NOGW(JPOSNOGW)     ! Diagnostic fields for NORO GWD scheme
@@ -258,7 +325,10 @@ TYPE(FPDSPHY) :: FDSW                 ! Frozen deep soil wetness
 TYPE(FPDSPHY) :: RDSW                 ! Climatology relaxation relative soil wetness
 TYPE(FPDSPHY) :: CSSW                 ! Climatology relative surface soil wetness
 TYPE(FPDSPHY) :: CDSW                 ! Climatology relative deep soil wetness
-TYPE(FPDSPHY) :: SD                   ! Snow depth
+TYPE(FPDSPHY) :: CST                  ! Climatology surface temperature
+TYPE(FPDSPHY) :: CDST                 ! Climatology deep soil temperature
+TYPE(FPDSPHY) :: CSD                  ! Climatology Snow depth
+TYPE(FPDSPHY) :: SD                   ! pronostic Snow depth per layer
 TYPE(FPDSPHY) :: SDSL                 ! Snow depth total
 TYPE(FPDSPHY) :: SR                   ! Surface roughness (times g)
 TYPE(FPDSPHY) :: BSR                  ! Roughness length of the bare surface (times g)
@@ -266,7 +336,7 @@ TYPE(FPDSPHY) :: AL                   ! Albedo
 TYPE(FPDSPHY) :: EMIS                 ! Emissivity
 TYPE(FPDSPHY) :: SDOG                 ! Standard deviation of orography (times g)
 TYPE(FPDSPHY) :: VEG                  ! Percentage of vegetation
-TYPE(FPDSPHY) :: SOTY                 ! Soil type 
+TYPE(FPDSPHY) :: SOTY                 ! Soil type
 TYPE(FPDSPHY) :: LAN                  ! Percentage of land
 TYPE(FPDSPHY) :: CLK                  ! Lake cover
 TYPE(FPDSPHY) :: DL                   ! Lake depth
@@ -331,6 +401,7 @@ TYPE(FPDSPHY) :: SLHF                 ! Surface latent heat flux (ECMWF)
 TYPE(FPDSPHY) :: NEE                  ! Surface net ecosystem exchange of CO2 (ECMWF)
 TYPE(FPDSPHY) :: GPP                  ! Surface gross primary production of CO2 (ECMWF)
 TYPE(FPDSPHY) :: REC                  ! Surface ecosystem respiration of CO2 (ECMWF)
+TYPE(FPDSPHY) :: ACH4                 ! Accumulated CH4 wetland flux (ECMWF)
 TYPE(FPDSPHY) :: MSLD                 ! Mean sea level pressure (ECMWF)
 TYPE(FPDSPHY) :: SP                   ! Surface pressure (ECMWF)
 TYPE(FPDSPHY) :: TCC                  ! Total cloud cover (ECMWF)
@@ -545,6 +616,8 @@ TYPE(FPDSPHY) :: PTYPESEVR3           ! Most severe precip type in last 3h
 TYPE(FPDSPHY) :: PTYPESEVR6           ! Most severe precip type in last 6h
 TYPE(FPDSPHY) :: CLBT                 ! Cloudy brightness temperature     (ECMWF)
 TYPE(FPDSPHY) :: CSBT                 ! Clear-sky brightness temperature  (ECMWF)
+TYPE(FPDSPHY) :: CDRFL                ! Cloudy reflectance     (ECMWF)
+TYPE(FPDSPHY) :: CRRFL                ! Clear-sky reflectance  (ECMWF)
 TYPE(FPDSPHY) :: FCA1                 ! Fraction of calcite over dust 1st bin   (ECMWF)
 TYPE(FPDSPHY) :: FCA2                 ! Fraction of calcite over dust 2nd bin   (ECMWF)
 TYPE(FPDSPHY) :: ICTH                 ! Ice thickess          (ECMWF)
@@ -636,6 +709,7 @@ TYPE(FPDSPHY) :: X2TPW   !2 meters Wet Bulb Temperature
 TYPE(FPDSPHY) :: XMRT    ! Mean Radiant Temperature
 TYPE(FPDSPHY) :: X2SH    ! 2 meters Specific Humidity
 TYPE(FPDSPHY) :: X2RH    ! 2 meters Relative Humidity
+TYPE(FPDSPHY) :: XSIC    ! Sea Ice Fraction              
 TYPE(FPDSPHY) :: XCCC    ! Convective Cloud Cover
 TYPE(FPDSPHY) :: XHCC    ! High Cloud Cover
 TYPE(FPDSPHY) :: XMCC    ! Medium Cloud Cover

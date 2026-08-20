@@ -195,13 +195,15 @@ ELSEIF( (KTESTCASE == 211) .OR. &
 !===========================
   IF (KTESTCASE==211) THEN
   ! mountain position (centre)
-  ZLATC =  0._JPRB
+!  ZLATC =  0._JPRB
 !  ZLONC =  0.25_JPRB*RPI
-  ZLONC =  RPI
+!  ZLONC =  RPI
 !  ZLATC =  RPI/6._JPRB
 !  ZLONC =  1.5_JPRB*RPI
+  ZLATC =  35.0_JPRB*RPI/180.0_JPRB
+  ZLONC =  80.0_JPRB*RPI/180.0_JPRB
   ! mountain height
-  ZAMP  =  250.0_JPRB
+  ZAMP  =  6500.0_JPRB !250.0_JPRB
   ! mountain radius
   ZR   = 5000._JPRB
 !  ZR   = 5000._JPRB*166.7_JPRB/RUSPLRADI

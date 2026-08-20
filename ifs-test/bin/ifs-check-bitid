@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Fail the script if any of the commands in it fails.
+set -e
+
 do_grep() {
   # Wrap grep so that finding nothing isn't fatal under "set -e"
   if ! grep "$@"; then
@@ -8,31 +11,60 @@ do_grep() {
   fi
 }
 
-LATEST_NORM_FILE=NORMS
-SAVED_NORM_FILE=SAVED_NORMS
+TEST_LEGACY=${IFS_TEST_LEGACY:-0}
+
+if [ ${TEST_LEGACY} != 0 ]
+then
+  LATEST_NORM_FILE=NORMS
+  SAVED_NORM_FILE=SAVED_NORMS
+
+  case "${IFS_TEST_BITIDENTICAL:-0}" in
+    2|init)
+      perl ifs-grep-norms.pl NODE.* >"$SAVED_NORM_FILE"
+      if [[ -s $SAVED_NORM_FILE ]]; then
+        echo "Norms generated and saved as $SAVED_NORM_FILE"
+      else
+        echo "No norms produced"
+        exit 1
+      fi
+      ;;
+    1|true|yes|on|check)
+      perl ifs-grep-norms.pl NODE.* >"$LATEST_NORM_FILE"
+      if [[ ! -s $SAVED_NORM_FILE ]]; then
+        echo "No $SAVED_NORM_FILE to check against"
+        exit 1
+      fi
+      if diff -qs "$LATEST_NORM_FILE" "$SAVED_NORM_FILE"; then
+        echo "Bit-identical test PASSED"
+      else
+        echo "Bit-identical test FAILED"
+        exit 1
+      fi
+      ;;
+    0|false|no|off)
+      ;;
+    *)
+      echo "Unknown IFS_TEST_BITIDENTICAL value"
+      exit 1
+      ;;
+  esac
+
+  exit 0
+fi
+
+TEST_TOL=${IFS_TEST_TOLERANCE:-0}
 
 case "${IFS_TEST_BITIDENTICAL:-0}" in
   2|init)
-    perl ifs-grep-norms.pl NODE.* >"$SAVED_NORM_FILE"
-    if [[ -s $SAVED_NORM_FILE ]]; then
-      echo "Norms generated and saved as $SAVED_NORM_FILE"
-    else
-      echo "No norms produced"
-      exit 1
-    fi
+    for f in NODE.*
+    do
+      ofile=reference.json
+      ./ifs-run.py save_reference ${f} ${ofile}
+      echo "Converted ${f} to ${ofile}."
+    done
     ;;
   1|true|yes|on|check)
-    perl ifs-grep-norms.pl NODE.* >"$LATEST_NORM_FILE"
-    if [[ ! -s $SAVED_NORM_FILE ]]; then
-      echo "No $SAVED_NORM_FILE to check against"
-      exit 1
-    fi
-    if diff -qs "$LATEST_NORM_FILE" "$SAVED_NORM_FILE"; then
-      echo "Bit-identical test PASSED"
-    else
-      echo "Bit-identical test FAILED"
-      exit 1
-    fi
+    ./ifs-run.py validate_reference --tolerance=${TEST_TOL} NODE* reference.json 
     ;;
   0|false|no|off)
     ;;

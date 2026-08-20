@@ -1,0 +1,119 @@
+#! (C) Copyright 2022- ECMWF.
+#! (C) Copyright 2022- Meteo-France.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+MODULE FIELD_${RANK}$${SUFF}$_ARRAY_UTIL_MODULE
+
+#:set fieldTypeList = fieldType.getFieldTypeList (ranks=[RANK], kinds=['JP' + SUFF])
+
+USE FIELD_ARRAY_MODULE
+${fieldType.useParkind1 ()}$
+
+IMPLICIT NONE
+
+#:for method in ['LOAD', 'SAVE', 'COPY', 'WIPE', 'HOST']
+INTERFACE ${method}$
+#:for ft in fieldTypeList
+  MODULE PROCEDURE ${method}$_${ft.name}$_ARRAY
+#:endfor
+END INTERFACE
+
+#:endfor
+
+CONTAINS
+
+#:for ft in fieldTypeList
+SUBROUTINE LOAD_${ft.name}$_ARRAY (KLUN, YD)
+
+USE FIELD_UTIL_MODULE, ONLY : LOAD
+
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+TYPE (${ft.name}$_ARRAY) :: YD
+
+IF (ASSOCIATED (YD%F_P)) THEN
+  CALL LOAD (KLUN, YD%F_P)
+ENDIF
+
+END SUBROUTINE
+
+SUBROUTINE SAVE_${ft.name}$_ARRAY (KLUN, YD)
+
+USE FIELD_UTIL_MODULE, ONLY : SAVE
+
+INTEGER (KIND=JPIM), INTENT (IN) :: KLUN
+TYPE (${ft.name}$_ARRAY) :: YD
+END SUBROUTINE
+
+SUBROUTINE COPY_${ft.name}$_ARRAY (SELF, LDCREATED, LDFIELDAPI)
+
+USE FIELD_UTIL_MODULE, ONLY : COPY
+
+TYPE (${ft.name}$_ARRAY) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDCREATED, LDFIELDAPI
+LOGICAL :: LLFIELDAPI, LLCREATED
+
+LLFIELDAPI = .FALSE.
+IF (PRESENT (LDFIELDAPI)) LLFIELDAPI = LDFIELDAPI
+
+LLCREATED = .FALSE.
+IF (PRESENT (LDCREATED)) LLCREATED = LDCREATED
+
+IF (.NOT. LLCREATED) THEN
+  !$acc enter data create (SELF)
+  !$acc update device (SELF)
+ENDIF
+
+!$acc serial present (SELF)
+NULLIFY (SELF%P)
+NULLIFY (SELF%F_P)
+!$acc end serial
+
+IF (LLFIELDAPI .AND. ASSOCIATED (SELF%F_P)) THEN
+  CALL COPY (SELF%F_P, LDCREATED)
+ENDIF
+
+END SUBROUTINE 
+
+SUBROUTINE WIPE_${ft.name}$_ARRAY (SELF, LDDELETED, LDFIELDAPI)
+
+USE FIELD_UTIL_MODULE, ONLY : WIPE
+
+TYPE (${ft.name}$_ARRAY) :: SELF
+LOGICAL, INTENT (IN), OPTIONAL :: LDDELETED, LDFIELDAPI
+LOGICAL :: LLFIELDAPI, LLDELETED
+
+LLFIELDAPI = .FALSE.
+IF (PRESENT (LDFIELDAPI)) LLFIELDAPI = LDFIELDAPI
+
+LLDELETED = .FALSE.
+IF (PRESENT (LDDELETED)) LLDELETED = LDDELETED
+
+IF (LLFIELDAPI .AND. ASSOCIATED (SELF%F_P)) THEN
+  CALL WIPE (SELF%F_P, LDDELETED)
+ENDIF
+
+IF (.NOT. LLDELETED) THEN
+  !$acc exit data delete (SELF)
+ENDIF
+
+END SUBROUTINE 
+
+SUBROUTINE HOST_${ft.name}$_ARRAY (SELF)
+
+USE FIELD_UTIL_MODULE, ONLY : HOST
+
+TYPE (${ft.name}$_ARRAY) :: SELF
+
+IF (ASSOCIATED (SELF%F_P)) THEN
+  CALL HOST (SELF%F_P)
+ENDIF
+
+END SUBROUTINE 
+
+#:endfor
+
+END MODULE

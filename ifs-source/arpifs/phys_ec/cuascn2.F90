@@ -109,19 +109,16 @@ SUBROUTINE CUASCN2 &
 !        P.Lopez       19-Oct-2007 Revised version to improve match to Tiedtke scheme
 !        A.Geer        01-Oct-2008 LDRAIN1D name change to reflect usage
 !        P.Lopez       10-May-2016 Revised precipitation glaciation
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 
 !----------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RETV,   RG,     RCPD,&
- &                    RLVTT,  RLSTT, RTT  
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOECUMF2 , ONLY : TECUMF2
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                    R4IES    ,R5LES    ,R5IES   ,R5ALVCP  ,R5ALSCP  ,&
- &                    RALVDCP  ,RALSDCP  ,RALFDCP ,RTWAT    ,RTICE    ,RTICECU  ,&
- &                    RTWAT_RTICE_R      ,RTWAT_RTICECU_R    ,RTBER    ,RTBERCU  
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of included functions. REK.
 USE YOEPHLI  , ONLY : TEPHLI
 
 IMPLICIT NONE
@@ -202,7 +199,16 @@ IF (LHOOK) CALL DR_HOOK('CUASCN2',0,ZHOOK_HANDLE)
 ASSOCIATE(DETRPEN2=>YDECUMF2%DETRPEN2, ENTRORG2=>YDECUMF2%ENTRORG2, &
  & ENTSHALP2=>YDECUMF2%ENTSHALP2, NJKT22=>YDECUMF2%NJKT22, &
  & RPRCON2=>YDECUMF2%RPRCON2, LMFGLAC2=>YDECUMF2%LMFGLAC2, &
+ & RETV=>YDCST%RETV, RG=>YDCST%RG, RCPD=>YDCST%RCPD, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, &
+ & RTT=>YDCST%RTT, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, &
+ & R4IES=>YDTHF%R4IES, R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, &
+ & R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, RALSDCP=>YDTHF%RALSDCP, &
+ & RALFDCP=>YDTHF%RALFDCP, RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, &
+ & RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, &
+ & RTBER=>YDTHF%RTBER, RTBERCU=>YDTHF%RTBERCU, &
  & LPHYLIN=>YDEPHLI%LPHYLIN)
+
 !*    1.           SPECIFY PARAMETERS
 !                  ------------------
 
@@ -334,12 +340,12 @@ DO JK=KLEV-1,JKT2,-1
   IF (LPHYLIN .OR. LDRAIN1D) THEN
     ICALL=1
     CALL CUADJTQS &
-     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     & ( YDTHF, YDCST, KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
      &   ZPH,      PTU,      PQU,     LLTEST,   ICALL)  
   ELSE
     ICALL=1
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,  KFDIA,  KLON,   KLEV,  IK,&
+     & ( YDTHF, YDCST, YDEPHLI,  KIDIA,  KFDIA,  KLON,   KLEV,  IK,&
      &   ZPH,      PTU,    PQU,    LLTEST, ICALL)
   ENDIF
 

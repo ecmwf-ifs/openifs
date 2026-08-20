@@ -1,68 +1,3 @@
-MODULE SURFEXCDRIVER_CTL_MOD
-CONTAINS
-SUBROUTINE SURFEXCDRIVER_CTL(CDCONF &
- & , KIDIA, KFDIA, KLON, KLEVS, KTILES, KVTYPES, KDIAG, KSTEP &
- & , KLEVSN, KLEVI, KDHVTLS, KDHFTLS, KDHVTSS, KDHFTSS &
- & , KDHVTTS, KDHFTTS, KDHVTIS, KDHFTIS, K_VMASS &
- & , PTSTEP,PTSTEPF &
-! input data, non-tiled
- & , KTVL, KCO2TYP, KTVH, PCVL, PCVH, PCUR &
- & , PLAIL, PLAIH, PFWET, PLAT &
- & , PSNM , PRSN &
- & , PMU0 , PCARDI &
- & , PUMLEV, PVMLEV, PTMLEV, PQMLEV, PCMLEV, PAPHMS, PGEOMLEV, PCPTGZLEV &
- & , PSST, PTSKM1M, PCHAR, PCHARHQ, PSSRFL, PSLRFL, PEMIS, PTICE, PTSN &
- & , PHLICE,PTLICE,PTLWML &   
- & , PTHKICE, PSNTICE &
- & , PWLMX, PUCURR, PVCURR, PI10FGCV &
-! input data, soil
- & , PTSAM1M, PWSAM1M, KSOTY &
-! input data, tiled
- & , PFRTI, PALBTI &
-! updated data, tiled
- & , PUSTRTI, PVSTRTI, PAHFSTI, PEVAPTI, PTSKTI &
- & , PANDAYVT,PANFMVT &
-! updated data, non-tiled
- & , PZ0M, PZ0H &
-! output data, tiled
- & , PSSRFLTI, PQSTI, PDQSTI, PCPTSTI, PCFHTI, PCFQTI, PCSATTI, PCAIRTI &
- & , PCPTSTIU,PCSATTIU, PCAIRTIU,PRAQTI,PTSRF,PLAMSK &
-! output data, non-tiled
- & , PKHLEV, PKCLEV, PCFMLEV, PKMFL, PKHFL, PKQFL, PEVAPSNW &
- & , PZ0MW, PZ0HW, PZ0QW, PBLENDPP, PCPTSPP, PQSAPP, PBUOMPP, PZDLPP &
-! output data, non-tiled CO2
- & , PAN,PAG,PRD,PRSOIL_STR,PRECO,PCO2FLUX,PCH4FLUX&
-! output canopy resistance  
- & , PWETB, PWETL, PWETLU, PWETH, PWETHS &
-! output data, diagnostics
- & , PDHTLS, PDHTSS, PDHTTS, PDHTIS &
- & , PDHVEGS, PEXDIAG, PDHCO2S &
- & , PRPLRG &
-! LIM switch
- & , LSICOUP &
- & , YDCST, YDEXC, YDVEG, YDAGS, YDAGF, YDSOIL, YDFLAKE, YDURB & 
- & )
-
-USE PARKIND1  , ONLY : JPIM, JPRB
-USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_EXC   , ONLY : TEXC
-USE YOS_CST   , ONLY : TCST
-USE YOS_VEG   , ONLY : TVEG
-USE YOS_AGS   , ONLY : TAGS
-USE YOS_AGF   , ONLY : TAGF
-USE YOS_SOIL  , ONLY : TSOIL
-USE YOS_FLAKE , ONLY : TFLAKE
-USE YOS_URB   , ONLY : TURB
-USE YOS_THF   , ONLY : R4LES, R5LES, R2ES, R4IES, R3LES, R3IES, R5IES
-USE VUPDZ0_MOD
-USE VSURF_MOD
-USE VEXCS_MOD
-USE VEVAP_MOD
-USE SURFSEB_CTL_MOD
-USE SRFCOTWO_MOD
-USE VSFLX_MOD
-USE VLAMSK_MOD 
-
 ! (C) Copyright 2005- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -106,6 +41,298 @@ USE VLAMSK_MOD
 !    G. Balsamo+I. Sandu 22/03/2018 - correction 2T for wet skin tile and lakes
 !    A. Agusti-Panareda Nov 2020  couple atm CO2 tracer (new input) with photosynthesis  
 !    V.Bastrikov,F.Maignan,P.Peylin,A.Agusti-Panareda/S.Boussetta Feb 2021 Add Farquhar photosynthesis model
+!    J. McNorton           24/08/2022  urban tile
+!    A. van Niekerk 05/2023 Added LBLEND option to make blending height function of z0m
+!    V. Huijnen            31/10/2023 Add support for BVOC emissions calculation
+
+!  INTERFACE: 
+
+!    Characters (In):
+!      CDCONF   :    IFS Configuration
+
+!    Integers (In):
+!      KIDIA    :    Begin point in arrays
+!      KFDIA    :    End point in arrays
+!      KLON     :    Length of arrays
+!      KLEVS    :    Number of soil layers
+!      KTILES   :    Number of tiles
+!      KVTYPES  :    Number of biomes for carbon
+!      KDIAG    :    Number of diagnostic fields
+!      KSTEP    :    Time step index
+!      KLEVSN   :    Number of snow layers (diagnostics) 
+!      KLEVI    :    Number of sea ice layers (diagnostics)
+!      KDHVTLS  :    Number of variables for individual tiles
+!      KDHFTLS  :    Number of fluxes for individual tiles
+!      KDHVTSS  :    Number of variables for snow energy budget
+!      KDHFTSS  :    Number of fluxes for snow energy budget
+!      KDHVTTS  :    Number of variables for soil energy budget
+!      KDHFTTS  :    Number of fluxes for soil energy budget
+!      KDHVTIS  :    Number of variables for sea ice energy budget
+!      KDHFTIS  :    Number of fluxes for sea ice energy budget
+!      K_VMASS  :    Controls the use of vector functions in the IBM scientific
+!                     library. Set K_VMASS=0 to use standard functions
+!      KTVL     :    Dominant low vegetation type
+!      KCO2TYP :    Type of photosynthetic pathway for low vegetation type (c3/c4)
+!      KTVH     :    Dominant high vegetation type
+!      KSOTY    :    SOIL TYPE                                        (1-6)
+
+!    Reals (In):
+!      PTSTEP   :    Timestep 
+!      PTSTEPF  :    Full actual model timestep (PTSTEP can be a sub-step)
+
+!    Reals with tile index (In): 
+!      PFRTI    :    TILE FRACTIONS                                   (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!      PALBTI   :    Tile albedo                                      (0-1)
+
+!    Reals independent of tiles (In):
+!      PCVL     :    LOW VEGETATION COVER (CLIMATOLOGICAL)
+!      PCVH     :    HIGH VEGETATION COVER (CLIMATOLOGICAL)
+!      PCUR     :    URBAN COVER                                     (0-1)
+!      PLAIL    :    LOW VEGETATION LAI                              m2/m2
+!      PLAIH    :    HIGH VEGETATION LAI                             m2/m2
+!      PLAILP   :    LOW VEGETATION LAI previous time step           m2/m2
+!      PLAIHP   :    HIGH VEGETATION LAI previous time step          m2/m2
+!      PAVGPAR  :    Average PAR for use in BVOC emissions module    W/m2
+!      PISOP_EP :    Isoprene emission potential                     ug/m2/hour
+
+!     PSNM      :       SNOW MASS (per unit area)                      kg/m**2
+!     PRSN      :      SNOW DENSITY                                   kg/m**3
+
+!      PMU0     : COS SOLAR
+!      PCARDI   : CONCENTRATION ATMOSPHERIC CO2
+!    Logicals independent of tiles (In):
+!     LDLAND    :    LAND SEA MASK INDICATOR                       -
+
+
+!      PUMLEV   :    X-VELOCITY COMPONENT, lowest atmospheric level   m/s
+!      PVMLEV   :    Y-VELOCITY COMPONENT, lowest atmospheric level   m/s
+!      PTMLEV   :    TEMPERATURE,   lowest atmospheric level          K
+!      PQMLEV   :    SPECIFIC HUMIDITY                                kg/kg
+!      PCMLEV   :    ATMOSPHERIC CO2                                  kg/kg
+!      PAPHMS   :    Surface pressure                                 Pa
+!      PGEOMLEV :    Geopotential, lowest atmospehric level           m2/s2
+!      PCPTGZLEV:    Geopotential, lowest atmospehric level           J/kg
+!      PSST     :    (OPEN) SEA SURFACE TEMPERATURE                   K
+!      PUSTRTI  :    X-STRESS                                         N/m2
+!      PVSTRTI  :    Y-STRESS                                         N/m2
+!      PTSKM1M  :    SKIN TEMPERATURE                                 K
+!      PCHAR    :    CHARNOCK PARAMETER                               -
+!      PCHARHQ  :    CHARNOCK PARAMETER FOR HEAT AND MOISTURE         -
+!      PSSRFL   :    NET SHORTWAVE RADIATION FLUX AT SURFACE          W/m2
+!      PSLRFL   :    NET LONGWAVE RADIATION FLUX AT SURFACE           W/m2
+!      PEMIS    :    MODEL SURFACE LONGWAVE EMISSIVITY
+!      PTSAM1M  :    SURFACE TEMPERATURE                              K
+!      PWSAM1M  :    SOIL MOISTURE ALL LAYERS                         m**3/m**3
+!      PTICE    :    Ice temperature, top slab                        K
+!      PTSN     :    Snow temperature                                 K
+!      PHLICE   :    Lake ice thickness                               m
+!      PTLICE   :    Lake ice temperature                             K
+!      PTLWML   :    Lake mean water temperature                      K
+!      PTHKICE  :    Sea-ice thickness
+!      PSNTICE  :    Snow thickness on sea-ice
+!      PWLMX    :    Maximum interception layer capacity              kg/m**2
+!      PUCURR   :    u component of ocean surface current             m/s
+!      PVCURR   :    v component of ocean surface current             m/s
+!      PI10FGCV :    gust velocity from deep convcetion               m/s
+
+!    Reals with tile index (In/Out):
+!      PUSTRTI  :    SURFACE U-STRESS                                 N/m2 
+!      PVSTRTI  :    SURFACE V-STRESS                                 N/m2
+!      PAHFSTI  :    SURFACE SENSIBLE HEAT FLUX                       W/m2
+!      PEVAPTI  :    SURFACE MOISTURE FLUX                            KG/m2/s
+!      PTSKTI   :    SKIN TEMPERATURE                                 K
+
+!    UPDATED PARAMETERS FOR VEGETATION TYPES (REAL):
+!      PANDAYVT :    DAILY NET CO2 ASSIMILATION OVER CANOPY           kg_CO2/m**2
+!      PANFMVT  :    MAXIMUM LEAF ASSIMILATION                        kg_CO2/kg_Air m/s
+
+
+!    Reals independent of tiles (In/Out):
+!      PZ0M     :    AERODYNAMIC ROUGHNESS LENGTH                     m
+!      PZ0H     :    ROUGHNESS LENGTH FOR HEAT                        m
+
+!    Reals with tile index (Out):
+!      PSSRFLTI :    Tiled NET SHORTWAVE RADIATION FLUX AT SURFACE    W/m2
+!      PQSTI    :    Tiled SATURATION Q AT SURFACE                    kg/kg
+!      PDQSTI   :    Tiled DERIVATIVE OF SATURATION Q-CURVE           kg/kg/K
+!      PCPTSTI  :    Tiled DRY STATIC ENERGY AT SURFACE               J/kg
+!      PCFHTI   :    Tiled transfer coefficient heat     Rho*Ch*U     kgm-2s-1
+!      PCFQTI   :    Tiled transfer coefficient moisture Rho*Cq*U     kgm-2s-1
+!      PCSATTI  :    MULTIPLICATION FACTOR FOR QS AT SURFACE          -
+!                      FOR SURFACE FLUX COMPUTATION
+!      PCAIRTI  :    MULTIPLICATION FACTOR FOR Q AT  LOWEST MODEL     - 
+!                      LEVEL FOR SURFACE FLUX COMPUTATION
+!      PCPTSTIU :    AS PCPTSTI FOR UNSTRESSED LOW VEGETATION         J/kg
+!      PCSATTIU :    AS PCSATTI FOR UNSTRESSED LOW VEGETATION         -
+!      PCAIRTIU :    AS PCAIRTI FOR UNSTRESSED LOW VEGETATION         -
+!      PRAQTI   :    AERODYNAMIC RESISTANCE, tiled                    s/m
+!      PTSRF    :    Tiled surface temperature for each tile 
+!                    Boundary condition in surfseb                    K
+!      PLAMSK   :    Tiled skin layer conductivity                    W m-2 K-1
+
+!    Reals independent of tiles (Out):
+!      PKHLEV   :    Scaled transfer Coeff. heat         Ch*U         m/s
+!      PKCLEV   :    Scaled transfer Coeff. for tracers  Ch*U         m/s
+!      PCFMLEV  :    Transfer coeff. for momentum    Rho*Cm*U         kgm-2s-1
+!      PKMFL    :    Kinematic momentum flux                          m2s-2
+!      PKHFL    :    Kinematic heat flux                              Kms-1
+!      PKQFL    :    Kinematic moisture flux                          kgkg-1ms-1
+!      PEVAPSNW :    Evaporation from snow under forest               kgm-2s-1
+!      PZ0MW    :    Roughness length for momentum, WMO station       m
+!      PZ0HW    :    Roughness length for heat, WMO station           m
+!      PZ0QW    :    Roughness length for moisture, WMO station       m
+!      PBLENDPP :    Blending weight for 10 m wind postprocessing     m
+!      PCPTSPP  :    Cp*Ts for post-processing of weather parameters  J/kg
+!      PQSAPP   :    Apparent surface humidity for post-processing    kg/kg
+!                     of weather parameters
+!      PBUOMPP  :    Buoyancy flux, for post-processing of gustiness  ???? 
+!      PZDLPP   :    z/L for post-processing of weather parameters    -
+!      PDHTLS   :    Diagnostic array for tiles (see module yomcdh)
+!                      (Wm-2 for energy fluxes, kg/(m2s) for water fluxes)
+!      PDHTSS   :    Diagnostic array for snow T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!      PDHTTS   :    Diagnostic array for soil T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!      PDHTIS   :    Diagnostic array for ice T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!     *PDHVEGS*      Diagnostic array for vegetation (see module yomcdh) 
+!     *PEXDIAG*      Extra diagnostics for pp of canopy stresses
+!     *PDHCO2S*      Diagnostic array for CO2 (see module yomcdh)
+!     *PDHBVOCS*     Diagnostic array for BVOC (see module yomcdh)
+!       PWETB        Surface resistance bare soild 
+!       PWETL        Canopy resistance of low vegetation  
+!       PWETLU       Canopy resistance of low vegetation , unstressed 
+!       PWETH        Canopy resistance of high vegetation  
+!       PWETHS       Canopy resistance of high vegetation snow cover  
+!       LBLEND       Option to make blending height function of z0m (Logical)
+
+
+!     EXTERNALS.
+!     ----------
+
+!     ** SURFEXCDRIVER_CTL CALLS SUCCESSIVELY:
+!         *VUPDZ0*
+!         *VSURF*
+!         *CO2* 
+!         *VEXCS*
+!         *VEVAP*
+!         *SURFSEB_CTL*
+
+!         *VSFLX* (may be not needed as fluxes are computed within this routine)
+
+!  DOCUMENTATION:
+!    See Physics Volume of IFS documentation
+
+!------------------------------------------------------------------------
+
+MODULE SURFEXCDRIVER_CTL_MOD
+CONTAINS
+SUBROUTINE SURFEXCDRIVER_CTL(CDCONF &
+ & , KIDIA, KFDIA, KLON, KLEVS, KTILES, KVTYPES, KDIAG, KSTEP &
+ & , KLEVSN, KLEVI, LDLAND, KDHVTLS, KDHFTLS, KDHVTSS, KDHFTSS &
+ & , KDHVTTS, KDHFTTS, KDHVTIS, KDHFTIS, K_VMASS &
+ & , PTSTEP,PTSTEPF &
+! input data, non-tiled
+ & , KTVL, KCO2TYP, KTVH, PCVL, PCVH, PCUR &
+ & , PLAIL, PLAIH, PFWET, PLAT &
+ & , PSNM , PRSN &
+ & , PMU0 , PCARDI &
+ & , PUMLEV, PVMLEV, PTMLEV, PQMLEV, PCMLEV, PAPHMS, PGEOMLEV, PCPTGZLEV &
+ & , PSST, PTSKM1M, PCHAR, PCHARHQ, PSSRFL, PSLRFL, PEMIS, PTICE, PTSN &
+ & , PHLICE,PTLICE,PTLWML &   
+ & , PTHKICE, PSNTICE &
+ & , PWLMX, PUCURR, PVCURR, PI10FGCV &
+! input data, soil
+ & , PTSAM1M, PWSAM1M, KSOTY &
+! input data, tiled
+ & , PFRTI, PALBTI &
+! updated data, tiled
+ & , PUSTRTI, PVSTRTI, PAHFSTI, PEVAPTI, PTSKTI &
+ & , PANDAYVT,PANFMVT &
+! updated data, non-tiled
+ & , PZ0M, PZ0H &
+! output data, tiled
+ & , PSSRFLTI, PQSTI, PDQSTI, PCPTSTI, PCFHTI, PCFQTI, PCSATTI, PCAIRTI &
+ & , PCPTSTIU,PCSATTIU, PCAIRTIU,PRAQTI,PTSRF,PLAMSK &
+ & , PZ0MTIW, PZ0HTIW, PZ0QTIW, PZDLTI, PQSAPPTI, PCPTSPPTI &
+! output data, non-tiled
+ & , PKHLEV, PKCLEV, PCFMLEV, PKMFL, PKHFL, PKQFL, PEVAPSNW &
+ & , PZ0MW, PZ0HW, PZ0QW, PBLENDPP, PCPTSPP, PQSAPP, PBUOMPP, PZDLPP &
+! output data, non-tiled CO2
+ & , PAN,PAG,PRD,PRSOIL_STR,PRECO,PCO2FLUX,PCH4FLUX&
+! output canopy resistance  
+ & , PWETB, PWETL, PWETLU, PWETH, PWETHS &
+! output data, diagnostics
+ & , PDHTLS, PDHTSS, PDHTTS, PDHTIS &
+ & , PDHVEGS, PEXDIAG, PDHCO2S &
+ & , PRPLRG &
+! LIM switch
+ & , LSICOUP, LBLEND &
+ & , YDCST, YDEXC, YDVEG, YDAGS, YDAGF, YDSOIL, YDFLAKE, YDURB & 
+ & )
+
+USE PARKIND1  , ONLY : JPIM, JPRB
+USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_EXC   , ONLY : TEXC
+USE YOS_CST   , ONLY : TCST
+USE YOS_VEG   , ONLY : TVEG
+USE YOS_AGS   , ONLY : TAGS
+USE YOS_AGF   , ONLY : TAGF
+USE YOS_SOIL  , ONLY : TSOIL
+USE YOS_FLAKE , ONLY : TFLAKE
+USE YOS_URB   , ONLY : TURB
+USE YOS_THF   , ONLY : R4LES, R5LES, R2ES, R4IES, R3LES, R3IES, R5IES
+USE VUPDZ0_MOD
+USE VSURF_MOD
+USE VEXCS_MOD
+USE VEVAP_MOD
+USE SURFSEB_CTL_MOD
+USE SRFCOTWO_MOD
+USE VSFLX_MOD
+USE VLAMSK_MOD 
+
+!------------------------------------------------------------------------
+
+!  PURPOSE:
+!    Routine SURFEXCDRIVER controls the ensemble of routines that prepare
+!    the surface exchange coefficients and associated surface quantities
+!    needed for the solution of the vertical diffusion equations. 
+
+!  SURFEXCDRIVER is called by VDFMAIN
+
+!  METHOD:
+!    This routine is only a shell needed by the surface library
+!    externalisation.
+
+!  AUTHOR:
+!    P. Viterbo       ECMWF May 2005   
+
+!  REVISION HISTORY:
+!    A. Beljaars      10/12/2005  TOFD
+!    A. Beljaars      17/05/2007  clean-up of roughness length initialization
+!    G. Balsamo       15/11/2007  Use aggregated Z0M for drag and dominant low
+!                                 for post-processing of 2m T/TD.
+!    E. Dutra/G. Balsamo  01/05/2008  lake tile
+!    A. Beljaars/M.Koehler 14/01/2009 Surfcae flux bugfix for stability
+!    S. Boussetta/G.Balsamo May 2009 Add lai
+!    G. Balsamo       15/09/2009  Fix lake tile temperature initialization
+!    S. Boussetta/G.Balsamo May 2010 Add CTESSEL
+!    I. Sandu        May 2010 Reduce blending height for post-processing
+!    N.Semane+P.Bechtold 04-10-2012 Add PRPLRG factor for small planet
+!    Linus Magnusson      10-09-28 Sea-ice
+!    I. Sandu    24-02-2014  Lambda skin values by vegetation type instead of tile
+!    A. Beljaars      26/02/2014  Compute unstressed evaporation
+!    A. Agusti-Panareda 26/10/2017 Call CTESSEL at step 0
+!    G. Balsamo+I. Sandu 22/03/2018 - correction 2T for wet skin tile and lakes
+!    A. Agusti-Panareda Nov 2020  couple atm CO2 tracer (new input) with photosynthesis  
+!    V.Bastrikov,F.Maignan,P.Peylin,A.Agusti-Panareda/S.Boussetta Feb 2021 Add Farquhar photosynthesis model
+!    J. McNorton           24/08/2022  urban tile
+!    A. van Niekerk 05/2023 Added LBLEND option to make blending height function of z0m
 
 !  INTERFACE: 
 
@@ -163,6 +390,8 @@ USE VLAMSK_MOD
 
 !      PMU0     : COS SOLAR
 !      PCARDI   : CONCENTRATION ATMOSPHERIC CO2
+!    Logicals independent of tiles (In):
+!     LDLAND    :    LAND SEA MASK INDICATOR                       -
 
 
 !      PUMLEV   :    X-VELOCITY COMPONENT, lowest atmospheric level   m/s
@@ -264,7 +493,7 @@ USE VLAMSK_MOD
 !       PWETLU       Canopy resistance of low vegetation , unstressed 
 !       PWETH        Canopy resistance of high vegetation  
 !       PWETHS       Canopy resistance of high vegetation snow cover  
-
+!       LBLEND       Option to make blending height function of z0m (Logical)
 
 
 !     EXTERNALS.
@@ -313,6 +542,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: K_VMASS
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTEP
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTEPF
 
+LOGICAL           ,INTENT(IN)    :: LDLAND(:)
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTVL(:) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KCO2TYP(:) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTVH(:) 
@@ -398,6 +628,14 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCPTSPP(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQSAPP(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PBUOMPP(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZDLPP(:)
+! Tile depend
+REAL(KIND=JPRB)   ,INTENT(OUT)    :: PZ0MTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)    :: PZ0HTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)    :: PZ0QTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)    :: PZDLTI(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)    :: PQSAPPTI(:,:)
+REAL(KIND=JPRB)   ,INTENT(OUT)    :: PCPTSPPTI(:,:)
+
 
 !CO2
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAN(:)
@@ -418,6 +656,7 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PDHTIS(:,:,:)
 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PRPLRG
 LOGICAL           ,INTENT(IN)    :: LSICOUP  
+LOGICAL           ,INTENT(IN)    :: LBLEND  
 
 !canopy / bare soild resistances 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWETB(:)
@@ -480,7 +719,7 @@ REAL(KIND=JPRB) :: ZDUA, ZZCDN, ZQSSN, ZCOR, ZRG, &
                  & ZZ0MWMO, ZBLENDWMO, ZBLENDZ0, ZCOEF1
 REAL(KIND=JPRB) :: ZRVTRSR
 
-LOGICAL         :: LLAND, LLSICE, LLHISSR(KLON)
+LOGICAL         :: LLSICE, LLHISSR(KLON)
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -493,7 +732,7 @@ IF (LHOOK) CALL DR_HOOK('SURFEXCDRIVER_CTL_MOD:SURFEXCDRIVER_CTL',0,ZHOOK_HANDLE
 ASSOCIATE(LEOCWA=>YDEXC%LEOCWA, LEOCCO=>YDEXC%LEOCCO, REPDU2=>YDEXC%REPDU2, &
  & RKAP=>YDEXC%RKAP, RZ0ICE=>YDEXC%RZ0ICE, &
  & RALFMAXSN=>YDSOIL%RALFMAXSN, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE,LEURBAN=>YDURB%LEURBAN,RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & RTT=>YDCST%RTT, RCPD=>YDCST%RCPD, RD=>YDCST%RD, RSIGMA=>YDCST%RSIGMA, &
  & RG=>YDCST%RG, RETV=>YDCST%RETV, &
  & RVZ0M=>YDVEG%RVZ0M, LECTESSEL=>YDVEG%LECTESSEL, RVTRSR=>YDVEG%RVTRSR)
@@ -603,6 +842,14 @@ DO JL=KIDIA,KFDIA
   PZ0H(JL)=ZBLENDZ0*EXP(-1._JPRB/SQRT(ZCBLENDH(JL)))
 ENDDO
 
+! Because of z0m avg below, this must be placed here.
+! It can go with other z0*tiw parameters if z0m avg is removed.
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+      PZ0MTIW(JL,JTILE)=ZZ0MTI(JL,JTILE)
+  ENDDO
+ENDDO
+
 !*         Put dominant tile Z0M on all tiles
 DO JTILE=1,KTILES
   DO JL=KIDIA,KFDIA
@@ -631,7 +878,7 @@ IF (LEFLAKE) THEN
  & +PFRTI(KIDIA:KFDIA,9)*PALBTI(KIDIA:KFDIA,9)   
 ENDIF
 
-IF (KTILES .GT. 9) THEN
+IF (LEURBAN) THEN
   ZALB(KIDIA:KFDIA)=ZALB(KIDIA:KFDIA)+PFRTI(KIDIA:KFDIA,10)*PALBTI(KIDIA:KFDIA,10)
 ENDIF     
 
@@ -692,6 +939,7 @@ DO JTILE=1,KTILES
     ENDIF
     ZSRFD(JL)=PSSRFLTI(JL,JTILE)/(1.0_JPRB-PALBTI(JL,JTILE))  
   ENDDO
+
   CALL VSURF(KIDIA,KFDIA,KLON,KTILES,KLEVS,JTILE,&
    & KTVL,KCO2TYP,KTVH,&
    & KVTTL(JTILE),KVEG,&
@@ -757,7 +1005,14 @@ PWETHS(KIDIA:KFDIA)=ZWETHS(KIDIA:KFDIA)
 !*          3.3x Surface temperature and Skin conductivity 
 !               -------------------------
 IF (LEOCWA .OR. LEOCCO) THEN
-  PTSRF(KIDIA:KFDIA,1)=PTSKTI(KIDIA:KFDIA,1)
+! Limit skin temperature over water tile to freezing point of water over land point
+! (when used in combination with lake tile for transition freezing period)
+! This is fine from conservation point of view as the two tiles do not interact
+  WHERE(LDLAND(KIDIA:KFDIA))
+    PTSRF(KIDIA:KFDIA,1)=MAX(RTT, PTSKTI(KIDIA:KFDIA,1))
+  ELSEWHERE
+    PTSRF(KIDIA:KFDIA,1)=PTSKTI(KIDIA:KFDIA,1)
+  ENDWHERE
 ELSE
   PTSRF(KIDIA:KFDIA,1)=PSST(KIDIA:KFDIA)
 ENDIF
@@ -964,13 +1219,27 @@ ENDDO
 !          SURFACE ROUGHNESS LENGTH. THE LOCAL ONES ARE FOR
 !          WMO-TYPE WIND STATIONS I.E. OPEN TERRAIN WITH GRASS
 
+
 ZBLENDWMO=40._JPRB/PRPLRG
 ZZ0MWMO=0.03_JPRB/PRPLRG
 DO JL=KIDIA,KFDIA
-  IF (PZ0M(JL)  >  ZZ0MWMO) THEN
-    PZ0MW(JL)=ZZ0MWMO
-    PBLENDPP(JL)=ZBLENDWMO
-  ELSE
+  ! Only apply blending height over land
+  IF ( ( PFRTI(JL,1)+PFRTI(JL,2) ) <=  0.5_JPRB) THEN ! Land
+    IF (PZ0M(JL)  >  ZZ0MWMO) THEN
+      PZ0MW(JL)=ZZ0MWMO
+      IF ( (LBLEND) .AND. (PZ0M(JL)  <=  MAXVAL(RVZ0M)) ) THEN
+        ! Scale the blending height with the roughness length
+        PBLENDPP(JL)=(PZ0M(JL) - ZZ0MWMO)*(ZBLENDWMO - PGEOMLEV(JL)*ZRG)/(MAXVAL(RVZ0M) - ZZ0MWMO)&
+                      + PGEOMLEV(JL)*ZRG
+      ELSE
+        ! Set blending height to constant
+        PBLENDPP(JL)=ZBLENDWMO
+      END IF
+    ELSE ! z0m < ZZ0MWMO
+      PZ0MW(JL)=PZ0M(JL)
+      PBLENDPP(JL)=PGEOMLEV(JL)*ZRG
+    ENDIF
+  ELSE ! Ocean
     PZ0MW(JL)=PZ0M(JL)
     PBLENDPP(JL)=PGEOMLEV(JL)*ZRG
   ENDIF
@@ -994,6 +1263,17 @@ DO JL=KIDIA,KFDIA
   PQSAPP(JL)=ZZQSATI(JL,JTILE)
   PBUOMPP(JL)=ZBUOMTI(JL,JTILE)
   PZDLPP(JL)=ZZDLTI(JL,JTILE)
+ENDDO
+
+!          PP: STORE TILE-DEPENDENT QUANTITIES FOR T2M/D2M per TILE CALCULATION 
+DO JTILE=1,KTILES
+  DO JL=KIDIA,KFDIA
+    PZ0HTIW(JL,JTILE)=ZZ0HTI(JL,JTILE)
+    PZ0QTIW(JL,JTILE)=ZZ0QTI(JL,JTILE)
+    PZDLTI(JL,JTILE)=ZZDLTI(JL,JTILE)
+    PQSAPPTI(JL,JTILE)=ZZQSATI(JL,JTILE)
+    PCPTSPPTI(JL,JTILE)=PCPTSTI(JL,JTILE)
+  ENDDO
 ENDDO
 
 END ASSOCIATE

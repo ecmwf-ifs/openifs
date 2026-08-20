@@ -383,6 +383,7 @@ IF (YDDYNA%LTWOTL) THEN
     ! 2D buffers
     !------------------------------------------------------------------------
     IF(NVLAG == 2 .OR. NVLAG == 3)THEN
+      !dir$ ivdep
       DO JROF=KST,KPROF
         PB1(JROF,MSLB1SP9)=PB1(JROF,MSLB1SP9)+PGMVS(JROF,YT0%MSP)&
          & +ZCMSLP*YDOROG%OROG(JROF)
@@ -443,11 +444,14 @@ IF (YDDYNA%LTWOTL) THEN
     ! 2D buffers
     !------------------------------------------------------------------------
     IF (.NOT.LLCTC) THEN
+      !dir$ ivdep
       DO JROF=KST,KPROF
         PB1(JROF,MSLB1SP9)=PB1(JROF,MSLB1SP9)+PGMVS(JROF,YT9%MSP)&
          & +ZCMSLP*YDOROG%OROG(JROF)
       ENDDO
     ENDIF
+
+    !dir$ ivdep
     DO JROF=KST,KPROF
       PGMVT1S(JROF,YT1%MSP)=PGMVT1S(JROF,YT1%MSP)-ZCMSLP*YDOROG%OROG(JROF)
     ENDDO
@@ -500,6 +504,7 @@ ELSE
       ENDDO
     ENDIF
 
+    !dir$ ivdep
     DO JROF=KST,KPROF
       PB1(JROF,MSLB1SP9)=PB1(JROF,MSLB1SP9)+PGMVS(JROF,YT9%MSP)&
        & +ZCMSLP*YDOROG%OROG(JROF)

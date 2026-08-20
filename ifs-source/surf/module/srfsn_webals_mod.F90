@@ -1,3 +1,86 @@
+
+! (C) Copyright 2021- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFSN_WEBALS* - Snow simplified energy balance 
+!     PURPOSE.
+!     --------
+!     THIS ROUTINE COMPUTES ENERGY BALANCE IN THE SNOWPACK
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_WEBALS* IS CALLED FROM *SURFTSTPS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVSN*    VERTICAL SNOW LAYERS
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LLNOSNOW*   NO-SNOW/SNOW MASK (TRUE IF NO-SNOW)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PCIL*       FRACTION OF LAND GLACIER COVERED
+!    *PWLM1M*     SKIN RESERVOIR WATER CONTENT                 kg/m**2
+!    *PSSNM1M*    TOTAL SNOW MASS IN EACH LAYER (per unit area) kg/m**2
+!    *PWSNM1M*    LIQUID WATER CONTENT IN SNOW                 kg/m**2
+!    *PRSNM1M*    SNOW DENSITY in each layer                   kg/m**3
+!    *PTSNM1M*    TEMPERATURE OF SNOW LAYER                    K
+!    *PTSURF*     TEMPERATURE OF TOP SOIL LAYER                K
+!    *PWSURF*     SOIL MOISTURE OF TOP SOIL LAYER                K
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFLTI*   NET LONGWAVE  RADIATION AT THE SURFACE  W/M**2
+!                  For earch tile   
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION
+!    *PEVAPSN*    EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PTSFC*      Convective Throughfall at the surface        KG/M**2/S
+!    *PTSFL*      Large Scale Throughfall at the surface       KG/M**2/S
+!    *PSURFCOND*  THERMAL CONDUCTIVITY OF TOP SOIL LAYER
+!    *ZSNOTRS*    SOLAR RADIATION FLUX INTO THE SNOWPACK      W/m**2
+!    *PAPRS*      ATMOSPHERIC PRESSURE ON BOTTOM HALF LEVEL   Pa
+!    
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PTSN*        TEMPERATURE OF SNOW LAYER                    K
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   ! G. Arduini    01/09/2021
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP3 object for spatially distributed parameters
+!     Added land-ice
+
 MODULE SRFSN_WEBALS_MOD
 CONTAINS
 SUBROUTINE SRFSN_WEBALS(KIDIA,KFDIA,KLON,KLEVSN,&
@@ -18,16 +101,9 @@ USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 
 USE YOS_SOIL , ONLY : TSOIL 
 USE YOS_CST  , ONLY : TCST
+USE EC_LUN   , ONLY : NULERR
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2021- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFSN_WEBALS* - Snow simplified energy balance 
 !     PURPOSE.
@@ -453,17 +529,20 @@ DO JL=KIDIA,KFDIA
 
     
     IF (ANY(PTSN(JL,:)>RTT+ZEPSILON)) THEN
-      write(*,*) 'All snow melted...'
-      CALL ABORT_SURF('ALL SNOW MELTED')
+      write(*,*) 'tsn is above zero C'
+      !*CALL ABORT_SURF('ALL SNOW MELTED')
     ENDIF
-    IF (ANY(PTSN(JL,:)<100._JPRB)) THEN
-      write(*,*) 'Very snow cold temperature'
-      write(*,*) 'Tsn-1',PTSNM1M(JL,:)
-      write(*,*) 'Tsn',PTSN(JL,:)
-      write(*,*) 'SWE-1',PSSNM1M(JL,:)
+    DO JK=1,KLEVSN
+      IF ((PTSN(JL,JK)<100._JPRB)) THEN
+        write(NULERR,*) 'Very cold snow temperature, webals'
+        write(NULERR,*) 'Tsn-1',PTSNM1M(JL,:)
+        write(NULERR,*) 'Tsn',PTSN(JL,:)
+        write(NULERR,*) 'SWE-1',PSSNM1M(JL,:)
       
-      CALL ABORT_SURF('Very snow cold temperature')
-    ENDIF 
+        PTSN(JL,JK)=100._JPRB
+        !*CALL ABORT_SURF('Very snow cold temperature')
+      ENDIF 
+    ENDDO
     
   ENDIF 
 ENDDO

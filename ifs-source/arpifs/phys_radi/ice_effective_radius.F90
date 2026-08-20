@@ -1,10 +1,12 @@
-! (C) Copyright 2016- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE ICE_EFFECTIVE_RADIUS &
      & (YDERAD,YDSPP_CONFIG,KIDIA, KFDIA, KLON, KLEV, &
      &  PPRESSURE, PTEMPERATURE, PCLOUD_FRAC, PQ_ICE, PQ_SNOW, PGEMU, &
@@ -43,7 +45,7 @@ IMPLICIT NONE
 ! INPUT ARGUMENTS
 
 ! *** Array dimensions and ranges
-TYPE(TERAD)       ,INTENT(INOUT):: YDERAD
+TYPE(TERAD)       ,INTENT(IN) :: YDERAD
 TYPE(TSPP_CONFIG) ,INTENT(IN) :: YDSPP_CONFIG
 INTEGER(KIND=JPIM),INTENT(IN) :: KIDIA    ! Start column to process
 INTEGER(KIND=JPIM),INTENT(IN) :: KFDIA    ! End column to process

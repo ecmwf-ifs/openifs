@@ -1,10 +1,3 @@
-MODULE SUSCST_MOD
-CONTAINS
-SUBROUTINE SUSCST(PRCORIOI,PRPLRG,YDCST)
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_CST  , ONLY : TCST
 
 ! (C) Copyright 2005- ECMWF.
 !
@@ -13,6 +6,37 @@ USE YOS_CST  , ONLY : TCST
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**   *SUSCST* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_CST*
+!              This contains the fundamental model constants
+
+!     INTERFACE.
+!     ----------
+!     CALL *SUSCST* FROM *SUSURF*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+
+!     Original    P. Viterbo      May 2005
+!        Based on the IFS sucst
+
+!     Modified:  
+!         P. Bechtold 26-03-2012: Add PRCORIO PRPLRG factor for small planet
+!      F. Vana  05-Mar-2015  Support for single precision
+
+MODULE SUSCST_MOD
+CONTAINS
+SUBROUTINE SUSCST(PRCORIOI,PRPLRG,YDCST)
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_CST  , ONLY : TCST
 
 !**   *SUSCST* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_CST*
 !              This contains the fundamental model constants

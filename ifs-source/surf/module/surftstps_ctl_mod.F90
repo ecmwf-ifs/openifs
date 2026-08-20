@@ -1,3 +1,120 @@
+
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFTSTPS* - UPDATES LAND VALUES OF TEMPERATURE AND SNOW.
+
+!     PURPOSE.
+!     --------
+!          This routine updates the sea ice values of temperature
+!     and the land values of soil temperature and snow temperature. 
+!     For temperature, this is done via a forward time
+!     step damped with some implicit linear considerations: as if all
+!     fluxes that explicitely depend on the variable had only a linear
+!     variation around the t-1 value. 
+
+!**   INTERFACE.
+!     ----------
+!          *SURFTSTPS* IS CALLED FROM *CALLPAR*.
+!          THE ROUTINE TAKES ITS INPUT FROM THE LONG-TERM STORAGE:
+!     TSA,WL,SN AT T-1,TSK,SURFACE FLUXES COMPUTED IN OTHER PARTS OF
+!     THE PHYSICS, AND W AND LAND-SEA MASK. IT RETURNS AS AN OUTPUT
+!     TENDENCIES TO THE SAME VARIABLES (TSA,WL,SN).
+
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLEV*       NUMBER OF LEVELS
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF TILES (I.E. SUBGRID AREAS WITH DIFFERENT
+!                 SURFACE BOUNDARY CONDITION)
+
+!     INPUT PARAMETERS (REAL):
+!    *PTSPHY*     TIME STEP FOR THE PHYSICS                      S
+!    *PFRTI*      TILE FRACTIONS                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!    *PAHFSTI*      SURFACE SENSIBLE HEAT FLUX, FOR EACH TILE  W/M2
+!    *PEVAPTI*      SURFACE MOISTURE FLUX, FOR EACH TILE      KG/M2/S
+!    *PSSRFLTI*     NET SHORTWAVE RADIATION FLUX AT SURFACE, FOR
+!                       EACH TILE                                 W/M2
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LDSICE*     SEA ICE MASK (.T. OVER SEA ICE)
+!    *LDLICE*     LAND ICE MASK (.T. OVER LAND ICE)
+!    *LDSI*       TRUE IF THERMALLY RESPONSIVE SEA-ICE
+!    *LDNH*       TRUE FOR NORTHERN HEMISPHERE LATITUDE ROW
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSNM1M*     SNOW MASS (per unit area)                      KG/M**2
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PTIAM1M*    SEA-ICE TEMPERATURE                            K
+!          (NB: REPRESENTS THE FRACTION OF ICE ONLY, NOT THE GRID-BOX)
+!    *PWLM1M*     SKIN RESERVOIR WATER CONTENT                   kg/m**2
+!    *PWSAM1M*    SOIL MOISTURE                                m**3/m**3
+!    *PHLICEM1M*  LAKE ICE THICKNESS                             m
+!    *PRSFC*      CONVECTIVE RAIN FLUX AT THE SURFACE          KG/M**2/S
+!    *PRSFL*      LARGE SCALE RAIN FLUX AT THE SURFACE         KG/M**2/S
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PCVL*       LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!    *PCVH*       HIGH VEGETATION COVER (CORRECTED)              (0-1)
+!    *PWLMX*      MAXIMUM SKIN RESERVOIR CAPACITY                kg/m**2
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M**2/S
+
+
+!     OUTPUT PARAMETERS (TENDENCIES):
+!    *PTSNE1*     SNOW TEMPERATURE                              K/S
+!    *PTSAE1*     SOIL TEMPERATURE TENDENCY                     K/S
+!    *PTIAE1*     SEA-ICE TEMPERATURE TENDENCY                  K/S
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION. FOR THE TIME FILTER
+!     SEE CORRESPONDING PART OF THE DOCUMENTATION OF THE ADIABATIC CODE.
+
+!     EXTERNALS.
+!     ----------
+!          *SRFWLS*        COMPUTES THE SKIN RESERVOIR CHANGES.
+!          *SRFSN_LWIMPS*  REVISED SNOW SCHEME W. DIAG. LIQ. WATER.
+!          *SRFRCGS*       COMPUTE SOIL HEAT CAPACITY.
+!          *SRFTS*         COMPUTES THE TEMPERATURE CHANGES BEFORE THE SNOW
+!                            MELTING.
+!          *SRFILS*        COMPUTES TEMPERATURE EVOLUTION OF LAND ICE.
+!          *SRFIS*         COMPUTES TEMPERATURE EVOLUTION OF SEA ICE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original   
+!     --------
+!          Simplified version based on SURFTSTP
+!     M. Janiskova              E.C.M.W.F.     27-07-2011  
+
+!     Modifications
+!     J. McNorton           24/08/2022  urban tile
+!     -------------
+
+!     ------------------------------------------------------------------
+
 MODULE SURFTSTPS_CTL_MOD
 CONTAINS
 SUBROUTINE SURFTSTPS_CTL(KIDIA , KFDIA , KLON  , KLEVS , KLEVSN, &
@@ -12,7 +129,7 @@ SUBROUTINE SURFTSTPS_CTL(KIDIA , KFDIA , KLON  , KLEVS , KLEVSN, &
  & PRSFC   ,PRSFL,&
  & PSLRFL  ,PSSFC  ,PSSFL,&
  & PCVL    ,PCVH   ,PWLMX   ,PEVAPSNW,&
- & YDCST   ,YDVEG  ,YDSOIL  ,YDFLAKE,&
+ & YDCST   ,YDVEG  ,YDSOIL  ,YDFLAKE,YDURB,&
 !-TENDENCIES OUTPUT
  & PTSNE1 , PTSAE1 , PTIAE1)
 
@@ -24,6 +141,7 @@ USE YOS_CST   ,ONLY : TCST
 USE YOS_VEG   ,ONLY : TVEG
 USE YOS_SOIL  ,ONLY : TSOIL
 USE YOS_FLAKE ,ONLY : TFLAKE
+USE YOS_URB   ,ONLY : TURB
 
 USE SRFSN_LWIMPS_MOD
 USE SRFSN_LWIMPMLS_MOD
@@ -37,15 +155,6 @@ USE SRFWLS_MOD
 USE SRFRCGS_MOD
 
 #ifdef DOC
-
-! (C) Copyright 2011- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !**** *SURFTSTPS* - UPDATES LAND VALUES OF TEMPERATURE AND SNOW.
 
 !     PURPOSE.
@@ -148,6 +257,7 @@ USE SRFRCGS_MOD
 !     M. Janiskova              E.C.M.W.F.     27-07-2011  
 
 !     Modifications
+!     J. McNorton           24/08/2022  urban tile
 !     -------------
 
 !     ------------------------------------------------------------------
@@ -196,6 +306,7 @@ TYPE(TCST)        ,INTENT(IN)    :: YDCST
 TYPE(TVEG)        ,INTENT(IN)    :: YDVEG
 TYPE(TSOIL)       ,INTENT(IN)    :: YDSOIL
 TYPE(TFLAKE)      ,INTENT(IN)    :: YDFLAKE
+TYPE(TURB)        ,INTENT(IN)    :: YDURB
 
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTSNE1(:,:)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTSAE1(:,:)
@@ -332,7 +443,7 @@ ELSE
    & PSLRFL ,PSSRFLTI,PFRTI  ,PAHFSTI,PEVAPTI,      &
    & ZSSFC  ,ZSSFL   ,PEVAPSNW,                     &
    & ZTSFC  ,ZTSFL   ,                              &
-   & YDCST  ,YDVEG   ,YDSOIL ,YDFLAKE ,             &
+   & YDCST  ,YDVEG   ,YDSOIL ,YDFLAKE , YDURB,      &
    & ZTSN(KIDIA:KFDIA,1)   ,ZGSN )
   
 ENDIF
@@ -356,7 +467,7 @@ CALL SRFTS(KIDIA  , KFDIA  , KLON   , KLEVS  , &
  & PFRTI  , PAHFSTI,PEVAPTI ,&
  & PSLRFL ,PSSRFLTI, ZGSN   ,&
  & ZCTSA  , ZTSA   , LDLAND ,&
- & YDCST  , YDSOIL , YDFLAKE)  
+ & YDCST  , YDSOIL , YDFLAKE, YDURB)  
 
 ! sea-ice
 IF (LDSI) THEN

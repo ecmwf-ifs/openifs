@@ -64,6 +64,7 @@ USE YOMHOOK            , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMMP0             , ONLY : NPRINTLEV
 USE YOMCT0             , ONLY : NCONF, LARPEGEF_RDGP_INIT
 USE YOMLUN             , ONLY : NULOUT
+USE YOMVAR             , ONLY : LECV
 IMPLICIT NONE
 
 !      -----------------------------------------------------------
@@ -78,6 +79,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !      -----------------------------------------------------------
 
 #include "suinif.intfb.h"
+#include "read_fg_ecv.intfb.h"
 
 !      -----------------------------------------------------------
 
@@ -86,11 +88,17 @@ IF (LHOOK) CALL DR_HOOK('CSTA',0,ZHOOK_HANDLE)
 !      -----------------------------------------------------------
 
 IF (NCONF/100==0.OR.NCONF/100==2.OR.NCONF==302) THEN
-  CALL SUINIF(YDGEOMETRY,YDFIELDS%YRGFL,YDFIELDS%YRSURF,YDFIELDS%YRSPEC,YDFIELDS%YRCFU,YDFIELDS%YRXFU, &
+  CALL SUINIF(YDGEOMETRY,YDFIELDS%YRGFL,YDFIELDS%YRSURF,YDFIELDS%YRSPEC,YDFIELDS%YRCFU,YDFIELDS%YRXFU,YDFIELDS%FIELD_ECV, &
  &            YDMODEL,0,LDRDGRIDSP=LARPEGEF_RDGP_INIT,YDMCUF=YDFIELDS%YMCUF,KINITMONTH=KINITMONTH)
   IF (NPRINTLEV >=2) THEN
     WRITE(NULOUT,*) ' CSTA: SUINIF(0) called '
     CALL FLUSH(NULOUT)
+  ENDIF
+  IF (LECV) THEN
+    CALL READ_FG_ECV(YDGEOMETRY,YDFIELDS)
+    IF (YDMODEL%YRML_AOC%YRMCC%L2DECV2NEMO) THEN
+      CALL READ_FG_ECV(YDGEOMETRY,YDFIELDS,LDBCK=.TRUE.)
+    ENDIF
   ENDIF
 ENDIF
 

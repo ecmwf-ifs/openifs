@@ -1,10 +1,16 @@
-! radiation_adding_ica_lw.f90 - Longwave adding method in independent column approximation
+! radiation_adding_ica_lw.F90 - Longwave adding method in independent column approximation
 !
-! Copyright (C) 2015-2017 ECMWF
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive emission/albedo rather than planck/emissivity
@@ -12,6 +18,8 @@
 !   2017-10-23  R. Hogan  Renamed single-character variables
 
 module radiation_adding_ica_lw
+
+  public
 
 contains
 
@@ -27,6 +35,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     implicit none
 
     ! Inputs
@@ -132,6 +141,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     implicit none
 
     ! Inputs
@@ -264,6 +274,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     implicit none
 
     ! Inputs
@@ -284,7 +295,7 @@ contains
     real(jprb), intent(out), dimension(ncol, nlev+1) :: flux_up, flux_dn
     
     ! Loop index for model level
-    integer :: jlev
+    integer :: jlev, jcol
 
     real(jphook) :: hook_handle
 
@@ -295,8 +306,12 @@ contains
 
     ! Work down through the atmosphere computing the downward fluxes
     ! at each half-level
+! Added for DWD (2020)
+!NEC$ outerloop_unroll(8)
     do jlev = 1,nlev
-      flux_dn(:,jlev+1) = transmittance(:,jlev)*flux_dn(:,jlev) + source_dn(:,jlev)
+      do jcol = 1,ncol
+        flux_dn(jcol,jlev+1) = transmittance(jcol,jlev)*flux_dn(jcol,jlev) + source_dn(jcol,jlev)
+      end do
     end do
 
     ! Surface reflection and emission
@@ -304,8 +319,12 @@ contains
 
     ! Work back up through the atmosphere computing the upward fluxes
     ! at each half-level
+! Added for DWD (2020)
+!NEC$ outerloop_unroll(8)
     do jlev = nlev,1,-1
-      flux_up(:,jlev) = transmittance(:,jlev)*flux_up(:,jlev+1) + source_up(:,jlev)
+      do jcol = 1,ncol
+        flux_up(jcol,jlev) = transmittance(jcol,jlev)*flux_up(jcol,jlev+1) + source_up(jcol,jlev)
+      end do
     end do
     
     if (lhook) call dr_hook('radiation_adding_ica_lw:calc_fluxes_no_scattering_lw',1,hook_handle)

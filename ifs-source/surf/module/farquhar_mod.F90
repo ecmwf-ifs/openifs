@@ -249,7 +249,7 @@ SUBROUTINE FARQUHAR (KIDIA, KFDIA, KLON, LDLAND, KVTYPE, KCO2TYP, YDAGS, YDAGF, 
   INTEGER(KIND=JPIM) :: ININA,IAINIA                ! counter/indices (unitless)
   INTEGER(KIND=JPIM) :: INDEX_ASSI(KLON)            ! indices (unitless)
   INTEGER(KIND=JPIM) :: INDEX_NON_ASSI(KLON)        ! indices (unitless)
-  INTEGER(KIND=JPIM) :: ZCTYPE(KLON)                ! indices for C3/C4 photosynthesis (unitless)
+  INTEGER(KIND=JPIM) :: ICTYPE(KLON)                ! indices for C3/C4 photosynthesis (unitless)
   INTEGER(KIND=JPIM), ALLOCATABLE :: INFO_LIMITPHOTO(:,:) ! ???
   
   LOGICAL            :: LACCLIMATION, LOSM_ACCLIMATION ! Logical switch to enable acclimation of photosynthetic traits  
@@ -347,9 +347,10 @@ SUBROUTINE FARQUHAR (KIDIA, KFDIA, KLON, LDLAND, KVTYPE, KCO2TYP, YDAGS, YDAGF, 
   REAL(KIND=JPRB), ALLOCATABLE :: ZJJ(:,:)       ! Rate of e− transport (umol e− m−2 s−1)
 
 !ORIG  REAL(KIND=JPRB), ALLOCATABLE :: ZLEAF_CI(:,:)  ! intercellular CO2 concentration (ppm)
-!ORIG  REAL(KIND=JPRB), ALLOCATABLE :: ZCC(:,:)       ! Chloroplast CO2 partial pressure (ubar)
-
-!
+  !ORIG  REAL(KIND=JPRB), ALLOCATABLE :: ZCC(:,:)       ! Chloroplast CO2 partial pressure (ubar)
+  
+    REAL(KIND=JPRB), PARAMETER   ::  ZRADTHRESHGPP=1000._JPRB*EPSILON(1._JPRB) ! GPP radiation threshold to check zero values in single precision
+ 
 
   REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -447,9 +448,9 @@ DO JL=KIDIA,KFDIA
   ZVJ(JL)=0._JPRB
   LCALCULATE(JL) = .FALSE.
 
-  ZCTYPE=1
+  ICTYPE=1
   IF (KCO2TYP(JL).EQ.4) THEN
-      ZCTYPE(JL)=2
+      ICTYPE(JL)=2
   ENDIF
 
   DO JLEVEL = 1, NLAI+1  
@@ -537,8 +538,8 @@ ENDDO !JL
   IF (LDOWNREGULATION_CO2) THEN
     DO JL=KIDIA,KFDIA    
       IF (LDLAND(JL)) THEN
-          ZVCMAX25(JL) = RVCMAX25(KVTYPE_TEMPO(JL),ZCTYPE(JL))* &
-   &                   (1._JPRB-RDOWNREGULATION_CO2_COEF(KVTYPE_TEMPO(JL),ZCTYPE(JL)) * &
+          ZVCMAX25(JL) = RVCMAX25(KVTYPE_TEMPO(JL),ICTYPE(JL))* &
+   &                   (1._JPRB-RDOWNREGULATION_CO2_COEF(KVTYPE_TEMPO(JL),ICTYPE(JL)) * &
    &	               (MAX(ZCO2(JL),RDOWNREGULATION_CO2_MINIMUM)-RDOWNREGULATION_CO2_BASELEVEL) / &
    &	               (MAX(ZCO2(JL),RDOWNREGULATION_CO2_MINIMUM)+20._JPRB))
       ENDIF
@@ -546,7 +547,7 @@ ENDDO !JL
   ELSE
     DO JL=KIDIA,KFDIA    
       IF (LDLAND(JL)) THEN
-          ZVCMAX25(JL) = RVCMAX25(KVTYPE_TEMPO(JL),ZCTYPE(JL))
+          ZVCMAX25(JL) = RVCMAX25(KVTYPE_TEMPO(JL),ICTYPE(JL))
       ENDIF
     ENDDO
   ENDIF
@@ -576,7 +577,7 @@ ENDDO !JL
     ! stomatal resistance
     !
     ZRVEGET(JL) = RUNDEF_SECHIBA
-!    ZRSTRUCT(JL) = RSTRUCT_CONST(KVTYPE_TEMPO(JL),ZCTYPE(JL))
+!    ZRSTRUCT(JL) = RSTRUCT_CONST(KVTYPE_TEMPO(JL),ICTYPE(JL))
     !
     ! 2. beta coefficient for vegetation transpiration
     !
@@ -597,7 +598,7 @@ ENDDO !JL
 
        !! Calculates the water limitation factor.
 !               ZWATER_LIM(JL) = PF2(JL)
-        ZWATER_LIM(JL) = MIN(1._JPRB,PF2(JL)*RHUMREL(KVTYPE_TEMPO(JL),ZCTYPE(JL)))
+        ZWATER_LIM(JL) = MIN(1._JPRB,PF2(JL)*RHUMREL(KVTYPE_TEMPO(JL),ICTYPE(JL)))
 
 
        ! Day respiration (assumed to be equal to dark respiration at nighttime)
@@ -612,8 +613,8 @@ ENDDO !JL
                                 &           * MAX(1._JPRB-RSTRESS_VCMAX, ZWATER_LIM(JL))
         ENDDO
 
-            
-       IF ( ( PSRFD(JL) .GT. EPSILON(1._JPRM) )   .AND. &
+!      Set a minimum threshold for radiation to avoid non-zero GPP at nighttime with single precision            
+       IF ( ( PSRFD(JL) .GT. ZRADTHRESHGPP )   .AND. &        
                  ( PF2(JL) .GT. EPSILON(1._JPRM) ) .AND. &
                 ( ZTEMP_GROWTH(JL) .GT. RTPHOTO_MIN ) .AND. &
                  ( ZTEMP_GROWTH(JL) .LT. RTPHOTO_MAX ) ) THEN
@@ -670,7 +671,7 @@ ENDDO !JL
               ! section Methods/Data of Kattge & Knorr
 
 
-              IF (ZCTYPE(JL) .EQ. 1_JPIM) THEN
+              IF (ICTYPE(JL) .EQ. 1_JPIM) THEN
               !C3
                 IF (LACCLIMATION) THEN      
                    ! acclimation of entropy term for Vcmax25 and Jmax25 modified Arrhenius fn
@@ -721,7 +722,7 @@ ENDDO !JL
                          &      ZVPD(JL)))) - 1._JPRB ) &
                          &     * MAX(1._JPRM-RSTRESS_GS, ZWATER_LIM(JL))
 
-	      ELSE IF (ZCTYPE(JL) .EQ. 2_JPIM) THEN
+	      ELSE IF (ICTYPE(JL) .EQ. 2_JPIM) THEN
       	      !C4
                 IF (LACCLIMATION) THEN      
      	          ZS_JMAX_ACCLIMTEMP = RASJ(2) + RBSJ(2) * MAX(11., MIN(ZTEMP_GROWTH(JL),35.))   
@@ -867,7 +868,7 @@ ENDDO !JL
             ! Analytical resolution of the ZASSIMIlation based Yin et al. (2009)
             ICINIC=INDEX_CALC(INIC)
                    
-            IF (ZCTYPE(ICINIC) .EQ. 2_JPIM) THEN
+            IF (ICTYPE(ICINIC) .EQ. 2_JPIM) THEN
               !C4                
 
               ! Eq. 28 of Yin et al. (2009)
@@ -1018,7 +1019,7 @@ ENDDO !JL
                 ENDIF
               ENDDO !end limit_photo                  
 
-            ELSE IF (ZCTYPE(ICINIC) .EQ. 1_JPIM) THEN
+            ELSE IF (ICTYPE(ICINIC) .EQ. 1_JPIM) THEN
 
 
             !
@@ -1134,8 +1135,8 @@ ENDDO !JL
               ENDIF
                   
            ELSE
-             !STOP "Wrong ZCTYPE in FARQUHAR"
-             write (*,*) "Wrong CTYPE (C3/C4) in FARQUHAR",ZCTYPE(ICINIC)
+             !STOP "Wrong ICTYPE in FARQUHAR"
+             write (*,*) "Wrong CTYPE (C3/C4) in FARQUHAR",ICTYPE(ICINIC)
              ZASSIMI(ICINIC,JLEVEL) = 0._JPRB
              ZGS(ICINIC,JLEVEL) = ZG0VAR(ICINIC)
            ENDIF ! C3/C4

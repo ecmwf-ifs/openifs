@@ -1,10 +1,16 @@
-! radiation_optical_depth_scaling.h - Cloud optical-depth scaling for Tripleclouds 
+! (C) Copyright 2016- ECMWF.
 !
-! Copyright (C) 2016-2017 ECMWF
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+! radiation_optical_depth_scaling.h - Cloud optical-depth scaling for Tripleclouds
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-07-14  R. Hogan  Incorporate gamma distribution option
@@ -44,7 +50,7 @@ pure subroutine optical_depth_scaling(nreg, frac_std, do_gamma, od_scaling)
     ! Simple version which fails when fractional_std >= 1:
     !od_scaling(2) = 1.0_jprb-cloud%fractional_std(jcol,jlev)
     ! According to Shonk and Hogan (2008), 1-x should correspond to
-    ! the 16th percentile. 
+    ! the 16th percentile.
     if (.not. do_gamma) then
       ! If we treat the distribution as a lognormal such that the
       ! equivalent Normal has a mean mu and standard deviation sigma,

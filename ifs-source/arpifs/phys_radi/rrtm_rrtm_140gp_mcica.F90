@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE RRTM_RRTM_140GP_MCICA&
  &(YDDIMV, YDEAERATM,YDERAD,YGFL,KIDIA , KFDIA , KLON , KLEV, KCOLS, KCLDCOL,&
  &PRAER, PAER  , PAPH  , PAP  , PAERTAUL, PAERASYL, PAEROMGL,&
@@ -46,9 +55,9 @@ IMPLICIT NONE
 ! Input arguments
 
 TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
-TYPE(TEAERATM)    ,INTENT(INOUT) :: YDEAERATM
-TYPE(TERAD)       ,INTENT(INOUT) :: YDERAD
-TYPE(TYPE_GFLD)   ,INTENT(INOUT) :: YGFL
+TYPE(TEAERATM)    ,INTENT(IN)    :: YDEAERATM
+TYPE(TERAD)       ,INTENT(IN)    :: YDERAD
+TYPE(TYPE_GFLD)   ,INTENT(IN)    :: YGFL
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON! Number of atmospheres (longitudes) 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV! Number of atmospheric layers 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA ! First atmosphere index
@@ -248,7 +257,7 @@ LLPRINT=.TRUE.
 !  by interpolating data from stored reference atmospheres. 
 
   CALL RRTM_SETCOEF_140GP&
-   &(YDDIMV, KIDIA  , KFDIA    , KLEV   , ZCOLDRY  , ZWBRODL , ZWKL ,&
+   &( KIDIA, KFDIA    , KLEV   , ZCOLDRY  , ZWBRODL , ZWKL ,&
    &ZFAC00 , ZFAC01   , ZFAC10 , ZFAC11 , ZFORFAC,ZFORFRAC,INDFOR, JP, JT, JT1 ,&
    &ZCOLH2O, ZCOLCO2  , ZCOLO3 , ZCOLN2O, ZCOLCH4, ZCOLO2,ZCO2MULT , ZCOLBRD,&
    &ILAYTROP,ILAYSWTCH, ILAYLOW, ZPAVEL , ZTAVEL , ZSELFFAC, ZSELFFRAC, INDSELF,&
@@ -258,7 +267,7 @@ LLPRINT=.TRUE.
    &  ZRAT_N2OCO2, ZRAT_N2OCO2_1, ZRAT_O3CO2, ZRAT_O3CO2_1)   
 
   CALL RRTM_GASABS1A_140GP&
-   &(YDDIMV, KIDIA   , KFDIA  , KLEV, ZATR1, ZOD, ZTF1, ZPAVEL, ZCOLDRY, ZCOLBRD, ZWX ,&
+   &(KIDIA   , KFDIA  , KLEV, ZATR1, ZOD, ZTF1, ZPAVEL, ZCOLDRY, ZCOLBRD, ZWX ,&
    &ZTAUAERL, ZFAC00 , ZFAC01, ZFAC10 , ZFAC11 , ZFORFAC,ZFORFRAC,INDFOR, JP, JT, JT1, ZONEMINUS ,&
    &ZCOLH2O , ZCOLCO2, ZCOLO3, ZCOLN2O, ZCOLCH4, ZCOLO2,ZCO2MULT ,&
    &ILAYTROP, ILAYSWTCH,ILAYLOW, ZSELFFAC, ZSELFFRAC, INDSELF, ZPFRAC,&

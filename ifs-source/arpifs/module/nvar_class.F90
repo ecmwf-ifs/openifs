@@ -146,6 +146,9 @@ type class_nvar
   integer(kind=jpim) :: tsts = -1  ! sea water temperature   
   integer(kind=jpim) :: cbsc = -1  ! cloud lidar backscatter
   integer(kind=jpim) :: crfl = -1  ! cloud radar reflectivity
+  integer(kind=jpim) :: cext = -1  ! cloud lidar extinction
+  integer(kind=jpim) :: rbsc = -1  ! rayleigh backscatter
+  integer(kind=jpim) :: cdop = -1  ! doppler velocity
   integer(kind=jpim) :: lab  = -1  ! aerosol lidar attenuated backscatter
 
   integer(kind=jpim) :: jpxvar 
@@ -279,6 +282,9 @@ subroutine create(this,kpchem_assim,kpghg_assim)
   call this%register_nvar_0d(this%tsts,  'TSTS        ', varno%tsts)
   call this%register_nvar_0d(this%cbsc,  'CBSC        ', varno%lidar_cloud_backscatter)
   call this%register_nvar_0d(this%crfl,  'CRFL        ', varno%cloud_radar_reflectivity)
+  call this%register_nvar_0d(this%cext,  'CEXT        ', varno%lidar_cloud_extinction)
+  call this%register_nvar_0d(this%rbsc,  'RBSC        ', varno%lidar_rayleigh_backscatter)
+  call this%register_nvar_0d(this%cdop,  'CDOP        ', varno%cloud_doppler_velocity)
   call this%register_nvar_0d(this%lab,   'LAB         ', varno%liatbk)
 
   ! Print out current mappings (needed for setting NOTVAR correctly, for example)

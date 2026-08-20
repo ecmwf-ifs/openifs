@@ -14,13 +14,15 @@ ecbuild_list_add_pattern(LIST surf.${PREC}_src GLOB
 )
 
 
+include(surf_fc_exclude)
+
+
 ecbuild_add_library(TARGET surf.${PREC}
   DEFINITIONS ${IFS_DEFINITIONS}
-  #SOURCES_GLOB surf/module/* surf/external/*
   SOURCES ${surf.${PREC}_src} 
   PUBLIC_INCLUDES $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/surf/interface>
   PRIVATE_INCLUDES surf/function 
-  LIBS ${IFSAUX_LIBRARIES})
+  PUBLIC_LIBS ${IFSAUX_LIBRARIES})
 
 # ----------------------------------------------------------------------------
 
@@ -36,13 +38,12 @@ endif()
 ecbuild_add_library(TARGET cmflood.${PREC}
   DEFINITIONS ${IFS_DEFINITIONS}
   SOURCES_GLOB surf/cmflood/*
-  PRIVATE_INCLUDES ${NETCDF_INCLUDE_DIRS}
-  LIBS ${IFSAUX_LIBRARIES} ${NETCDF_LIBRARIES})
+  PRIVATE_LIBS NetCDF::NetCDF_Fortran
+  PUBLIC_LIBS ${IFSAUX_LIBRARIES})
 
 if( NOT TARGET cmfMASTER )
 ecbuild_add_executable(TARGET cmfMASTER
   SOURCES surf/offline/cmfld1s.F90
-  INCLUDES ${NETCDF_INCLUDE_DIRS}
   LIBS cmflood.${PREC} ${NETCDF_LIBRARIES}
   LINKER_LANGUAGE Fortran)
 endif()
@@ -64,8 +65,7 @@ ecbuild_add_executable(TARGET osmMASTER
     ${CMAKE_Fortran_MODULE_DIRECTORY}
     surf/offline/function
     surf/offline/namelist
-    ${NETCDF_INCLUDE_DIRS}
-  LIBS surf_offline_intfb surf.${PREC} ${IFSAUX_LIBRARIES} ${NETCDF_LIBRARIES})
+  LIBS surf_offline_intfb surf.${PREC} ${IFSAUX_LIBRARIES} NetCDF::NetCDF_Fortran)
 endif()
 
 # Restore the default Fortran module directory
@@ -78,7 +78,7 @@ if( NOT TARGET surf_offline_util_objs )
 ecbuild_add_library(TARGET surf_offline_util_objs
   SOURCES surf/offline/util/lib_dates.F90
           surf/offline/util/get_points_mod.F90
-  PRIVATE_INCLUDES ${NETCDF_INCLUDE_DIRS}
+  PRIVATE_LIBS NetCDF::NetCDF_Fortran
   TYPE OBJECT)
 
 foreach(program IN ITEMS
@@ -94,8 +94,7 @@ foreach(program IN ITEMS
   ecbuild_add_executable(TARGET ${program}
     SOURCES surf/offline/util/${program}.F90
     OBJECTS surf_offline_util_objs
-    INCLUDES ${NETCDF_INCLUDE_DIRS} ${ECCODES_INCLUDE_DIRS}
-    LIBS ${NETCDF_LIBRARIES} ${ECCODES_LIBRARIES})
+    LIBS NetCDF::NetCDF_Fortran ${ECCODES_LIBRARIES})
 
 endforeach()
 endif()

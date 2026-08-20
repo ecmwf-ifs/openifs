@@ -9,7 +9,7 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
-SUBROUTINE SUVFE_MATRIX(YDCVER,LDINT_FROM_SURF,KTYPE, &
+SUBROUTINE SUVFE_MATRIX(LDINT_FROM_SURF,KTYPE, &
    & KKNOT_IN,PKNOT_IN,KORDER_IN,PTM_IN,KBASIS_IN,KOFF_IN,PBAF_IN,  &
    & KKNOT_W,PKNOT_W,KORDER_W,PTM_W,KBASIS_W,KOFF_W,PWEI,  &
    & KFLEV,PVFE   )
@@ -76,12 +76,12 @@ SUBROUTINE SUVFE_MATRIX(YDCVER,LDINT_FROM_SURF,KTYPE, &
 !      K. Yessad (July 2014): Move some variables.
 !      P. Marguinaud (Oct-2016): Port to single precision
 !      J. Vivoda and P. Smolikova (Sep 2017): new options for VFE-NH
+!      P.Smolikova (Sep 2020): VFE pruning.
 ! --------------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB      ,JPRD
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 USE YOMMP0    ,ONLY : LOUTPUT, NPRINTLEV
-USE YOMCVER   ,ONLY : TCVER
 USE YOMLUN    ,ONLY : NULOUT
 USE SUVFE_HLP ,ONLY : MULPOL, DPOL, IPOL, EVPOL, GLOBAL2LOCAL, FX2T, RTMIN, RTMAX
 
@@ -89,7 +89,6 @@ USE SUVFE_HLP ,ONLY : MULPOL, DPOL, IPOL, EVPOL, GLOBAL2LOCAL, FX2T, RTMIN, RTMA
 
 IMPLICIT NONE
 
-TYPE(TCVER)       ,INTENT(IN)  :: YDCVER
 LOGICAL           ,INTENT(IN)  :: LDINT_FROM_SURF
 INTEGER(KIND=JPIM),INTENT(IN)  :: KTYPE
 INTEGER(KIND=JPIM),INTENT(IN)  :: KKNOT_IN
@@ -125,10 +124,9 @@ REAL(KIND=JPRB), ALLOCATABLE    :: ZDPF (:)
 REAL(KIND=JPRB), ALLOCATABLE    :: ZIPW(:)
 REAL(KIND=JPRB), ALLOCATABLE    :: ZPA(:)
 REAL(KIND=JPRB), ALLOCATABLE    :: ZIPA(:)
-REAL(KIND=JPRB)                 :: ZX1, ZX2 
+REAL(KIND=JPRB)                 :: ZX1, ZX2, ZMINDETA
 REAL(KIND=JPRB)                 :: ZDETADT_IN, ZDETADT_W, ZSZ, ZWGH
-REAL(KIND=JPRB)                 :: ZDTDLOC_IN, ZDTDLOC_W
-REAL(KIND=JPRB)                 :: ZTMIN_IN, ZTMAX_IN, ZTMIN_W, ZTMAX_W, ZTW1, ZTW2
+REAL(KIND=JPRB)                 :: ZTMIN_IN, ZTMAX_IN, ZTMIN_W, ZTMAX_W
 INTEGER(KIND=JPIM)              :: IFRST_IN,ILAST_IN 
 INTEGER(KIND=JPIM)              :: IFRST_W,ILAST_W 
 INTEGER(KIND=JPIM)              :: IDIM1, IDIM2, IDIM3, IVFE, IJVFE
@@ -146,6 +144,8 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 ! --------------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SUVFE_MATRIX',0,ZHOOK_HANDLE)
 ! --------------------------------------------------------------------------
+
+ZMINDETA = 0.0_JPRB
 
 !-----------------
 ! union of knots 
@@ -254,9 +254,9 @@ IF( KTYPE == -1 )THEN
     ZSZ  = ZKNT(JK+1) - ZKNT(JK)
     Z_ACCUM_IN = 0.0_JPRB
 
-    IF( ABS(ZSZ) > YDCVER%RMINDETA )THEN
+    IF( ABS(ZSZ) > ZMINDETA )THEN
       IMIN = MAX(IFRST_IN,IWF(JK) - KORDER_IN + 1)
-      IMAX = MIN(ILAST_IN,IWF(JK)               ) 
+      IMAX = MIN(ILAST_IN,IWF(JK)) 
 
       ZTMIN_IN = FX2T(PKNOT_IN(IWF(JK)), PKNOT_IN(IWF(JK)+1), ZKNT(JK  ))
       ZTMAX_IN = FX2T(PKNOT_IN(IWF(JK)), PKNOT_IN(IWF(JK)+1), ZKNT(JK+1))
@@ -270,7 +270,6 @@ IF( KTYPE == -1 )THEN
         ZX1     = EVPOL(IDIM1,ZPOLY,ZTMIN_IN)
         ZX2     = EVPOL(IDIM1,ZPOLY,ZTMAX_IN)
         Z_ACCUM_IN(JI)= ( ZX2  - ZX1 ) *  ZDETADT_IN
-
       ENDDO
     ENDIF
 
@@ -299,7 +298,7 @@ DO JK=1,IUN-1
   ENDIF
 
   ! integrate on non-zero intervals only
-  IF( ABS(ZSZ) > YDCVER%RMINDETA )THEN
+  IF( ABS(ZSZ) > ZMINDETA )THEN
 
     IMIN = MAX(IFRST_IN,IWF(JK) - KORDER_IN + 1)
     IMAX = MIN(ILAST_IN,IWF(JK)               ) 
@@ -312,16 +311,7 @@ DO JK=1,IUN-1
     ZTMIN_IN = FX2T(PKNOT_IN(IWF(JK)), PKNOT_IN(IWF(JK)+1), ZKNT(JK  ))
     ZTMAX_IN = FX2T(PKNOT_IN(IWF(JK)), PKNOT_IN(IWF(JK)+1), ZKNT(JK+1))
 
-    ZDETADT_IN = PKNOT_IN(IWF(JK)+1) - PKNOT_IN(IWF(JK))
     ZDETADT_W  = PKNOT_W(IW(JK)+1)   - PKNOT_W(IW(JK))
-
-    ZDTDLOC_IN = ZTMAX_IN - ZTMIN_IN
-    ZDTDLOC_W  = ZTMAX_W  - ZTMIN_W
-
-    ! zdruzenie intervalov 
-    ! aku polohu maju KNOTS_W v lokalnej suradnici t funkcie IN
-    ! ZTW1 = FX2T(PKNOT_W(IW(JK)), PKNOT_W(IW(JK)+1), PKNOT_IN(IWF(JK)))
-    ! ZTW2 = FX2T(PKNOT_W(IW(JK)), PKNOT_W(IW(JK)+1), PKNOT_IN(IWF(JK+1)))
 
     DO JJ=IJMIN,IJMAX
 
@@ -344,9 +334,8 @@ DO JK=1,IUN-1
         ZX2     = EVPOL(KORDER_W+1,ZIPW,ZTMAX_W)
         Z_ACCUM_W(JJ)= (ZX2 - ZX1) * ZDETADT_W
       ENDIF
- 
-      ! prevedme W funciu do rovnakych koordinat ako je IN funkcia
-      ! CALL GLOBAL2LOCAL(KORDER_W,PTM_W,ZTW1,ZTW2,PWEI(JJ,JSEG,:),ZPT_W)
+
+      ! transform to the same coordinates
       CALL GLOBAL2LOCAL(KORDER_W,PTM_W,ZTMIN_W,ZTMAX_W,PWEI(JJ,JSEG,:),ZPT_W)
 
       DO JI=IMIN,IMAX
@@ -390,7 +379,6 @@ DO JK=1,IUN-1
 
           ! int_{i,1,eta} e(i) deta 
           CALL IPOL(KORDER_IN,ZPT_IN,0.0_JPRB,IDIM1,ZPOLY)
-          ! ZWGH = ZDETADT_W * ZDETADT_IN * ZDTDLOC_W * ZDTDLOC_IN
           ZWGH = ZSZ * ZSZ
 
         ENDIF
@@ -399,8 +387,6 @@ DO JK=1,IUN-1
         CALL IPOL  (IDIM3,ZPA,0.0_JPRB,IDIM3+1,ZIPA) 
         ZX1 = EVPOL(IDIM3+1,ZIPA,RTMIN)
         ZX2 = EVPOL(IDIM3+1,ZIPA,RTMAX)
-        ! ZX1 = EVPOL(IDIM3+1,ZIPA,ZTMIN_IN)
-        ! ZX2 = EVPOL(IDIM3+1,ZIPA,ZTMAX_IN)
 
         PVFE(IJVFE,IVFE) = PVFE(IJVFE,IVFE) + ZWGH * (ZX2 - ZX1)
 
@@ -418,10 +404,6 @@ DO JK=1,IUN-1
           IVFE = JI-KOFF_IN
           IF( IVFE > 0 )THEN
             PVFE(IJVFE,IVFE) = PVFE(IJVFE,IVFE) + Z_ACCUM_W(JJ) * ZCUM_IN(JI,JK)
-
-            ! IF(YDCVER%LVFE_VERBOSE)THEN
-            !   WRITE(NULOUT,*) "DBG PVFE 01 ::", IJVFE, IVFE, PVFE(IJVFE,IVFE), Z_ACCUM_W(JJ) * ZCUM_IN(JI,JK)
-            ! ENDIF
           ENDIF
         ENDDO
 

@@ -168,6 +168,8 @@ REAL(KIND=JPRB) :: NOGWFIELD(JPFLEV,2)
 !        technique. The stored LS horizontal advection should
 !        be considered as RHS.
 REAL(KIND=JPRB) :: RHST9(JPFLEV), RHSQ9(JPFLEV)
+REAL(KIND=JPRB) :: RHSTKE9(JPFLEV)
+REAL(KIND=JPRB) :: RHSA9(JPFLEV),RHSL9(JPFLEV),RHSI9(JPFLEV)
 REAL(KIND=JPRB) :: RHSU9(JPFLEV), RHSV9(JPFLEV)
 !  Quantity used by SETTLST scheme for trajectory research
 REAL(KIND=JPRB) :: WRL9(JPFLEV)

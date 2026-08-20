@@ -67,7 +67,7 @@ USE YOMGP1C0 , ONLY : TSA0     ,WSA0     ,TIA0     ,SNS0     ,&
 USE YOMGPD1C , ONLY : VEXTRA   ,VEXTR2
 USE YOMGT1C0 , ONLY : UT0      ,VT0      ,TT0      ,QT0      ,&
                      &WT0      ,ST0      ,AT0      ,SPT0     ,&
-                     &RNT0     ,SNT0
+                     &RNT0     ,SNT0     ,TKET0
 USE YOMGF1C  , ONLY : UG0      ,VG0      ,VVEL0    ,UADV     ,&
                      &VADV     ,TADV     ,QADV     ,ETADOTDPDETA
 USE YOMLOG1C , ONLY : LDYNFOR  ,LUGVG    ,LVERVEL  ,LETADOT  ,&
@@ -137,7 +137,7 @@ CALL HANDLE_ERR_NC(ISTATUS)
 !              --------------------------------------
 
 !...assuming 7 prognostic variables (incl. ql, qi, a)
-NT = NSTRTINI             !# of step in initial condition data used
+NT = NSTRTINI             ! # of step in initial condition data used
 START2 = (/ 1    , NT /)
 COUNT2 = (/ NFLEVG, 1  /)
 
@@ -163,11 +163,10 @@ ISTATUS = NF_INQ_VARID     (INCID, 'q', VARID)
 CALL HANDLE_ERR_NC(ISTATUS)
 ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
 CALL HANDLE_ERR_NC(ISTATUS)
-!gsa !To avoid negative Q values
- DO I=1,NFLEVG
-  IF(TEMP1A(I).LE.0.)TEMP1A(I)=1.E-12_JPRB
- ENDDO
-!gse
+!To avoid negative Q values
+DO I=1,NFLEVG
+  IF(TEMP1A(I).LE.0.0_JPRB) TEMP1A(I)=1.E-12_JPRB
+ENDDO
 QT0(1:NFLEVG) = TEMP1A
 
 ISTATUS = NF_INQ_VARID     (INCID, 'ql', VARID)
@@ -220,6 +219,15 @@ ELSE
   SNT0(1:NFLEVG) = TEMP1A
 ENDIF
 
+ISTATUS = NF_INQ_VARID     (INCID, 'tke',  VARID)
+IF (ISTATUS .NE. NF_NOERR) THEN
+  WRITE(*,*) 'ATTENTION: tke profile not available, put 0: ATTENTION'
+  TKET0(1:NFLEVG) = 0.0_JPRB  
+ELSE
+  ISTATUS = NF_GET_VARA_REAL (INCID, VARID, START2, COUNT2, TEMP1A)
+  CALL HANDLE_ERR_NC(ISTATUS)
+  TKET0(1:NFLEVG) = TEMP1A
+ENDIF
 
 !*       3.    READ SURFACE PRESSURE VARIABLE (LOG).
 !              -------------------------------------

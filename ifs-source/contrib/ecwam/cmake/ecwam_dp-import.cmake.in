@@ -1,0 +1,28 @@
+# (C) Copyright 2022- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+# Import for ecwam project
+#
+# This file is included during
+#
+#    find_package( ecwam [QUIET] [REQUIRED] )
+#
+
+##################################################################
+## Export project variables
+
+set( ${CMAKE_FIND_PACKAGE_NAME}_VERSION_STR            @PROJECT_VERSION@ )
+set( ${CMAKE_FIND_PACKAGE_NAME}_HAVE_MPI               @HAVE_MPI@ )
+set( ${CMAKE_FIND_PACKAGE_NAME}_HAVE_OMP               @HAVE_OMP@ )
+set( ${CMAKE_FIND_PACKAGE_NAME}_HAVE_SINGLE_PRECISION  @HAVE_SINGLE_PRECISION@ )
+set( ${CMAKE_FIND_PACKAGE_NAME}_HAVE_DOUBLE_PRECISION  @HAVE_DOUBLE_PRECISION@ )
+set( ${CMAKE_FIND_PACKAGE_NAME}_HAVE_UNWAM             @HAVE_UNWAM@ )
+
+if( NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY )
+  message( STATUS "Found ${CMAKE_FIND_PACKAGE_NAME} version ${${CMAKE_FIND_PACKAGE_NAME}_VERSION_STR}" )
+endif()

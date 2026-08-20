@@ -16,7 +16,6 @@ MODULE MODEL_GENERAL_CONF_MOD
   USE YOMMODERRMOD , ONLY : TMODERR
   USE YOMSPSDT     , ONLY : TSPPT_CONFIG
   USE SPP_MOD      , ONLY : TSPP_CONFIG
-  USE TYPE_ECV     , ONLY : TECVDIM
   USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
   IMPLICIT NONE
 
@@ -27,7 +26,6 @@ MODULE MODEL_GENERAL_CONF_MOD
     TYPE(TDIMF)             :: YRDIMF                  !! number of fields
     TYPE(TYPE_GFLD)         :: YGFL                    !! gfl descriptors
     TYPE(TRIP)              :: YRRIP                   !! TEMPORARY TREATMENT OF TIME, SHOULD CHANGE AT CY45
-    TYPE(TECVDIM)           :: YRDIMECV                !! ECV field
     TYPE(TMODERR)           :: YRMODERR                !! Model error config
     TYPE(TSPPT_CONFIG)      :: YRSPPT_CONFIG           !! SPPT config
     TYPE(TSPP_CONFIG)       :: YRSPP_CONFIG            !! SPP config

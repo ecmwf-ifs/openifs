@@ -1,10 +1,16 @@
 ! radiation_mcica_lw.F90 - Monte-Carlo Independent Column Approximation longtwave solver
 !
-! Copyright (C) 2015-2017 ECMWF
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive emission/albedo rather than planck/emissivity
@@ -13,6 +19,8 @@
 !   2017-10-23  R. Hogan  Renamed single-character variables
 
 module radiation_mcica_lw
+
+  public
 
 contains
 
@@ -34,13 +42,13 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     use radiation_io,   only           : nulerr, radiation_abort
     use radiation_config, only         : config_type
     use radiation_single_level, only   : single_level_type
     use radiation_cloud, only          : cloud_type
     use radiation_flux, only           : flux_type
-    use radiation_two_stream, only     : calc_two_stream_gammas_lw, &
-         &                               calc_reflectance_transmittance_lw, &
+    use radiation_two_stream, only     : calc_ref_trans_lw, &
          &                               calc_no_scattering_transmittance_lw
     use radiation_adding_ica_lw, only  : adding_ica_lw, fast_adding_ica_lw, &
          &                               calc_fluxes_no_scattering_lw
@@ -99,8 +107,8 @@ contains
     ! albedo and asymmetry factor
     real(jprb), dimension(config%n_g_lw) :: od_total, ssa_total, g_total
 
-    ! Two-stream coefficients
-    real(jprb), dimension(config%n_g_lw) :: gamma1, gamma2
+    ! Combined scattering optical depth
+    real(jprb) :: scat_od, scat_od_total(config%n_g_lw)
 
     ! Optical depth scaling from the cloud generator, zero indicating
     ! clear skies
@@ -122,8 +130,8 @@ contains
     ! Number of g points
     integer :: ng
 
-    ! Loop indices for level and column
-    integer :: jlev, jcol
+    ! Loop indices for level, column and g point
+    integer :: jlev, jcol, jg
 
     real(jphook) :: hook_handle
 
@@ -143,40 +151,30 @@ contains
       if (config%do_lw_aerosol_scattering) then
         ! Scattering case: first compute clear-sky reflectance,
         ! transmittance etc at each model level
-        do jlev = 1,nlev
-          ssa_total = ssa(:,jlev,jcol)
-          g_total   = g(:,jlev,jcol)
-          call calc_two_stream_gammas_lw(ng, ssa_total, g_total, &
-               &  gamma1, gamma2)
-          call calc_reflectance_transmittance_lw(ng, &
-               &  od(:,jlev,jcol), gamma1, gamma2, &
-               &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1,jcol), &
-               &  ref_clear(:,jlev), trans_clear(:,jlev), &
-               &  source_up_clear(:,jlev), source_dn_clear(:,jlev))
-        end do
+        call calc_ref_trans_lw(ng*nlev, &
+             &  od(:,:,jcol), ssa(:,:,jcol), g(:,:,jcol), &
+             &  planck_hl(:,1:jlev,jcol), planck_hl(:,2:jlev+1,jcol), &
+             &  ref_clear, trans_clear, &
+             &  source_up_clear, source_dn_clear)
         ! Then use adding method to compute fluxes
         call adding_ica_lw(ng, nlev, &
              &  ref_clear, trans_clear, source_up_clear, source_dn_clear, &
              &  emission(:,jcol), albedo(:,jcol), &
              &  flux_up_clear, flux_dn_clear)
-        
       else
         ! Non-scattering case: use simpler functions for
         ! transmission and emission
-        do jlev = 1,nlev
-          call calc_no_scattering_transmittance_lw(ng, od(:,jlev,jcol), &
-               &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1, jcol), &
-               &  trans_clear(:,jlev), source_up_clear(:,jlev), source_dn_clear(:,jlev))
-        end do
+        call calc_no_scattering_transmittance_lw(ng*nlev, od(:,:,jcol), &
+             &  planck_hl(:,1:nlev,jcol), planck_hl(:,2:nlev+1, jcol), &
+             &  trans_clear, source_up_clear, source_dn_clear)
+        ! Ensure that clear-sky reflectance is zero since it may be
+        ! used in cloudy-sky case
+        ref_clear = 0.0_jprb
         ! Simpler down-then-up method to compute fluxes
         call calc_fluxes_no_scattering_lw(ng, nlev, &
              &  trans_clear, source_up_clear, source_dn_clear, &
              &  emission(:,jcol), albedo(:,jcol), &
-             &  flux_up_clear, flux_dn_clear)
-        
-        ! Ensure that clear-sky reflectance is zero since it may be
-        ! used in cloudy-sky case
-        ref_clear = 0.0_jprb
+             &  flux_up_clear, flux_dn_clear)       
       end if
 
       ! Sum over g-points to compute broadband fluxes
@@ -193,7 +191,8 @@ contains
            &  cloud%fraction(jcol,:), cloud%overlap_param(jcol,:), &
            &  config%cloud_inhom_decorr_scaling, cloud%fractional_std(jcol,:), &
            &  config%pdf_sampler, od_scaling, total_cloud_cover, &
-           &  is_beta_overlap=config%use_beta_overlap)
+           &  use_beta_overlap=config%use_beta_overlap, &
+           &  use_vectorizable_generator=config%use_vectorizable_generator)
       
       ! Store total cloud cover
       flux%cloud_cover_lw(jcol) = total_cloud_cover
@@ -212,49 +211,63 @@ contains
               i_cloud_top = jlev
             end if
 
-            od_cloud_new = od_scaling(:,jlev) &
-                 &  * od_cloud(config%i_band_from_reordered_g_lw,jlev,jcol)
-            od_total = od(:,jlev,jcol) + od_cloud_new
-            ssa_total = 0.0_jprb
-            g_total   = 0.0_jprb
+            do jg = 1,ng
+              od_cloud_new(jg) = od_scaling(jg,jlev) &
+                 &  * od_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol)
+              od_total(jg)  = od(jg,jlev,jcol) + od_cloud_new(jg)
+              ssa_total(jg) = 0.0_jprb
+              g_total(jg)   = 0.0_jprb
+            end do
 
             if (config%do_lw_cloud_scattering) then
               ! Scattering case: calculate reflectance and
               ! transmittance at each model level
+
               if (config%do_lw_aerosol_scattering) then
-                where (od_total > 0.0_jprb)
-                  ssa_total = (ssa(:,jlev,jcol)*od(:,jlev,jcol) &
-                       &     + ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
-                       &     *  od_cloud_new) & 
-                       &     / od_total
-                end where
-                where (ssa_total*od_total > 0.0_jprb)
-                  g_total = (g(:,jlev,jcol)*ssa(:,jlev,jcol)*od(:,jlev,jcol) &
-                       &     +   g_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
-                       &     * ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
-                       &     *  od_cloud_new) &
-                       &     / (ssa_total*od_total)
-                end where
+                ! In single precision we need to protect against the
+                ! case that od_total > 0.0 and ssa_total > 0.0 but
+                ! od_total*ssa_total == 0 due to underflow
+                do jg = 1,ng
+                  if (od_total(jg) > 0.0_jprb) then
+                    scat_od_total(jg) = ssa(jg,jlev,jcol)*od(jg,jlev,jcol) &
+                     &     + ssa_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol) &
+                     &     *  od_cloud_new(jg)
+                    ssa_total(jg) = scat_od_total(jg) / od_total(jg)
+
+                    if (scat_od_total(jg) > 0.0_jprb) then
+                      g_total(jg) = (g(jg,jlev,jcol)*ssa(jg,jlev,jcol)*od(jg,jlev,jcol) &
+                         &     +   g_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol) &
+                         &     * ssa_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol) &
+                         &     *  od_cloud_new(jg)) &
+                         &     / scat_od_total(jg)
+                    end if
+                  end if
+                end do
+
               else
-                where (od_total > 0.0_jprb)
-                  ssa_total = ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
-                       &     * od_cloud_new / od_total
-                end where
-                where (ssa_total*od_total > 0.0_jprb)
-                  g_total = g_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
-                       &     * ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
-                       &     *  od_cloud_new / (ssa_total*od_total)
-                end where
+
+                do jg = 1,ng
+                  if (od_total(jg) > 0.0_jprb) then
+                    scat_od = ssa_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol) &
+                         &     * od_cloud_new(jg)
+                    ssa_total(jg) = scat_od / od_total(jg)
+                    if (scat_od > 0.0_jprb) then
+                      g_total(jg) = g_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol) &
+                           &     * ssa_cloud(config%i_band_from_reordered_g_lw(jg),jlev,jcol) &
+                           &     *  od_cloud_new(jg) / scat_od
+                    end if
+                  end if
+                end do
+
               end if
             
               ! Compute cloudy-sky reflectance, transmittance etc at
               ! each model level
-              call calc_two_stream_gammas_lw(ng, ssa_total, g_total, &
-                   &  gamma1, gamma2)
-              call calc_reflectance_transmittance_lw(ng, &
-                   &  od_total, gamma1, gamma2, &
+              call calc_ref_trans_lw(ng, &
+                   &  od_total, ssa_total, g_total, &
                    &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1,jcol), &
-                   &  reflectance(:,jlev), transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))
+                   &  reflectance(:,jlev), transmittance(:,jlev), &
+                   &  source_up(:,jlev), source_dn(:,jlev))
             else
               ! No-scattering case: use simpler functions for
               ! transmission and emission
@@ -281,9 +294,6 @@ contains
         else if (config%do_lw_cloud_scattering) then
           ! Use adding method to compute fluxes but optimize for the
           ! presence of clear-sky layers
-!          call adding_ica_lw(ng, nlev, reflectance, transmittance, source_up, source_dn, &
-!               &  emission(:,jcol), albedo(:,jcol), &
-!               &  flux_up, flux_dn)
           call fast_adding_ica_lw(ng, nlev, reflectance, transmittance, source_up, source_dn, &
                &  emission(:,jcol), albedo(:,jcol), &
                &  is_clear_sky_layer, i_cloud_top, flux_dn_clear, &

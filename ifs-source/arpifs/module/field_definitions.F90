@@ -82,6 +82,7 @@ type, extends(field_access_base) :: field_access
   real(kind=jprb), pointer :: pdnl(:,:) => null()
   real(kind=jprb), pointer :: pdnl_si(:,:) => null()
   real(kind=jprb), pointer :: gw(:,:) => null()
+  real(kind=jprb), pointer :: nhy(:,:) => null()
   real(kind=jprb), pointer :: curhs(:,:) => null()
   real(kind=jprb), pointer :: cvrhs(:,:) => null()
   real(kind=jprb), pointer :: ctrhs(:,:) => null()
@@ -161,9 +162,6 @@ type, extends(field_access_base) :: field_access
   real(kind=jprb), pointer :: spnl2(:)  => null()
   real(kind=jprb), pointer :: cspnl2(:)  => null()
   real(kind=jprb), pointer :: prehyds(:)  => null()
-  real(kind=jprb), pointer :: extcv2d(:,:)  => null()
-  real(kind=jprb), pointer :: extcv3d(:,:)  => null()
-
   ! For LELAM
   real(kind=jprb), pointer :: u_mean(:) => null()
   real(kind=jprb), pointer :: v_mean(:) => null()
@@ -400,6 +398,7 @@ type, extends(field_access_base) :: field_access
    real(kind=jprb), pointer :: vd_igpp(:) => null() 
    real(kind=jprb), pointer :: vd_irec(:) => null()
    real(kind=jprb), pointer :: vd_ich4(:) => null()
+   real(kind=jprb), pointer :: vd_ach4(:) => null()
    real(kind=jprb), pointer :: vd_csf(:) => null() 
    real(kind=jprb), pointer :: vd_lssf(:) => null() 
    real(kind=jprb), pointer :: vd_mxtpr(:) => null() 
@@ -511,6 +510,8 @@ type, extends(field_access_base) :: field_access
 ! * Group SM=SATSIM: (ECMWF) simulated satellite images:
    real(kind=jprb), pointer :: sm_clbt(:,:) => null()
    real(kind=jprb), pointer :: sm_csbt(:,:) => null()
+   real(kind=jprb), pointer :: sm_cdrfl(:,:) => null()
+   real(kind=jprb), pointer :: sm_crrfl(:,:) => null()
    
   ! Group WS
   real(kind=jprb), pointer :: ws_char(:) => null() 
@@ -529,6 +530,8 @@ type, extends(field_access_base) :: field_access
   real(kind=jprb), pointer :: ww_zil(:) => null() 
   real(kind=jprb), pointer :: ww_cif(:) => null() 
   real(kind=jprb), pointer :: ww_clk(:) => null() 
+  real(kind=jprb), pointer :: ww_ustrw(:) => null() 
+  real(kind=jprb), pointer :: ww_vstrw(:) => null() 
   real(kind=jprb), pointer :: ww_ucurw(:) => null() 
   real(kind=jprb), pointer :: ww_vcurw(:) => null() 
 
@@ -576,7 +579,7 @@ integer(kind=jpim),parameter :: jpnumfids=4200
 type type_field_id
 !!$  integer(kind=jpim) :: u, v, div,vor,t, pd, vd, nhx, edot,vcasrs,rdlasr,&
 !!$   & sgrtl,sgrtm,unl,unl_si,vnl,vnl_si,tnl,tnl_si,spnl,spnl_si,vwvnl,&
-!!$   & vdnl_si,pdnl,pdnl_si,gw,curhs,cvrhs,ctrhs,csprhs,cspdrhs,csvdrhs,&
+!!$   & vdnl_si,pdnl,pdnl_si,gw,nhy,curhs,cvrhs,ctrhs,csprhs,cspdrhs,csvdrhs,&
 !!$   & cunl,cvnl,ctnl,cspnl,cvwvnl,cspdnl,cupt,cvpt,ctpt,cpdpt,cvdpt,dphi,nhxnl,cnhxnl,&
 !!$    & q, o3, l, i, a, ghg, grg, aero, phys, s, r, g, h, lconv,iconv,rconv,sconv,&
 !!$    & tke,tte,efb1,efb2,efb3,mxl,src,shtur,fqtur,fstur,cvv,cpf,spf,cvgq,&
@@ -717,6 +720,7 @@ integer(kind=jpim) :: eh=165
 integer(kind=jpim) :: vvel=166
 integer(kind=jpim) :: unogw=167
 integer(kind=jpim) :: vnogw=168
+integer(kind=jpim) :: nhy=169
 integer(kind=jpim) :: extcv2d=170
 integer(kind=jpim) :: extcv3d=170+jp_necv_2d_max
 
@@ -1058,11 +1062,15 @@ integer(kind=jpim) :: vd_mlcin100=3151
 integer(kind=jpim) :: vd_tropotp=3152
 integer(kind=jpim) :: vd_sdsl=3153
 integer(kind=jpim) :: vd_ich4=3154
-integer(kind=jpim) :: vd_ptypeocc6=3155
+integer(kind=jpim) :: vd_ach4=3155
+integer(kind=jpim) :: vd_ptypeocc6=3156
+
 
 ! Group SM=SATSIM: (ECMWF) simulated satellite images
 integer(kind=jpim) :: sm_clbt=3201
 integer(kind=jpim) :: sm_csbt=3202
+integer(kind=jpim) :: sm_cdrfl=3203
+integer(kind=jpim) :: sm_crrfl=3204
 
 ! Group WS=WAVES: surface prognostic quantities over sea (used by IFS)
 integer(kind=jpim) :: ws_char=3301
@@ -1104,8 +1112,10 @@ integer(kind=jpim) :: ww_rho= 3803
 integer(kind=jpim) :: ww_zil= 3804
 integer(kind=jpim) :: ww_cif= 3805
 integer(kind=jpim) :: ww_clk= 3806
-integer(kind=jpim) :: ww_ucurw=3807 
-integer(kind=jpim) :: ww_vcurw= 3808
+integer(kind=jpim) :: ww_ustrw=3807 
+integer(kind=jpim) :: ww_vstrw=3808 
+integer(kind=jpim) :: ww_ucurw=3809 
+integer(kind=jpim) :: ww_vcurw= 3810
 
 end type type_field_id
 
@@ -1204,6 +1214,7 @@ call set_fvar(metadata,fid%vdnl_si,'vdnl_si',2,d2full,'?',1)
 call set_fvar(metadata,fid%pdnl,'pdnl',2,d2full,'?',1)
 call set_fvar(metadata,fid%pdnl_si,'pdnl_si',2,d2full,'?',1)
 call set_fvar(metadata,fid%gw,'gw',2,d2full,'?',1)
+call set_fvar(metadata,fid%nhy,'nhy',2,d2full,'?',1)
 call set_fvar(metadata,fid%curhs,'curhs',2,d2full,'?',1)
 call set_fvar(metadata,fid%cvrhs,'cvrhs',2,d2full,'?',1)
 call set_fvar(metadata,fid%ctrhs,'ctrhs',2,d2full,'?',1)
@@ -1535,6 +1546,7 @@ call set_fvar(metadata,fid%vd_inee,'vd_inee',1,d2none,'',30)
 call set_fvar(metadata,fid%vd_igpp,'vd_igpp',1,d2none,'',30)
 call set_fvar(metadata,fid%vd_irec,'vd_irec',1,d2none,'',30)
 call set_fvar(metadata,fid%vd_ich4,'vd_ich4',1,d2none,'',30)
+call set_fvar(metadata,fid%vd_ach4,'vd_ach4',1,d2none,'',30)
 call set_fvar(metadata,fid%vd_csf,'vd_csf',1,d2none,'',30)
 call set_fvar(metadata,fid%vd_lssf,'vd_lssf',1,d2none,'',30)
 call set_fvar(metadata,fid%vd_mxtpr,'vd_mxtpr',1,d2none,'',30)
@@ -1646,6 +1658,8 @@ call set_fvar(metadata,fid%vd_sdsl,'vd_sdsl',1,d2none,'',30)
 ! Group SM
 call set_fvar(metadata,fid%sm_clbt,'sm_clbt',1,d2none,'Cloudy brightness temperature',32)
 call set_fvar(metadata,fid%sm_csbt,'sm_csbt',1,d2none,'Clear-sky brightness temperature',32)
+call set_fvar(metadata,fid%sm_cdrfl,'sm_cdrfl',1,d2none,'Cloudy reflectance',32)
+call set_fvar(metadata,fid%sm_crrfl,'sm_crrfl',1,d2none,'Clear-sky reflectance',32)
 
 
 ! Group WS
@@ -1666,6 +1680,8 @@ call set_fvar(metadata,fid%ww_rho,'ww_rho',1,d2none,'surface density passed to t
 call set_fvar(metadata,fid%ww_zil,'ww_zil',1,d2none,'ZI/L passed to the wave model (used for gustiness in WAM)',38)
 call set_fvar(metadata,fid%ww_cif,'ww_cif',1,d2none,'Sea ice fraction passed to the wave model (WAM)',38)
 call set_fvar(metadata,fid%ww_clk,'ww_clk',1,d2none,'Lake cover passed to the wave model (WAM)',38)
+call set_fvar(metadata,fid%ww_ustrw,'ww_ustrw',1,d2none,'Ocean surface stress U-component passed to the wave model (WAM)',38)
+call set_fvar(metadata,fid%ww_vstrw,'ww_vstrw',1,d2none,'Ocean surface stress V-component passed to the wave model (WAM)',38)
 call set_fvar(metadata,fid%ww_ucurw,'ww_ucurw',1,d2none,'Ocean current    U-component passed to the wave model (WAM)',38)
 call set_fvar(metadata,fid%ww_vcurw,'ww_vcurw',1,d2none,'Ocean current    V-component passed to the wave model (WAM)',38)
 
@@ -1817,6 +1833,8 @@ case(fid%pdnl_si)
   this%pdnl_si => z2d
 case(fid%gw)
   this%gw => z2d
+case(fid%nhy)
+  this%nhy => z2d
 case(fid%curhs)
   this%curhs => z2d
 case(fid%cvrhs)
@@ -2369,6 +2387,10 @@ case(fid%ww_cif)
   this%ww_cif  => z1d
 case(fid%ww_clk)
   this%ww_clk  => z1d
+case(fid%ww_ustrw)
+  this%ww_ustrw  => z1d
+case(fid%ww_vstrw)
+  this%ww_vstrw  => z1d
 case(fid%ww_ucurw)
   this%ww_ucurw  => z1d
 case(fid%ww_vcurw)
@@ -2472,7 +2494,9 @@ case(fid%vd_igpp)
 case(fid%vd_irec)
   this%vd_irec  => z1d
 case(fid%vd_ich4)
-  this%vd_ich4  => z1d
+   this%vd_ich4  => z1d
+case(fid%vd_ach4)
+  this%vd_ach4  => z1d
 case(fid%vd_csf)
   this%vd_csf  => z1d
 case(fid%vd_lssf)
@@ -2691,6 +2715,10 @@ case(fid%sm_clbt)
   this%sm_clbt  => z2d
 case(fid%sm_csbt)
   this%sm_csbt  => z2d
+case(fid%sm_cdrfl)
+  this%sm_cdrfl  => z2d
+case(fid%sm_crrfl)
+  this%sm_crrfl  => z2d
 
 ! Group VX
 case(fid%vx_oro)

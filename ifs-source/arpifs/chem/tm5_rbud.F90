@@ -117,9 +117,11 @@ IOH = KOH
   ! alternative solution, which is supposed to be faster:
       DO JL=KIDIA,KFDIA
         DO JR = 1,NPHOTO
-          ZFAC=YCHEM(NRJ(JR))%RMOLMASS/(PAIRD(JL)*KNSTEP)
-          ! search for all corresponding photolysis rates that contribute to loss of tracer JT
-          PBUDJ(JL,KL,JR)=PBUDJ(JL,KL,JR)+ PCR2(JL,JR)*ZFAC  !units kg/kg/s  
+          IF (NRJ(JR) <= NCHEM) THEN
+            ZFAC=YCHEM(NRJ(JR))%RMOLMASS/(PAIRD(JL)*KNSTEP)
+            ! search for all corresponding photolysis rates that contribute to loss of tracer JT
+            PBUDJ(JL,KL,JR)=PBUDJ(JL,KL,JR)+ PCR2(JL,JR)*ZFAC  !units kg/kg/s
+          END IF
         ENDDO
         DO JR = 1,NREAC
           ! search for reactions of species JT with OH ...

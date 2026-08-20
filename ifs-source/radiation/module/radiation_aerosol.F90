@@ -1,10 +1,16 @@
 ! radiation_aerosol.F90 - Derived type describing aerosol
 !
-! Copyright (C) 2014-2019 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2018-04-15  R. Hogan  Add "direct" option
@@ -15,6 +21,7 @@ module radiation_aerosol
   use parkind1, only : jprb
 
   implicit none
+  public
 
   !---------------------------------------------------------------------
   ! Type describing the aerosol content in the atmosphere
@@ -55,12 +62,13 @@ contains
   ! code these are allocated when they are read from the NetCDF file
   subroutine allocate_aerosol_arrays(this, ncol, istartlev, iendlev, ntype)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_type), intent(inout) :: this
     integer, intent(in)                :: ncol  ! Number of columns
     integer, intent(in)                :: istartlev, iendlev ! Level range
     integer, intent(in)                :: ntype ! Number of aerosol types
-    real(jphook)                       :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol:allocate',0,hook_handle)
 
@@ -79,7 +87,7 @@ contains
   subroutine allocate_aerosol_arrays_direct(this, config, &
        &                                    ncol, istartlev, iendlev)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,          only : lhook, dr_hook, jphook
     use radiation_config, only : config_type
 
     class(aerosol_type), intent(inout) :: this
@@ -87,7 +95,7 @@ contains
     integer, intent(in)                :: ncol  ! Number of columns
     integer, intent(in)                :: istartlev, iendlev ! Level range
 
-    real(jphook)                       :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol:allocate_direct',0,hook_handle)
 
@@ -106,8 +114,8 @@ contains
       allocate(this%ssa_lw(config%n_bands_lw,istartlev:iendlev,ncol))
       allocate(this%g_lw  (config%n_bands_lw,istartlev:iendlev,ncol))
       ! If longwave scattering by aerosol is not to be represented,
-      ! then the user may wish to just provide absorption optical deth
-      ! in od_lw, in which case we must set the following two
+      ! then the user may wish to just provide absorption optical
+      ! depth in od_lw, in which case we must set the following two
       ! variables to zero
       this%ssa_lw = 0.0_jprb
       this%g_lw = 0.0_jprb
@@ -119,13 +127,14 @@ contains
 
 
   !---------------------------------------------------------------------
-  ! Deallocate array
+  ! Deallocate arrays
   subroutine deallocate_aerosol_arrays(this)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use yomhook,     only : lhook, dr_hook, jphook
+
     class(aerosol_type), intent(inout) :: this
 
-    real(jphook)                       :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_aerosol:deallocate',0,hook_handle)
 
@@ -147,8 +156,8 @@ contains
   ! optionally only considering columns between istartcol and iendcol
   function out_of_physical_bounds(this, istartcol, iendcol, do_fix) result(is_bad)
 
-    use yomhook,  only           : lhook, dr_hook, jphook
-    use radiation_config, only : out_of_bounds_3d
+    use yomhook,          only : lhook, dr_hook, jphook
+    use radiation_check,  only : out_of_bounds_3d
 
     class(aerosol_type),   intent(inout) :: this
     integer,      optional,intent(in) :: istartcol, iendcol

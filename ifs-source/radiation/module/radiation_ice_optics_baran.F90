@@ -1,15 +1,22 @@
-! radiation_ice_optics_fu.f90 - Scheme for ice optical properties adapted from Baran's data
+! radiation_ice_optics_fu.F90 - Scheme for ice optical properties adapted from Baran's data
 !
-! Copyright (C) 2014-2016 ECMWF
+! (C) Copyright 2014- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 
 module radiation_ice_optics_baran
 
   implicit none
+  public
 
   ! The number of ice coefficients depends on the parameterization
   integer, parameter :: NIceOpticsCoeffsBaran = 9

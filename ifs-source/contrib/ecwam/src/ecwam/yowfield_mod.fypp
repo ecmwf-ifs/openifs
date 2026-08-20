@@ -1,0 +1,80 @@
+#! (C) Copyright 2022- ECMWF.
+#!
+#! This software is licensed under the terms of the Apache Licence Version 2.0
+#! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#! In applying this licence, ECMWF does not waive the privileges and immunities
+#! granted to it by virtue of its status as an intergovernmental organisation
+#! nor does it submit to any jurisdiction.
+#!
+#!
+#:set f = io.open(os.path.dirname(_THIS_FILE_)+'/yowfield_mod_config.yaml', 'r')
+#:set input = yaml.safe_load(f)
+#:set objtypes = input['objtypes']
+#:set objdef = input['objdef']
+#!
+#!
+MODULE YOWFIELD_MOD
+
+   USE PARKIND_WAVE, ONLY : JWRB, JWIM, JWRO
+   USE FIELD_MODULE, ONLY : FIELD_3RB, FIELD_2IM, FIELD_2RB, FIELD_3IM, FIELD_4RB, FIELD_4IM, FIELD_2RD
+   USE FIELD_FACTORY_MODULE, ONLY : FIELD_NEW, FIELD_DELETE
+   IMPLICIT NONE
+
+#:for obj in objtypes
+   TYPE ${obj.upper()}$_FIELD
+   #:for var, type, dim in objdef[obj]
+          #{if type == 'real'}#REAL(KIND=JWRB)#{elif type == 'ocean'}#REAL(KIND=JWRO)#{else}#INTEGER(KIND=JWIM)#{endif}#, DIMENSION(${','.join(':' for _ in range(dim-1))}$), POINTER :: ${var.upper()}$=>NULL()
+   #:endfor
+#:if MIXED_PRECISION == 1
+   #:for var, type, dim in objdef[obj]
+          CLASS(FIELD_${dim}$#{if type == 'int'}#IM#{elif type == 'ocean'}#RD#{else}#RB#{endif}#), POINTER :: F_${var.upper()}$=>NULL()
+   #:endfor
+#:else
+   #:for var, type, dim in objdef[obj]
+          CLASS(FIELD_${dim}$#{if type == 'int'}#IM#{else}#RB#{endif}#), POINTER :: F_${var.upper()}$=>NULL()
+   #:endfor
+#:endif
+      CONTAINS
+         PROCEDURE :: INIT => ${obj.upper()}$_FIELD_INIT
+         PROCEDURE :: UPDATE_VIEW => ${obj.upper()}$_UPDATE_VIEW
+         PROCEDURE :: FINAL => ${obj.upper()}$_FINAL
+   END TYPE ${obj.upper()}$_FIELD
+
+#:endfor
+   CONTAINS
+#:for obj in objtypes
+      SUBROUTINE ${obj.upper()}$_FIELD_INIT(SELF, ${', '.join(var[0].upper() for var in objdef[obj])}$)
+          CLASS(${obj.upper()}$_FIELD), INTENT(INOUT) :: SELF
+      #:for var, type, dim in objdef[obj]
+          #{if type == 'real'}#REAL(KIND=JWRB)#{elif type == 'ocean'}#REAL(KIND=JWRO)#{else}#INTEGER(KIND=JWIM)#{endif}#, DIMENSION(${','.join(':' for _ in range(dim))}$), INTENT(IN), OPTIONAL :: ${var.upper()}$
+      #:endfor
+
+      #:for var, type, dim in objdef[obj]
+          IF(PRESENT(${var.upper()}$)) CALL FIELD_NEW(SELF%F_${var.upper()}$, DATA=${var.upper()}$)
+      #:endfor
+      END SUBROUTINE ${obj.upper()}$_FIELD_INIT
+
+      SUBROUTINE ${obj.upper()}$_UPDATE_VIEW(SELF, BLOCK_INDEX)
+          CLASS(${obj.upper()}$_FIELD), INTENT(INOUT) :: SELF
+          INTEGER(KIND=JWIM), INTENT(IN) :: BLOCK_INDEX
+
+      #:for var, type, dim in objdef[obj]
+          IF(ASSOCIATED(SELF%F_${var.upper()}$)) SELF%${var.upper()}$ => SELF%F_${var.upper()}$%GET_VIEW(BLOCK_INDEX)
+      #:endfor
+      END SUBROUTINE ${obj.upper()}$_UPDATE_VIEW
+
+      SUBROUTINE ${obj.upper()}$_FINAL(SELF)
+          CLASS(${obj.upper()}$_FIELD), INTENT(INOUT) :: SELF
+
+      #:for var, type, dim in objdef[obj]
+          IF(ASSOCIATED(SELF%F_${var.upper()}$))THEN
+              CALL FIELD_DELETE(SELF%F_${var.upper()}$)
+          ENDIF
+      #:endfor
+      END SUBROUTINE ${obj.upper()}$_FINAL
+
+#:endfor
+END MODULE YOWFIELD_MOD
+#:mute
+$:f.close()
+#:endmute

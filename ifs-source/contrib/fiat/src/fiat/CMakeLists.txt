@@ -28,7 +28,7 @@ endif()
 
 if( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
   ## To disable checking of argument correctness of dummy mpi symbols
-  ecbuild_add_fortran_flags( -nowarn nointerfaces )
+  ecbuild_add_fortran_flags( -nowarn nointerfaces NO_FAIL )
 endif()
 
 if( CMAKE_Fortran_COMPILER_ID MATCHES "GNU" )

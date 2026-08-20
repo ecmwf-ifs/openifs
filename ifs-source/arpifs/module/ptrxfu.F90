@@ -55,6 +55,7 @@ INTEGER(KIND=JPIM) :: MXTCLS  ! pointer for "temperature at 2 meters (pbl)
 INTEGER(KIND=JPIM) :: MXQCLS  ! pointer for "specific humidity at 2 meters (pbl)"
 INTEGER(KIND=JPIM) :: MXRHCLS ! pointer for "relative humidity at 2 meters (pbl)"
 INTEGER(KIND=JPIM) :: MXTPWCLS! pointer for "wet bulb temperature at 2 meters (pbl)"
+INTEGER(KIND=JPIM) :: MXSIC 
 INTEGER(KIND=JPIM) :: MXTN    ! pointer for "minimum temperature at 2 meters"
 INTEGER(KIND=JPIM) :: MXTX    ! pointer for "maximum temperature at 2 meters"
 INTEGER(KIND=JPIM) :: MXMRT   ! pointer for "mean radiant temperature at 2 meters"

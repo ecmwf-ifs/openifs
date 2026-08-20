@@ -11,6 +11,9 @@
 
 MODULE YOMENSCOV
   USE PARKIND1 , ONLY : JPIM, JPRB
+
+
+
   IMPLICIT NONE
   SAVE
   PUBLIC
@@ -23,6 +26,7 @@ MODULE YOMENSCOV
   !* GRIDPOINT *!
   !* -----------!
   !* A structure for RF-based separable correlation model
+  !      changes: defines interpolators for dual res. EnVar, Nov. 2019
   !* ------------------------------------------------------------
   !* 3d variable
   TYPE TYPE_GPLOC
@@ -57,7 +61,7 @@ MODULE YOMENSCOV
   !* The data itself
   !* ------------------------------------------------------------
   TYPE(TYPE_ENSDATA) :: ENS
-  
+
   !* ------------------------------------------------------------
   !* Flags to debug/test
   !* ------------------------------------------------------------
@@ -103,5 +107,10 @@ MODULE YOMENSCOV
   !* The localization itself
   !* ------------------------------------------------------------
   TYPE(TYPE_SPLOC) :: SP_LOC
-  
+
+
+
+
+
+
 END MODULE YOMENSCOV

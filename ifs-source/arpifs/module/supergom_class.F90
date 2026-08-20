@@ -32,13 +32,12 @@ module supergom_class
 !
 !
 !------------------------------------------------------------------------
-use parkind1, only : jpim, jprb
+
+use parkind1, only : jpim, jpib, jprb
 use geometry_mod , only : geometry
 use surface_fields_mix , only : tsurf
 use yomgmv, only : tgmv
 use yomectab, only : tecvar
-
-
 implicit none
 type, public :: class_supergom
   contains
@@ -50,10 +49,11 @@ contains
 subroutine model_in(this,&
  & ydgeometry,ydgmv,ydsurf,ydphy,ydml_gconf,ydslint,yddyna,kdimgmv,ydecvar,ygfl,ydphysmwave,pgfl,pgmv,pgmvs,&
  & psp_sb,psp_sg,psp_sl,psp_rr,psp_cl,psp_x2,psp_ci,&
- & psd_vf,psd_vv,psd_vd,psd_ws,psd_vx,psd_vn,ktimestep,ldgp_done,ldupd_done)
+ & psd_vf,psd_oc,psd_vv,psd_vd,psd_ws,psd_vx,psd_vn,ydfield_ecv,ktime,ldgp_done,ldupd_done)
   use yomdyn   , only : tdyn
   use yomphy   , only : tphy
   use model_general_conf_mod , only : model_general_conf_type
+  use field_container_gp_mod, only : field_container_gp
   use yomslint, only : tslint
   use yomdyna , only  : tdyna
   use yom_ygfl , only : type_gfld
@@ -65,7 +65,7 @@ subroutine model_in(this,&
   type(tphy)           ,intent(inout) :: ydphy
   type(model_general_conf_type),intent(in):: ydml_gconf
   type(tslint)         ,intent(in)    :: ydslint
-  type(tdyna)          , intent(in)     :: yddyna
+  type(tdyna)          ,intent(in)     :: yddyna
   integer(kind=jpim)   ,intent(in)    :: kdimgmv
   type(tecvar)         ,intent(in)    :: ydecvar
   type(type_gfld)      ,intent(in)    :: ygfl
@@ -82,12 +82,14 @@ subroutine model_in(this,&
   real(kind=jprb)      ,intent(in)    :: psp_x2(ydgeometry%yrdim%nproma,ydsurf%ysp_x2d%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psp_ci(ydgeometry%yrdim%nproma,ydsurf%ysp_cid%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psd_vf(ydgeometry%yrdim%nproma,ydsurf%ysd_vfd%ndim,ydgeometry%yrdim%ngpblks)
+  real(kind=jprb)      ,intent(inout) :: psd_oc(ydgeometry%yrdim%nproma,ydsurf%ysd_ocd%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psd_vv(ydgeometry%yrdim%nproma,ydsurf%ysd_vvd%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psd_vd(ydgeometry%yrdim%nproma,ydsurf%ysd_vdd%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psd_ws(ydgeometry%yrdim%nproma,ydsurf%ysd_wsd%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psd_vx(ydgeometry%yrdim%nproma,ydsurf%ysd_vxd%ndim,ydgeometry%yrdim%ngpblks)
   real(kind=jprb)      ,intent(in)    :: psd_vn(ydgeometry%yrdim%nproma,ydsurf%ysd_vnd%ndim,ydgeometry%yrdim%ngpblks)
-  integer(kind=jpim)   ,intent(in)    :: ktimestep ! Temporarily the best available time information
+  type(field_container_gp),intent(inout) :: ydfield_ecv
+  integer(kind=jpim)   ,intent(in)    :: ktime ! Temporarily the best available time information
   logical              ,intent(in)    :: ldgp_done ! to handle the last timestep, when gp model does not run
   logical              ,intent(in)    :: ldupd_done ! used by neutral winds (affects scatterometer only)
   call abort1("oifs/fc-only - supergom_class%model, YDGOM%MODEL_IN or YDGOM5%MODEL_IN should never be called")

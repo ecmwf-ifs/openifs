@@ -96,6 +96,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 
 
+#include "abor1.intfb.h"
 
 !      -----------------------------------------------------------
 

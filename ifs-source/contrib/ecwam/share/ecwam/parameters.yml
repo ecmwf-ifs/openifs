@@ -1,0 +1,236 @@
+parameters:
+        swh:
+                index: 1
+                description: Significant height of combined wind waves and swell
+        mwd: 
+                index: 2
+                description: Mean wave direction
+        mwp: 
+                index: 3
+                description: Mean wave period 
+        '004':
+                index: 4
+                description: Friction velocity
+        dwi: 
+                index: 5
+                description: 10 metre wind direction 
+        pp1d: 
+                index: 6
+                description: Peak wave period
+        cdww:
+                index: 7
+                description: Coefficient of drag with waves
+        '008':
+                index: 8
+                description: Normalised wave stress
+        msqs: 
+                index: 9
+                description: Mean square slope of waves
+        wind:
+                index: 10
+                description: 10 metre wind speed
+        shww: 
+                index: 11
+                description: Significant height of wind waves
+        shts:
+                index: 12
+                description: Significant height of total swell
+        mdww:
+                index: 13
+                description: Mean direction of wind waves 
+        mdts:
+                index: 14
+                description: Mean direction of total swell
+        mpww:
+                index: 15
+                description: Mean period of wind waves
+        mpts:
+                index: 16
+                description: Mean period of total swell
+        '017':
+                index: 17
+                description: Altimeter wave height
+        '018':
+                index: 18
+                description: Corrected altimeter wave height
+        '019':
+                index: 19
+                description: Altimeter range correction
+        mp1:
+                index: 20
+                description: Mean wave period based on first moment
+        mp2:
+                index: 21
+                description: Mean zero-crossing wave period
+        wdw:
+                index: 22
+                description: Wave spectral directional width
+        p1ww:
+                index: 23
+                description: Mean wave period based on first moment for wind waves
+        p1ps:
+                index: 24
+                description: Mean wave period based on first moment for swell
+        p2ww:
+                index: 25
+                description: Mean wave period based on second moment for wind waves
+        p2ps:
+                index: 26
+                description: Mean wave period based on second moment for swell
+        dwww:
+                index: 27
+                description: Wave spectral directional width for wind waves
+        dwps:
+                index: 28
+                description: Wave spectral directional width for swell
+        wsk :
+                index: 29
+                description: Wave spectral kurtosis
+        bfi:
+                index: 30
+                description: Benjamin-Feir index
+        wsp:
+                index: 31
+                description: Wave spectral peakedness
+        wmb:
+                index: 32
+                description: Model bathymetry
+        hmax:
+                index: 33
+                description: Maximum individual wave height
+        tmax:
+                index: 34
+                description: Period corresponding to maximum individual wave height
+        ust:
+                index: 35
+                description: U-component stokes drift
+        vst:
+                index: 36
+                description: V-component stokes drift
+        ocu:
+                index: 37
+                description: Eastward sea water velocity
+        vcu:
+                index: 38
+                description: Northward sea water velocity
+        '039':
+                index: 39
+                description: Normalised energy flux to ocean
+        '040':
+                index: 40
+                description: Normalised energy flux to waves
+        '041':
+                index: 41
+                description: Normalised momentum flux to ocean
+        '042':
+                index: 42
+                description: Swell partition 1 wave height
+        '043':
+                index: 43
+                description: Swell partition 1 direction
+        '044':
+                index: 44
+                description: Swell partition 1 mean period
+        '045':
+                index: 45
+                description: Swell partition 2 wave height
+        '046':
+                index: 46
+                description: Swell partition 2 direction
+        '047':
+                index: 47
+                description: Swell partition 2 mean period
+        '048':
+                index: 48
+                description: Swell partition 3 wave height
+        '049':
+                index: 49
+                description: Swell partition 3 direction
+        '050':
+                index: 50
+                description: Swell partition 3 mean period
+        '051':
+                index: 51
+                description: Mean square strain in ice
+        '052':
+                index: 52
+                description: Wave height with period > 10s
+        '053':
+                index: 53
+                description: Surface air density
+        '054':
+                index: 54
+                description: Convective velocity scale
+        ci:
+                index: 55
+                description: Sea ice area fraction
+        '056':
+                index: 56
+                description: Sea ice thickness
+        '057':
+                index: 57
+                description: Spectral skewness
+        sst:
+                index: 58
+                description: Specified sea surface temperature (NEMO)
+        '059':
+                index: 59
+                description: Sea ice cover (NEMO)
+        '060':
+                index: 60
+                description: Sea ice thickness (NEMO)
+        ucurr:
+                index: 61
+                description: U-component of current (NEMO)
+        vcurr:
+                index: 62
+                description: V-component of current (NEMO)
+        '063':
+                index: 63
+                description: Wave energy flux magnitude
+        '064':
+                index: 64
+                description: Wave energy flux direction
+        '065':
+                index: 65
+                description: Significant wave height 10<=T<=12
+        '066':
+                index: 66
+                description: Significant wave height 12<=T<=14
+        '067':
+                index: 67
+                description: Significant wave height 14<=T<=17
+        '068':
+                index: 68
+                description: Significant wave height 17<=T<=21
+        '069':
+                index: 69
+                description: Significant wave height 21<=T<=25
+        '070':
+                index: 70
+                description: Significant wave height 25<=T<=30
+        '071':
+                index: 71
+                description: Wave induced sea level correction
+        '072':
+                index: 72
+                description: Spectral width index
+        '073':
+                index: 73
+                description: Number of freak waves events
+        '074':
+                index: 74
+                description: U-component atmospheric stress
+        '075':
+                index: 75
+                description: V-component atmospheric stress
+        '076':
+                index: 76
+                description: U-component stress into oceans
+        '077':
+                index: 77
+                description: V-component stress into oceans
+        '078':
+                index: 78
+                description: Turbulence energy flux into oceans
+

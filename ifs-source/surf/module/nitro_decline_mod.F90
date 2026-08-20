@@ -1,3 +1,107 @@
+
+! (C) Copyright 2003- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**  *NITRO_DECLINE* 
+
+!     PURPOSE
+!     -------
+!     Calculates the time change in LAI due to senescence.
+!     This in turn changes the dry biomass of the canopy.
+
+!     INTERFACE
+!     ---------
+!     NITRO_DECLINE IS CALLED BY VEGETATION_EVOL
+
+!     PARAMETER     DESCRIPTION                                   UNITS
+!     ---------     -----------                                   -----
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KVT*          NUMBER OF VEGETATION TYPE
+!                    1  DECIDUOUS
+!                    2  CONIFEROUS
+!                    3  EVERGREEN
+!                    4  C3 GRASS
+!                    5  C4 GRASS
+!                    6  C3 CROPS
+!                    7  C4 CROPS 
+
+! MATCHING BATS table with ECOCLIMAP table 
+
+! (1)  ! Crops, Mixed Farming			=>! 7  C4 CROPS
+! (2)  ! Short Grass				=>! 4  C3 GRASS
+! (3)  ! Evergreen Needleleaf Trees		=>! 2  CONIFEROUS
+! (4)  ! Deciduous Needleleaf Trees		=>! 2  CONIFEROUS
+! (5)  ! Deciduous Broadleaf Trees		=>! 1  DECIDUOUS
+! (6)  ! Evergreen Broadleaf Trees		=>! 3  EVERGREEN
+! (7)  ! Tall Grass				=>! 5  C4 GRASS
+! (8)  ! Desert					=> ?
+! (9)  ! Tundra					=>! 5  C4 GRASS
+! (10) ! Irrigated Crops			=>! 6  C3 CROPS
+! (11) ! Semidesert				=>! 5  C4 GRASS
+! (12) ! Ice Caps and Glaciers			=>?
+! (13) ! Bogs and Marshes			=>! 4  C3 GRASS
+! (14) ! Inland Water				=>?
+! (15) ! Ocean					=>?
+! (16) ! Evergreen Shrubs			=>! 5  C4 GRASS
+! (17) ! Deciduous Shrubs			=>! 4  C3 GRASS
+! (18) ! Mixed Forest/woodland			=>! 1  DECIDUOUS
+! (19) ! Interrupted Forest			=>! 1  DECIDUOUS
+! (20) ! Water and Land Mixtures		=>! 4  C3 GRASS
+
+!    *KLON*           NUMBER OF GRID POINT
+!    *KSTEP*        CURRENT TIME STEP INDEX
+
+!     INPUT PARAMETERS (REAL):
+
+!    *PTSPHY*       TIME STEP FOR THE PHYSICS
+!    *PCV*          TILE FRACTION   
+!    *PTSKM1M*      SKIN TEMPERATURE                              K
+!    *PTSOIL*       SOIL TEMPERATURE OF LAYER X (SEE CALL FROM VEGETATION_EVOL) K
+!    *PLAT*         LATITUDE
+!    *PLAI*         LEAF AREA INDEX                           M2/M2
+
+!     UPDATED PARAMETERS (REAL)
+
+!    *PANFM*        MAXIMUM LEAF ASSIMILATION              KG_CO2/KG_AIR M/S          
+!    *PRESPBSTR*    RESPIRATION OF ABOVE GROUND STRUCTURAL BIOMASS    KG_CO2/M2
+!    *PRESPBSTR2*   RESPIRATION OF BELOW GROUND STRUCTURAL BIOMASS    KG_CO2/M2
+!    *PBIOMASS_LAST* (ACTIVE) LEAF BIOMASS OF PREVIOUS DAY               KG/M2
+!    *PBIOMASSTR_LAST* ABOVE GROUND STRUCTURAL BIOMASS OF PREVIOUS DAY   KG/M2
+!    *PBIOMASSTR2_LAST* BELOW GROUND STRUCTURAL BIOMASS OF PREVIOUS DAY  KG/M2
+!    *PBIOMASS*     ACTIVE BIOMASS                  KG/M2
+!    *PBLOSS* 	    ACTIVE BIOMASS LOSS             KG/M2
+
+!     METHOD
+!     ------
+!     Calvet and Soussana  (2001)
+
+!     REFERENCE
+!     ---------
+!     Calvet and Soussana (2001), "Modelling CO2-enrichment effects using an
+!     interactive vegetation SVAT scheme", Agricultural and Forest Meteorology, Vol. 108
+!     pp. 129-152
+      
+!     AUTHOR
+!     ------
+! 	A. Boone           * Meteo-France *
+!       V. Rivalland
+!       (following Belair)
+
+!     MODIFICATIONS
+!     -------------
+!     Original    27/01/03 
+!     M.H. Voogt (KNMI) "C-Tessel"  09/2005 
+!     S. lafont (ECMWF) externalised "C-Tessel" 05/2006
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     I. Ayan-Miguez Sep 2023 Added PSSDP2 object for spatially distributed parameters
+!-------------------------------------------------------------------------------
+
 MODULE NITRO_DECLINE_MOD
 CONTAINS
 SUBROUTINE NITRO_DECLINE(KIDIA,KFDIA,KVT,KLON,KSTEP, PTSPHY,&
@@ -8,13 +112,6 @@ SUBROUTINE NITRO_DECLINE(KIDIA,KFDIA,KVT,KLON,KSTEP, PTSPHY,&
  & PBIOMASS_LAST,PBIOMASSTR_LAST,PBIOMASSTR2_LAST,&
  & PBIOMASS,PBLOSS)
 
-! (C) Copyright 2003- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**  *NITRO_DECLINE* 
 
 !     PURPOSE

@@ -26,7 +26,9 @@
 
 SUBROUTINE BASCOE_KPP_Rates (PAJVAL,PRHET, PTEMP, PCFACTOR, PRCONST, PVAR)
 
+#ifdef WITH_COMPO_DR_HOOK
    USE YOMHOOK   ,ONLY : LHOOK,DR_HOOK, JPHOOK
+#endif
    USE PARKIND1  ,ONLY : JPIM, JPRB, JPRD
 
  USE BASCOE_MODULE, ONLY : NHET
@@ -50,17 +52,19 @@ SUBROUTINE BASCOE_KPP_Rates (PAJVAL,PRHET, PTEMP, PCFACTOR, PRCONST, PVAR)
   REAL(KIND=JPRB) , DIMENSION(NDISS) , INTENT(IN)           :: PAJVAL
   REAL(KIND=JPRB) , INTENT(IN)           :: PRHET(NHET)
   REAL(KIND=JPRB) , INTENT(IN)           :: PCFACTOR
-  REAL(KIND=JPRD) , intent(OUT)          :: PRCONST(NREACT)
-  REAL(KIND=JPRD) , INTENT(IN)           :: PVAR(NVAR)
+  REAL(KIND=JPRB) , intent(OUT)          :: PRCONST(NREACT)
+  REAL(KIND=JPRB) , INTENT(IN)           :: PVAR(NVAR)
 
 !*       0.5   LOCAL VARIABLES
 !              ---------------
 
 REAL(KIND=JPRB)    :: ZTEMP
+#ifdef WITH_COMPO_DR_HOOK
 REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
 
 
 IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_RATES',0,ZHOOK_HANDLE )
+#endif
 
   ! Ensure temperatures above ~50K.
   ZTEMP = MAX(PTEMP,50.0_JPRB)
@@ -286,8 +290,9 @@ IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_RATES',0,ZHOOK_HANDLE )
   PRCONST(218) = (PAJVAL(J_H2SO4))
   PRCONST(219) = (PAJVAL(J_SO3))
 
-
+#ifdef WITH_COMPO_DR_HOOK
 IF (LHOOK) CALL DR_HOOK('BASCOE_KPP_RATES',1,ZHOOK_HANDLE )
+#endif
 
 
 
@@ -392,7 +397,7 @@ CONTAINS
 
       ! air number density (molecules cm-3), water vapor number density (molecules cm-3)
       REAL(KIND=JPRB), INTENT(IN) :: PSN
-      REAL(KIND=JPRD), INTENT(IN) :: Pn_H2O  
+      REAL(KIND=JPRB), INTENT(IN) :: Pn_H2O  
       REAL(KIND=JPRB)             :: K_HO2_HO2
 
       ! No DR_HOOK for performance

@@ -34,6 +34,7 @@ SAVE
 !     R. Forbes    ECMWF       20201115   Added RSSICEFACTOR and extra consts for ice
 !     R. Forbes    ECMWF       20201215   Renamed RCL_FACR to RCL_LAMR and added for snow
 !     R. Forbes    ECMWF       20220501   Added NPTYPE_SEV2WMO
+!     R. Forbes    ECMWF       20230501   Added multipliers for ice/rain fallspeeds
 
 !      NAME     TYPE      PURPOSE
 !      ----     ----      -------
@@ -89,6 +90,8 @@ SAVE
 !      RDEPLIQREFDEPTH REAL Depth of supercooled liquid water layer (m)
 !      RCL_OVERLAPLIQICE REAL overlap of liquid and ice cloud fractions
 !      RCL_EFFRIME       REAL riming efficiency coefficient
+!      RXFALLSPEEDRAIN REAL Multiplier for variable rain fallspeed
+!      RXFALLSPEEDICE  REAL Multiplier for variable ice fallspeed
 !      RVRFACTOR       REAL KESSLER FACTOR=5.09E-3 FOR EVAPORATION OF CLEAR-SKY RAIN  (KESSLER,1969)
 !      RCL_INHOMOGAUT  REAL Constant for autoconversion inhomogeneity factor
 !      RCL_INHOMOGACC  REAL Constant for accretion inhomogeneity factor
@@ -147,6 +150,8 @@ REAL(KIND=JPRB) :: RDEPLIQREFRATE
 REAL(KIND=JPRB) :: RDEPLIQREFDEPTH
 REAL(KIND=JPRB) :: RCL_OVERLAPLIQICE
 REAL(KIND=JPRB) :: RCL_EFFRIME
+REAL(KIND=JPRB) :: RXFALLSPEEDRAIN
+REAL(KIND=JPRB) :: RXFALLSPEEDICE
 REAL(KIND=JPRB) :: RTAU_CLD_TLAD
 !--------------------------------------------------------
 ! Autoconversion/accretion (Khairoutdinov and Kogan 2000)
@@ -335,6 +340,8 @@ IF (LHOOK) CALL DR_HOOK('YOECLDP:PRINT_CONFIGURATION',0,ZHOOK_HANDLE)
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RSNOWLIN2 = ', SELF%RSNOWLIN2
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RCL_OVERLAPLIQICE = ', SELF%RCL_OVERLAPLIQICE
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RCL_EFFRIME = ', SELF%RCL_EFFRIME
+  WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RXFALLSPEEDRAIN = ', SELF%RXFALLSPEEDRAIN
+  WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RXFALLSPEEDICE = ', SELF%RXFALLSPEEDICE
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RICEHI1 = ', SELF%RICEHI1
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RICEHI2 = ', SELF%RICEHI2
   WRITE(KOUTNO,*) REPEAT(' ',IDEPTHLOC) // 'RICEINIT = ', SELF%RICEINIT

@@ -27,7 +27,7 @@ SAVE
 
 PRIVATE
 PUBLIC :: TYPE_JB_STRUCT, TYPE_JB_CONFIG, TYPE_JB_CONFIG2, &
-        & TYPE_JBCHVAR, JB_STRUCT, JPAEROCV, &
+        & TYPE_JBCHVAR, JB_STRUCT, &
         & TYPE_JB_DATA, TYPE_FCEMN_STRUCT, TYPE_VCORS_STRUCT, &
         & TYPE_SPJB_VARS_INFO_STRUCT, TYPE_WAVELETJB_CONFIG, &
         & TYPE_WAVELETJB_DATA, TYPE_WAVELETJB_VCOR_STRUCT, &
@@ -186,8 +186,6 @@ PUBLIC :: TYPE_JB_STRUCT, TYPE_JB_CONFIG, TYPE_JB_CONFIG2, &
 !-------------------------------------------------------------------------------
 
 
-INTEGER(KIND=JPIM), PARAMETER :: JPAEROCV=1 ! Change to 2 if running with dual control variable
-
 TYPE TYPE_JB_CONFIG   ! Namelist variables
   LOGICAL :: LRDQERR
   LOGICAL :: LREDNMCQ
@@ -243,6 +241,7 @@ TYPE TYPE_JB_CONFIG   ! Namelist variables
   
   REAL(KIND=JPRB) :: REDNMC
   REAL(KIND=JPRB) :: REDNMC_Q
+  REAL(KIND=JPRB) :: REDNMC_SCR_LAM
   REAL(KIND=JPRB) :: REDQGLOLAM
   REAL(KIND=JPRB) :: RAMENER
   REAL(KIND=JPRB) :: RSCENER
@@ -256,10 +255,10 @@ END TYPE TYPE_JB_CONFIG
 
 TYPE TYPE_JB_CONFIG2   ! Namelist variables that must be set up after the
                        ! variables in TYPE_JB_CONFIG
-  INTEGER(KIND=JPIM), DIMENSION(100) :: M_GRIBCODES
-  INTEGER(KIND=JPIM), DIMENSION(100) :: M_GRIBCODES_EP
-  INTEGER(KIND=JPIM), DIMENSION(100) :: M_GRIBCODES_FCE
-  CHARACTER(LEN=40) , DIMENSION(100) :: C_COR_STRINGS
+  INTEGER(KIND=JPIM), DIMENSION(500) :: M_GRIBCODES
+  INTEGER(KIND=JPIM), DIMENSION(500) :: M_GRIBCODES_EP
+  INTEGER(KIND=JPIM), DIMENSION(500) :: M_GRIBCODES_FCE
+  CHARACTER(LEN=40) , DIMENSION(500) :: C_COR_STRINGS
 END TYPE TYPE_JB_CONFIG2
 
 TYPE TYPE_JB_BUF_STRUCT
@@ -272,7 +271,6 @@ TYPE TYPE_JB_DATA
   LOGICAL :: LSUBBG
   INTEGER(KIND=JPIM) :: NOFEP
   INTEGER(KIND=JPIM) :: NOFCEF
-  INTEGER(KIND=JPIM) :: NAEROCV
   INTEGER(KIND=JPIM) :: NOMSPEC
   INTEGER(KIND=JPIM), ALLOCATABLE :: ISPECFIDS(:)
 
@@ -329,11 +327,8 @@ TYPE TYPE_SPJB_VARS_INFO_STRUCT
   LOGICAL            :: L_IN_SPA2     ! .T. => maps to model SAP2 array
   LOGICAL            :: L_IN_SPGFL    ! .T. => maps to model SPGFL array
   LOGICAL            :: L_IN_GPGFL    ! .T. => maps to model GPGFL array
+  LOGICAL            :: L_IN_GPGFL2   ! .T. => maps to model GPGFL array
   LOGICAL            :: L_SPEC_MODEL  ! True if spectral field in model
-  LOGICAL            :: L_IN_ECVSP_2D ! .T. => maps to model SPA2 array
-  LOGICAL            :: L_IN_ECVGP_2D ! .T. => maps to model GPGFL2 array
-  LOGICAL            :: L_IN_ECVSP_3D ! .T. => maps to model SPA3 array
-  LOGICAL            :: L_IN_ECVGP_3D ! .T. => maps to model GPGFL array
   LOGICAL            :: L_IN_ECV      ! .T. => any of the above ECV .T.
   CHARACTER(LEN=40)  :: COR_STRING    ! Identifying string in ".cv" file
 END TYPE TYPE_SPJB_VARS_INFO_STRUCT

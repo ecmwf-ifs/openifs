@@ -1,3 +1,50 @@
+! (C) Copyright 1997- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUDIM1S * - Allocates space for the diagnostics
+!                  in the surface one-column model
+
+!     Purpose.
+!     --------
+!            dimensioning the diagnostics of the surface one-column model
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUDIM1S*
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation of the one-column model
+
+!     Author.
+!     -------
+!        Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 97-03-11
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE SUGDI1S
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -74,13 +121,6 @@ USE YOMGDI1S , ONLY : GDI1S    ,GDIAUX1S ,&
             &D1STISKC,D1STISKC2,D1SPSURF,D1SPSURF2
 
 #ifdef DOC
-! (C) Copyright 1997- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUDIM1S * - Allocates space for the diagnostics
 !                  in the surface one-column model

@@ -95,7 +95,6 @@ SUBROUTINE SUEFRAME(CDMCA,LDMAP,KMSMAX,KSMAX,KDGL,KDLON,&
 
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMOPH0  , ONLY : NCADFORM
 
 IMPLICIT NONE
 
@@ -177,54 +176,29 @@ ITRONC = KSMAX
 INLATI = KDGL
 INXLON = KDLON
 
-IF (NCADFORM == 0) THEN
-  IF (LDMRT) THEN
-    CALL ABOR1('SUFRAME : Mercator Rot/Til and OLD CADRE not allowed !')
-  ENDIF 
-  ! old format of file frame (CADRE)
-  ZGEOM (1)  = 0.0_JPRB             ! ex-NROTEQ
-  ZGEOM (2)  = 0.0_JPRB             ! ex-ELONR
-  ZGEOM (3)  = 0.0_JPRB             ! ex-ELATR
-  ZGEOM (4)  = PELON1
-  ZGEOM (5)  = PELAT1
-  ZGEOM (6)  = PELON2
-  ZGEOM (7)  = PELAT2
-  ZGEOM (8)  = PELON0
-  ZGEOM (9)  = PELAT0
-  ZGEOM (10) = PERPK
-  ZGEOM (11) = 0.0_JPRB             ! ex-NSOTRP
-  ZGEOM (12) = 0.0_JPRB             ! ex-NGIV0
-  ZGEOM (13) = PELX
-  ZGEOM (14) = PELY
-  ZGEOM (15) = PEDELX
-  ZGEOM (16) = PEDELY
-  ZGEOM (17) = PEXWN
-  ZGEOM (18) = PEYWN
+! new format of file frame (CADRE)
+IF (LDMRT) THEN
+  ZGEOM (1)  = -2                 ! Mercator Rot/Til
 ELSE
-  ! new format of file frame (CADRE)
-  IF (LDMRT) THEN
-    ZGEOM (1)  = -2                 ! Mercator Rot/Til
-  ELSE
-    ZGEOM (1)  = -1                 ! 
-  ENDIF
-  ZGEOM (2)  = PERPK
-  ZGEOM (3)  = PELON0
-  ZGEOM (4)  = PELAT0
-  ZGEOM (5)  = PELONC
-  ZGEOM (6)  = PELATC
-  ZGEOM (7)  = PEDELX
-  ZGEOM (8)  = PEDELY
-  ZGEOM (9)  = PELX
-  ZGEOM (10) = PELY
-  ZGEOM (11) = PEXWN
-  ZGEOM (12) = PEYWN
-  ZGEOM (13) = PELON1
-  ZGEOM (14) = PELAT1
-  ZGEOM (15) = PELON2
-  ZGEOM (16) = PELAT2
-  ZGEOM (17) = REAL(KBWX,KIND=JPRB)
-  ZGEOM (18) = REAL(KBWY,KIND=JPRB)
+  ZGEOM (1)  = -1                 ! 
 ENDIF
+ZGEOM (2)  = PERPK
+ZGEOM (3)  = PELON0
+ZGEOM (4)  = PELAT0
+ZGEOM (5)  = PELONC
+ZGEOM (6)  = PELATC
+ZGEOM (7)  = PEDELX
+ZGEOM (8)  = PEDELY
+ZGEOM (9)  = PELX
+ZGEOM (10) = PELY
+ZGEOM (11) = PEXWN
+ZGEOM (12) = PEYWN
+ZGEOM (13) = PELON1
+ZGEOM (14) = PELAT1
+ZGEOM (15) = PELON2
+ZGEOM (16) = PELAT2
+ZGEOM (17) = REAL(KBWX,KIND=JPRB)
+ZGEOM (18) = REAL(KBWY,KIND=JPRB)
 
 IDOM  (1)  = KS
 IDOM  (2)  = KDOM

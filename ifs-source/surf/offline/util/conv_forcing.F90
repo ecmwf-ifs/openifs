@@ -228,6 +228,7 @@ DO WHILE (ERR /= GRIB_END_OF_FILE )
     & 'H_Ascat00','H_Ascat06', 'H_Ascat12','H_Ascat18','H_Ascat001','AWC', &
     & 'T2m00', 'T2m06', 'T2m12', 'T2m18', 'RH2m00', 'RH2m06', 'RH2m12', 'RH2m18', &
     & 'N_Ascat00', 'N_Ascat06', 'N_Ascat12', 'N_Ascat18', 'N_Ascat001', &
+    & 'sekf_ascat_bias_in', &
     & 'covar_ssm_00_swvl1', 'covar_ssm_00_swvl2', 'covar_ssm_00_swvl3', &
     & 'covar_ssm_06_swvl1', 'covar_ssm_06_swvl2', 'covar_ssm_06_swvl3', &
     & 'covar_ssm_12_swvl1', 'covar_ssm_12_swvl2', 'covar_ssm_12_swvl3', &

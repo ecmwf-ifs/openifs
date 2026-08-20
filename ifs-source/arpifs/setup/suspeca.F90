@@ -78,6 +78,7 @@ SUBROUTINE SUSPECA(YDGEOMETRY,YDGFL,YDML_GCONF,YDDYN,YDDYNA,YDML_LBC,YDSPEC,KFIL
 !      T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
 !      K. Yessad (July 2014): Move some variables.
 !      P.Marguinaud : 10-Oct-2014 Read spectral fields using the IO server and use RDFA2SP
+!      R. El Khatib : 02-Jun-2022 potential open-mp optimization.
 !     -------------------------------------------------------------------------
 
 USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
@@ -191,6 +192,7 @@ IF (IFLDSPG > 0) THEN
 
 
   ALLOCATE (ZSPBUFL (YDGEOMETRY%YRDIM%NSPEC2, IFLDSPS))
+  IF (IFLDSPS*YDGEOMETRY%YRDIM%NSPEC2 > 0) ZSPBUFL(:,:)=0._JPRB ! will force allocation right here, not in an omp region below.
   CALL RDFA2SP (YDGEOMETRY, YDML_GCONF%YRRIP, IFLDSPG, IFLDSPS, &
               & ZSPBUFL, YLFLDSC, KFILE=KFILE, YDML_LBC=YDML_LBC)
 

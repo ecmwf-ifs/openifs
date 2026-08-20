@@ -12,6 +12,17 @@
 !               FOR MOMENTUM UNDER NEUTRAL WIND CONDITIONS.
 
 !     JEAN BIDLOT    E.C.M.W.F.      10/12/2018.
+!     I. AYAN-MIGUEZ    BSC     Oct 2023: Added refactorization of Global parameters
+
+!     ------------------------------------------------------------------
+
+
+!     ------------------------------------------------------------------
+
+!     *FCZ0WN** CONTAINS STATEMENT FUNCTIONS DESCRIBING ROUGNESS LENGTH
+!               FOR MOMENTUM UNDER NEUTRAL WIND CONDITIONS.
+
+!     JEAN BIDLOT    E.C.M.W.F.      10/12/2018.
 
 !     ------------------------------------------------------------------
 
@@ -70,8 +81,8 @@ UST = PWIND*SQRT(ACD+BCD*PWIND)
 ! iterate
 DO ITER=1,NITER
   USTOLD = MAX(UST,USTMIN)
-  Z0CH   = PCHAROG*UST**2
-  Z0VIS  = PNUM/UST
+  Z0CH   = PCHAROG*USTOLD**2
+  Z0VIS  = PNUM/USTOLD
   Z0     = Z0CH+Z0VIS
   XZLEV  = ZLEV/(ZLEV+Z0)
   XOLOGZ0= 1.0_JPRB/LOG(1.0_JPRB+ZLEV/Z0)

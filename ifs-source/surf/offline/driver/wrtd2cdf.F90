@@ -1,6 +1,3 @@
-SUBROUTINE WRTD2CDF
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD, JPRM
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! (C) Copyright 2013- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -8,6 +5,62 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *WRTDCDF*  - writes diagnostics to NetCDF files, 2 meter diagnostic
+
+!     Purpose.
+!     --------
+!        writes out diagnostic variables
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTD2CDF
+
+!     Explicit arguments :
+!     --------------------
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        E. Dutra
+
+!     Modifications.
+!     --------------
+!        original: 16/12/2013
+
+!
+! USE YOMCT01S , ONLY : NSTART   ,NFRPOS
+! USE YOETHF   , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5ALVCP, &
+!            &          R5IES, R5ALSCP, RALVDCP, RTICE, RTWAT, RTWAT_RTICE_R, &
+!            &          RTICECU, RTWAT_RTICECU_R, RALSDCP,RHOH2O
+! 
+! USE YOMGPD1S , ONLY : VFCVL    ,VFCVH    ,VFTVL    ,VFTVH    ,VFSOTY   ,&
+!            &VFOCDEPTH,VFZO     !KPP
+
+! USE YOMRIP   , ONLY : RSTATI
+! USE YOEPHY   , ONLY : LEVGEN, LECTESSEL 
+! USE YOESOIL1S, ONLY : RDAW     ,RWPWP    ,RWSAT    ,RWPWPM,RWSATM,RWCAPM
+! USE YOMDPHY  , ONLY : NLAT     ,NLON     ,NPOI ,NTILES ,NVHILO, &
+!                     & NLALO    ,NSLAB    ,ISLAB   ,NCSS , NSOTY, NCOM !KPP
+! USE YOMGP1SA , ONLY : FSNNUA   ,TSLNUA   ,QLINUA   ,QLQNUA,&
+!             &TSNNUA   ,WRENUA   ,ASNNUA   ,RSNNUA
+
+SUBROUTINE WRTD2CDF
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD, JPRM
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 
 !**** *WRTDCDF*  - writes diagnostics to NetCDF files, 2 meter diagnostic
 

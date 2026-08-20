@@ -9,9 +9,6 @@ SUBROUTINE PRESPFPOS(YDGEOMETRY,YDGFL,YDML_GCONF,YDDYNA,YDSPEC)
 !        To pack the data before post-processing
 !         - pack spectral arrays
 !         - pack gridpoint upperair fields
-!         - pack Ts
-!         Remark : saving and recovering the whole surface field buffer
-!         just to handle with Ts is a heavy but easy way to do things ... 
 
 !**   Interface.
 !     ----------
@@ -32,7 +29,7 @@ SUBROUTINE PRESPFPOS(YDGEOMETRY,YDGFL,YDML_GCONF,YDDYNA,YDSPEC)
 !     ----------    
 !        SPACONVERT - convert model fields spectral array into file fields
 !                     spectral arrays and reverse
-!        PKSURFA  - pack gridpoint arrays/workfile - Arpege
+!        PKGRIDA  - pack gridpoint arrays/workfile - Arpege
 !        PKSPECA  - pack spectral arrays/workfile - Arpege
 
 !     Reference.
@@ -58,6 +55,7 @@ SUBROUTINE PRESPFPOS(YDGEOMETRY,YDGFL,YDML_GCONF,YDDYNA,YDSPEC)
 !      R. El Khatib 16-Jul-2012 Fullpos move away from STEPO.
 !      R. El Khatib 31-Jul-2012 Split into PREDYNFPOS + PRESPFPOS
 !      R. El khatib 16-May-2014 Optimization of in-line/off-line post-processing reproducibility
+!      R. El khatib 24_Sep-2021 Bugfix : add gridpoint GFL packing
 !     ------------------------------------------------------------------
 
 USE MODEL_GENERAL_CONF_MOD , ONLY : MODEL_GENERAL_CONF_TYPE
@@ -68,6 +66,7 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMMP0   , ONLY : MYSETV
 USE SPECTRAL_FIELDS_MOD, ONLY : SPECTRAL_FIELD, ASSIGNMENT(=)
+USE YOMFA    , ONLY : YFAL, YFAI, YFAR, YFAS, YFALRAD, YFAIRAD, YFACLF, YFATKE, YFAG, YFAH, YFAO3, YFACPF, YFASPF
 
 IMPLICIT NONE
 
@@ -81,24 +80,27 @@ TYPE(SPECTRAL_FIELD),INTENT(INOUT) :: YDSPEC
 
 
 REAL(KIND=JPRB) :: ZSPEC(YDGEOMETRY%YRDIM%NSPEC2,YDGEOMETRY%YRDIMV%NFLEVL*YDML_GCONF%YRDIMF%NS3D+YDML_GCONF%YRDIMF%NS2D)
+REAL(KIND=JPRB), ALLOCATABLE :: ZGP(:,:)
 
-INTEGER(KIND=JPIM) :: IFLD, JF, JLEV, JS
+INTEGER(KIND=JPIM) :: IFLD, JF, JLEV, JS, JKGLO, IBL, IEND, IGPGFL
+INTEGER(KIND=JPIM), ALLOCATABLE :: IBITGFL(:)
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !     ------------------------------------------------------------------
 
 #include "pkspeca.intfb.h"
+#include "pkgrida.intfb.h"
 #include "spaconvert.intfb.h"
 
 !      -----------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('PRESPFPOS',0,ZHOOK_HANDLE)
-ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, &
+ASSOCIATE(YDDIM=>YDGEOMETRY%YRDIM, YGFL=>YDML_GCONF%YGFL, &
   & YDDIMV=>YDGEOMETRY%YRDIMV,YDGEM=>YDGEOMETRY%YRGEM, YDMP=>YDGEOMETRY%YRMP, YDDIMF=>YDML_GCONF%YRDIMF)
-ASSOCIATE(NSPEC2=>YDDIM%NSPEC2, &
- & NS2D=>YDDIMF%NS2D, NS3D=>YDDIMF%NS3D, &
- & NFLEVL=>YDDIMV%NFLEVL, &
+ASSOCIATE(NSPEC2=>YDDIM%NSPEC2, NGPBLKS=>YDDIM%NGPBLKS, NPROMA=>YDDIM%NPROMA, NGPTOT=>YDGEM%NGPTOT, &
+ & NS2D=>YDDIMF%NS2D, NS3D=>YDDIMF%NS3D, NUMFLDS=>YGFL%NUMFLDS, YDCOMP=>YGFL%YCOMP, &
+ & NFLEVL=>YDDIMV%NFLEVL, NFLEVG=>YDDIMV%NFLEVG, &
  & NBSETSP=>YDMP%NBSETSP)
 !      -----------------------------------------------------------
 
@@ -108,7 +110,7 @@ ASSOCIATE(NSPEC2=>YDDIM%NSPEC2, &
 !   Convert spectral field before packing
     CALL SPACONVERT(YDGEOMETRY,YDGFL,YDML_GCONF,YDDYNA,.TRUE.,YDSPEC)
 
-!   Packing
+!   Spectral packing
     IFLD=0
     DO JF=1,NS3D
       DO JLEV=1,NFLEVL
@@ -150,6 +152,76 @@ ASSOCIATE(NSPEC2=>YDDIM%NSPEC2, &
       ENDDO
     ENDIF
 
+!   Gridpoint packing for gridpoint GFL :
+    IGPGFL=NFLEVG*COUNT(YDCOMP(1:NUMFLDS)%LGP.AND.YDCOMP(1:NUMFLDS)%LREQOUT)
+    ALLOCATE(IBITGFL(IGPGFL))
+    ALLOCATE(ZGP(NGPTOT,IGPGFL))
+    IFLD=0
+    DO JF=1,NUMFLDS
+      IF (YDCOMP(JF)%LGP.AND.YDCOMP(JF)%LREQOUT) THEN
+        DO JLEV=1,NFLEVG
+          IFLD=IFLD+1
+          IF (YDCOMP(JF)%CNAME == YFAL%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAL%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAI%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAI%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFALRAD%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFALRAD%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAIRAD%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAIRAD%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFACLF%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFACLF%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAR%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAR%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAS%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAS%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAG%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAG%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAH%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAH%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFATKE%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFATKE%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFAO3%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFAO3%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFACPF%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFACPF%NBITS
+          ELSEIF (YDCOMP(JF)%CNAME == YFASPF%CLNAME(1:12)) THEN
+            IBITGFL(IFLD) = YFASPF%NBITS
+          ELSE
+            IBITGFL(IFLD) = -1
+          ENDIF
+        ENDDO
+      ENDIF
+    ENDDO
+    DO JKGLO=1,NGPTOT,NPROMA
+      IBL=(JKGLO-1)/NPROMA+1
+      IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
+      IFLD=0
+      DO JF=1,NUMFLDS
+        IF (YDCOMP(JF)%LGP.AND.YDCOMP(JF)%LREQOUT) THEN
+          DO JLEV=1,NFLEVG
+            IFLD=IFLD+1
+            ZGP(JKGLO:JKGLO-1+IEND,IFLD)=YDGFL%GFL(1:IEND,JLEV,YDCOMP(JF)%MP,IBL)
+          ENDDO
+        ENDIF
+      ENDDO
+    ENDDO
+    CALL PKGRIDA(YDGEOMETRY,IGPGFL,IBITGFL,ZGP)
+    DO JKGLO=1,NGPTOT,NPROMA
+      IBL=(JKGLO-1)/NPROMA+1
+      IEND=MIN(NPROMA,NGPTOT-JKGLO+1)
+      IFLD=0
+      DO JF=1,NUMFLDS
+        IF (YDCOMP(JF)%LGP.AND.YDCOMP(JF)%LREQOUT) THEN
+          DO JLEV=1,NFLEVG
+            IFLD=IFLD+1
+            YDGFL%GFL(1:IEND,JLEV,YDCOMP(JF)%MP,IBL)=ZGP(JKGLO:JKGLO-1+IEND,IFLD)
+          ENDDO
+        ENDIF
+      ENDDO
+    ENDDO
+    DEALLOCATE(ZGP)
+    
 !   Revert conversion of spectral fields
     CALL SPACONVERT(YDGEOMETRY,YDGFL,YDML_GCONF,YDDYNA,.FALSE.,YDSPEC)
 

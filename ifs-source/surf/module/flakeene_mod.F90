@@ -1,3 +1,57 @@
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!------------------------------------------------------------------------------
+!
+! Description:
+!
+!  The main driving routine of the lake model FLake 
+!  where computations are performed.
+!  Advances the surface temperature
+!  and other FLake variables one time step.
+!  At the moment, the Euler explicit scheme is used.
+!
+!  Lines embraced/marked with "!_dm" are DM's comments
+!  that may be helpful to a user.
+!
+!
+! Current Code Owner: DWD, Dmitrii Mironov
+!  Phone:  +49-69-8062 2705
+!  Fax:    +49-69-8062 3721
+!  E-mail: dmitrii.mironov@dwd.de
+!
+! History:
+! Version    Date       Name
+! ---------- ---------- ----
+! 1.00       2005/11/17 Dmitrii Mironov 
+!  Initial release
+! 1.01T      10.03.2008     V. M. Stepanenko
+!  The code and variables, relevant to snow and bottom sediments are omitted
+! 1.02       11.06.2010     R. Salgado and G. Balsamo 
+!  Set lake shape factor to constant 0.65 value for safety (instability issues)
+! 1.03       11.11.2010     G. Balsamo 
+!  Fixes for coupled atmospheric runs
+
+! 17.12.2015  F. Vana       Support for single precision
+!  M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+! 26.02.2025  T. Stockdale  Faster evolution of shape factor plus second-law constraints
+
+!
+! Code Description:
+! Language: Fortran 90.
+! Software Standards: "European Standards for Writing and
+! Documenting Exchangeable Fortran 90 Code".
+!==============================================================================
+!
+! Declarations:
+!
+! Modules used:
+
 MODULE FLAKEENE_MOD
 CONTAINS
 SUBROUTINE FLAKEENE                                                      &
@@ -14,13 +68,6 @@ SUBROUTINE FLAKEENE                                                      &
   &   PT_BOT_N_FLK    , PH_ICE_N_FLK      , PH_ML_N_FLK           ,      &
   &   PC_T_N_FLK      , PT_SFC_N                                         )         
 
-! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !------------------------------------------------------------------------------
 !
 ! Description:

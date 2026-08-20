@@ -25,22 +25,27 @@ function( add_ifs_test TARGET )
     execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/${TARGET} )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-run ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run )
+      ${IFSTEST_BINARY_DIR}/ifs-run ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-debug ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-debug )
+      ${IFSTEST_BINARY_DIR}/ifs-debug ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-debug )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-clean ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-clean )
+      ${IFSTEST_BINARY_DIR}/ifs-clean ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-clean )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-check-bitid ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-bitid )
+      ${IFSTEST_BINARY_DIR}/ifs-check-bitid ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-bitid )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
-      ${PROJECT_SOURCE_DIR}/bin/ifs-check-tracers ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-tracers )
+      ${IFSTEST_BINARY_DIR}/ifs-check-tracers ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-check-tracers )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${PROJECT_SOURCE_DIR}/bin/ifs-grep-norms.pl ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-grep-norms.pl )
+
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ${IFSTEST_BINARY_DIR}/ifs-run.py
+      ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/ifs-run.py 
+    )
 
     execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
       ${PROJECT_SOURCE_DIR}/bin/set_launcher.bash ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}/set_launcher.bash )
@@ -110,10 +115,12 @@ function( add_ifs_test TARGET )
     ecbuild_add_test( TARGET ifs_t42_${TARGET}
               WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}
               COMMAND "./ifs-run"
+              ARGS    "--clean"
               DEPENDS ${TEST_DEPENDS}
             )
 
     set_property(TEST ifs_t42_${TARGET} APPEND PROPERTY LABELS t42)
+    set_property(TEST ifs_t42_${TARGET} APPEND PROPERTY TIMEOUT ${IFS_TEST_TIMEOUT})
 
 endfunction()
 

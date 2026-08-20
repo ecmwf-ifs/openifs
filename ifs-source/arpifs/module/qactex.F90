@@ -33,6 +33,8 @@ SAVE
 !  * LAEH2M  : .T. 2 meter humidity analysis
 !  * LAEV1M  : .T. 10 meter wind analysis
 !  * LAESNM  : .T. snow analysis (Cressman)
+!  * LAESIC  : .T. seaice concentration analysis
+!  * LAESIT  : .T. seaice thickness analysis
 !  * LAESST  : .T. SST analysis
 !  * LECSST  : .T. use ECMWF SST
 !  * LAEICS  : .T. surface fields initialisation
@@ -66,6 +68,8 @@ LOGICAL :: LAET2M
 LOGICAL :: LAEH2M
 LOGICAL :: LAEV1M
 LOGICAL :: LAESNM
+LOGICAL :: LAESIC
+LOGICAL :: LAESIT
 LOGICAL :: LAESST
 LOGICAL :: LECSST
 LOGICAL :: LAEICS

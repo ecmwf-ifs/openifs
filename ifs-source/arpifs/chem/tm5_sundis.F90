@@ -1,7 +1,7 @@
 ! (C) Copyright 2009- ECMWF.
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
@@ -9,22 +9,22 @@
 SUBROUTINE TM5_SUNDIS(KIDIA, KFDIA, KLON, KLEV, KMONTH, KDAY, PRJ)
 !
 ! Purpose:
-!   Applies a date-dependent, dimensionless Earth-Sun distance scaling 
-!   factor to the TM5 photolysis-rate array used by IFS chemistry. The 
-!   correction accounts for the seasonal variation in solar irradiance 
-!   due to the changing Earth-Sun distance (commonly treated as an 
+!   Applies a date-dependent, dimensionless Earth-Sun distance scaling
+!   factor to the TM5 photolysis-rate array used by IFS chemistry. The
+!   correction accounts for the seasonal variation in solar irradiance
+!   due to the changing Earth-Sun distance (commonly treated as an
 !   inverse-square distance effect).
 !
 ! Interface:
-!   Called from the TM5 chemistry interface (e.g., CHEM_tm5) during 
-!   photolysis evaluation to scale photolysis rates for the current 
+!   Called from the TM5 chemistry interface (e.g., CHEM_tm5) during
+!   photolysis evaluation to scale photolysis rates for the current
 !   model date.
 !
 !   Inputs:  Horizontal index range, array dimensions, calendar month/day
 !   In/Out:  PRJ array - photolysis rates modified in-place
 !
 ! Scientific basis:
-!   Uses Fourier-series approximation (Spencer, 1971) widely used in 
+!   Uses Fourier-series approximation (Spencer, 1971) widely used in
 !   atmospheric photolysis schemes:
 !
 !   F = 1.000110 + 0.034221*cos(theta) + 0.001280*sin(theta)

@@ -51,6 +51,9 @@ while(<>) {
     elsif ( m{^\s*GPNORM\b} ) {
         $state = 2; $counter = 0; print $_; # print variable-length GPNORM block
     }
+    elsif ( m{^\s*FDNORM\b} ) {
+        $state = 2; $counter = 0; print $_; # print variable-length FDNORM block
+    }
     elsif ( m{^\s*FULL-POS SPNORMS\b} ) {
         $state = 3; $counter = 0; print $_; # print variable-length FULL-POS SPNORM block
     }

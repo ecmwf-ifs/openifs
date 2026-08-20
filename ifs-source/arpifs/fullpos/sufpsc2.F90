@@ -49,6 +49,7 @@ SUBROUTINE SUFPSC2(KFPROMA,KFPWIDE)
 !      K. Yessad    : 27-Feb-2007 Adapt to arrival geometry, clean.
 !      R. El Khatib : 16-Jul-2012 Enable NFPROMA < 0
 !      R. El Khatib 27-Jul-2016 setup of NFPSLWIDE + code reordering
+!      R. El Khatib 15-Jan-2021 Rename NFPSLWIDE to NFPWIDE for simplification
 !-----------------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -63,7 +64,7 @@ IMPLICIT NONE
 INTEGER(KIND=JPIM), INTENT(OUT) :: KFPWIDE
 INTEGER(KIND=JPIM), INTENT(INOUT) :: KFPROMA
 
-INTEGER(KIND=JPIM) :: NFPROMA, NFPSLWIDE ! Sorry Doctor : namelist variables
+INTEGER(KIND=JPIM) :: NFPROMA, NFPWIDE ! Sorry Doctor : namelist variables
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -85,14 +86,14 @@ IF (LHOOK) CALL DR_HOOK('SUFPSC2',0,ZHOOK_HANDLE)
 !           ---------------------
 
 NFPROMA=KFPROMA
-NFPSLWIDE=0
+NFPWIDE=0
 
 !      1.1 Read namelist & control
 
 CALL POSNAM(NULNAM,'NAMFPSC2')
 READ(NULNAM,NAMFPSC2)
 
-KFPWIDE=NFPSLWIDE
+KFPWIDE=NFPWIDE
 KFPROMA=NFPROMA
 
 ! -------------------------------------------------------------------

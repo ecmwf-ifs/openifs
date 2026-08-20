@@ -31,7 +31,6 @@ USE DATETIME_TMP_MOD, ONLY : DATETIME_TMP, SETRIPSTEP, GETRIPSTEP
 IMPLICIT NONE
 
 #include "abor1.intfb.h"
-#include "spnorm.intfb.h"
 #include "chem_massdia.intfb.h"
 
 TYPE(MODEL)       , INTENT(INOUT) :: SELF

@@ -64,6 +64,8 @@ SUBROUTINE SUGRCLIA(YDGEOMETRY,YDSURF,YDMCC,YDRIP,YDML_LBC,LDINT,KLI,KINITMONTH)
 !        T. Wilhelmsson and K. Yessad (Oct 2013) Geometry and setup refactoring.
 !        K. Yessad (July 2014): Move some variables.
 !        P. Marguinaud: 10-Oct-2014 Cleaning
+!        F. Suzat: 05-May-2021 Remove test on LLFILE to solve CADRE problem in
+!        surface_oi
 !     ------------------------------------------------------------------
 
 USE YOMMCC             , ONLY : TMCC
@@ -219,9 +221,7 @@ IF (IFNUM > 0) THEN
   DEALLOCATE (YLFLDSC, ZGPBUFL)
 
   DO J = 1, IDIM
-    IF (LLFILE (J)) THEN
       CALL FAIRME (IREP, IUNTIN(J), 'KEEP')
-    ENDIF
   ENDDO
 
 ENDIF

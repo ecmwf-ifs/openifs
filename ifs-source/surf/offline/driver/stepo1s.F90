@@ -1,3 +1,57 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *STEPO1S*  - Controls integration job at lowest level
+
+!     Purpose.
+!     --------
+!     Controls integration at lowest level
+
+!**   Interface.
+!     ----------
+!        *CALL* *STEPO1S
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+!        None
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!                 WRTP1S -  Write out prognostic variables
+!                 CPG1S  -  Grid point computations
+
+!        Called by CNT41S
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-22
+!        26-06-2005 S. Lafont : choice format diagnostic output (text or  netCDF)
+!        25-07-2005 G. Balsamo : liquid soil moisture accumulation (add T0 contrib.)
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE STEPO1S
 USE PARKIND1  ,ONLY : JPIM     ,JPRB      ,JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -10,13 +64,6 @@ USE YOMGDI1S , ONLY : GDI1S    ,N2DDI    ,GDIAUX1S ,N2DDIAUX ,D1SWAFR
 USE YOMDPHY  , ONLY : NPOI     ,NGPP     ,NGPA
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *STEPO1S*  - Controls integration job at lowest level
 

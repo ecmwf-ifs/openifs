@@ -1,3 +1,225 @@
+
+! (C) Copyright 1993- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFTSTP* - UPDATES LAND VALUES OF TEMPERATURE, MOISTURE AND SNOW.
+
+!     PURPOSE.
+!     --------
+!          This routine updates the sea ice values of temperature
+!     and the land values of soil temperature, interception layer 
+!     water (kg/m**2), multilayer soil water (in m**3/m**3),
+!     snow mass (in kg/m**2), snow temperature, snow density
+!     and snow albedo. For temperature, this is done via a forward time
+!     step damped with some implicit linear considerations: as if all
+!     fluxes that explicitely depend on the variable had only a linear
+!     variation around the t-1 value. For moisture: (a) the evaporation
+!     of the interception layer is treated implicitely, via a
+!     linearization, while the other sources are treated explicitely;
+!     (b) The soil transfer is "fully semi-implicit" similar to vertical
+!     diffusion. Lower boundary conditons are no heat flux and free
+!     drainage.
+
+!**   INTERFACE.
+!     ----------
+!          *SURFTSTP* IS CALLED FROM *CALLPAR*.
+!          THE ROUTINE TAKES ITS INPUT FROM THE LONG-TERM STORAGE:
+!     TSA,WL,WSA,SN AT T-1,TSK,SURFACE FLUXES COMPUTED IN OTHER PARTS OF
+!     THE PHYSICS, AND W AND LAND-SEA MASK. IT RETURNS AS AN OUTPUT
+!     TENDENCIES TO THE SAME VARIABLES (TSA,WL,WSA,SN).
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLEV*       NUMBER OF LEVELS
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KCWS        Number of layers to merge at the end for the soil water profile (for > 4layers)
+!    *KTILES*     NUMBER OF TILES (I.E. SUBGRID AREAS WITH DIFFERENT 
+!                 SURFACE BOUNDARY CONDITION)
+!    *KTVL*       VEGETATION TYPE FOR LOW VEGETATION FRACTION
+!    *KTVH*       VEGETATION TYPE FOR HIGH VEGETATION FRACTION
+!    *KSOTY*      SOIL TYPE                                   (1-7)
+!    *KLEVI*      Number of sea ice layers (diagnostics)
+!    *KLEVO*      NUMBER OF LAYERS OF OCEAN MIXED LAYER MODEL       !KPP
+!    *KSTART*     FIRST TIMESTEP                                    !KPP 
+!    *KSTEP*      CURRENT TIMESTEP                                  !KPP 
+
+!     INPUT PARAMETERS (REAL):
+!    *PSICE*      .LT.0.5 FOR LATITUDE ROWS WITH NO SEA ICE POINTS
+!    *PEPS*       COEFFICIENT FOR TIME FILTER
+!    *PTSPHY*     TIME STEP FOR THE PHYSICS                      S
+!    *PSDOR*      OROGRAPHIC PARAMETER                        (m)
+!    *PFRTI*      TILE FRACTIONS                              (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!    *PCIL*         LAND-ICE FRACTION                          (0-1)
+!    *PAHFSTI*      SURFACE SENSIBLE HEAT FLUX, FOR EACH TILE  W/M2
+!    *PSST*         SEA SURFACE TEMPERATURE                    K
+!    *PUSTRTI*      X-STRESS                                   N/m2
+!    *PVSTRTI*      Y-STRESS                                   N/m2
+!    *PEVAPTI*      SURFACE MOISTURE FLUX, FOR EACH TILE      KG/M2/S
+!    *PSSRFLTI*     NET SHORTWAVE RADIATION FLUX AT SURFACE, FOR
+!                       EACH TILE                                 W/M2
+!    *PSLRFLTI*       NET LONGWAVE  RADIATION AT THE SURFACE, FOR
+!                       EACH TILE                                W/M**2
+!    *PUO0*         HORIZONTAL VELOCITY OF OCEAN MIXED LAYER MODEL  !KPP
+!    *PVO0*         HORIZONTAL VELOCITY OF OCEAN MIXED LAYER MODEL  !KPP
+!    *PTO0*         TEMPERATURE OF OCEAN MIXED LAYER MODEL          !KPP
+!    *PSO0*         SALINITY OF OCEAN MIXED LAYER MODEL             !KPP
+!    *PADVT*        TEMPERATURE ADVECTION TERM FOR OCEAN MIXED LAYER MODEL !KPP
+!    *PADVS*        SALINITY ADVECTION TERM FOR OCEAN MIXED LAYER MODEL    !KPP
+!    *PUSTOKES*     X-COMPONENT STOKES DRIFT
+!    *PVSTOKES*     Y-COMPONENT STOKES DRIFT
+!    *PTAUOCX*      SURFACE MOMENTUM FLUX TO OCEANS X-DIRECTION
+!    *PTAUOCY*      SURFACE MOMENTUM FLUX TO OCEANS Y-DIRECTION
+!    *PPHIOC*       ENERGY FLUX INTO OCEANS (DIMENSIONAL)
+!    *PWSEMEAN*     WINDSEA VARIANCE
+!    *PWSFMEAN*     WINDSEA MEAN FREQUENCY
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+!    *LDSICE*     SEA ICE MASK (.T. OVER SEA ICE)
+!    *LDLICE*     LAND ICE MASK (.T. OVER LAND ICE)
+!    *LDLAKE*     LAKE MASK (.T. OVER LAKE)
+!    *LDSI*       TRUE IF THERMALLY RESPONSIVE SEA-ICE
+!    *LDNH*       TRUE FOR NORTHERN HEMISPHERE LATITUDE ROW
+!    *LDOCN_KPP   TRUE IF OCEAN MIXED LAYER GRID                    !KPP
+!    *PCLAKE      REAL - lake cover 
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSNM1M*     SNOW MASS (per unit area)                      KG/M**2
+!    *PWSNM1M*    SNOW LIQUID WATER CONTENT (per unit area)      kg/m**2
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PTIAM1M*    SEA-ICE TEMPERATURE                            K
+!          (NB: REPRESENTS THE FRACTION OF ICE ONLY, NOT THE GRID-BOX)
+!    *PWLM1M*     SKIN RESERVOIR WATER CONTENT                   kg/m**2
+!    *PWSAM1M*    SOIL MOISTURE                                m**3/m**3
+!    *PTLICEM1M*  LAKE ICE TEMPERATURE                           K
+!    *PTLMNWM1M*  LAKE MEAN WATER TEMPERATURE                    K
+!    *PTLWMLM1M*  LAKE MIX-LAYER TEMPERATURE                     K
+!    *PTLBOTM1M*  LAKE BOTTOM TEMPERATURE                        K
+!    *PTLSFM1M*   LAKE SHAPE FACTOR (THERMOCLINE)                -
+!    *PHLICEM1M*  LAKE ICE THICKNESS                             m
+!    *PHLMLM1M*   LAKE MIX-LAYER THICKNESS                       m
+!    *PGEMU*      SIN OF LATITUDE                                -
+!    *PLDEPTH*    LAKE DEPTH                                     m
+!    *PRSFC*      CONVECTIVE RAIN FLUX AT THE SURFACE          KG/M**2/S
+!    *PRSFL*      LARGE SCALE RAIN FLUX AT THE SURFACE         KG/M**2/S
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PCVL*       LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!    *PCVH*       HIGH VEGETATION COVER (CORRECTED)              (0-1)
+!    *PCUR*       URBAN COVER                                    (0-1)
+!    *PWLMX*      MAXIMUM SKIN RESERVOIR CAPACITY                kg/m**2
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M**2/S
+!    *POCDEPTH*   OCEAN DEPTH FOR OCEAN MIXED LAYER MODEL    (m)  !KPP
+!    *PZO*        VERTICAL LAYER FOR OCEAN MIXED LAYER MODEL (m)  !KPP
+!    *PDO*        VERTICAL LAYER FOR OCEAN MIXED LAYER MODEL (m)  !KPP
+!    *PUSRF*      LOWEST LEVEL WIND U COMPONENT                   M/S
+!    *PVSRF*      LOWEST LEVEL WIND V COMPONENT                   M/S
+!    *PTSRF*      LOWEST LEVEL AIR TEMPERATURE                    K
+!    *PAPRS*      LOWEST LEVEL AIR PRESSURE                       Pa
+!    *POCDEPTH*   OCEAN DEPTH FOR OCEAN MIXED LAYER MODEL    (m)  !KPP
+!    *PZO*        VERTICAL LAYER FOR OCEAN MIXED LAYER MODEL (m)  !KPP
+!    *PDO*        VERTICAL LAYER FOR OCEAN MIXED LAYER MODEL (m)  !KPP
+!     OUTPUT PARAMETERS (TENDENCIES):
+!    *PSNE1*      SNOW MASS (per unit area) TENDENCY           KG/M**2/S
+!    *PWSNE1*     SNOW LIQUD WATER CONTENT (per unit area) TENDENCY      kg/m**2/S
+!    *PTSNE1*     SNOW TEMPERATURE                              K/S
+!    *PASNE1*     SNOW ALBEDO                                   -/S
+!    *PRSNE1*     SNOW DENSITY                                KG/M**3/S
+!    *PTSAE1*     SOIL TEMPERATURE TENDENCY                     K/S
+!    *PTIAE1*     SEA-ICE TEMPERATURE TENDENCY                  K/S
+!          (NB: REPRESENTS THE FRACTION OF ICE ONLY, NOT THE GRID-BOX)
+!    *PWLE1*      SKIN RESERVOIR WATER CONTENT TENDENCY       kg/m**2/S
+!    *PWSAE1*     SOIL MOISTURE TENDENCY                   (m**3/m**3)/S
+!    *PTLICEE1*   LAKE ICE TEMPERATURE TENDENCY                 K/S
+!    *PTLMNWE1*   LAKE MEAN WATER TEMPERATURE TENDENCY          K/S
+!    *PTLWMLE1*   LAKE MIX-LAYER TEMPERATURE TENDENCY           K/S
+!    *PTLBOTE1*   LAKE BOTTOM TEMPERATURE TENDENCY              K/S
+!    *PTLSFE1*    LAKE SHAPE FACTOR (THERMOCLINE) TENDENCY      -/S
+!    *PHLICEE1*   LAKE ICE THICKNESS TENDENCY                   m/S
+!    *PHLMLE1*    LAKE MIX-LAYER THICKNESS TENDENCY             m/S
+!    *PTOE1*      TEMPERATURE TENDENCY OF OCEAN MIXED LAYER MODEL  K/S
+!    *PTOE1*      SALINITY TENDENCY OF OCEAN MIXED LAYER MODEL  psu/S
+!    *PUOE1*      VELOCITY TENDENCY OF OCEAN MIXED LAYER MODEL M/S**2
+!    *PVOE1*      VELOCITY TENDENCY OF OCEAN MIXED LAYER MODEL M/S**2
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PTSDFL*     UPWARD FLUX BETWEEN SURFACE AND DEEP LAYER   W/M**2
+!    *PROFD*      DEEP LAYER RUN-OFF                          kg/m**2/s
+!    *PROFS*      SURFACE RUN-OFF                             kg/m**2/s
+!    *PWFSD*      WATER FLUX BETWEEN LAYER 1 AND 2            kg/m**2/s
+!    *PMELT*      WATER FLUX CORRESPONDING TO SNOW MELT       kg/m**2/s
+!    *PFWEV*      EVAPORATION OVER LAND SURFACE               kg/m**2/s
+!    *PENES*      SOIL ENERGY per unit area                   J/M**2
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!    *PDHTTS*     Diagnostic array for soil T (see module yomcdh)
+!    *PDHTIS*     Diagnostic array for ice T (see module yomcdh)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+!    *PDHIIS*     Diagnostic array for interception layer (see module yomcdh)
+!    *PDHWLS*     Diagnostic array for soil water (see module yomcdh)
+!    *PDIFM*      VISCOSITY OF OCEAN MIXED LAYER MODEL                !KPP
+!    *PDIFT*      TEMPERATURE DIFFUSIVITY OF OCEAN MIXED LAYER MODEL  !KPP
+!    *PDIFS*      SCALAR DIFFUSIVITY OF OCEAN MIXED LAYER MODEL       !KPP
+!    *POTKE*      TURBULENT KINETIC ENERGY IN THE OCEAN MIXED LAYER   !OCEAN TKE
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION. FOR THE TIME FILTER
+!     SEE CORRESPONDING PART OF THE DOCUMENTATION OF THE ADIABATIC CODE.
+
+!     EXTERNALS.
+!     ----------
+!          *SRFT*   COMPUTES THE TEMPERATURE CHANGES BEFORE THE SNOW
+!                   MELTING.
+!          *SRFWL*  COMPUTES THE SKIN RESERVOIR CHANGES.
+!          *SRFWEXC*COMPUTES THE RUN-OFF AND SETS THE COEFFICIENTS OF
+!                   THE TRIDIAGONAL MOISTURE SYSTEM OF EQUATIONS.
+!          *SRFWDIF*SOLUTION OF THE TRIDIAGONAL MOISTURE SYSTEM OF EQUATIONS
+!          *SRFWINC*INCREMENTS OF SOIL MOSITURE, COMPUTATION OF DIAGNOSTICS
+!          *SRFSN*  COMPUTES SNOW DEPTH CHANGES BEFORE SNOW MELTING.
+!          *SRFSN_LWIMP*  REVISED SNOW SCHEME W. DIAG. LIQ. WATER.
+!          *SRFSML* COMPUTES TEMPERATURE, SKIN RESERVOIR, SOIL WATER
+!                   AND SNOW DEPTH CHANGES DUE TO SNOW MELTING.
+!          *SRFWNG* CORRECTIONS TO AVOID NEGATIVE SOIL MOISTURE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     P.VITERBO       E.C.M.W.F.     16/03/93.
+!     MODIFIED BY
+!     SURFACE TILES   P.VITERBO/ACMB          8/03/99.
+!     Surface DDH for TILES P. Viterbo        17/05/2000.
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo    24-05-2004      New argument PENES; Change surface units
+!     G. Balsamo    03-07-2004      Add soil type and orographic var (runoff)
+!     V. Stepanenko/G. Balsamo 01-05-2008   Add lake parameterization (FLAKE)
+!     Y. Takaya     07-10-2008      Add ocean mixed layer model (KPP scheme)
+!     E. Dutra      12-11.2008      Include new snow parameterization 
+!     E. Dutra      16-11-2009      snow 2009 cleaning
+!     P. JANSSEN    02-08-2011      ADD OCEAN MIXED LAYER MODEL THAT INCLUDES
+!                                   SEA STATE EFFECTS
+!     E. Dutra      10/10/2014      net longwave tiled 
+!     G. Balsamo    05-02-2015      soil and lake tendencies updates for fractional ice
+!     J. McNorton   24/08/2022      urban tile
+!     ------------------------------------------------------------------
+
 MODULE SURFTSTP_CTL_MOD
 CONTAINS
 SUBROUTINE SURFTSTP_CTL(KIDIA , KFDIA , KLON  , KLEVS , KTILES,&
@@ -94,15 +316,6 @@ USE FLAKE_DRIVER_MOD
 USE OCEAN_ML_DRIVER_V2_MOD   !MIXED_LAYER_PJ
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 1993- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 
 !**** *SURFTSTP* - UPDATES LAND VALUES OF TEMPERATURE, MOISTURE AND SNOW.
 
@@ -311,6 +524,7 @@ USE ABORT_SURF_MOD
 !                                   SEA STATE EFFECTS
 !     E. Dutra      10/10/2014      net longwave tiled
 !     G. Balsamo    05-02-2015      soil and lake tendencies updates for fractional ice
+!     J. McNorton   24/08/2022      urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -522,7 +736,7 @@ REAL(KIND=JPRB) :: ZTSFCIN(KLON),ZTSFLIN(KLON),ZROFS(KLON)
 IF (LHOOK) CALL DR_HOOK('SURFTSTP_CTL_MOD:SURFTSTP_CTL',0,ZHOOK_HANDLE)
 ASSOCIATE(RTT=>YDCST%RTT, &
  & LELWTL=>YDEXC%LELWTL, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & LOCMLTKE=>YDMLM%LOCMLTKE, &
  & LEOCML=>YDOCEAN_ML%LEOCML, &
  & LESN09=>YDSOIL%LESN09,LESNML=>YDSOIL%LESNML, LEVGEN=>YDSOIL%LEVGEN, RALFMINPSN=>YDSOIL%RALFMINPSN, &
@@ -616,7 +830,7 @@ ELSE
   & ZSLRFLTI, PSSRFLTI,PFRTI  ,PAHFSTI,PEVAPTI,            &
   & ZSSFC  ,ZSSFL   ,PEVAPSNW,                           &
   & ZTSFC  ,ZTSFL   ,PUSRF  ,PVSRF   ,PTSRF,             &
-  & YDCST  ,YDVEG   ,YDSOIL ,YDFLAKE, YDEXC,             &
+  & YDCST  ,YDVEG   ,YDSOIL ,YDFLAKE, YDURB, YDEXC,             &
   & ZSN(:,1)    ,ZTSN(:,1)    ,ZASN   ,ZRSN(:,1)   ,ZGSN   ,ZMSN,       &
   & ZEMSSN ,ZTSFCIN,ZTSFLIN,                             &
   & PDHTSS , PDHSSS )
@@ -633,7 +847,7 @@ ELSE
   & PSNM1M(:,1) ,PTSNM1M(:,1) ,PASNM1M,PRSNM1M(:,1),PTSAM1M,PHLICEM1M,       &
   & PSLRFL ,PSSRFLTI,PFRTI  ,PAHFSTI,PEVAPTI,                 &
   & ZSSFC  ,ZSSFL   ,PEVAPSNW ,                               &
-  & YDCST  ,YDVEG   ,YDSOIL ,YDFLAKE,                         &
+  & YDCST  ,YDVEG   ,YDSOIL ,YDFLAKE, YDURB,                  &
   & ZSN(:,1)    ,ZTSN(:,1)    ,ZASN   ,ZRSN(:,1)   ,ZGSN   ,ZMSN   ,         &
   & ZEMSSN ,                                                  &
   & PDHTSS , PDHSSS )
@@ -695,7 +909,7 @@ ENDDO
   ! CHANGE THROUGHFALL AT THE SURFACE (SRFWEXC_VG ACCOUNTS FOR ROF FROM SUB-URB LAYER)
   !   ROUGH ESTIMATE RUNOFF OF 0.3 - Drainage estimate will need to be revised or updated based on mapping
   ! Likely to be an underestimate - Paul & Meyer 2001 suggest 55% runoff on fully urban surfaces
-IF (KTILES .GT. 9) THEN
+IF (LEURBAN) THEN
  DO JL=KIDIA,KFDIA
   ZTSFC(JL)=ZTSFC(JL)*(1.0_JPRB-(0.3_JPRB*PFRTI(JL,10)))
   ZTSFL(JL)=ZTSFL(JL)*(1.0_JPRB-(0.3_JPRB*PFRTI(JL,10)))

@@ -1,3 +1,278 @@
+
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *CALLPAR1S * - CALL PHYSICS
+
+!     PURPOSE.
+!     --------
+!     - CALL THE SUBROUTINES OF THE PHYSICS PACKAGE.
+
+!**   Interface.
+!     ----------
+!        *CALL* *CALLPAR1S*
+
+!-----------------------------------------------------------------------
+
+! -   INPUT ARGUMENTS.
+!     -------------------
+
+! - DIMENSIONS ETC.
+
+! KIDIA   : START OF HORIZONTAL LOOP
+! KFDIA   : END OF HORIZONTAL LOOP
+! KLON    : HORIZONTAL DIMENSION
+! KTRAC   : NUMBER OF TRACERS
+! KLEVS   : NUMBER OF LEVELS IN SOIL
+! KTILES  : NUMBER OF vegetation (surface cover) tiles
+! KVTYPES : NUMBER OF VEGETATION TYPES
+! KLEV    : END OF VERTICAL LOOP AND VERTICAL DIMENSION
+! KSTART  : FIRST STEP OF MODEL
+! KSTEP   : CURRENT TIME STEP
+!    *KLEVSN*       Number of snow layers (diagnostics) 
+!    *KLEVI*        Number of sea ice layers (diagnostics)
+!    *KDHVTLS*      Number of variables for individual tiles
+!    *KDHFTLS*      Number of fluxes for individual tiles
+!    *KDHVTSS*      Number of variables for snow energy budget
+!    *KDHFTSS*      Number of fluxes for snow energy budget
+!    *KDHVTTS*      Number of variables for soil energy budget
+!    *KDHFTTS*      Number of fluxes for soil energy budget
+!    *KDHVTIS*      Number of variables for sea ice energy budget
+!    *KDHFTIS*      Number of fluxes for sea ice energy budget
+!    *KDHVIIS*      Number of variables for interception water budget
+!    *KDHFIIS*      Number of fluxes for interception water budget
+!    *KDHVWLS*      Number of variables for soil water budget
+!    *KDHFWLS*      Number of fluxes for soil water budget
+!    *KDHVRESS*     Number of variables for resistances 
+!    *KDHFRESS*     Number of fluxes for resistances
+
+!    *KDHVCO2S*     Number of variables for CO2
+!    *KDHFCO2S*     Number of fluxes for CO2
+!    *KDHVBIOS*     Number of variables for biomass
+!    *KDHFBIOS*     Number of fluxes for biomass
+!    *KDHVBVOCS*    Number of variables for BVOC
+!    *KDHVVEGS*     Number of variables for variables per vegetation type
+!    *KDHFVEGS*     Number of fluxes for variables per vegetation type
+
+! PTSPHY  : PHYSICS TIME STEP
+
+! - 2D (0:KLEV) .
+
+! PAPRS      : PRESSURE ON HALF-LEVELS.
+
+! - 2D (1:KLEV) .
+
+! PGEOM1     : GEOPOTENTIAL ON FULL LEVELS.
+! PU         : X-COMPONENT OF WIND.
+! PV         : Y-COMPONENT OF WIND.
+! PT         : TEMPERATURE.
+! PQ         : SPECIFIC HUMIDITY (WATER VAPOUR).
+
+! - 1D (PROGNOSTIC QUANTITIES) .
+
+! PSNS       : SNOW DEPTH (kg m-2)
+! PASN       : Snow albedo (0-1)
+! PRSN       : Snow density (kg m-3)
+! PTSN       : Snow temperature (K)
+! PTSA       : MULTI-LAYER SOIL TEMPERATURE
+! PWSA       : MULTI-LAYER SOIL WETNESS
+! PWL        : SKIN RESERVOIR WATER CONTENT (kg m-2)
+! PTL        : SKIN TEMPERATURE
+! PTIA       : MULTI-LAYER ICE TEMPERATURE
+
+! - 1D (GEOGRAPHICAL DISTRIBUTION) .
+
+! PALBF      : BACKGROUND SURFACE SHORTWAVE ALBEDO (SNOW-FREE).
+! PALUVP     : MODIS ALBEDO UV-VIS PARALLEL (DIRECT) RADIATION
+! PALUVD     : MODIS ALBEDO UV-VIS DIFFUSE RADIATION
+! PALNIP     : MODIS ALBEDO NEAR IR PARALLEL (DIRECT) RADIATION
+! PALNID     : MODIS ALBEDO NEAR IR DIFFUSE RADIATION
+! PAL[UV|NI][I|V|G] : 6-component MODIS albedo coefficients
+! PSDOR      : OROGRAPHIC STANDARD DEVIATION (M)
+! PGEMU      : SIN of latitude
+! PLSM       : LAND/SEA MASK.
+! PZ0MCL     : ROUGHNESS LENGTH   (NB: Units   m)
+! PMU0M      : LOCAL COSINE OF INSTANTANEOUS MEAN SOLAR ZENITH ANGLE.
+! PZ0HCL     : ROUGHNESS LENGTH FOR HEAT   (NB: Units   m)
+! PTVL       : LOW VEGETATION TYPE
+! PCO2TYP   : TYPE OF PHOTOSYNTHESIS PATHWAY FOR LOW VEGETATION (C3/C4)
+! PISOP_EP   : Isoprene emission potential
+! PTVH       : HIGH VEGETATION TYPE
+
+! PLAIH      : LEAF AREA INDEX HIGH
+! PLAIL      : LEAF AREA INDEX LOW
+! PRSMH      : STOMATAL RESISTANCE HIGH VEGETATION
+! PRSML      : STOMATAL RESISTANCE LOW VEGETATION
+! PANDAYVT   : DAILY NET CO2 ASSIM.OVER CANOPY PER VEGTYPE     KG_CO2/M2
+! PANFMVT    : MAXIMUM LEAF ASSIMILATION PER VEGTYPE         KG_CO2/KG_AIR M/S  
+! PRESPBSTR  : RESPIRATION OF ABOVE GROUND STRUCTURAL BIOMASS    KG_CO2/M2
+! PRESPBSTR2 : RESPIRATION OF BELOW GROUND STRUCTURAL BIOMASS    KG_CO2/M2
+! PBIOMASS_LAST: (ACTIVE) LEAF BIOMASS OF PREVIOUS DAY               KG/M2
+!     NB: value only after nitro_decline, not after laigain!!!!
+! PBIOMASSTR_LAST: ABOVE GROUND STRUCTURAL BIOMASS OF PREVIOUS DAY   KG/M2
+! PBIOMASSTR2_LAST: BELOW GROUND STRUCTURAL BIOMASS OF PREVIOUS DAY  KG/M2
+! PBLOSSVT   : ACTIVE BIOMASS LOSS                                   KG/M2
+! PBGAINVT   : ACTIVE BIOMASS GAIN                                   KG/M2
+
+
+! PSOTY      : SOIL TYPE
+! PCVL       : LOW VEGETATION COVER
+! PCVH       : HIGH VEGETATION COVER
+! PCUR       : URBAN COVER (PASSIVE)
+! PCFLX      : TRACER SURFACE FLUX
+! PUSTRTI    : (INSTANTANEOUS) TILED SURFACE STRESS U-COMPONENT
+! PVSTRTI    : (INSTANTANEOUS) TILED SURFACE STRESS V-COMPONENT
+! PAHFSTI    : (INSTANTANEOUS) TILED SURFACE SENSIBLE HEAT FLUX
+! PEVAPTI    : (INSTANTANEOUS) TILED EVAPORATION
+! PTSKTI     : TILED SKIN TEMPERATURE
+! PSLRFLTI    : Tile net longwave (not I/O of callpar1s)
+
+! - 2D (1:KLEV) AT T+1 .
+
+! PT1        : TEMPERATURE AT T+1
+! PQ1        : HUMIDITY AT T+1
+! PU1        : U-COMP. AT T+1
+! PV1        : V-COMP. AT T+1
+
+! - 1D (SURFACE 1D FORCING) .
+
+! PSRSOD     : SURFACE SHORTWAVE RADIATIVE FLUX DOWNWARDS.
+! PSRTHD     : SURFACE LONGWAVE RADIATIVE FLUX DOWNWARDS.
+! PFPLCL     : CONVECTIVE PRECIPITATION AS RAIN.
+! PFPLCN     : CONVECTIVE PRECIPITATION AS SNOW.
+! PFPLSL     : STRATIFORM PRECIPITATION AS RAIN.
+! PFPLSN     : STRATIFORM PRECIPITATION AS SNOW.
+!-----------------------------------------------------------------------
+
+! -   OUTPUT ARGUMENTS.
+!     --------------------
+
+! - 2D (0:KLEV) FLUXES .
+
+! PDIFTQ     : TURBULENT FLUX (INC. Q NEGATIVE) OF SPECIFIC HUMIDITY.
+! PDIFTS     : TURBULENT FLUX OF HEAT.
+! PFRSO      : SHORTWAVE RADIATIVE FLUX.
+! PFRTH      : LONGWAVE RADIATIVE FLUX.
+! PSTRTU     : TURBULENT FLUX OF MOMENTUM "U".
+! PSTRTV     : TURBULENT FLUX OF MOMENTUM "V".
+
+! PAN        : NET CO2 ASSIMILATION OVER CANOPY.          
+! PAG        : GROSS CO2 ASSIMILATION OVER CANOPY.       
+! PRD        : DARK RESPIRATION.                         
+! PRSOIL_STR : RESPIRATION FROM SOIL AND STRUCTURAL BIOMASS.
+! PRECO      : ECOSYSTEM RESPIRATION.                   
+! PCO2FLUX   : CO2 FLUX.
+! PCH4FLUX   : CH4 FLUX.
+! PBVOCFLUX  : Biogenic VOC FLUX.
+
+! - 1D (TENDENCIES FROM SURFACE SCHEME)
+
+! PSNSE1     : OF SNOW MASS PER UNIT SURFACE
+! PASNE1     : of snow albedo
+! PRSNE1     : of snow density
+! PTSNE1     : of snow temperature
+! PWLE1      : OF SKIN RESERVOIR WATER CONTENT
+! PTLE1      : OF SKIN TEMPERATURE
+! PTSAE1     : OF MULTI-LAYER SOIL TEMPERATURE
+! PWSAE1     : OF MULTI-LAYER SOIL WETNESS
+! PTIAE1     : OF MULTI-LAYER ICE TEMPERATURE
+
+! PLAIE1     : OF LAI PER VEGETATION TYPE
+! PBSTRE1    : OF ABOVE GROUND STRUCTURAL BIOMASS PER VEGETATION TYPE 
+! PBSTR2E1   : OF BELOW GROUND STRUCTURAL BIOMASS PER VEGETATION TYPE 
+
+
+! - 1D (DIAGNOSTIC) .
+
+! PLAI       : LAI (M2/M2)
+! PBIOM      : BIOMASS (KG/M2)
+! PBLOSS     : BIOMASS LOSS (KG/M2)
+! PBGAIN     : BIOMASS GAIN (KG/M2)
+! PBIOMSTR   : ABOVE GROUND STRUCTURAL BIOMASS (KG/M2)
+! PBIOMSTR2  : BELOW GROUND STRUCTURAL BIOMASS (KG/M2)
+
+
+! PALB       : MODEL SURFACE SHORTWAVE ALBEDO.
+! PFTLHEV    : SURFACE LATENT HEAT FLUX (SNOW FREE FRACTION)
+! PFTLHSB    : SURFACE LATENT HEAT FLUX (SNOW COVERED FRACTION)
+! PFTG12     : HEAT FLUX FROM LAYER 1 TO 2
+! PFWEV      : SURFACE WATER VAPOUR FLUX (EVAPORATION)
+! PFWSB      : SURFACE WATER VAPOUR FLUX (SUBLIMATION)
+! PFWG12     : WATER FLUX FROM LAYER 1 TO 2
+! PFWMLT     : WATER FLUX CORRESPONDING TO SURFACE SNOW MELT.
+! PZ0M       : ROUGHNESS LENGTH (CURRENT)    (NB: Units   m)
+! PZ0H       : ROUGHNESS LENGTH FOR HEAT (CURRENT)   (NB: Units   m)
+! PFWROD     : RUN-OFF FLUX AT DEEPER LAYERS (2-4)
+! PFWRO1     : RUN-OFF FLUX AT LAYER 1
+! PVDIS      : TURBULENT DISSIPATION
+!    *PU10M*        U-COMPONENT WIND AT 10 M                      M/S
+!    *PV10M*        V-COMPONENT WIND AT 10 M                      M/S
+!    *PT2M*         TEMPERATURE AT 2M                                K
+!    *PD2M*         DEW POINT TEMPERATURE AT 2M                      K
+!    *PQ2M*         SPECIFIC HUMIDITY AT 2M                       KG/KG
+!    *PMEAN*        AREA AVERAGED WIND SP. AT 10 M INT. FROM KLEV   M/S
+!    *PGUST*        GUST AT 10 M                                    M/S
+!    *PZIDLWV*      Zi/L used for gustiness in wave model           m/m
+!                   (NOTE: Positive values of Zi/L are set to ZERO)
+!    *PBLH*         BOUNDARY LAYER HEIGHT                            M
+!    *PDHTLS*       Diagnostic array for tiles (see module yomcdh)
+!    *PDHTTS*       Diagnostic array for soil T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!    *PDHTIS*       Diagnostic array for ice T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!                      (Wm-2 for fluxes)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+!                      (m/s for fluxes)
+!    *PDHIIS*     Diagnostic array for interception layer (see module yomcdh)
+!    *PDHWLS*     Diagnostic array for soil water (see module yomcdh)
+!    *PDHRESS*      Diagnostic array for resistances (see module yomcdh) 
+
+!    *PDHCO2S*    Diagnostic array for CO2 (see module yomcdh)
+!    *PDHBIOS*    Diagnostic array for biomass (see module yomcdh)
+!    *PDHBVOCS*   Diagnostic array for BVOC emissions (see module yomcdh)
+!    *PDHVEGS*    Diagnostic array for variables per vegetation type
+!                (see module yomcdh)
+
+
+!-----------------------------------------------------------------------
+
+!     Externals.  RADSRF -
+!     ---------   VDFMAIN1S-
+!                 SRFMAIN-
+
+!     Method. See documentaion.
+!     -------
+!     Modifications.
+!     --------------
+!     ORIGINAL 95-03-08 Pedro VITERBO
+!            2008-01-22 Victor STEPANENKO
+!     Components of wind stress (PUSTRTI AND PVSTRTI)
+!     and sea surface temperature (PSST) are added to the arguments of subroutine SURFTSTP  
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL based on: 
+!     Marita Voogt (KNMI) CTESSEL
+!     Sebastien simplified CTESSEL
+!     E. Dutra      29/05/2014      net longwave tiled
+!     R. Hogan      15/01/2019      6-component MODIS albedo coefficients
+
+!-----------------------------------------------------------------------
+!     ******************************************************************
+!     ****** IDIOSYNCRASIES *** IDIOSYNCRASIES *** IDIOSYNCRASIES ******
+!     ******************************************************************
+!     ***  MOREOVER, WATER IN DEEPER LAYERS HAS TO BE NORMALIZED TO  ***
+!     ***  THE FIRST LAYER DEPTH. THIS IS EQUIVALENT TO A CHANGE OF  ***
+!     ***  UNITS FROM PURE VOLUMETRIC UNITS (M3/M3, USED ELSEWHERE   ***
+!     ***  IN THE CODE) TO MODIFIED VOLUMETRIC UNITS, NORMALIZED BY  ***
+!     ***  THE DEPTH OF THE FIRST LAYER (M/0.07M, USED IN THE        ***
+!     ***  PHYSICS)                                                  ***
+!     ******************************************************************
+!     ******************************************************************
+
 SUBROUTINE CALLPAR1S (CDCONF &
      & , KIDIA,KFDIA,KLON,KLEVS,KTILES,KVTYPES &
      & , KLEV   ,KSTART ,KSTEP  ,KTRAC   &
@@ -66,14 +341,6 @@ SUBROUTINE CALLPAR1S (CDCONF &
      & , PUOE1   ,PVOE1    ,PTOE1    ,PSOE1 &             !KPP
      & , PLAIE1, PBSTRE1, PBSTR2E1 &
      & , PDHTLS,PDHTSS,PDHTTS,PDHTIS,PDHIIS,PDHSSS,PDHWLS,PDHRESS,PDHCO2S,PDHBIOS,PDHVEGS)
-
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *CALLPAR1S * - CALL PHYSICS
 
@@ -744,7 +1011,7 @@ IF (LERADS) THEN
      &     , KIDIA=KIDIA  , KFDIA=KFDIA  , KLON=KLON   , KTILES=KTILES , KSW=NSW, KLW=NLWEMISS &
      &     , LDNH=LLNH &
      &     , PALBF=PALBF ,PALBICEF=PALBICEF,PTVH=PTVH &
-     &     , PALCOEFF=ZALCOEFF ,PCURC=PCUR, PCVH=PCVH &
+     &     , PALCOEFF=ZALCOEFF ,PCUR=PCUR, PCVH=PCVH &
      &     , PASN=PASN   , PMU0=PMU0M  , PTS=PTL    , PWND=ZWND &
      &     , PWS1=ZWS1, KSOTY=ISOTY, PFRTI=ZFRTI,PHLICE=PHLICE,PTLICE=PTLICE &
      &     , PALBD=ZALBD(:,1:NSW)  , PALBP=ZALBP(:,1:NSW)  , PALB=PALB &
@@ -913,7 +1180,7 @@ ZEXDIAG(KIDIA:KFDIA,12)=GELAM(KIDIA:KFDIA) ! Longitude
 
   CALL VDFMAIN1S ( CDCONF,&
  & KIDIA,KFDIA,KLON,KLEV,KLEVS,KSTEP,KTILES, KVTYPES,JPDIAG,&
- & KTRAC,KLEVSN ,KLEVI  ,KDHVTLS,KDHFTLS,KDHVTSS,KDHFTSS, &
+ & KTRAC,KLEVSN ,KLEVI  ,LLLAND, KDHVTLS,KDHFTLS,KDHVTSS,KDHFTSS, &
  & KDHVTTS,KDHFTTS,KDHVTIS,KDHFTIS, &
  & KDHVCO2S,KDHFCO2S, KDHVVEGS,KDHFVEGS,  &
  & PMU0M   , &

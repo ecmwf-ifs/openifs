@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+# Simplest mars request examples to get forcing fields for ecwam runs (u and v-component of 10m wind and sea ice cover)
+# (it is not general because of the awkward way date and time are used in mars request)
+# It is based on specifying the variables begofrn, begoffo, endofrn, step_an, step_fc
+# as done in ecwam_run_model.sh
+
+
+set -o pipefail
+set +v
+
+module load eclib
+
+# Select one of the following:
+
+# 12 hours operational analysis, followed by fclength hours forecast , starting from yyyymmdd, 0 UTC (to be specified)
+forcing_type=oper_analysis_forecast
+# or
+# ERA5 reanalysis, starting from yyyymmdd, 0 UTC for 36 hours, no forecast
+forcing_type=era5
+
+
+
+if [[ $forcing_type = oper_analysis_forecast ]] ; then
+  echo "operational data"
+  expver=0001
+  class=od
+  stream=oper
+  yyyymmdd=20221106
+  hh=00
+  fclength=12
+
+  # Generate input for ecwam_run_model:
+  # format YYYYMMDDHHmmss (year-month-day-hour-minutes-seconds)
+  # start of the run
+  begofrn=${yyyymmdd}${hh}0000
+  # end of the analysis (and beginning of forecast)
+  begoffo=$(newdate $(echo $begofrn | cut -c 1-10) +12)0000
+  # end of the forecast
+  endofrn=$(newdate $(echo $begoffo | cut -c 1-10) +$fclength)0000
+  # analysis winds supplied every step_an hours
+  step_an=6
+  # forecast winds supplied every step_fc hours
+  step_fc=1
+
+
+  # create mars request
+  cat > request_forcing <<EOF
+    RETRIEVE,
+      DATE=${yyyymmdd},
+      TIME=0/to/12/by/${step_an},
+      PARAM=10U/10V/CI,
+      REPRES=GG,
+      TYPE=AN,
+      LEVTYPE=SFC,
+      LEVELIST=OFF,
+      STREAM=${stream},
+      CLASS=${class},
+      EXPVER=${expver},
+  ### No grid or area is specified, but one might want to match to the requested grid
+  ### GRID can be as fine as      GRID=0.1/0.1,
+  ###      GRID=1.0/1.0,
+      TARGET="wind_fields"
+    RETRIEVE,
+      DATE=$(echo $begoffo | cut -c 1-8),
+      TIME=$(echo $begoffo | cut -c 9-10),
+      TYPE=FC,
+      STEP=0/to/${fclength}/by/${step_fc}
+EOF
+
+   mars < request_forcing
+
+elif [[ $forcing_type = era5 ]] ; then
+  echo "ERA5 data"
+  expver=0001
+  class=ea
+  stream=oper
+
+  yyyymmdd=20220706
+  hh=00
+
+  # format YYYYMMDDHHmmss (year-month-day-hour-minutes-seconds)
+  # start of the run
+  begofrn=${yyyymmdd}${hh}0000
+  # end of the analysis (and beginning of forecast)
+  begoffo=$(newdate $(echo $begofrn | cut -c 1-10 ) 36)0000
+  # end of the forecast
+  endofrn=$begoffo
+  # analysis winds supplied every step_an hours
+  step_an=1
+  # forecast winds supplied every step_fc hours
+  step_fc=3
+
+  # create mars request
+    cat > request_forcing <<EOF
+    RETRIEVE,
+      DATE=${yyyymmdd},
+      TIME=0/to/23/by/${step_an},
+      PARAM=10U/10V/CI,
+      REPRES=GG,
+      TYPE=AN,
+      LEVTYPE=SFC,
+      LEVELIST=OFF,
+      STREAM=${stream},
+      CLASS=${class},
+      EXPVER=${expver},
+  ### No grid or area is specified, but one might want to match to the requested grid
+  ### GRID can be as fine as      GRID=0.25/0.25,
+  ###      GRID=1.0/1.0,
+      TARGET="wind_fields"
+    RETRIEVE,
+      DATE=$(echo $begoffo | cut -c 1-8),
+      TIME=0/to/12/by/${step_an}
+EOF
+
+   mars < request_forcing
+
+
+fi
+
+
+

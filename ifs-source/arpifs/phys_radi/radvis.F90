@@ -7,20 +7,19 @@
 ! nor does it submit to any jurisdiction
 
 SUBROUTINE RADVIS &
-  &( YDERAD,KIDIA  , KFDIA  , KLON  , KLEV , &
-  &  PRSF1  , PAP    , PQL, PQI, PQR, PQS  , PTP  , PTSPHY, &
-  &  PCLAERS, PPRAERS, &
-  &  PVISICL, PVISIPR, PVISCAE, PVISPAE, PVISCLD &
-  & )
-
+  &( KIDIA, KFDIA, KLON, KLEV, &
+  &  PRSF1, PT, PA, PL, PI, PR, PS, &
+  &  PAEREXT, &
+  &  PVISALL, PVISAER, PVISCLD )
+  
 !**** *RADVIS* - ROUTINE COMPUTING THE VISIBILITY
 
-!      J.-J. MORCRETTE , ECMWF
+!      J.-J. MORCRETTE , R M Forbes,  ECMWF
 
 
 !**   INTERFACE.
 !     ----------
-!          *RADVISD* IS CALLED FROM *CALLPAR*.
+!          *RADVIS* IS CALLED FROM *RADVIS_LAYER*.
 
 ! INPUTS:
 ! -------
@@ -30,101 +29,191 @@ SUBROUTINE RADVIS &
 
 !     MODIFICATIONS.
 !     -------------
-!          Original: JJMorcrette, 20101125  
+!     Original: JJMorcrette, 20101125  
+!     Nov 2022: R Forbes  Updated with improved options as in claervis.F90
 
 !-----------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM , JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-
-USE YOMCST   , ONLY : RD  , RG
-USE YOERAD   , ONLY : TERAD
+USE YOMCST   , ONLY : RD
 USE YOESRTCOP, ONLY : RSASWA, RSASWB, RSFUA0, RSFUA1
+
+!-------------------------------------------------------------------------------
 
 IMPLICIT NONE
 
-TYPE(TERAD)       ,INTENT(INOUT):: YDERAD
+! Input 
 INTEGER(KIND=JPIM),INTENT(IN) :: KIDIA, KFDIA, KLON, KLEV
+REAL(KIND=JPRB),INTENT(IN)    :: PRSF1(KLON,KLEV) ! Pressure on full levels (Pa)
+REAL(KIND=JPRB),INTENT(IN)    :: PT(KLON,KLEV)    ! Temperature (K)
+REAL(KIND=JPRB),INTENT(IN)    :: PA(KLON,KLEV)    ! Cloud fraction (0-1)
+REAL(KIND=JPRB),INTENT(IN)    :: PL(KLON,KLEV)    ! Cloud liquid (kg kg-1)
+REAL(KIND=JPRB),INTENT(IN)    :: PI(KLON,KLEV)    ! Cloud ice (kg kg-1) 
+REAL(KIND=JPRB),INTENT(IN)    :: PR(KLON,KLEV)    ! Rain (kg kg-1)
+REAL(KIND=JPRB),INTENT(IN)    :: PS(KLON,KLEV)    ! Snow (kg kg-1)
+REAL(KIND=JPRB),INTENT(IN)    :: PAEREXT(KLON)    ! Aerosol extinction coeff (m-1)
 
-REAL(KIND=JPRB),INTENT(IN)    :: PRSF1(KLON,KLEV)
-REAL(KIND=JPRB),INTENT(IN)    :: PAP(KLON,KLEV)  , PTP(KLON,KLEV)
-REAL(KIND=JPRB),INTENT(IN)    :: PQL(KLON,KLEV)
-REAL(KIND=JPRB),INTENT(IN)    :: PQI(KLON,KLEV)
-REAL(KIND=JPRB),INTENT(IN)    :: PQR(KLON,KLEV)
-REAL(KIND=JPRB),INTENT(IN)    :: PQS(KLON,KLEV)
-REAL(KIND=JPRB),INTENT(IN)    :: PCLAERS(KLON)   , PPRAERS(KLON)
-REAL(KIND=JPRB),INTENT(IN)    :: PTSPHY
+! Output
+REAL(KIND=JPRB),INTENT(OUT)   :: PVISALL(KLON) ! Rayleigh + cloud + aerosol (m)
+REAL(KIND=JPRB),INTENT(OUT), OPTIONAL :: PVISAER(KLON) ! Rayleigh + aerosol (m)
+REAL(KIND=JPRB),INTENT(OUT), OPTIONAL :: PVISCLD(KLON) ! Rayleigh + cloud (m)
 
-REAL(KIND=JPRB),INTENT(OUT)   :: PVISICL(KLON), PVISIPR(KLON)    
-REAL(KIND=JPRB),INTENT(OUT)   :: PVISCAE(KLON), PVISPAE(KLON), PVISCLD(KLON)
-
-!-- Local variables
-
+!-- Local variables --
 INTEGER(KIND=JPIM) :: JL, JSW
-REAL(KIND=JPRB)    :: ZDENSVIS, ZGDT , ZRANGE, ZRELRA , ZDESIC , ZQIWP  , ZQLWP
-REAL(KIND=JPRB)    :: Z1CLD   , ZQRWP, ZQSWP , ZSNOICE, ZCFSNIC, ZLIQRAI, ZCFLIRA
-REAL(KIND=JPRB)    :: ZNS     , ZSIGAIR
-REAL(KIND=JPRB)    :: ZCONDEN(KLON), ZRAYL(KLON), ZRHO(KLON)
 
-REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-!-----------------------------------------------------------------------
+REAL(KIND=JPRB)    :: ZAIRDENSITY        ! Air density (kg m-3)
+REAL(KIND=JPRB)    :: ZLOGNETA           ! Natural log of liminal visual contrast 
+REAL(KIND=JPRB)    :: ZRE_LIQ,  ZDE_ICE  ! Cloud liquid and ice hydrometeor sizes
+REAL(KIND=JPRB)    :: ZRE_RAIN, ZDE_SNOW ! Rain and snow hydrometeor sizes
+REAL(KIND=JPRB)    :: ZND_LIQ            ! Cloud liquid droplet size for Gultepe (2006)
+REAL(KIND=JPRB)    :: ZEXTLIQ,  ZEXTICE  ! Extinction coeffs for cloud liquid and ice
+REAL(KIND=JPRB)    :: ZEXTRAIN, ZEXTSNOW ! Extinction coeffs for rain and snow
+REAL(KIND=JPRB)    :: ZQLWC,    ZQIWC    ! Water contents for cloud liquid and ice
+REAL(KIND=JPRB)    :: ZQRWC,    ZQSWC    ! Water contents for rain and snow
+REAL(KIND=JPRB)    :: ZRAYEXT            ! Rayleigh extinction coefficient (m-1)
+REAL(KIND=JPRB)    :: ZHYDEXT(KLON)      ! Hydrometeor extinction coefficient (m-1)
+
+REAL(KIND=JPHOOK)  :: ZHOOK_HANDLE
+
+! Visibility algorithm options: 
+! 'IFSRAD'=original radiation eqns
+! 'OBSFIT'=empirical fit to observations
+CHARACTER(LEN=*), PARAMETER :: CLVISIB_ALGOR='OBSFIT' 
+
+!-------------------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('RADVIS',0,ZHOOK_HANDLE)
-ASSOCIATE(RNS=>YDERAD%RNS, RSIGAIR=>YDERAD%RSIGAIR)
-!-- if prognostic aerosols, take the scattering cross-section from AER_BDGTMSS
-!-- if not, take the scattering cross-section from RADACA (climatological aerosols)
+!-------------------------------------------------------------------------------
 
-
-!-- VISIBILITY CALCULATIONS
-!-- formulation from Hinkley (1976) Vm = (3.91/Sigma) * (0.55/Lambda)^1.3
-!   is here used to get visibility at 0.55 um, where Sigma is the total extinction coefficient in km-1
-!   0.012 km-1 is the approximate contribution from Rayleigh (could be improved)
-!   ZSIGAER is the extinction coefficient in km-1 from the aerosols (computed in aer_bdgtmss.F90)
-!   ZCONDEN is the extinction coefficient, sum of the effect of rain and snow 
-
-ZGDT=RG*PTSPHY
-ZRANGE = 3.912023_JPRB
-ZRELRA=1000._JPRB
-ZDESIC=1000._JPRB
-! values for 0.55 um (in fact 0.6250 - 0.4415 um)
+! For "IFSRAD" option:
+! Particle sizes (in microns) for liquid, ice, rain and snow are fixed
+! (in the future, could be linked to a calculated particle effective radius)
+ZRE_LIQ  = 10._JPRB
+ZDE_ICE  = 60._JPRB
+ZRE_RAIN = 1000._JPRB
+ZDE_SNOW = 2000._JPRB
+! Index for 0.55 um (in fact 0.6250 - 0.4415 um)
 JSW=10                
+
+! For "OBSFIT" option:
+! For Gultepe cloud liquid - fixed number concfor cloud water droplets (cm-3)
+! (in the future, could be linked to a calculated particle effective radius)
+ZND_LIQ  = 50._JPRB
+
+! Define -ln(eta) where liminal visual contrast eta=0.02
+ZLOGNETA = 3.912023_JPRB
+
+
+!---------------------------------------------------------------------
+!
+! Extinction coefficient for clear air (Rayleigh scattering)
+!
+!---------------------------------------------------------------------
+! This could be calculated explicitly with code below:  
+!   ASSOCIATE(RNS=>YDERAD%RNS, RSIGAIR=>YDERAD%RSIGAIR)
+!   Molecular density in first layer
+!   ZNS = RNS*273.15_JPRB/PT(JL,KLEV)
+!   Rayleigh scattering cross section (cm2 molec-1)
+!   ZSIGAIR = (RSIGAIR/ZNS)/ZNS ! not RSIGAIR/(ZNS*ZNS) because intermediate value busts single precision
+!   Rayleigh scattering coefficient (km-1)
+!   ZRAYLEIGH = 1.E+05_JPRB * ZSIGAIR * ZNS * PSRF1(JL,KLEV) / 101325._JPRB
+! but in practice the extinction coefficient of clean air generally has no 
+! practical impact, and has been taken to be equivalent to a visibility of 
+! 100km  (=1.E5 m) to ensure that unrealistically high visibilities are 
+! never diagnosed following Clark et al. (2008,QJ) and Claxton (2008,QJ).
+!---------------------------------------------------------------------
+! Calculate extinction coefficient from Rayleigh scattering (m-1) 
+ZRAYEXT = ZLOGNETA/1.E5_JPRB
+
+
 DO JL=KIDIA,KFDIA
-  ZRHO(JL)=PRSF1(JL,KLEV)/(RD*PTP(JL,KLEV))
-  ZDENSVIS=ZRHO(JL)
-! All ..WP in kg kg-1
-  ZQIWP = 0._JPRB
-  ZQLWP = 0._JPRB
-  IF (PAP(JL,KLEV) > 0.001_JPRB) THEN
-    Z1CLD   = 1._JPRB/PAP(JL,KLEV)
-    ZQIWP   = MAX(0._JPRB, PQI(JL,KLEV) * Z1CLD)
-    ZQLWP   = MAX(0._JPRB, PQL(JL,KLEV) * Z1CLD)
+ 
+  !---------------------------------------------------------------------
+  !
+  ! Extinction coefficient for cloud and precipitation
+  !
+  !---------------------------------------------------------------------
+  ! Calculate air density
+  ZAIRDENSITY = PRSF1(JL,KLEV)/(RD*PT(JL,KLEV))
+
+  ! Use grid-box mean values to avoid very low visibilities
+  ! Multiply by air_density*1000 to convert from kg kg-1 to g m-3
+  ZQLWC   = MAX(0._JPRB, PL(JL,KLEV)*ZAIRDENSITY*1000._JPRB)
+  ZQRWC   = MAX(0._JPRB, PR(JL,KLEV)*ZAIRDENSITY*1000._JPRB)
+  ZQIWC   = MAX(0._JPRB, PI(JL,KLEV)*ZAIRDENSITY*1000._JPRB)
+  ZQSWC   = MAX(0._JPRB, PS(JL,KLEV)*ZAIRDENSITY*1000._JPRB)
+  
+  ! Calculate extinction coefficient for cloud and precipitation (m-1)
+  
+  ! Use assumptions from the radiation scheme
+  IF (CLVISIB_ALGOR == 'IFSRAD') THEN
+
+    ! IFS radiation scheme extinction coefficient for visible band (m-1)
+    ZEXTLIQ  = ZQLWC * (RSASWA(JSW) + RSASWB(JSW) / ZRE_LIQ)
+    ZEXTICE  = ZQIWC * (RSFUA0(JSW) + RSFUA1(JSW) / ZDE_ICE)
+    ZEXTSNOW = ZQSWC * (RSFUA0(JSW) + RSFUA1(JSW) / ZDE_SNOW)
+    ZEXTRAIN = ZQRWC * (RSASWA(JSW) + RSASWB(JSW) / ZRE_RAIN)
+
+  ! Use empirical fit to observations
+  ELSEIF (CLVISIB_ALGOR == 'OBSFIT') THEN
+
+    ! Cloud water extinction coefficient (m-1) 
+    ! Gultepe (2006) Vis = 1.002*(ZQLWC*Nd)^-0.6473 (*10E-3 to convert km to m)
+    ZEXTLIQ = (ZLOGNETA/1002._JPRB)*(ZQLWC*ZND_LIQ)**0.6473_JPRB
+
+    ! Ice extinction coefficient (m-1)
+    ! Stoelinga and Warner 1999 (*10E-3 to convert km to m)
+    ZEXTICE = 163.9E-3_JPRB*ZQIWC
+
+    ! Snow extinction coefficient (m-1) 
+    ! Stallabrass 1985; Stoelinga and Warner 1999: 10.4*SWC**0.78
+    ! Modified for IFS to better fit data (*10E-3 to convert km to m)
+    ZEXTSNOW = 4.E-3_JPRB*ZQSWC**0.78_JPRB
+
+    ! Rain extinction coefficient (m-1)
+    ! Stoelinga and Warner 1999
+    ! Modified for IFS to better fit data (*10E-3 to convert km to m)
+    ZEXTRAIN = 5.E-3_JPRB*ZQRWC**0.75_JPRB
+
+  ELSE
+  
+    ZEXTLIQ  = 0.0_JPRB
+    ZEXTICE  = 0.0_JPRB
+    ZEXTSNOW = 0.0_JPRB
+    ZEXTRAIN = 0.0_JPRB
+
   ENDIF
-  ZQRWP   = MAX(0._JPRB, PQR(JL,KLEV))
-  ZQSWP   = MAX(0._JPRB, PQS(JL,KLEV))
-! ice and snow together
-  ZSNOICE = ZQIWP+ZQSWP
-  ZCFSNIC = RSFUA0(JSW) + RSFUA1(JSW) / ZDESIC
-! liquid and rain together
-  ZLIQRAI = ZQLWP+ZQRWP
-  ZCFLIRA = RSASWA(JSW) + RSASWB(JSW) / ZRELRA
-! cloud+precipitation (1.E+6 is 1.E+3 to go from kg to g, and 1.E+3 from m-1 to km-1)
-  ZCONDEN(JL) = (ZSNOICE * ZCFSNIC + ZLIQRAI * ZCFLIRA) * ZDENSVIS * 1.E+06_JPRB
-! Molecular density in first layer
-  ZNS = RNS*273.15_JPRB/PTP(JL,KLEV)
-! Rayleigh scattering cross section (cm2 molec-1)
-  ZSIGAIR = (RSIGAIR/ZNS)/ZNS ! not RSIGAIR/(ZNS*ZNS) because intermediate value busts single precision
-! Rayleigh scattering coefficient (km-1)
-  ZRAYL(JL) = 1.E+05_JPRB * ZSIGAIR * ZNS * PAP(JL,KLEV) / 101325._JPRB
-!-- to follow the Met Office (Clark et al., 2008, QJ, 134, 1801; Claxton, 2008, QJ, 134, 1527) 
-  ZRAYL(JL) = 0.03912023_JPRB
-! "total" visibility, visi.Rayl+aerosols, visi.Rayl+cloud/precip
-  PVISICL(JL)  = ZRANGE / (ZRAYL(JL) + PCLAERS(JL) + ZCONDEN(JL))
-  PVISIPR(JL)  = ZRANGE / (ZRAYL(JL) + PPRAERS(JL) + ZCONDEN(JL))
-  PVISCAE(JL)  = ZRANGE / (ZRAYL(JL) + PCLAERS(JL))
-  PVISPAE(JL)  = ZRANGE / (ZRAYL(JL) + PPRAERS(JL))
-  PVISCLD(JL)  = ZRANGE / (ZRAYL(JL) + ZCONDEN(JL))
+
+  ! Calculate total extinction coefficient for cloud+precip hydrometeors (m-1)
+  ZHYDEXT(JL) = (ZEXTICE + ZEXTLIQ + ZEXTSNOW + ZEXTRAIN)
+  
+  !---------------------------------------------------------------------
+  !
+  ! Total visibility (m) =  clear air (Rayleigh) + aerosols + cloud + precip
+  !
+  ! Hinkley (1976) Vis = (3.91/Sigma) * (0.55/Lambda)^1.3
+  ! For visible wavelength, Lambda = 0.55 um and
+  ! Sigma is the total extinction coefficient in m-1
+  !---------------------------------------------------------------------
+  PVISALL(JL)  = ZLOGNETA / (ZRAYEXT + PAEREXT(JL) + ZHYDEXT(JL))
+
 ENDDO
 
+! Only compute partial visibilities if provided as output arguments to the routine
+IF (PRESENT(PVISAER)) THEN
+  ! Rayleigh plus aerosols
+  DO JL=KIDIA,KFDIA
+    PVISAER(JL)  = ZLOGNETA / (ZRAYEXT + PAEREXT(JL))
+  ENDDO
+ENDIF
+
+IF (PRESENT(PVISCLD)) THEN
+  ! Rayleigh plus hydrometeors
+  DO JL=KIDIA,KFDIA
+    PVISCLD(JL)  = ZLOGNETA / (ZRAYEXT + ZHYDEXT(JL))
+  ENDDO
+ENDIF
+
 !-----------------------------------------------------------------------
-END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('RADVIS',1,ZHOOK_HANDLE)
 END SUBROUTINE RADVIS

@@ -56,6 +56,8 @@ END TYPE TGHGCLIM
 
 TYPE(TGHGCLIM), POINTER :: YGHGCLIM => NULL()
 
+#include "abor1.intfb.h"
+
 CONTAINS
 
 !-----------------------------------------------------------------------
@@ -87,7 +89,6 @@ SUBROUTINE READ_GHG_CLIMATOLOGY(SELF, CD_FILE_NAME)
 
   REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
-#include "abor1.intfb.h"
   !-----------------------------------------------------------------------
   IF (LHOOK) CALL DR_HOOK('YOMCLIM:READ_GHG_CLIMATOLOGY',0,ZHOOK_HANDLE)
 

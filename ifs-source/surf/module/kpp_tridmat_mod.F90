@@ -1,10 +1,3 @@
-MODULE KPP_TRIDMAT_MOD
-CONTAINS
-SUBROUTINE KPP_TRIDMAT &
-  & ( KIDIA    ,KFDIA    ,KLON     ,KLEVO    ,KLEVOP1  ,&
-  &   LDKPPCAL ,PCU      ,PCC      ,PCL      ,PRHS     ,&
-  &   PYO      ,YDOCEAN_ML,&
-  &   PYN )
 
 ! (C) Copyright 1994- ECMWF.
 !
@@ -13,6 +6,39 @@ SUBROUTINE KPP_TRIDMAT &
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+! Purpose :
+! -------
+!   This routine solves tridiagonal matrix with Thomas algorithm.
+
+! Interface :
+! ---------
+!   Call *KPP_TRIDMAT* from *KPP_OCNINT*
+
+! Method :
+! ------
+
+! Externals :
+! ---------
+
+! Reference :
+! ---------
+
+! Modifications :
+! -------------
+!     06-Jun-1994  Bill Large
+!            2002  Steve Woolnough, Reading Univ.
+!     07-Oct-2008  Yuhei Takaya,    E.C.M.W.F.    Implemented to IFS.
+! End Modifications :
+!---------------------------------------------------------------------
+
+MODULE KPP_TRIDMAT_MOD
+CONTAINS
+SUBROUTINE KPP_TRIDMAT &
+  & ( KIDIA    ,KFDIA    ,KLON     ,KLEVO    ,KLEVOP1  ,&
+  &   LDKPPCAL ,PCU      ,PCC      ,PCL      ,PRHS     ,&
+  &   PYO      ,YDOCEAN_ML,&
+  &   PYN )
+
 ! Purpose :
 ! -------
 !   This routine solves tridiagonal matrix with Thomas algorithm.

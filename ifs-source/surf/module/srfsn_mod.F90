@@ -1,20 +1,3 @@
-MODULE SRFSN_MOD
-CONTAINS
-SUBROUTINE SRFSN(KIDIA       , KFDIA  , KLON   , KTILES  , PTMST, &
- & PSSNM1M ,PTSNM1M ,PASNM1M ,PRSNM1M ,PTSAM1M ,PHLICEM1M, &
- & PSLRFL  ,PSSRFLTI,PFRTI   ,PAHFSTI ,PEVAPTI,            &
- & PSSFC   ,PSSFL   ,PEVAPSNW,                             &
- & YDCST   ,YDVEG   ,YDSOIL  ,YDFLAKE,                     &
- & PSSN    ,PTSN    ,PASN    ,PRSN    ,PGSN    ,PMSN,      &
- & PEMSSN  ,                                               &
- & PDHTSS  ,PDHSSS)  
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_CST  , ONLY : TCST
-USE YOS_VEG  , ONLY : TVEG
-USE YOS_SOIL , ONLY : TSOIL
-USE YOS_FLAKE, ONLY : TFLAKE
 
 ! (C) Copyright 1999- ECMWF.
 !
@@ -110,6 +93,117 @@ USE YOS_FLAKE, ONLY : TFLAKE
 !     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
 !     P. Viterbo     24-05-2004     Change surface units
 !     E. Dutra       16-11-2009     add FLAKE support and remove permanent snow cover treatment
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+!     J. McNorton    24/08/2022      urban tile
+!     ------------------------------------------------------------------
+
+MODULE SRFSN_MOD
+CONTAINS
+SUBROUTINE SRFSN(KIDIA       , KFDIA  , KLON   , KTILES  , PTMST, &
+ & PSSNM1M ,PTSNM1M ,PASNM1M ,PRSNM1M ,PTSAM1M ,PHLICEM1M, &
+ & PSLRFL  ,PSSRFLTI,PFRTI   ,PAHFSTI ,PEVAPTI,            &
+ & PSSFC   ,PSSFL   ,PEVAPSNW,                             &
+ & YDCST   ,YDVEG   ,YDSOIL  ,YDFLAKE, YDURB,              &
+ & PSSN    ,PTSN    ,PASN    ,PRSN    ,PGSN    ,PMSN,      &
+ & PEMSSN  ,                                               &
+ & PDHTSS  ,PDHSSS)  
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_CST  , ONLY : TCST
+USE YOS_VEG  , ONLY : TVEG
+USE YOS_SOIL , ONLY : TSOIL
+USE YOS_FLAKE, ONLY : TFLAKE
+USE YOS_URB  , ONLY : TURB
+
+!**** *SRFSN* - CONTAINS SNOW PARAMETRIZATION 
+!     PURPOSE.
+!     --------
+!          COMPUTES CHANGES IN SNOW TEMPERATURE, DEPTH, DENSITY AND 
+!          ALBEDO
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN* IS CALLED FROM *SURFTSTP*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+!    *KLEVS*      NUMBER OF SOIL LAYERS
+!    *KTILES*     NUMBER OF TILES
+!    *KLEVSN*     Number of snow layers (diagnostics) 
+!    *KDHVTSS*    Number of variables for snow energy budget
+!    *KDHFTSS*    Number of fluxes for snow energy budget
+!    *KDHVSSS*    Number of variables for snow water budget
+!    *KDHFSSS*    Number of fluxes for snow water budget
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg/m**2/s
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PASNM1M*    SNOW ALBEDO                                    -
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION                             KG/M**2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+
+!     PARAMETERS AT T+1 :
+!    *PSSN*       SNOW MASS (per unit area)                    kg/m**2
+!    *PTSN*       SNOW TEMPERATURE                               K
+!    *PASN*       SNOW ALBEDO                                    -
+!    *PRSN*       SNOW DENSITY                               KG/M**3
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+!    *PMSN*       FLUX OF MELT WATER FROM SNOW TO SOIL       KG/M**2/S (#)
+!    *PEMSSN*     EVAPORATIVE MISMATCH RESULTING FROM
+!                  CLIPPING THE SNOW TO ZERO (AFTER P-E)     KG/M**2/S
+
+!     OUTPUT PARAMETERS (DIAGNOSTIC):
+!    *PDHTSS*     Diagnostic array for snow T (see module yomcdh)
+!    *PDHSSS*     Diagnostic array for snow mass (see module yomcdh)
+
+! (#) THOSE TWO QUANTITIES REPRESENT THE WHOLE GRID-BOX. IN RELATION
+!       TO THE DOCUMENTATION, THEY ARE PGSN=Fr_s*G_s, PMSN=Fr_s*M_s
+
+!     METHOD.
+!     -------
+!          THE HEAT AND WATER BUDGET OF A SNOW SLAB ON TOP OF THE
+!          SOIL IS CONSIDERED AS THE RESULT OF NET SURFACE HEATING, 
+!          DIFFUSION OF HEAT, SNOWFALL AND SNOW MELT. ALBEDO 
+!          AND DENSITY EVOLVE ACCORDING TO SIMPLE RELAXATION EQUATIONS
+!          (SEE DOUVILLE ET AL., CLIM. DYN., 12, 21-35, 1995).
+!          FOR DETAILS SEE DOCUMENTATION. 
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     ORIGINAL :
+!     P.VITERBO/A.BELJAARS      E.C.M.W.F.     20/02/1999
+!     MODIFIED BY
+!     P. Viterbo    Surface DDH for TILES      17/05/2000
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!     P. Viterbo     24-05-2004     Change surface units
+!     E. Dutra       16-11-2009     add FLAKE support and remove permanent snow cover treatment
+!     J. McNorton    24/08/2022      urban tile
 !     ------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -140,6 +234,7 @@ TYPE(TCST),         INTENT(IN)   :: YDCST
 TYPE(TVEG),         INTENT(IN)   :: YDVEG
 TYPE(TSOIL),        INTENT(IN)   :: YDSOIL
 TYPE(TFLAKE),       INTENT(IN)   :: YDFLAKE
+TYPE(TURB),         INTENT(IN)   :: YDURB
 
 REAL(KIND=JPRB),    INTENT(OUT)  :: PSSN(:)
 REAL(KIND=JPRB),    INTENT(OUT)  :: PTSN(:)
@@ -174,7 +269,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('SRFSN_MOD:SRFSN',0,ZHOOK_HANDLE)
 ASSOCIATE(RDAY=>YDCST%RDAY, RLMLT=>YDCST%RLMLT, RLSTT=>YDCST%RLSTT, &
  & RLVTT=>YDCST%RLVTT, RTT=>YDCST%RTT, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & RALAMSN=>YDSOIL%RALAMSN, RALFMAXSN=>YDSOIL%RALFMAXSN, &
  & RALFMINPSN=>YDSOIL%RALFMINPSN, RALFMINSN=>YDSOIL%RALFMINSN, &
  & RDSNMAX=>YDSOIL%RDSNMAX, RFRSMALL=>YDSOIL%RFRSMALL, RFRTINY=>YDSOIL%RFRTINY, &
@@ -211,7 +306,7 @@ DO JL=KIDIA,KFDIA
   ENDIF
   GRIDFRAC=(PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)&
    & +PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8))
-  IF ( KTILES .GT. 9 ) THEN
+  IF ( LEURBAN ) THEN
    GRIDFRAC=(PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)&
     & +PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8)+PFRTI(JL,10))
   ENDIF

@@ -1,0 +1,51 @@
+---
+### Bundle
+
+name    : ecwam-bundle
+version : 0.0.0
+cmake   : CMAKE_LINK_DEPENDS_NO_SHARED=ON
+          ENABLE_OMP=ON
+
+
+projects :
+
+    - ecbuild : 
+        git     : https://github.com/ecmwf/ecbuild
+        version : master
+        bundle  : false
+
+    - eccodes :
+        git     : https://github.com/ecmwf/eccodes
+        version : master
+        cmake   : ENABLE_MEMFS=ON
+
+    - fiat :
+        git     : https://github.com/ecmwf-ifs/fiat 
+        version : main 
+
+    - field_api :
+        git     : https://github.com/ecmwf-ifs/field_api.git
+        version : v0.2.2
+        cmake   : >
+            ENABLE_SINGLE_PRECISION=OFF
+            ENABLE_ACC=OFF 
+
+    - ecwam :
+        dir     : $PWD
+        version : main
+        require : fiat 
+
+options :
+
+    - with-single-precision :
+        help  : Enable single precision build of the dwarf
+        cmake : ENABLE_SINGLE_PRECISION=ON ENABLE_DOUBLE_PRECISION=OFF
+
+    - without-mpi :
+        help  : Disable MPI
+        cmake : ENABLE_MPI=OFF
+
+    - without-omp :
+        help  : Disable OpenMP
+        cmake : ENABLE_OMP=OFF
+

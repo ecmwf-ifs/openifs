@@ -19,7 +19,7 @@ USE EINT_MOD     , ONLY : SL_STRUCT
 USE YOMWFPB      , ONLY : TFPWSTD, TFPSUW
 USE YOMAFN       , ONLY : TAFN
 USE YOMFPOP      , ONLY : TFPIOH
-USE YOMFPC       , ONLY : TNAMFPSCI, TNAMFPINT
+USE YOMFPC       , ONLY : TNAMFPSCI, TNAMFPINT, TNAMFPL
 USE TYPE_FPOSBUF , ONLY : FPOSBUF
 
 
@@ -64,6 +64,9 @@ TYPE(TNAMFPSCI) :: YNAMFPSCI
 ! Special structure (to be re-worked)
 TYPE(TNAMFPINT) :: YNAMFPINT
 
+! Overall output field request (needed to construct the related model fields object) 
+TYPE(TNAMFPL) :: YNAMFPL
+
 END TYPE TFPOS
 
 
@@ -79,6 +82,7 @@ TYPE(TFPSUW) :: YFPSUW
 LOGICAL :: LFPUPDCLI = .TRUE. ! always true at first call
 TYPE(FPOSBUF) :: YFPCLIMO
 
+LOGICAL :: LLFPDI ! .TRUE. if norms should be computed at the current post-processing step 
 TYPE(TFPOS), POINTER :: YFPOS => NULL()
 
 END TYPE TFPDATA

@@ -1,3 +1,80 @@
+
+! (C) Copyright 2017- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFWS_MASSADJ* - Snow warm start multi-layer 
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE ADJUST SNOW DENSITY PROFILES 
+!          TO CONSERVE TOTAL MASS OF SNOW LAYER
+
+!**   INTERFACE.
+!     ----------
+!          *SURFWS_MASSADJ* IS CALLED FROM *SURFWS_CTL*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       Length of arrays
+!    *KLEVSN*     Snow vertical levels
+!    *KLEVSNA*    Snow vertical Active levels
+!    *PRMINCL*    Cluster index for density exp function
+
+!     INPUT PARAMETERS for WARM START (REAL):
+!    *ZTHRESWS*      snow depth threhsold for warm start
+!    *ZSNPERT*       snow depth threshold for glaciers
+!    *PDSNTOT*    Total snow depth                            (m)
+!    *PSNDEPTH*       Snow depth per layer wrt 0              (m)
+!    *PSNDEPTHR*   Snow depth per layer (full) wrt 0          (m)
+!    *PDSN*       Snow depth per layer                        (m)
+!    *PDSNREAL*   Snow depth per layer (full)                 (m)
+!    *PRSNMAX*    Snow density MAX allowed                    (kg m-3)
+!    *PRCONSTAVG* Constants for density exp function
+!    *PRSNTOP*    Snow density top layer                      (kg m-3)
+
+
+!     INPUT PARAMETERS PROGNOSTIC FROM SINGLE-LAYER (REAL):
+!    *PSSN*       SNOW MASS        single layer               (kg m-2)
+!    *PRSN*       SNOW DENSITY     single layer               (kg m-3)
+
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PRSNWS*        Snow density    warm started
+!    *PSSNWS*        Snow mass       warm started
+!    *PWSNWS*        Snow liq water  warm started
+!    *PTSNWS*        Snow temperature warm started
+
+
+
+!     METHOD.
+!     -------
+!     Mass is adjusted in each layer by iteratively increase/decrease 
+!     the snow density in order to conserve the total mass (input).
+!     Snow liquid water is initialised here using the diagnostic
+!     formulation assuming a temperature dependency of the liq water content
+!     in each layer.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          Arduini et al. (2019)
+
+!     Modifications:
+!     Original   G. Arduini      ECMWF     28/07/2017
+
+!     ------------------------------------------------------------------
+
 MODULE SURFWS_MASSADJ_MOD
 CONTAINS
 
@@ -17,14 +94,6 @@ USE YOS_CST  , ONLY : TCST
 USE YOS_SOIL , ONLY : TSOIL
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2017- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SURFWS_MASSADJ* - Snow warm start multi-layer 
 !     PURPOSE.

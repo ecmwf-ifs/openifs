@@ -107,16 +107,14 @@ SUBROUTINE CUDDRAFN2 &
 !     P. Lopez    04-09-2007  Revision to improve match to Tiedtke scheme
 !     A. Geer     01-10-2008  LDRAIN1D name change to reflect usage
 !     P. Lopez    23-01-2013  Revision to improve match to non-linear scheme
+!     R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !----------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RCPD     ,RETV     ,RLVTT    ,RLSTT    ,RTT   ,RG  
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
-                    & R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
-                    & RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
-                    & RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of fcttre.func.h below. REK.
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of fcttre.func.h below. REK.
 USE YOECUMF2 , ONLY : TECUMF2
 USE YOEPHLI  , ONLY : TEPHLI
 
@@ -187,7 +185,13 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('CUDDRAFN2',0,ZHOOK_HANDLE)
 ASSOCIATE(ENTRDD2=>YDECUMF2%ENTRDD2, NJKT32=>YDECUMF2%NJKT32, &
  & RMFDEPS2=>YDECUMF2%RMFDEPS2, &
+ & RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, RG=>YDCST%RG, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, R4IES=>YDTHF%R4IES, &
+ & R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, &
+ & RALSDCP=>YDTHF%RALSDCP, RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, &
+ & RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, &
  & LPHYLIN=>YDEPHLI%LPHYLIN, RLPTRC=>YDEPHLI%RLPTRC)
+
 ZCD=0.3_JPRB
 ZRG=1.0_JPRB/RG
 ZRCPD=1.0_JPRB/RCPD
@@ -290,12 +294,12 @@ DO JK=3,IKE
   IF (LPHYLIN .OR. LDRAIN1D) THEN
     ICALL=2
     CALL CUADJTQS &
-     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     & ( YDTHF, YDCST, KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
      &   ZPH,      ZTENWB,   ZQENWB,  LLO2,     ICALL)  
   ELSE
     ICALL=2
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,    KFDIA,   KLON,     KLEV,     IK,&
+     & ( YDTHF, YDCST, YDEPHLI,  KIDIA,    KFDIA,   KLON,     KLEV,     IK,&
      &   ZPH,      ZTENWB,   ZQENWB,  LLO2,     ICALL)  
   ENDIF
 
@@ -391,12 +395,12 @@ DO JK=3,KLEV
   IF (LPHYLIN .OR. LDRAIN1D) THEN
     ICALL=2
     CALL CUADJTQS &
-     & ( KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
+     & ( YDTHF, YDCST, KIDIA,    KFDIA,    KLON,    KLEV,     IK,&
      &   ZPH,      PTD,      PQD,     LLO2,     ICALL)  
   ELSE
     ICALL=2
     CALL CUADJTQ &
-     & ( YDEPHLI,  KIDIA,    KFDIA,   KLON,     KLEV,     IK,&
+     & ( YDTHF, YDCST, YDEPHLI,  KIDIA,    KFDIA,   KLON,     KLEV,     IK,&
      &   ZPH,      PTD,      PQD,     LLO2,     ICALL)  
   ENDIF
 

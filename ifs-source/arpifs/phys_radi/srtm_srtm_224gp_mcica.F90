@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE SRTM_SRTM_224GP_MCICA&
  & (YDDIMV, YDML_PHY_RAD,YGFL,YDPHY3,KIDIA, KFDIA, KLON , KLEV , KSW  , KCOLS , KCLDLY ,&
  & PAER , PALBD, PALBP, PAPH , PAP  , PAERTAUS, PAERASYS, PAEROMGS ,&
@@ -36,9 +45,9 @@ IMPLICIT NONE
 !-- Input arguments
 
 TYPE(TDIMV)       ,INTENT(IN)    :: YDDIMV
-TYPE(MODEL_PHYSICS_RADIATION_TYPE),INTENT(INOUT):: YDML_PHY_RAD
-TYPE(TPHY3)       ,INTENT(INOUT) :: YDPHY3
-TYPE(TYPE_GFLD)   ,INTENT(INOUT) :: YGFL
+TYPE(MODEL_PHYSICS_RADIATION_TYPE),INTENT(IN):: YDML_PHY_RAD
+TYPE(TPHY3)       ,INTENT(IN)    :: YDPHY3
+TYPE(TYPE_GFLD)   ,INTENT(IN)    :: YGFL
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV
 INTEGER(KIND=JPIM),INTENT(IN)    :: KSW  
@@ -280,7 +289,7 @@ DO IMOL=1,ITMOL
 ENDDO
 
 CALL SRTM_SETCOEF&
- & (YDDIMV, KIDIA , KFDIA    , KLEV,&
+ & ( KIDIA , KFDIA    , KLEV,&
  & ZPAVEL  , ZTAVEL,&
  & ZCOLDRY , ZWKL,&
  & ILAYTROP,&

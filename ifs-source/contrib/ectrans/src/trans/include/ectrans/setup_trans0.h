@@ -13,7 +13,7 @@ SUBROUTINE SETUP_TRANS0(KOUT,KERR,KPRINTLEV,KMAX_RESOL,KPROMATR,&
 &                       KPRGPNS,KPRGPEW,KPRTRW,KCOMBFLEN,&
 &                       LDMPOFF,LDSYNC_TRANS,KTRANS_SYNC_LEVEL,&
 &                       LDEQ_REGIONS,K_REGIONS_NS,K_REGIONS_EW,K_REGIONS,&
-&                       PRAD,LDALLOPERM)
+&                       PRAD,LDALLOPERM,KOPT_MEMORY_TR)
 
 !**** *SETUP_TRANS0* - General setup routine for transform package
 
@@ -45,6 +45,7 @@ SUBROUTINE SETUP_TRANS0(KOUT,KERR,KPRINTLEV,KMAX_RESOL,KPROMATR,&
 !     K_REGIONS_EW - Maximum number of EW partitions
 !     PRAD         - Radius of the planet
 !     LDALLOPERM  - Allocate certain arrays permanently
+!     KOPT_MEMORY_TR - memory strategy (stack vs heap) in gripoint transpositions
 
 !     The total number of (MPI)-processors has to be equal to KPRGPNS*KPRGPEW
 
@@ -64,6 +65,7 @@ SUBROUTINE SETUP_TRANS0(KOUT,KERR,KPRINTLEV,KMAX_RESOL,KPROMATR,&
 !        R. El Khatib 03-01-24 LDMPOFF
 !        G. Mozdzynski 2006-09-13 LDEQ_REGIONS
 !        N. Wedi  2009-11-30 add radius
+!        R. El Khatib 09-Sep-2020 NSTACK_MEMORY_TR
 
 !     ------------------------------------------------------------------
 
@@ -79,6 +81,7 @@ INTEGER(KIND=JPIM) ,OPTIONAL,INTENT(IN)  :: KTRANS_SYNC_LEVEL
 LOGICAL            ,OPTIONAL,INTENT(IN)  :: LDEQ_REGIONS
 LOGICAL            ,OPTIONAL,INTENT(IN)  :: LDALLOPERM
 REAL(KIND=JPRB)    ,OPTIONAL,INTENT(IN)  :: PRAD
+INTEGER(KIND=JPIM) ,OPTIONAL,INTENT(IN)  :: KOPT_MEMORY_TR
 INTEGER(KIND=JPIM) ,OPTIONAL,INTENT(OUT) :: K_REGIONS(:)
 INTEGER(KIND=JPIM) ,OPTIONAL,INTENT(OUT) :: K_REGIONS_NS
 INTEGER(KIND=JPIM) ,OPTIONAL,INTENT(OUT) :: K_REGIONS_EW

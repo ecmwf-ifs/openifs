@@ -11,15 +11,18 @@
 
 module spp_gen_mod
 
-USE PARKIND1 , ONLY : JPIM, JPRB
+use parkind1 , only : jpim, jprb
+use yomhook  , only : lhook, dr_hook, jphook
 
 implicit none
 
 integer(kind=jpim), parameter :: jp_lab_len=16      ! string length for perturbation labels
 integer(kind=jpim), parameter :: jp_ver_len=32      ! string length for version
 integer(kind=jpim), parameter :: jp_mag  =4         ! max size of xmag
+integer(kind=jpim), parameter :: jp_cli  =4         ! max size of xclipmin/xclipmax
 integer(kind=jpim), parameter :: jp_off  =2         ! max size of nseed_off
 integer(kind=jpim), parameter :: jpmaxperts=128     ! max number of perturbations in the context of namelist inputs
+integer(kind=jpim), parameter :: jpmxscales=2
 character(len=jp_lab_len), parameter :: cp_undefined='????????????????'
 
 type spp_pert
@@ -28,9 +31,17 @@ type spp_pert
   !
   character(len=jp_lab_len) :: label=cp_undefined
   logical                   :: on=.false.       ! on/off
-  integer(kind=jpim)        :: idistr           ! Determines the distribution; 0: normal, 1: log-normal, 2: ...
+  integer(kind=jpim)        :: idistr           ! Determines the distribution; 
+                                                !  0: normal, 
+                                                !  1: log-normal, 
+                                                !  2: uniform
   real(kind=jprb), dimension(jp_mag)   :: xmag=0._jprb        ! amplitude
   real(kind=jprb), dimension(jp_mag)   :: mu=0._jprb          ! mean of Gaussian
+  real(kind=jprb), dimension(jp_mag)   :: xmin=-huge(1._jprb)    ! min perturbation
+  real(kind=jprb), dimension(jp_mag)   :: xmax=huge(1._jprb)     ! max perturbation
+  real(kind=jprb)           :: xclipmin=-HUGE(1.0_jprb) ! lower clipping limit
+  real(kind=jprb)           :: xclipmax= HUGE(1.0_jprb) ! upper clipping limit
+  real(kind=jprb)           :: xuniform_offset   ! Offset of distribution if idistr = 2
   integer(kind=jpim)        :: nmag=1           !   number of used magnitudes
   logical                   :: ln1=.true.       ! T implies the mean of the log-normal distribution is 1
   integer(kind=jpim),dimension(jp_off) :: nseed_off=0       ! random number seed offsets
@@ -45,8 +56,9 @@ type spp_pert
                                                 !   [correspond to MP* IN TSPP_DATA, e.g. MPCFM ... MPZHSVDAERO]
   integer(kind=jpim)        :: mp_radgrid       ! pointer to first random field on radiation grid
 
-  real(kind=jprb), dimension(2)        :: xclip
-  real(kind=jprb)                      :: tau, sdev, xlcor ! random field characteristics
+  ! integer(kind=jpim)  :: nscales ! number of scales in random field  ; todo - scales on a per perturbation basis
+
+  real(kind=jprb), dimension(jpmxscales) :: tau=-999._jprb, sdev=-999._jprb, xlcor=-999._jprb ! random field characteristics
 end type spp_pert
 
 type spp_model
@@ -64,9 +76,9 @@ type spp_model
   integer(kind=jpim), dimension(:), allocatable :: nseed_off ! seed offsets for random fields 1..nrftotal
   type(spp_pert), dimension(:), allocatable :: pndef  ! configurations of defined individual perturbations
   type(spp_pert), dimension(:), allocatable :: pn   ! configurations of active individual perturbations
-  real(kind=jprb)    :: tau    ! global default decorrelation time
-  real(kind=jprb)    :: xlcor  ! global default correlation length scale
-  real(kind=jprb)    :: sdev   ! global default standard deviation
+  real(kind=jprb), dimension(jpmxscales)    :: tau    ! global default decorrelation time
+  real(kind=jprb), dimension(jpmxscales)    :: xlcor  ! global default correlation length scale
+  real(kind=jprb), dimension(jpmxscales)    :: sdev   ! global default standard deviation
   integer(kind=jpim) :: kseed_off ! random number seed offset for current perturbation
 end type spp_model
 
@@ -80,12 +92,19 @@ subroutine allocate_spp_model( sm, knmax)
   type(spp_model), intent(inout) :: sm
   integer(kind=jpim), intent(in) :: knmax
 
+  real(kind=jphook) :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:ALLOCATE_SPP_MODEL',0,zhook_handle)
+
+
   sm%nmax = knmax
   allocate(sm%defined_perts( knmax ) )
   allocate(sm%active_perts(  knmax ) )
   allocate(sm%pndef(         knmax ) )
   allocate(sm%pn(            knmax ) )
   allocate(sm%nseed_off(     knmax * jp_off ) )
+  
+  if (lhook) call dr_hook('SPP_GEN_MOD:ALLOCATE_SPP_MODEL',1,zhook_handle)
 
 end subroutine allocate_spp_model
 
@@ -95,11 +114,17 @@ subroutine deallocate_spp_model( sm )
   !
   type(spp_model), intent(inout) :: sm
 
+  real(kind=jphook) :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:DEALLOCATE_SPP_MODEL',0,zhook_handle)
+
   deallocate(sm%defined_perts )
   deallocate(sm%active_perts )
   deallocate(sm%pndef )
   deallocate(sm%pn    )
   deallocate(sm%nseed_off)
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:DEALLOCATE_SPP_MODEL',1,zhook_handle)
 
 end subroutine deallocate_spp_model
 
@@ -112,49 +137,113 @@ subroutine update_mu_spp_pertn( pn )
 
   integer(kind=jpim) :: jmag
 
+  real(kind=jphook) :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:UPDATE_MU_SPP_PERTN',0,zhook_handle)
+
   if (pn%ln1.and.(pn%idistr==1)) then
     do jmag=1, pn%nmag
-      pn%mu( jmag ) = -0.5_jprb * ( pn%xmag( jmag ) * pn%sdev )**2
+      pn%mu( jmag ) = -0.5_jprb * ( pn%xmag( jmag ) * sqrt(sum(pn%sdev**2._jprb)) )**2
     enddo
   else
     pn%mu= 0._jprb
   endif
+  if (lhook) call dr_hook('SPP_GEN_MOD:UPDATE_MU_SPP_PERTN',1,zhook_handle)
 
 end subroutine update_mu_spp_pertn
 
-subroutine implement_spp_pertn( sm, cdlabel, pxmag, kidistr, knseed_off, knrf, ln1, radgrid, cd_rf_pert_label  )
+subroutine implement_spp_pertn( sm, cdlabel, pxmag, pxmin, pxmax, xclipmin, xclipmax, &
+                              & kidistr, knseed_off, knrf, ldln1, ldradgrid, cd_rf_pert_label, &
+                              & psdev, pxlcor, ptau, xuniform_offset )
   !
   !   configures a new defined perturbation in spp_model sm component.
   !    The subroutine increments sm%ndef and stores the configuration of the perturbation in sm%pndef( sm%ndef )
   !
-  type(spp_model),           intent(inout) :: sm
-  character(len=*),          intent(in)    :: cdlabel
-  real(kind=jprb), dimension(:)        , intent(in)    :: pxmag
+  type(spp_model),              intent(inout) :: sm
+  character(len=*),             intent(in)    :: cdlabel
+  real(kind=jprb),              intent(in)    :: pxmag(:)
   ! optional arguments
-  integer(kind=jpim), optional        , intent(in)    :: kidistr
-  integer(kind=jpim), dimension(:), optional        , intent(in)    :: knseed_off
-  integer(kind=jpim), optional        , intent(in)    :: knrf
-  logical,            optional        , intent(in)    :: ln1
-  logical,            optional        , intent(in)    :: radgrid
-  character(len=*),   optional        , intent(in)    :: cd_rf_pert_label
+  real(kind=jprb),    optional, intent(in)    :: pxmin(:)
+  real(kind=jprb),    optional, intent(in)    :: pxmax(:)
+  real(kind=jprb),    optional, intent(in)    :: xclipmin
+  real(kind=jprb),    optional, intent(in)    :: xclipmax
+  integer(kind=jpim), optional, intent(in)    :: kidistr
+  integer(kind=jpim), optional, intent(in)    :: knseed_off(:)
+  integer(kind=jpim), optional, intent(in)    :: knrf
+  logical,            optional, intent(in)    :: ldln1
+  logical,            optional, intent(in)    :: ldradgrid
+  character(len=*),   optional, intent(in)    :: cd_rf_pert_label
+  real(kind=jprb),    optional, intent(in)    :: ptau(:)
+  real(kind=jprb),    optional, intent(in)    :: pxlcor(:)
+  real(kind=jprb),    optional, intent(in)    :: psdev(:)
+  real(kind=jprb),    optional, intent(in)    :: xuniform_offset
 
   type(spp_pert) :: pn
+  integer (kind=jpim) :: izsize
+  real(kind=jphook) :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:IMPLEMENT_SPP_PERTN',0,zhook_handle)
 
   pn%label      = cdlabel    ! who I am
   pn%on         = .false.    ! default is off
 
   !
-  !   inherit global settings for random field
+  !   set or inherit global settings for random field
   !
-  pn%tau    = sm%tau
-  pn%sdev   = sm%sdev
-  pn%xlcor  = sm%xlcor
-
   pn%nmag = size(pxmag)
   if (pn%nmag > jp_mag) then
-    call abor1('It is not possible to request more than jp_mag different magnitudes. Change jp_mag in spp_test_mod. ')
+    call abor1('It is not possible to request more than jp_mag different magnitudes. Change jp_mag in spp_gen_mod. ')
   endif
   pn%xmag(1:pn%nmag)= pxmag(:)
+
+  pn%tau(:)   = sm%tau(:)
+  pn%sdev(:)  = sm%sdev(:)
+  pn%xlcor(:) = sm%xlcor(:)
+  if (present(ptau)) then
+    izsize = size(ptau)
+    if (izsize > jpmxscales) then
+      call abor1('Only jpmxscales scales available in total. Change jpmxscales in spp_gen_mod. ')
+    endif
+    pn%tau(1:izsize) = ptau(:)
+  endif
+  if (present(psdev)) then
+    izsize = size(psdev)
+    if (izsize > jpmxscales) then
+      call abor1('Only jpmxscales scales available in total. Change jpmxscales in spp_gen_mod. ')
+    endif
+    pn%sdev(1:izsize) = psdev(:)
+  endif
+  if (present(pxlcor)) then
+    izsize = size(pxlcor)
+    if (izsize > jpmxscales) then
+      call abor1('Only jpmxscales scales available in total. Change jpmxscales in spp_gen_mod. ')
+    endif
+    pn%xlcor(1:izsize) = pxlcor(:)
+  endif
+
+  if (present(pxmin)) then
+    izsize = size(pxmin)
+    if (izsize > jp_mag) then
+      call abor1('It is not possible to request more xmin than jp_mag different magnitudes. Change jp_mag in spp_gen_mod. ')
+    endif
+    pn%xmin(1:izsize)= pxmin(:)
+  endif
+
+  if (present(pxmax)) then
+    izsize = size(pxmax)
+    if (izsize > jp_mag) then
+      call abor1('It is not possible to request more xmax than jp_mag different magnitudes. Change jp_mag in spp_gen_mod. ')
+    endif
+    pn%xmax(1:izsize)= pxmax(:)
+  endif
+
+  if (present(xclipmin)) then
+   pn%xclipmin = xclipmin
+  endif
+
+  if (present(xclipmax)) then
+   pn%xclipmax = xclipmax
+  endif
 
   if (present(kidistr)) then
     pn%idistr = kidistr
@@ -162,16 +251,22 @@ subroutine implement_spp_pertn( sm, cdlabel, pxmag, kidistr, knseed_off, knrf, l
     pn%idistr = 1
   endif
 
-  if (present(ln1)) then
-    pn%ln1 = ln1  ! default set in type declaration
+  if (present(xuniform_offset)) then
+    pn%xuniform_offset = xuniform_offset
+  else
+    pn%xuniform_offset = 0.5_jprb
+  endif
+
+  if (present(ldln1)) then
+    pn%ln1 = ldln1  ! default set in type declaration
   endif
   call update_mu_spp_pertn(pn)
 
   !
   !  random field required on radiation grid?
   !
-  if (present(radgrid)) then
-    pn%radgrid= radgrid
+  if (present(ldradgrid)) then
+    pn%radgrid= ldradgrid
   endif
   !
   !  ML: The number of random fields nrf could be determined from size(nseed_off)
@@ -204,13 +299,13 @@ subroutine implement_spp_pertn( sm, cdlabel, pxmag, kidistr, knseed_off, knrf, l
   if (present(knseed_off)) then
     pn%noff=size(knseed_off)
     if (pn%noff > jp_off) then
-      call abor1('Too many seed offsets; increase jp_off in spp_test_mod.')
+      call abor1('Too many seed offsets; increase jp_off in spp_gen_mod.')
     endif
     if (pn%noff /= pn%nrf ) then
       call abor1('The number of random fields must be equal to the number of random seeds.')
     endif
     pn%nseed_off(1:pn%noff) = knseed_off
-  else if (present(cd_rf_pert_label)) then
+  elseif (present(cd_rf_pert_label)) then
     pn%nseed_off = 0
   else
     pn%nseed_off = sm%kseed_off
@@ -232,6 +327,9 @@ subroutine implement_spp_pertn( sm, cdlabel, pxmag, kidistr, knseed_off, knrf, l
   else
     sm%kseed_off = 2_jpim **8 + 2_jpim **9
   endif
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:IMPLEMENT_SPP_PERTN',1,zhook_handle)
+
 end subroutine implement_spp_pertn
 
 
@@ -248,11 +346,15 @@ subroutine get_active_spp_perts( sm, ku_nam, ku_out )
   integer(kind=jpim), intent(in) :: ku_out
 
   integer(kind=jpim) :: inreq ! number of requested perturbations
-  integer(kind=jpim) :: jjpert, kf0, kf1
+  integer(kind=jpim) :: jjpert
+  real(kind=jphook) :: zhook_handle
 
   character(len=jp_lab_len), dimension(jpmaxperts) :: requested_perts
 
   namelist /nam_spp_active/ requested_perts
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:GET_ACTIVE_SPP_PERTS',0,zhook_handle)
+
 
   if (sm%nmax>jpmaxperts) then
     write(ku_out,'(A,I5)') 'spp_gen_mod:get_active_spp_perts: increase jpmaxperts to at least ',sm%nmax
@@ -279,6 +381,9 @@ subroutine get_active_spp_perts( sm, ku_nam, ku_out )
       sm%pn(jjpert)%on  =.true.
     endif
   enddo
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:GET_ACTIVE_SPP_PERTS',1,zhook_handle)
+
 end subroutine get_active_spp_perts
 
 
@@ -292,9 +397,12 @@ subroutine map_indices_spp_nml( sm, ku_nam, ku_out, kidx_map )
   integer(kind=jpim), dimension(jpmaxperts), intent(out):: kidx_map
 
   integer(kind=jpim) :: jjpert
+  real(kind=jphook)  :: zhook_handle
   type(spp_pert), dimension(jpmaxperts) :: pnx   ! configurations of active individual perturbations
 
   namelist /nam_spp_modif/ pnx
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:MAP_INDICES_SPP_NML',0,zhook_handle)
 
   kidx_map = -1
   if (sm%nact>jpmaxperts) then
@@ -311,6 +419,8 @@ subroutine map_indices_spp_nml( sm, ku_nam, ku_out, kidx_map )
     endif
   enddo
 
+  if (lhook) call dr_hook('SPP_GEN_MOD:MAP_INDICES_SPP_NML',1,zhook_handle)
+
 end subroutine map_indices_spp_nml
 
 
@@ -318,7 +428,8 @@ subroutine modify_spp_perts( sm, kidx_map, ku_nam, ku_out )
   !
   !   Read namelist input from unit kunit to determine active perturbations and make adjustments to their configuration.
   !
-  !   kidx_map is obtained from initial pass through namelist nam_spp_modif and links the perturbations pnx with the perturbations sm%pn
+  !   kidx_map is obtained from initial pass through namelist nam_spp_modif and links the
+  !   perturbations pnx with the perturbations sm%pn
   !
   !   create list of seeds for all random fields
   !
@@ -327,13 +438,16 @@ subroutine modify_spp_perts( sm, kidx_map, ku_nam, ku_out )
   integer(kind=jpim), intent(in) :: ku_nam
   integer(kind=jpim), intent(in) :: ku_out
 
-  integer(kind=jpim) :: jjpert, kf0, kf1
+  integer(kind=jpim) :: jjpert, if0, if1
 
   integer(kind=jpim) :: i_rf_donor
-
+  real(kind=jphook)  :: zhook_handle
+ 
   type(spp_pert), dimension(jpmaxperts) :: pnx   ! configurations of active individual perturbations
 
   namelist /nam_spp_modif/ pnx
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:MODIFY_SPP_PERTS',0,zhook_handle)
 
   if (sm%nact>jpmaxperts) then
     write(ku_out,'(A,I5)') 'spp_gen_mod:modify_spp_perts: increase jpmaxperts to at least ',sm%nact
@@ -392,14 +506,18 @@ subroutine modify_spp_perts( sm, kidx_map, ku_nam, ku_out )
   !
   !   create list of seed offsets for the random fields
   !
-  kf1=0
+  if1=0
   do jjpert=1, sm%nact
     if (sm%pn(jjpert)%nrf > 0) then
-      kf0=kf1+1
-      kf1=kf0+sm%pn(jjpert)%noff-1 !ML: the number of seeds does not need to match the number of random fields. This could cause problems. How to resolve this?
-      sm%nseed_off(kf0:kf1) = sm%pn(jjpert)%nseed_off(1:sm%pn(jjpert)%noff )
+      if0=if1+1
+      if1=if0+sm%pn(jjpert)%noff-1 !ML: the number of seeds does not need to match the number of random fields.
+                                   !      This could cause problems. How to resolve this?
+      sm%nseed_off(if0:if1) = sm%pn(jjpert)%nseed_off(1:sm%pn(jjpert)%noff )
     endif
   enddo
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:MODIFY_SPP_PERTS',1,zhook_handle)
+
 end subroutine modify_spp_perts
 
 integer(kind=jpim) function get_spp_idx( cd_label, sm )
@@ -407,10 +525,14 @@ integer(kind=jpim) function get_spp_idx( cd_label, sm )
   !   get index from active perturbations for perturbation named cd_label in spp_model sm
   !
   character(len=*), intent(in)      :: cd_label
-  type(spp_model)          , intent(in)      :: sm
+  type(spp_model) , intent(in)      :: sm
 
   integer(kind=jpim) :: ipn
   integer(kind=jpim) :: jj
+  real(kind=jphook)  :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:GET_SPP_IDX',0,zhook_handle)
+
   ipn=-1
   do jj=1, sm%nact
     if (cd_label == sm%pn(jj)%label) then
@@ -425,6 +547,9 @@ integer(kind=jpim) function get_spp_idx( cd_label, sm )
     call abor1( "get_spp_idx: there is no perturbation " //trim(cd_label))
   endif
   get_spp_idx=ipn
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:GET_SPP_IDX',1,zhook_handle)
+
 end function get_spp_idx
 
 integer(kind=jpim) function get_spp_idx_def( cd_label, sm )
@@ -432,10 +557,14 @@ integer(kind=jpim) function get_spp_idx_def( cd_label, sm )
   !   get index from defined perturbations for perturbation named cd_label
   !
   character(len=*), intent(in)      :: cd_label
-  type(spp_model)          , intent(in)      :: sm
+  type(spp_model) , intent(in)      :: sm
 
   integer(kind=jpim) :: ipn
   integer(kind=jpim) :: jj
+  real(kind=jphook)  :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:GET_SPP_IDX_DEF',0,zhook_handle)
+
   ipn=-1
   do jj=1, sm%ndef
     if (cd_label == sm%pndef(jj)%label) then
@@ -447,6 +576,9 @@ integer(kind=jpim) function get_spp_idx_def( cd_label, sm )
     call abor1( "get_spp_idx_def: there is no perturbation "//trim(cd_label))
   endif
   get_spp_idx_def=ipn
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:GET_SPP_IDX_DEF',1,zhook_handle)
+
 end function get_spp_idx_def
 
 
@@ -455,9 +587,13 @@ logical function active_spp_pn(cd_label, sm )
   !   return true if cd_label refers to an active_perturbation
   !
   character(len=*), intent(in)      :: cd_label
-  type(spp_model)          , intent(in)      :: sm
+  type(spp_model) , intent(in)      :: sm
+  real(kind=jphook)  :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:ACTIVE_SPP_PN',0,zhook_handle)
 
   active_spp_pn = any( cd_label==sm%active_perts )
+  if (lhook) call dr_hook('SPP_GEN_MOD:ACTIVE_SPP_PN',1,zhook_handle)
 end function active_spp_pn
 
 
@@ -469,14 +605,19 @@ subroutine write_spp_pn_infoline( p, ku)
   integer(kind=jpim), optional, intent(in) :: ku
 
   integer(kind=jpim) :: iunit
+  real(kind=jphook)  :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:WRITE_SPP_PN_INFOLINE',0,zhook_handle)
+
   if (present(ku)) then
     iunit=ku
   else
     iunit=6
   endif
-  write( iunit, '(A16,X,4F10.5,X,L3,X,I3,X,I3,X,I3,X,2I11)' ) p%label, p%xmag(:), p%ln1, &
-       & p%mp, p%mp_radgrid, p%nrf, p%nseed_off(1), p%nseed_off(2)
+  write( iunit, '(A16,X,4F10.5,X,L3,X,I3,X,I3,X,I3,X,2I11,X,E16.4,X,E16.4,X,2F10.5,X,4E16.4)' ) p%label, p%xmag(:), p%ln1, &
+       & p%mp, p%mp_radgrid, p%nrf, p%nseed_off(1), p%nseed_off(2), p%xmin(1), p%xmax(1), p%sdev(1:2), p%xlcor(1:2), p%tau(1:2)
 
+  if (lhook) call dr_hook('SPP_GEN_MOD:WRITE_SPP_PN_INFOLINE',1,zhook_handle)
 end subroutine write_spp_pn_infoline
 
 subroutine write_spp_model_table( sm, ku, ldefined )
@@ -490,7 +631,11 @@ subroutine write_spp_model_table( sm, ku, ldefined )
 
   logical :: lldef
 
-  integer(kind=jpim) :: jjpert, nperts, iunit
+  integer(kind=jpim) :: jjpert, inperts, iunit
+  real(kind=jphook)  :: zhook_handle
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:WRITE_SPP_MODEL_TABLE',0,zhook_handle)
+
   if (present(ku)) then
     iunit=ku
   else
@@ -504,23 +649,28 @@ subroutine write_spp_model_table( sm, ku, ldefined )
   endif
 
   if (lldef) then
-    nperts = sm%ndef
+    inperts = sm%ndef
   else
-    nperts = sm%nact
+    inperts = sm%nact
   endif
-  write( iunit, '("--------------------------------------------------------------------------------------------")' )
-  write( iunit, '(A16,X,4A10,X,A3,X,A3,X,A3,X,A3,X,2A11)' ) &
-       & "Perturbation    ", "Ampl 1", "Ampl 2", "Ampl 3", "Ampl 4", "ln1","Ptr","Prg", "NRF", "Seed 1", "Seed 2"
-
-  write( iunit, '("--------------------------------------------------------------------------------------------")' )
-  do jjpert=1, nperts
+  write( iunit, '("----------------------------------------------------------------------------------------------------------&
+       &--------------------------------------------------------------------------------------------------------------")' )
+  write( iunit, '(A16,X,4A10,X,A3,X,A3,X,A3,X,A3,X,2A11,X,A16,X,A16,X,2A10,X,4A16)' ) &
+       & "Perturbation    ", "Ampl 1", "Ampl 2", "Ampl 3", "Ampl 4", "ln1","Ptr","Prg", "NRF", "Seed 1", "Seed 2", &
+       & "Min 1", "Max 1", "Sdev 1", "Sdev 2", "Xlcor 1", "Xlcor 2", "Tau 1", "Tau 2"
+  write( iunit, '("----------------------------------------------------------------------------------------------------------&
+       &--------------------------------------------------------------------------------------------------------------")' )
+  do jjpert=1, inperts
     if (lldef) then
       call write_spp_pn_infoline( sm%pndef(jjpert), ku=iunit)
     else
       call write_spp_pn_infoline( sm%pn(jjpert), ku=iunit)
     endif
   enddo
-  write( iunit, '("--------------------------------------------------------------------------------------------")' )
+  write( iunit, '("----------------------------------------------------------------------------------------------------------&
+       &--------------------------------------------------------------------------------------------------------------")' )
+
+  if (lhook) call dr_hook('SPP_GEN_MOD:WRITE_SPP_MODEL_TABLE',1,zhook_handle)
 
 end subroutine write_spp_model_table
 

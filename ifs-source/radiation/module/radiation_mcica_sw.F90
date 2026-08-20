@@ -1,10 +1,16 @@
 ! radiation_mcica_sw.F90 - Monte-Carlo Independent Column Approximation shortwave solver
 !
-! Copyright (C) 2015-2017 ECMWF
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive albedos at g-points
@@ -12,6 +18,8 @@
 !   2017-10-23  R. Hogan  Renamed single-character variables
 
 module radiation_mcica_sw
+
+  public
 
 contains
 
@@ -36,13 +44,13 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     use radiation_io,   only           : nulerr, radiation_abort
     use radiation_config, only         : config_type
     use radiation_single_level, only   : single_level_type
     use radiation_cloud, only          : cloud_type
     use radiation_flux, only           : flux_type
-    use radiation_two_stream, only     : calc_two_stream_gammas_sw, &
-         &                               calc_reflectance_transmittance_sw
+    use radiation_two_stream, only     : calc_ref_trans_sw
     use radiation_adding_ica_sw, only  : adding_ica_sw
     use radiation_cloud_generator, only: cloud_generator
 
@@ -97,8 +105,8 @@ contains
     ! albedo and asymmetry factor
     real(jprb), dimension(config%n_g_sw) :: od_total, ssa_total, g_total
 
-    ! Two-stream coefficients
-    real(jprb), dimension(config%n_g_sw) :: gamma1, gamma2, gamma3
+    ! Combined scattering optical depth
+    real(jprb) :: scat_od
 
     ! Optical depth scaling from the cloud generator, zero indicating
     ! clear skies
@@ -114,8 +122,8 @@ contains
     ! Number of g points
     integer :: ng
 
-    ! Loop indices for level and column
-    integer :: jlev, jcol
+    ! Loop indices for level, column and g point
+    integer :: jlev, jcol, jg
 
     real(jphook) :: hook_handle
 
@@ -139,17 +147,11 @@ contains
         if (.not. config%do_sw_delta_scaling_with_gases) then
           ! Delta-Eddington scaling has already been performed to the
           ! aerosol part of od, ssa and g
-          do jlev = 1,nlev
-            call calc_two_stream_gammas_sw(ng, &
-                 &  cos_sza, ssa(:,jlev,jcol), g(:,jlev,jcol), &
-                 &  gamma1, gamma2, gamma3)
-            call calc_reflectance_transmittance_sw(ng, &
-                 &  cos_sza, od(:,jlev,jcol), ssa(:,jlev,jcol), &
-                 &  gamma1, gamma2, gamma3, &
-                 &  ref_clear(:,jlev), trans_clear(:,jlev), &
-                 &  ref_dir_clear(:,jlev), trans_dir_diff_clear(:,jlev), &
-                 &  trans_dir_dir_clear(:,jlev) )
-          end do
+          call calc_ref_trans_sw(ng*nlev, &
+               &  cos_sza, od(:,:,jcol), ssa(:,:,jcol), g(:,:,jcol), &
+               &  ref_clear, trans_clear, &
+               &  ref_dir_clear, trans_dir_diff_clear, &
+               &  trans_dir_dir_clear)
         else
           ! Apply delta-Eddington scaling to the aerosol-gas mixture
           do jlev = 1,nlev
@@ -157,12 +159,8 @@ contains
             ssa_total = ssa(:,jlev,jcol)
             g_total   =   g(:,jlev,jcol)
             call delta_eddington(od_total, ssa_total, g_total)
-            call calc_two_stream_gammas_sw(ng, &
-                 &  cos_sza, ssa_total, g_total, &
-                 &  gamma1, gamma2, gamma3)
-            call calc_reflectance_transmittance_sw(ng, &
-                 &  cos_sza, od_total, ssa_total, &
-                 &  gamma1, gamma2, gamma3, &
+            call calc_ref_trans_sw(ng, &
+                 &  cos_sza, od_total, ssa_total, g_total, &
                  &  ref_clear(:,jlev), trans_clear(:,jlev), &
                  &  ref_dir_clear(:,jlev), trans_dir_diff_clear(:,jlev), &
                  &  trans_dir_dir_clear(:,jlev) )
@@ -198,7 +196,8 @@ contains
              &  cloud%fraction(jcol,:), cloud%overlap_param(jcol,:), &
              &  config%cloud_inhom_decorr_scaling, cloud%fractional_std(jcol,:), &
              &  config%pdf_sampler, od_scaling, total_cloud_cover, &
-             &  is_beta_overlap=config%use_beta_overlap)
+             &  use_beta_overlap=config%use_beta_overlap, &
+             &  use_vectorizable_generator=config%use_vectorizable_generator)
 
         ! Store total cloud cover
         flux%cloud_cover_sw(jcol) = total_cloud_cover
@@ -208,24 +207,30 @@ contains
           do jlev = 1,nlev
             ! Compute combined gas+aerosol+cloud optical properties
             if (cloud%fraction(jcol,jlev) >= config%cloud_fraction_threshold) then
-              od_cloud_new = od_scaling(:,jlev) &
-                   &  * od_cloud(config%i_band_from_reordered_g_sw,jlev,jcol)
-              od_total  = od(:,jlev,jcol) + od_cloud_new
-              ssa_total = 0.0_jprb
-              g_total   = 0.0_jprb
-              where (od_total > 0.0_jprb)
-                ssa_total = (ssa(:,jlev,jcol)*od(:,jlev,jcol) &
-                     &     + ssa_cloud(config%i_band_from_reordered_g_sw,jlev,jcol) &
-                     &     *  od_cloud_new) & 
-                     &     / od_total
-              end where
-              where (ssa_total*od_total > 0.0_jprb)
-                g_total = (g(:,jlev,jcol)*ssa(:,jlev,jcol)*od(:,jlev,jcol) &
-                     &     +   g_cloud(config%i_band_from_reordered_g_sw,jlev,jcol) &
-                     &     * ssa_cloud(config%i_band_from_reordered_g_sw,jlev,jcol) &
-                     &     *  od_cloud_new) &
-                     &     / (ssa_total*od_total)
-              end where
+              do jg = 1,ng
+                od_cloud_new(jg) = od_scaling(jg,jlev) &
+                   &  * od_cloud(config%i_band_from_reordered_g_sw(jg),jlev,jcol)
+                od_total(jg)  = od(jg,jlev,jcol) + od_cloud_new(jg)
+                ssa_total(jg) = 0.0_jprb
+                g_total(jg)   = 0.0_jprb
+
+                ! In single precision we need to protect against the
+                ! case that od_total > 0.0 and ssa_total > 0.0 but
+                ! od_total*ssa_total == 0 due to underflow
+                if (od_total(jg) > 0.0_jprb) then
+                  scat_od = ssa(jg,jlev,jcol)*od(jg,jlev,jcol) &
+                       &     + ssa_cloud(config%i_band_from_reordered_g_sw(jg),jlev,jcol) &
+                       &     *  od_cloud_new(jg)
+                  ssa_total(jg) = scat_od / od_total(jg)
+                  if (scat_od > 0.0_jprb) then
+                    g_total(jg) = (g(jg,jlev,jcol)*ssa(jg,jlev,jcol)*od(jg,jlev,jcol) &
+                         &     +   g_cloud(config%i_band_from_reordered_g_sw(jg),jlev,jcol) &
+                         &     * ssa_cloud(config%i_band_from_reordered_g_sw(jg),jlev,jcol) &
+                         &     *  od_cloud_new(jg)) &
+                         &     / scat_od
+                  end if
+                end if
+              end do
 
               ! Apply delta-Eddington scaling to the cloud-aerosol-gas
               ! mixture
@@ -233,19 +238,14 @@ contains
                 call delta_eddington(od_total, ssa_total, g_total)
               end if
 
-             ! Compute cloudy-sky reflectance, transmittance etc at
+              ! Compute cloudy-sky reflectance, transmittance etc at
               ! each model level
-              call calc_two_stream_gammas_sw(ng, &
-                   &  cos_sza, ssa_total, g_total, &
-                   &  gamma1, gamma2, gamma3)
-
-              call calc_reflectance_transmittance_sw(ng, &
-                   &  cos_sza, od_total, ssa_total, &
-                   &  gamma1, gamma2, gamma3, &
+              call calc_ref_trans_sw(ng, &
+                   &  cos_sza, od_total, ssa_total, g_total, &
                    &  reflectance(:,jlev), transmittance(:,jlev), &
                    &  ref_dir(:,jlev), trans_dir_diff(:,jlev), &
-                   &  trans_dir_dir(:,jlev) )
-
+                   &  trans_dir_dir(:,jlev))
+              
             else
               ! Clear-sky layer: copy over clear-sky values
               reflectance(:,jlev) = ref_clear(:,jlev)

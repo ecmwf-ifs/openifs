@@ -1,11 +1,3 @@
-MODULE SUSTHF_MOD
-CONTAINS
-SUBROUTINE SUSTHF(YDCST)
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_CST  , ONLY : TCST
-USE YOS_THF  , ONLY : R4LES, R5LES, RHOH2O, R2ES, R4IES, R3LES, R3IES, R5IES, RVTMP2
 
 ! (C) Copyright 2005- ECMWF.
 !
@@ -14,6 +6,34 @@ USE YOS_THF  , ONLY : R4LES, R5LES, RHOH2O, R2ES, R4IES, R3LES, R3IES, R5IES, RV
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**   *SUSTHF* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_CST*
+!              This contains the fundamental model constants
+
+!     INTERFACE.
+!     ----------
+!     CALL *SUSTHF* FROM *SUSURF*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+
+!     Original    P. Viterbo      May 2005
+!        Based on the IFS suphec
+
+MODULE SUSTHF_MOD
+CONTAINS
+SUBROUTINE SUSTHF(YDCST)
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_CST  , ONLY : TCST
+USE YOS_THF  , ONLY : R4LES, R5LES, RHOH2O, R2ES, R4IES, R3LES, R3IES, R5IES, RVTMP2
 
 !**   *SUSTHF* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_CST*
 !              This contains the fundamental model constants

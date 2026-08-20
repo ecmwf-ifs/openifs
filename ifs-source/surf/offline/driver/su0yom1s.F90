@@ -1,10 +1,3 @@
-SUBROUTINE SU0YOM1S
-USE PARKIND1    ,ONLY : JPIM     ,JPRB,    JPRD
-USE YOMLUN1S    ,ONLY : NULOUT   ,NULNAM
-USE YOMRIP      ,ONLY : NINDAT   ,NSSSSS
-USE MPL_MODULE
-USE YOMHOOK     ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-#ifdef DOC
 ! (C) Copyright 1995- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -12,6 +5,58 @@ USE YOMHOOK     ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SU0YOM1S*  - INITIALIZE LEVEL 0 COMMONS
+
+!     PURPOSE.
+!     --------
+!           INITIALIZE LEVEL 0 COMMONS (CONSTANT ALONG ALL THE JOB).
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *SU0YOM1S*
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!        NONE
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+!        NONE
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+!      SUCST   - INITIALIZE CONSTANTS
+!      SU1S    - INITIALIZE LOGICAL SWITCHES
+!      SULUN1S - INITIALIZE LOGICAL UNITS
+!      SURIP   - INITIALIZE MODEL TIME
+!      SUPHEC  - INITIALIZE PHYSICS
+
+!     REFERENCE.
+!     ----------
+!        ECMWF Research Department documentation of the 1D-surface model
+
+!     AUTHOR.
+!     -------
+!        Jean Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL   : 95-03-01
+!        BART VD HURK (KNMI): ADJUSTED FOR MULTI-COLUMN MODE
+!     ------------------------------------------------------------------
+
+SUBROUTINE SU0YOM1S
+USE PARKIND1    ,ONLY : JPIM     ,JPRB,    JPRD
+USE YOMLUN1S    ,ONLY : NULOUT   ,NULNAM
+USE YOMRIP      ,ONLY : NINDAT   ,NSSSSS
+USE MPL_MODULE
+USE YOMHOOK     ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+#ifdef DOC
 
 !**** *SU0YOM1S*  - INITIALIZE LEVEL 0 COMMONS
 

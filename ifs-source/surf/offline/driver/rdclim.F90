@@ -1,7 +1,3 @@
-SUBROUTINE RDCLIM(NCID)
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -9,6 +5,73 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *RDCLIM * - Reading netCDF file containing surface climate fields
+
+!     Purpose.
+!     --------
+!            initialization surface characteristics
+
+!**   Interface.
+!     ----------
+!        *CALL* *RDCLIM(NCID)
+
+!     Explicit arguments :
+!     --------------------
+!     NCID      INT     NetCDF file code
+
+
+!        Implicit arguments :
+!        --------------------
+
+
+!     Method.
+!     -------
+!       Opens a file called 'surfclim' to read relevant fields
+!       In the file, fields are assumed to be stored as 
+!           FIELD(LAT,LON)
+!       or
+!           FIELD(MONTH,LAT,LON)
+!       or
+!           FIELD(MONTH,VTYPE,LAT,LON) In this case, the climatology is given
+!           for each vegetation type (20) and bare soil.
+
+
+!     Externals.
+!     ----------
+!       NETCDF-utilities
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd Hurk, KNMI
+
+!     Modifications.
+!     --------------
+!        Original : 2000-07-07
+!     E. Dutra  07/14/2008  : Reading lake related fields (depth and cover) 
+!     E. Dutra  17/11/2009  : Reading LAI fields
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL based on:  
+!	 Marita Voogt (KNMI) new tiling (13), vegetation types (7)
+!                            and climatology (dec 2004)
+!        Sebastien LAFONT (ECMWF) LAI,fract,Z0 are read for all the vegetation type
+!                                 Then the value are computed only 
+!                                 for the dominant low and dominant high 
+!      E. Dutra 07/2014 : netcdf4 
+!      R. Hogan 15/01/2019   6-component MODIS albedo
+!      A. Agusti-Panareda 17/06/2021: Add C3/C4 type of photosynthetic pathway
+!      V. Huijnen 13/08/2024: Add Avg PAR
+!      
+!      G. Arduini fixes for regular lat/lon      
+!
+!     ------------------------------------------------------------------
+
+SUBROUTINE RDCLIM(NCID)
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,   JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+#ifdef DOC
 
 !**** *RDCLIM * - Reading netCDF file containing surface climate fields
 

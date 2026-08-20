@@ -9,18 +9,8 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
-SUBROUTINE GPGW(&
- ! --- INPUT -----------------------------------------------------------------
- & YDGEOMETRY,LDNHDYN,KFLEV,KPROMA,KSTART,KEND,LDGWF,LDGDWI,&
- & POROGL,POROGM,PLNPR,PALPH,PUS,PVS,&
- & PRT,PDVER,&
- ! --- OUTPUT ----------------------------------------------------------------
- & PGWH,PGWF,&
- ! --- OPTIONAL INPUT --------------------------------------------------------
- & LDVFE,PRNHPPI,&
- ! --- OPTIONAL OUTPUT -------------------------------------------------------
- & PGDW&
- & )
+SUBROUTINE GPGW(YDGEOMETRY,LDNHDYN,KFLEV,KPROMA,KSTART,KEND,LDGWF,LDGDWI,POROGL,POROGM,PLNPR,PALPH,&
+ & PUS,PVS,PRT,PDVER,PGWH,PGWF,LDVFE,PRNHPPI,PGDW)
 
 ! GPGW - Diagnoses "Gw" from the vertical divergence "dver" or from "-G dw".
 
@@ -92,6 +82,8 @@ SUBROUTINE GPGW(&
 !   K. Yessad (June 2017): Introduce NHQE model.
 !   J. Vivoda and P. Smolikova (Sep 2017): new options for VFE-NH
 !   K. Yessad (Feb 2018): remove deep-layer formulations.
+!   J. Vivoda and P. Smolikova (Sep 2020): VFE pruning.
+!   H. Petithomme (Dec 2020): optimisation and test re-organization
 !------------------------------------------------------------------
 
 USE GEOMETRY_MOD , ONLY : GEOMETRY
@@ -102,233 +94,137 @@ USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
 
 IMPLICIT NONE
 
-TYPE(GEOMETRY),    INTENT(IN)    :: YDGEOMETRY
+TYPE(GEOMETRY),INTENT(IN) :: YDGEOMETRY
 LOGICAL           ,INTENT(IN)    :: LDNHDYN
-INTEGER(KIND=JPIM),INTENT(IN)    :: KFLEV
-INTEGER(KIND=JPIM),INTENT(IN)    :: KPROMA
-INTEGER(KIND=JPIM),INTENT(IN)    :: KSTART 
-INTEGER(KIND=JPIM),INTENT(IN)    :: KEND 
-LOGICAL           ,INTENT(IN)    :: LDGWF
-LOGICAL           ,INTENT(IN)    :: LDGDWI
-REAL(KIND=JPRB)   ,INTENT(IN)    :: POROGL(KPROMA) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: POROGM(KPROMA) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PLNPR(KPROMA,KFLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PALPH(KPROMA,KFLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PUS(KPROMA) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PVS(KPROMA) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PRT(KPROMA,KFLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PDVER(KPROMA,KFLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGWH(KPROMA,0:KFLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGWF(KPROMA,KFLEV) 
-LOGICAL,OPTIONAL  ,INTENT(IN)    :: LDVFE
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)  :: PRNHPPI(KPROMA,KFLEV) 
-REAL(KIND=JPRB),OPTIONAL,INTENT(OUT) :: PGDW(KPROMA,KFLEV) 
+INTEGER(KIND=JPIM),INTENT(IN) :: KFLEV,KPROMA,KSTART,KEND
+LOGICAL,INTENT(IN) :: LDGWF,LDGDWI
+LOGICAL,OPTIONAL,INTENT(IN) :: LDVFE
+REAL(KIND=JPRB),INTENT(IN) :: POROGL(KPROMA)
+REAL(KIND=JPRB),INTENT(IN) :: POROGM(KPROMA)
+REAL(KIND=JPRB),INTENT(IN) :: PUS(KPROMA)
+REAL(KIND=JPRB),INTENT(IN) :: PVS(KPROMA)
+REAL(KIND=JPRB),INTENT(IN) :: PRT(KPROMA,KFLEV)
+REAL(KIND=JPRB),INTENT(IN) :: PDVER(KPROMA,KFLEV)
+REAL(KIND=JPRB),INTENT(IN) :: PLNPR(KPROMA,KFLEV)
+REAL(KIND=JPRB),INTENT(IN) :: PALPH(KPROMA,KFLEV)
+REAL(KIND=JPRB),OPTIONAL,INTENT(IN) :: PRNHPPI(KPROMA,KFLEV)
+REAL(KIND=JPRB),TARGET,INTENT(OUT) :: PGWH(KPROMA,0:KFLEV)
+REAL(KIND=JPRB),INTENT(OUT) :: PGWF(KPROMA,KFLEV)
+REAL(KIND=JPRB),OPTIONAL,TARGET,INTENT(OUT) :: PGDW(KPROMA,KFLEV)
 
-! -----------------------------------------------------------------------------
-
-INTEGER(KIND=JPIM) :: JLEV, JROF
-LOGICAL            :: LLVFE
-REAL(KIND=JPRB) :: ZGDW(KPROMA,KFLEV)
-REAL(KIND=JPRB) :: ZGWH(KPROMA,0:KFLEV)
-REAL(KIND=JPRB) :: ZIN(KPROMA,0:KFLEV+1)
-REAL(KIND=JPRB) :: ZRNHPPI(KPROMA,KFLEV) 
-
+INTEGER(KIND=JPIM) :: JLEV,JROF
+REAL(KIND=JPRB),TARGET :: ZGDW0(KPROMA,KFLEV)
+REAL(KIND=JPRB) :: ZIN(KPROMA,0:KFLEV+1),ZGWH(KPROMA,KFLEV+1)
+REAL(KIND=JPRB),CONTIGUOUS,POINTER :: ZGDW(:,:),ZGWS(:)
+LOGICAL :: LLVFE
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-! -----------------------------------------------------------------------------
 
 #include "abor1.intfb.h"
 #include "verdisint.intfb.h"
 
-! -----------------------------------------------------------------------------
-
 IF (LHOOK) CALL DR_HOOK('GPGW',0,ZHOOK_HANDLE)
 
-! -----------------------------------------------------------------------------
-
-!*      0. PRELIMINARY CALCULATIONS
-!       ---------------------------
-
-IF( PRESENT(PRNHPPI) ) THEN
-  ! * NHEE
-  ZRNHPPI(KSTART:KEND,1:KFLEV)=PRNHPPI(KSTART:KEND,1:KFLEV)
+IF (PRESENT(LDVFE)) THEN
+  LLVFE = LDVFE
 ELSE
-  ! * NHQE, HYD
-  ZRNHPPI(KSTART:KEND,1:KFLEV)=1.0_JPRB
+  LLVFE = YDGEOMETRY%YRCVER%LVERTFE.AND.(YDGEOMETRY%YRCVER%LVFE_GW.OR..NOT.LDNHDYN)
 ENDIF
 
-IF( PRESENT(LDVFE) ) THEN
-  LLVFE=LDVFE
+! * Compute "Gw" at the surface (free slip boundary condition)
+! optim: use pointer on last level
+ZGWS => PGWH(:,KFLEV)
+ZGWS(KSTART:KEND) = PUS(KSTART:KEND)*POROGL(KSTART:KEND)+&
+ & PVS(KSTART:KEND)*POROGM(KSTART:KEND)
+
+! optim: use of pointer avoids copying, but dependencies may arise (use ivdep/nodep)
+IF (LLVFE.AND.PRESENT(PGDW)) THEN
+  ZGDW => PGDW(:,:)
 ELSE
-  IF (LDNHDYN) THEN
-    ! * NHEE and NHQE
-    LLVFE=YDGEOMETRY%YRCVER%LVERTFE.AND.YDGEOMETRY%YRCVER%LVFE_GW
-  ELSE
-    LLVFE=YDGEOMETRY%YRCVER%LVERTFE
-  ENDIF
+  ZGDW => ZGDW0(:,:)
 ENDIF
 
-! -----------------------------------------------------------------------------
-
-!*      1. Case LDGDWI=F: computes "Gw" from "dver"
-!       -------------------------------------------
-
-IF (.NOT.LDGDWI) THEN
-
-  ! * Transform "dver" into "-G.dw".
+! * Transform "dver" into "-G.dw"
+IF (LDGDWI) THEN
   DO JLEV=1,KFLEV
     DO JROF=KSTART,KEND
-      ZGDW(JROF,JLEV)=PDVER(JROF,JLEV)* &
-       & PRT(JROF,JLEV)*PLNPR(JROF,JLEV)*ZRNHPPI(JROF,JLEV)
+      ZGDW(JROF,JLEV) = PDVER(JROF,JLEV)
     ENDDO
   ENDDO
+ELSE IF (PRESENT(PRNHPPI)) THEN
+  DO JLEV=1,KFLEV
+    DO JROF=KSTART,KEND
+      ZGDW(JROF,JLEV) = PDVER(JROF,JLEV)*PRT(JROF,JLEV)*PLNPR(JROF,JLEV)*PRNHPPI(JROF,JLEV)
+    ENDDO
+  ENDDO
+ELSE
+  DO JLEV=1,KFLEV
+    DO JROF=KSTART,KEND
+      ZGDW(JROF,JLEV) = PDVER(JROF,JLEV)*PRT(JROF,JLEV)*PLNPR(JROF,JLEV)
+    ENDDO
+  ENDDO
+ENDIF
 
-  ! * Compute "Gw" at the surface (free slip boundary condition)
-  DO JROF=KSTART,KEND
-      PGWH(JROF,KFLEV)=PUS(JROF)*POROGL(JROF)+PVS(JROF)*POROGM(JROF)
+! * Compute "Gw" at full (llvfe=T) or half levels
+IF (LLVFE) THEN
+  ! * Store "G dw" at full levels.
+
+  DO JLEV=1,KFLEV
+    ZIN(KSTART:KEND,JLEV) = -ZGDW(KSTART:KEND,JLEV)*YDGEOMETRY%YRVETA%VFE_RDETAH(JLEV)
   ENDDO
 
-  IF (LLVFE) THEN
-
-    ! * Store "G dw" at full levels.
-    IF (PRESENT(PGDW)) PGDW(KSTART:KEND,1:KFLEV)=-ZGDW(KSTART:KEND,1:KFLEV)
-
-    ! * Compute "Gw" at full levels.
-
-    DO JLEV=1,KFLEV
-      DO JROF=KSTART,KEND
-        ZGDW(JROF,JLEV)=-ZGDW(JROF,JLEV)*YDGEOMETRY%YRVETA%VFE_RDETAH(JLEV)
-      ENDDO
-    ENDDO
-
-    IF (YDGEOMETRY%YRCVER%NVFE_INTBC==0.OR.YDGEOMETRY%YRCVER%NVFE_INTBC==1) THEN
-      DO JROF=KSTART,KEND
-        ZIN(JROF,0)        = 0.0_JPRB
-        ZIN(JROF,1:KFLEV)  = ZGDW(JROF,1:KFLEV)
-        ZIN(JROF,KFLEV+1)  = 0.0_JPRB
-      ENDDO
-      CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'IBOT','11',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH)
-    ELSE
-      DO JROF=KSTART,KEND
-        ZIN(JROF,0)        = ZGDW(JROF,1)
-        ZIN(JROF,1:KFLEV)  = ZGDW(JROF,1:KFLEV)
-        ZIN(JROF,KFLEV+1)  = ZGDW(JROF,KFLEV) ! not applied with INGW
-      ENDDO
-      CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'INGW','00',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH)
-    ENDIF
-
-    DO JLEV=1,KFLEV
-      DO JROF=KSTART,KEND
-        PGWF(JROF,JLEV)=ZGWH(JROF,JLEV-1)+PGWH(JROF,KFLEV)
-      ENDDO
-    ENDDO
-
+  IF (LDGDWI) THEN
+    ZIN(KSTART:KEND,0)      = ZGDW(KSTART:KEND,1)
+    ZIN(KSTART:KEND,KFLEV+1)= ZGDW(KSTART:KEND,KFLEV)
+    ! Apply RINTBF00, constructed from bottom
+    CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'ITOP','00',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH)
+  ELSEIF (LDNHDYN) THEN
+    ZIN(KSTART:KEND,0)      = ZGDW(KSTART:KEND,1)
+    ZIN(KSTART:KEND,KFLEV+1)= ZGDW(KSTART:KEND,KFLEV) ! not applied with INGW
+    CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'INGW','00',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH)
   ELSE
+    ZIN(KSTART:KEND,0) = 0.0_JPRB
+    ZIN(KSTART:KEND,KFLEV+1) = 0.0_JPRB
+    CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'IBOT','11',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH)
+  ENDIF
 
-    ! * Compute "Gw" at half levels.
-
-    ! transform -G.dw into Gw
-    DO JLEV=KFLEV,1,-1
-      DO JROF=KSTART,KEND
-        PGWH(JROF,JLEV-1)=PGWH(JROF,JLEV)+ZGDW(JROF,JLEV)
-      ENDDO
+  DO JLEV=1,KFLEV
+    DO JROF=KSTART,KEND
+      PGWF(JROF,JLEV) = ZGWH(JROF,JLEV)+ZGWS(JROF)
     ENDDO
+  ENDDO
+ELSE
+  ! transform -G.dw into Gw
+  DO JLEV=KFLEV,1,-1
+    !CDIR NODEP
+    !DIR$ IVDEP
+    DO JROF=KSTART,KEND
+      PGWH(JROF,JLEV-1) = PGWH(JROF,JLEV)+ZGDW(JROF,JLEV)
+    ENDDO
+  ENDDO
 
-    ! * Compute "Gw" at full levels.
+  IF (LDGWF) THEN
+    IF (LDGDWI) call abor1(' GPGW: compute "Gw" at full levels: case not coded')
 
-    IF (LDGWF) THEN
-      ! k.y.: formula pgwf(jlev)=pgwh(jlev)(1-palph(jlev)/plnpr(jlev))
-      ! +pgwh(jlev-1)(palph(jlev)/plnpr(jlev)) must be equivalent.
+    ! * Also compute "Gw" at full levels
+    ! k.y.: formula pgwf(jlev)=pgwh(jlev)(1-palph(jlev)/plnpr(jlev))
+    ! +pgwh(jlev-1)(palph(jlev)/plnpr(jlev)) must be equivalent.
+    IF (PRESENT(PRNHPPI)) THEN
       DO JLEV=1,KFLEV
         DO JROF=KSTART,KEND
-          PGWF(JROF,JLEV)=PGWH(JROF,JLEV)+PDVER(JROF,JLEV)* &
-           & PRT(JROF,JLEV)*PALPH(JROF,JLEV)*ZRNHPPI(JROF,JLEV)
+          PGWF(JROF,JLEV) = PGWH(JROF,JLEV)+&
+            & PDVER(JROF,JLEV)*PRT(JROF,JLEV)*PALPH(JROF,JLEV)*PRNHPPI(JROF,JLEV)
+        ENDDO
+      ENDDO
+    ELSE
+      DO JLEV=1,KFLEV
+        DO JROF=KSTART,KEND
+          PGWF(JROF,JLEV) = PGWH(JROF,JLEV)+PDVER(JROF,JLEV)*PRT(JROF,JLEV)*PALPH(JROF,JLEV)
         ENDDO
       ENDDO
     ENDIF
-
-  ENDIF ! test on LLVFE
-
+  ENDIF
 ENDIF
-
-! -----------------------------------------------------------------------------
-
-!*      2. Case LDGDWI=T: computes "Gw" from -G.dw 
-!       ------------------------------------------
-
-IF (LDGDWI) THEN
-
-  ! * Copy "-G.dw".
-  ZGDW(KSTART:KEND,1:KFLEV)=PDVER(KSTART:KEND,1:KFLEV)
-
-  ! * Compute "Gw" at the surface (free slip boundary condition)
-  DO JROF=KSTART,KEND
-    PGWH(JROF,KFLEV)=PUS(JROF)*POROGL(JROF)+PVS(JROF)*POROGM(JROF)
-  ENDDO
-
-  IF (LLVFE) THEN
-
-    ! * Store "G dw" at full levels.
-    IF (PRESENT(PGDW)) PGDW(KSTART:KEND,1:KFLEV)=-ZGDW(KSTART:KEND,1:KFLEV)
-
-    ! * Compute "Gw" at full levels.
-
-    DO JLEV=1,KFLEV
-      DO JROF=KSTART,KEND
-        ZGDW(JROF,JLEV)=-ZGDW(JROF,JLEV)*YDGEOMETRY%YRVETA%VFE_RDETAH(JLEV)
-      ENDDO
-    ENDDO
-
-    IF (YDGEOMETRY%YRCVER%NVFE_INTBC==0.OR.YDGEOMETRY%YRCVER%NVFE_INTBC==1) THEN
-      DO JROF=KSTART,KEND
-        ZIN(JROF,0)        = 0.0_JPRB
-        ZIN(JROF,1:KFLEV)  = ZGDW(JROF,1:KFLEV)
-        ZIN(JROF,KFLEV+1)  = 0.0_JPRB
-      ENDDO
-      CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'IBOT','11',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH)
-    ELSE
-      DO JROF=KSTART,KEND
-        ZIN(JROF,0)        = ZGDW(JROF,1)
-        ZIN(JROF,1:KFLEV)  = ZGDW(JROF,1:KFLEV)
-        ZIN(JROF,KFLEV+1)  = ZGDW(JROF,KFLEV)
-      ENDDO
-      ! Apply RINTBF00, constructed from bottom
-      ! Implicit BC not allowed here (set KBC=3)
-      CALL VERDISINT(YDGEOMETRY%YRVFE,YDGEOMETRY%YRCVER,'ITOP','00',KPROMA,KSTART,KEND,KFLEV,ZIN,ZGWH,KBC=3)
-    ENDIF
-
-    DO JLEV=1,KFLEV
-      DO JROF=KSTART,KEND
-        PGWF(JROF,JLEV)=ZGWH(JROF,JLEV-1)+PGWH(JROF,KFLEV)
-      ENDDO
-    ENDDO
-
-  ELSE
-
-    ! * Compute "Gw" at half levels.
-
-    ! transform -G.dw into Gw
-    DO JLEV=KFLEV,1,-1
-      DO JROF=KSTART,KEND
-        PGWH(JROF,JLEV-1)=PGWH(JROF,JLEV)+ZGDW(JROF,JLEV)
-      ENDDO
-    ENDDO
-
-    ! * Compute "Gw" at full levels.
-
-    IF (LDGWF) THEN
-      ! k.y.: formula pgwf(jlev)=pgwh(jlev)(1-palph(jlev)/plnpr(jlev))
-      ! +pgwh(jlev-1)(palph(jlev)/plnpr(jlev)) must be valid.
-      CALL ABOR1(' GPGW: compute "Gw" at full levels: case not coded')
-    ENDIF
-
-  ENDIF ! test on LLVFE
-
-ENDIF
-
-! -----------------------------------------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('GPGW',1,ZHOOK_HANDLE)
-
 END SUBROUTINE GPGW
 

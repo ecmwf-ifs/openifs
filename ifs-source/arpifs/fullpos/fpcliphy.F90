@@ -59,6 +59,7 @@ SUBROUTINE FPCLIPHY(YDRQCLI,YDGFP,KFLD,KCOD,KST,KEND,KFPROMA,PCLI,PROW,LDCLI)
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      K. Yessad: 31-01-2007 Cleanings + optional calcul. of PCLI,PROW,LDCLI
 !      R. El Khatib 13-Dec-2012 Fullpos buffers reshaping
+!      R. El Khatib 12-May-2021 Specific fullpos descriptors (and FA names) for clim fields of Ts, Tp and snow depth
 !     ------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -136,16 +137,9 @@ DO JF=1,KFLD
   IPTR=IFPSEARCH(YDRQCLI,ICOD)
 
   IF (IPTR > 0) THEN
-    ! Climatology exists for this field :
-    IF (ICOD == YDGFP%ST%ICOD .OR. ICOD == YDGFP%DST%ICOD .OR. &
-     & ICOD == YDGFP%SD%ICOD) THEN  
-      ! Actually Ts, Td, Snow depth are pronostic fields
-      IF (LLC) LDCLI(JF)=.FALSE.
-    ELSE
-      ! Climatology exists, get it :
-      IF (LLR) PROW(KST:KEND,JF)=PCLI(KST:KEND,IPTR)
-      IF (LLC) LDCLI(JF)=.TRUE.
-    ENDIF
+    ! Climatology exists, get it :
+    IF (LLR) PROW(KST:KEND,JF)=PCLI(KST:KEND,IPTR)
+    IF (LLC) LDCLI(JF)=.TRUE.
   ELSE
     ! No actual climatology for this field :
     IF (IACOT*IDPAT*ISDOG > 0 .AND.  &

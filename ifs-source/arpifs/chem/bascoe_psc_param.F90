@@ -6,7 +6,7 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE BASCOE_PSC_PARAM( YGFL,KIDIA, KFDIA, KLON,  KTRACER, PTSTEP,KTROPOP,KL, PTP, &
+SUBROUTINE BASCOE_PSC_PARAM(YGFL,KIDIA, KFDIA, KLON,  KTRACER, PTSTEP,KTROPOP,KL, PTP, &
   & PRSF1, PCONC)
 
 !**   DESCRIPTION 
@@ -21,14 +21,15 @@ SUBROUTINE BASCOE_PSC_PARAM( YGFL,KIDIA, KFDIA, KLON,  KTRACER, PTSTEP,KTROPOP,K
 ! ----------------------------------------------------------------------
 USE PARKIND1  ,    ONLY : JPIM,   JPRB
 USE YOMHOOK   ,    ONLY : LHOOK,  DR_HOOK, JPHOOK
-! USE BASCOE_MODULE, ONLY : IHNO3,IH2O
-USE YOM_YGFL , ONLY : TYPE_GFLD
+USE YOM_YGFL  ,    ONLY : TYPE_GFLD
+USE BASCOE_MODULE, ONLY : RCHEM_SEDIM_NAT, RCHEM_SAD_NAT_PSC, RCHEM_SSR_NAT_PSC, &
+                        & RCHEM_SEDIM_ICE, RCHEM_SAD_ICE_PSC, RCHEM_SSR_ICE_PSC
 IMPLICIT NONE
 
 !-----------------------------------------------------------------------
 !*       0.1  ARGUMENTS
 !             ---------
-TYPE(TYPE_GFLD)   , INTENT(INOUT) :: YGFL
+TYPE(TYPE_GFLD)   , INTENT(IN)    :: YGFL
 INTEGER(KIND=JPIM), INTENT(IN)    :: KIDIA, KFDIA, KLON
 INTEGER(KIND=JPIM), INTENT(IN)    :: KTRACER(2)
 REAL(KIND=JPRB),    INTENT(IN)    :: PTSTEP
@@ -42,9 +43,13 @@ REAL(KIND=JPRB),    INTENT(INOUT) :: PCONC(KLON,YGFL%NCHEM)
 !  Local variables
 !-----------------------------------------------------------------------
 REAL(KIND=JPRB),PARAMETER :: ZT_ICE = 186._JPRB, ZT_NAT = 194._JPRB ! Temperatures
-REAL(KIND=JPRB),PARAMETER :: ZSEDIM_NAT = 1._JPRB/(100._JPRB*86400._JPRB) ! 1/s, char time: 100days ! used at 3s80b
-REAL(KIND=JPRB),PARAMETER :: ZSEDIM_NAT_2 = 1._JPRB/(20._JPRB*86400._JPRB) ! 1/s, char time: 10days ! used with IMODE2
+!IMODE=1 settings:
+REAL(KIND=JPRB),PARAMETER :: ZSEDIM_NAT = 1._JPRB/(100._JPRB*86400._JPRB) ! 1/s, char time: 100days  
 REAL(KIND=JPRB),PARAMETER :: ZSEDIM_ICE = 1._JPRB/(  9._JPRB*86400._JPRB) ! 1/s, char time: 9 days
+
+! IMODE=2 settings:
+REAL(KIND=JPRB)           :: ZSEDIM_NAT_2       ! (1/s). value computed from RCHEM_SEDIM_NAT (days)
+REAL(KIND=JPRB)           :: ZSEDIM_ICE_2       ! (1/s). value computed from RCHEM_SEDIM_ICE (days)
 REAL(KIND=JPRB),PARAMETER :: ZPREF = 101325._JPRB
 
 REAL(KIND=JPHOOK)    :: ZHOOK_HANDLE
@@ -83,6 +88,10 @@ ENDDO
 
 ELSEIF (IMODE == 2_JPIM) THEN
 
+! 
+ZSEDIM_NAT_2=1._JPRB/(RCHEM_SEDIM_NAT*86400._JPRB) 
+ZSEDIM_ICE_2=1._JPRB/(RCHEM_SEDIM_ICE*86400._JPRB) 
+
 DO JL=KIDIA,KFDIA
 ! ----------------------------------------------------------------------
 !  Make sure we are only in stratosphere
@@ -95,9 +104,8 @@ DO JL=KIDIA,KFDIA
     ZDENS = 7.24291E16_JPRB*PRSF1(JL)/ZTEMP 
     !* Compute H2O vmr from concentration in molec/cm3
     ZVMR_H2O=PCONC(JL,IH2O)/ZDENS
-    !VH IF( ZVMR_H2O*PRSF1(JL)/ZP_ICE > 1.0_JPRB ) THEN
-    IF( ZVMR_H2O*PRSF1(JL) > ZP_ICE ) THEN
-      ZF_LOSS = EXP( -ZSEDIM_ICE*PTSTEP )
+    IF( ZVMR_H2O*PRSF1(JL) > RCHEM_SSR_ICE_PSC*ZP_ICE ) THEN
+      ZF_LOSS = EXP( -ZSEDIM_ICE_2*PTSTEP )
       PCONC(JL,IH2O)  = ZF_LOSS * PCONC(JL,IH2O) ! commented out at 3s80c & 3s81c
       PCONC(JL,IHNO3) = ZF_LOSS * PCONC(JL,IHNO3) ! commented out at 3s80c & 3s81c
     ELSE
@@ -125,7 +133,7 @@ DO JL=KIDIA,KFDIA
       ZHNO3EQ = 10.0_JPRB**(ZMT*LOG10(ZPW*ZPREF/100.*0.75_JPRB) + ZBT)     
 
       !VH IF (ZPN0T/ZHNO3EQ > 1.0_JPRB) THEN
-      IF (ZPN0T > ZHNO3EQ) THEN
+      IF (ZPN0T > RCHEM_SSR_NAT_PSC*ZHNO3EQ) THEN
          ZF_LOSS = EXP( -ZSEDIM_NAT_2*PTSTEP )
          ! PCONC(JL,iH2O)  = ZF_LOSS * PCONC(JL,iH2O) ! commented out for all v3s80 & v3s81 runs
          PCONC(JL,IHNO3) = ZF_LOSS * PCONC(JL,IHNO3) ! commented out at 3s80c & 3s81c

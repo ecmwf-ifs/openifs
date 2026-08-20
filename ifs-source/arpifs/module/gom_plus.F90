@@ -125,7 +125,7 @@ MODULE GOM_PLUS
 !     Y.Hirahara  01-Apr-2019   Add GOM variables for CMEM (Soil, Snow, Lake)
 !     A.Geer      21-May-2019   NetCDF format gom_plus_dump to create colocated model datasets
 !     N.Bormann   06-Aug-2020   Modifications required for slant-path for all-sky
-!----------------------------------------------------------------------------
+!     F. Suzat    07-06-21      Correct back memory leak inserted by error
 
 use parkind1  , only : jpim, jpib, jprb
 use yomhook   , only : lhook, dr_hook, jphook
@@ -151,7 +151,7 @@ public type_gom_plus, ih
 
 type type_gom_plus
   integer(kind=jpim) :: ndlen, nflevg, nhoriz, nppm, nxyb, ngems, nlev_soil
-  logical            :: lsrg, lhydro_sum, lphys, lcanari
+  logical            :: lsrg, lhydro_sum, lphys, lcanari, ldirclsmod
   real(kind=jprb) :: missing_value
   real(kind=jprb), pointer, contiguous :: lat   (:,:)    => null()
   real(kind=jprb), pointer, contiguous :: lon   (:,:)    => null()
@@ -261,6 +261,8 @@ type type_gom_plus
   real(kind=jprb), pointer, contiguous :: hgt   (:,:,:)  => null()
   real(kind=jprb), pointer, contiguous :: tsoil (:,:,:)  => null()
   real(kind=jprb), pointer, contiguous :: qsoil (:,:,:)  => null()
+! ocean surface
+  real(kind=jprb), pointer, contiguous :: oc_ssh(:,:)    => null()
   real(kind=jprb), allocatable :: gems  (:,:,:,:)
   integer(kind=jpim), allocatable :: gems_igrib (:)
   integer(kind=jpim), allocatable :: gems_type (:)
@@ -277,7 +279,7 @@ type type_gom_plus
   real(kind=jprb), private, allocatable :: store_ua1(:,:,:,:)
   real(kind=jprb), private, allocatable :: store_soil(:,:,:,:)
   real(kind=jprb), private, allocatable :: store_ppm(:,:,:,:,:)
-  type(tvertical_geom)    , allocatable :: vgeom
+  type(tvertical_geom) :: vgeom
 end type
 save
 
@@ -288,6 +290,4 @@ integer(kind=jpim), parameter :: ih=1
 integer(kind=jpim), parameter :: gems_type_ghg = 1
 integer(kind=jpim), parameter :: gems_type_aero = 2
 integer(kind=jpim), parameter :: gems_type_chem = 3
-
-#include "abor1.intfb.h"
 end module gom_plus

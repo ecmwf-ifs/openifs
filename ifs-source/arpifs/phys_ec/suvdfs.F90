@@ -1,10 +1,60 @@
 ! (C) Copyright 1990- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+
+!**   *SUBROUTINE* *SUVDFS* INITIALIZES COMMON BLOCK *YOEVDFS*
+
+!      A. BELJAARS   E.C.M.W.F.   26/03/90
+
+!      PURPOSE
+!      -------
+
+!           *SUBROUTINE *SUVDFS* INITIALIZES THE CONSTANTS NEEDED BY
+!      THE EMPIRICAL STABILITY FUNCTIONS AND SETS UP THE TABLE THAT
+!      GIVES THE STABILITY PARAMETER ETA (HEIGHT DEVIDED BY
+!      *OBUKHOV LENGTH) AS A FUNCTION OF THE GRADIENT *RICHARDSON NUMBER
+!      FOR STABLE SITUATIONS. ALSO THE SECOND DERIVATIVES ARE
+!      TABULATED FOR LATER USE BY SPLINE INTERPOLATION.
+!           *INIVDFS* CHECKS WETHER THE *PHI* AND *PSI* EXPRESSIONS ARE
+!      CONSISTENT (BY MEANS OF NUMERICAL DIFFERENTIATION). IF THE
+!      FUNCTIONS ARE NOT CONSISTENT, THE ROUTINE ABORTS.
+
+!      INTERFACE
+!      ---------
+
+!           *CALL* *SUVDFS* FROM *SUPHEC*
+
+!      METHOD
+!      ------
+
+!           *THE ALGEBRAIC EQUATION TO BE SOLVED IS
+!      RI=(PHIH/PHIM**2)*ETA, WHERE *PHIH* AND *PHIM* ARE THE GRADIENT
+!      STABILITY FUNCTIONS FOR HEAT AND MOMENTUM RESPECTIVELY.
+!           *TO SOLVE THE IMPLICIT ALGEBRAIC EQUATION FOR *ETA* AS A
+!      FUNCTION OF *RI*, *NEWTON'S METHOD IS EMPLOYED WITH A FIXED
+!      NUMBER OF ITERATIONS. THE NECESSARY DERIVATIVES ARE EVALUATED
+!      NUMERICALLY.
+!           *AFTER COMPLETION OF THE FUNCTION TABLE, THE SECOND
+!      DERIVATIVES ARE DERIVED FOR LATER USE BY THE SPLINE
+!      INTERPOLATION.
+
+!      EXTERNALS
+!      ---------
+
+!           *STATEMENT FUNCTIONS *PHIMS*, *PHIHS*, *PSIMS* AND *PSIHS*
+
+!      REFERENCE
+!      ---------
+
+!           *SEE *PRESS ET AL. (1986; NUMERICAL RECIPES - THE ART OF
+!      SCIENTIFIC COMPUTING) FOR DETAILS ON THE SPLINE INTERPOLATION.
+
+!      -----------------------------------------------------------------
+
 SUBROUTINE SUVDFS
 
 !**   *SUBROUTINE* *SUVDFS* INITIALIZES COMMON BLOCK *YOEVDFS*

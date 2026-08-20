@@ -1,16 +1,24 @@
-rm -f NODE.001_01 drhook.prof.* drhook_lock ifs.stat *000000 job fort.4 gmon.out stdout.log stderr.log meminfo.txt
+#!/usr/bin/env bash
 
-if [[ $(basename $(pwd)) =~ "4dvar" ]]
-then
-   rm -f enspert.???_??? *_obs_formated.txt
-fi
+# Reset the test directory by deleting everything except symlinks
+# created during the configuration and files named in a safelist.
 
-if [[ $(basename $(pwd)) =~ "dualconf" ]]
-then
-  rm -f namelist_geom namelist_geom1 namelist_geom2 common_namelists namelist_model1 namelist_model2 create_config_file.json
-fi
+# The safelist includes:
+# * files that may already exist when this script is run at the start of a job
+# * files kept between runs for bit-identity checks
+declare -a safelist=(stdout.log stderr.log SAVED_NORMS reference.json)
 
-if [[ $(dirname $(pwd)) =~ /scm$ ]]
-then
-  rm -f diagvar* onecol.r progvar.nc
-fi
+for file in *; do
+  if [[ -L "${file}" ]]; then
+    # Remove any symlinks going through xdata
+    if [[ $(readlink $file) =~ /xdata/ ]]; then
+      rm -f "${file}"
+    fi
+  elif [[ ! " ${safelist[*]} " =~ [[:space:]]${file}[[:space:]] ]]; then
+    # Not a symlink or in the safelist; delete.
+    rm -rf "${file}"
+  fi
+done
+
+# Remove broken symlinks left over after deleting files:
+find . -xtype l -exec rm -f {} +

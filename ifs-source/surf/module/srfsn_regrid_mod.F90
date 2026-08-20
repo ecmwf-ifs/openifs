@@ -1,3 +1,65 @@
+
+! (C) Copyright 2015- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**** *SRFSN_REGRID* - Snow vertical re-grid
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE REGRIDS MULTI-LAYER SNOW FIELDS
+!          ACCORDINGLY TO THE NEW VERTICAL THICKNESs COMPUTED
+!          AT THE BEGINNING OF THE TIME STEP. 
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_REGRID* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*      NUMBER OF HORIZONTAL POINTS
+!    *KLEVSN*      NUMBER OF VERTICAL SNOW LAYERS
+
+
+!     INPUT PARAMETERS (REAL):
+!    *PSSN*      SNOW MULTI-LAYER MASS
+!    *PRSN*      SNOW MULTI-LAYER DENSITY
+!    *PWSN*      SNOW MULTI-LAYER LIQUID WATER
+!    *PTSN*      SNOW MULTI-LAYER TEMPERATURE
+!    *PDSNNEW*   NEW MULTI-LAYER SNOW DEPTH TO BE REGRIDDED
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LLNOSNOW*   NOSNOW MASK (TRUE THEN POINT IS SNOW-FREE)
+
+!     OUTPUT PARAMETERS (REAL):
+!    *PSSNNEW*      SNOW MULTI-LAYER MASS REGRIDDED
+!    *PRSNNEW*      SNOW MULTI-LAYER DENSITY REGRIDDED
+!    *PWSNNEW*      SNOW MULTI-LAYER LIQUID WATER REGRIDDED
+!    *PTSNNEW*      SNOW MULTI-LAYER TEMPERATURE REGRIDDED
+
+!     METHOD.
+!     -------
+!          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   E. Dutra      ECMWF     04/12/2015
+
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_REGRID_MOD
 CONTAINS
 SUBROUTINE SRFSN_REGRID(KIDIA,KFDIA,KLON,KLEVSN,LLNOSNOW,&
@@ -8,13 +70,6 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE ABORT_SURF_MOD
 
-! (C) Copyright 2015- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**** *SRFSN_REGRID* - Snow vertical re-grid
 !     PURPOSE.
 !     --------

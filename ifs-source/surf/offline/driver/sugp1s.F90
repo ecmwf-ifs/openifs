@@ -1,3 +1,48 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUGP1S*   - Routine to initialize prognostic variables
+
+!     Purpose.
+!     --------
+!         Initialize prognostic variables of the one-column surface model
+
+!***  Interface.
+!     ----------
+!        *CALL* *SUGP1S(NCID)
+
+!     Explicit arguments :
+!     --------------------
+!        NCID : NETCDF FILE UNIT
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        Called by SUINIF1S.
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-21
+!        Bart vd Hurk (KNMI) Reading of NetCDF input : 2000-07-13
+!        Y. Takaya           add variables for OML   : 2008-10-07
+
 SUBROUTINE SUGP1S(NCID)
 USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
 USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
@@ -41,13 +86,6 @@ USE YOMDPHY  , ONLY : NCSS     ,NGPP     ,NPOI ,NGPA ,NVHILO,&
 
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUGP1S*   - Routine to initialize prognostic variables
 

@@ -13,8 +13,8 @@ SUBROUTINE CNT3_GLO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,KINI
 
 !**** *CNT3_GLO*  - CNT3 code for global model
 
-!     Author.
-!     -------
+!     Author. 
+!     ------- 
 !      Philippe Marguinaud *METEO-FRANCE*
 !      Original : 15-04-2016
 !      Modifications:
@@ -22,23 +22,22 @@ SUBROUTINE CNT3_GLO(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDJOT,YDVARBC,YDTCV,KINI
 !     -------------
 !     P. de Rosnay December 2017 SEKF-EDA jacobians
 
-USE TYPE_MODEL   , ONLY : MODEL
-USE GEOMETRY_MOD , ONLY : GEOMETRY
-USE FIELDS_MOD   , ONLY : FIELDS
-USE MTRAJ_MOD    , ONLY : MTRAJ
-USE PARKIND1     , ONLY : JPIM, JPRB
-USE YOMHOOK      , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCT0       , ONLY : NCONF, LNF, LOBSC1
-USE YOMINI       , ONLY : LDFI
-USE YOMVAR       , ONLY : LINITCV
-USE YOMLCZ       , ONLY : GPFORCEU, GPFORCEV, GPFORCET, GPFORCEQ, GPFORCESP
-USE VARBC_CLASS  , ONLY : CLASS_VARBC
-USE JO_TABLE_MOD , ONLY : JO_TABLE
-USE YOMSEKF      , ONLY : LUSE_EDA_JACOB
-USE TOVSCV_MOD   , ONLY : TOVSCV
-USE SPECTRAL_FIELDS_MOD
-USE SUPERGOM_CLASS     , ONLY : CLASS_SUPERGOM
-USE DBASE_MOD    , ONLY : DBASE
+USE TYPE_MODEL    , ONLY : MODEL
+USE GEOMETRY_MOD  , ONLY : GEOMETRY
+USE FIELDS_MOD    , ONLY : FIELDS
+USE MTRAJ_MOD     , ONLY : MTRAJ
+USE PARKIND1      , ONLY : JPIM, JPRB
+USE YOMHOOK       , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOMCT0        , ONLY : NCONF, LNF, LOBSC1
+USE YOMINI        , ONLY : LDFI
+USE YOMVAR        , ONLY : LINITCV
+USE YOMLCZ        , ONLY : GPFORCEU, GPFORCEV, GPFORCET, GPFORCEQ, GPFORCESP
+USE VARBC_CLASS   , ONLY : CLASS_VARBC
+USE JO_TABLE_MOD  , ONLY : JO_TABLE
+USE YOMSEKF       , ONLY : LUSE_EDA_JACOB
+USE TOVSCV_MOD    , ONLY : TOVSCV
+USE SUPERGOM_CLASS, ONLY : CLASS_SUPERGOM
+USE DBASE_MOD     , ONLY : DBASE
 !      -----------------------------------------------------------
 
 IMPLICIT NONE
@@ -56,20 +55,16 @@ INTEGER(KIND=JPIM), OPTIONAL, INTENT(IN)     :: KINITMONTH
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !      -----------------------------------------------------------
 
+#include "pertsekf_v2.intfb.h"
 #include "csta.intfb.h"
+#include "dfi.intfb.h"
 #include "reresf_part1.intfb.h"
 #include "reresf_part2.intfb.h"
 #include "spnorm.intfb.h"
-
-
-
-
+#include "suforce.intfb.h"
 #include "updo3ch.intfb.h"
 #include "updrgas.intfb.h"
-
-
-
-#include "dfi.intfb.h"
+#include "upspec.intfb.h"
 #include "ininemo.intfb.h"
 #include "coupinfout.intfb.h"
 
@@ -77,7 +72,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('CNT3_GLO',0,ZHOOK_HANDLE)
 
 !*     3.1   Spherical geometry
-
+  
 ! * restart and some other operations:
 IF (NCONF == 1.OR.NCONF == 302) THEN
   CALL RERESF_PART1 (YDGEOMETRY, YDFIELDS, YDMODEL)
@@ -93,7 +88,7 @@ IF (NCONF == 1.OR.NCONF == 302) THEN
 ELSE
   LNF=.TRUE.
 ENDIF
-
+  
 ! * start:
 IF (LNF) THEN
   IF (YDMODEL%YRML_PHY_STOCH%YRSTOPH%LFORCENL) THEN
@@ -112,30 +107,36 @@ IF (LNF) THEN
   ENDIF
   CALL CSTA(YDGEOMETRY,YDFIELDS,YDMODEL,KINITMONTH)
 ENDIF
-
+  
 ! * perturb initial conditions for the SEKF run:
 IF (NCONF == 302.and. .NOT.LUSE_EDA_JACOB) THEN
   CALL PERTSEKF_V2(YDGEOMETRY,YDFIELDS%YRSURF)
 ENDIF
-
+  
 !* NEMO initialization.
 IF (YDMODEL%YRML_AOC%YRMCC%LNEMOCOUP) CALL ININEMO(YDGEOMETRY,YDFIELDS%YRSURF,YDMODEL%YRML_AOC%YRMCC,YDMODEL%YRML_GCONF%YRRIP)
 
 !* Optional coupling write out coupling informaion
 IF (YDMODEL%YRML_AOC%YRMCC%LCOUPINFOUT) CALL COUPINFOUT(YDGEOMETRY,YDFIELDS%YRSURF,YDMODEL%YRML_AOC%YRMCC,YDMODEL%YRML_GCONF%YRRIP)
+  
+! * update spectral array:
+IF (LOBSC1.AND.LINITCV) CALL UPSPEC(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL)
+  
+
 ! * Jc computation: all computation in CNT3_GLO.
-
+  
 IF(LNF) CALL SPNORM(YDGEOMETRY,YDMODEL%YRML_GCONF,YDMODEL%YRML_DYN%YRDYNA,YDFIELDS%YRSPEC)
-
+  
 ! * Jg computation: all computation in CNT3AD.
-
+  
 ! * digital filter initialisation:
 IF (LNF.AND.LDFI) CALL DFI(YDGEOMETRY,YDFIELDS,YDMTRAJ,YDMODEL,YDVARBC=YDVARBC,YDTCV=YDTCV,YDJOT=YDJOT,YDGOM5=YDGOM5,YDODB=YDODB)
-
-
+  
+  
 !     ------------------------------------------------------------------
 
 
 IF (LHOOK) CALL DR_HOOK('CNT3_GLO',1,ZHOOK_HANDLE)
 
 END SUBROUTINE CNT3_GLO
+

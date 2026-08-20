@@ -15,6 +15,7 @@ main () {
   # DEFAULT VALUES
   #################################################################
 
+  CLEAN=""
   NTHREAD=1
   NPROC=1
   IFS_EXECUTABLE=not-specified
@@ -73,6 +74,12 @@ main () {
 
       # Parse options
       case "$opt" in
+        --clean)
+          CLEAN=true
+          ;;
+        --noclean)
+          CLEAN=
+          ;;
         --nthread)
           NTHREAD="$val"
           ;;
@@ -131,6 +138,12 @@ main () {
 
   cd ${WORK_DIR}
 
+  if [ -n "${CLEAN}" ]; then
+    # Ensure test directory is in a clean state
+    echo "### Clean test directory ###"
+    source ./ifs-clean
+  fi
+
   set -exa
 
   if [ -f ${SETUP} ]; then
@@ -173,6 +186,10 @@ main () {
   echo
   echo "### Begin postprocessing ###"
   if [ -f ${POSTPROCESSING} ]; then
+    if [ -n "${CLEAN}" ]; then
+      # Force NFS cache update
+      ls &> /dev/null
+    fi
     source ${POSTPROCESSING}
   else
     echo "No postprocessing"

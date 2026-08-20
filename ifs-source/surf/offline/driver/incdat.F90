@@ -1,4 +1,3 @@
-SUBROUTINE INCDAT(KIN,KD,KOU)
 ! (C) Copyright 1996- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,57 @@ SUBROUTINE INCDAT(KIN,KD,KOU)
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *INCDAT*  - Increments a date by a positive number of days
+
+!     Purpose.
+!     --------
+!     GIVEN A DATE KIN, INCREMENTS IT BY THE NUMBER OF DAYS, KD,
+!     TO OBTAIN KOU
+
+!**   Interface.
+!     ----------
+!        *CALL* *DATTIM
+
+!        Explicit arguments :
+!        --------------------
+
+!     INPUT
+!     -----
+
+!     KIN   INITIAL DATE (YYYYMMDD)
+!     KD    NUMBER OF DAYS TO INCREMENT
+
+!     OUTPUT
+!     ------
+
+!     KOU   FINAL DATE (YYYYMMDD)
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 96-03-03
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE INCDAT(KIN,KD,KOU)
 
 !**** *INCDAT*  - Increments a date by a positive number of days
 

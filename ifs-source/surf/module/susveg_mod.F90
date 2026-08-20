@@ -1,3 +1,55 @@
+
+! (C) Copyright 1989- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**   *SUSVEG* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_VEG*
+
+!     PURPOSE
+!     -------
+!          THIS ROUTINE INITIALIZES THE CONSTANTS IN COMMON BLOCK
+!     *YOS_VEG*
+
+!     INTERFACE.
+!     ----------
+!     CALLLED FRPM *SUSURF*
+
+!     METHOD.
+!     -------
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+
+!     A.C.M. BELJAARS         E.C.M.W.F.       2/11/89
+
+!     MODIFICATIONS
+!     -------------
+!     J.-J. MORCRETTE  ECMWF      91/07/14
+!     A. BELJAARS      ECMWF      99/01/05    SURFACE TILES
+!     M. HAMRUD        ECMWF      10/11/00    FIX FOR POT. OVERWRITE
+!     M.Hamrud                    01/10/2003  CY28 Cleaning
+!     P.Viterbo                   24/10/2004  surf library
+!     P. Viterbo       ECMWF      09/06/2005  move in surf vob
+!     A. BELJAARS      ECMWF      03/12/05    roughness length tables for TOFD
+!     E. Dutra/G.Balsamo          01/05/08    add lake tile
+!     S. Boussetta/G.Balsamo May 2009 Add lai
+!     S. Boussetta/G.Balsamo May 2010 Add CTESSEL for CO2
+!     I. Sandu                    May 2010   modify momentum and heat roughness length tables 
+!     S. Boussetta/G.Balsamo June 2011 Add LEAGS for modularity of CO2&Evap
+!     I. Sandu                    March 2013   strength of coupling in unstable cond for high veg 
+!     I. Sandu    24-02-2014  Lambda skin values by vegetation type instead of tile
+!     G. Balsamo/I. Sandu    February 2016    reduced coupling over forests
+!     A. Agusti-Panareda Nov 2020 Add LEAIRCO2COUP for use of variable atm CO2 in photosynthesis
+!     A. Agusti-Panareda Jul 2021 Add LEFARQUHAR for use of Farquhar photosynthesis model
+!     ------------------------------------------------------------------
+
 MODULE SUSVEG_MOD
 CONTAINS
 SUBROUTINE SUSVEG(LD_LELAIV,LD_LECTESSEL,LD_LEAGS,LD_LEFARQUHAR,&
@@ -12,14 +64,6 @@ USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_VEG   , ONLY : TVEG
 
 USE SRFROOTFR_MOD
-
-! (C) Copyright 1989- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**   *SUSVEG* IS THE SET-UP ROUTINE FOR COMMON BLOCK *YOS_VEG*
 
@@ -109,6 +153,30 @@ RVINTER=0.5_JPRB
 ! Vegetation cover
  
 ! 0 value acts as default for vegetation type, simplifying code ...
+!IF(.NOT.ALLOCATED(YDVEG%RVCOV)) ALLOCATE(YDVEG%RVCOV(0:IVTYPES))
+!YDVEG%RVCOV(1)=0.9_JPRB     ! Crops, Mixed Farming
+!YDVEG%RVCOV(2)=0.85_JPRB    ! Short Grass
+!YDVEG%RVCOV(3)=0.9_JPRB     ! Evergreen Needleleaf Trees
+!YDVEG%RVCOV(4)=0.9_JPRB     ! Deciduous Needleleaf Trees
+!YDVEG%RVCOV(5)=0.9_JPRB     ! Deciduous Broadleaf Trees
+!YDVEG%RVCOV(6)=0.99_JPRB    ! Evergreen Broadleaf Trees
+!YDVEG%RVCOV(7)=0.7_JPRB     ! Tall Grass
+!YDVEG%RVCOV(8)=0.0_JPRB       ! Desert
+!YDVEG%RVCOV(9)=0.5_JPRB       ! Tundra
+!YDVEG%RVCOV(10)=0.9_JPRB    ! Irrigated Crops
+!YDVEG%RVCOV(11)=0.1_JPRB    ! Semidesert
+!YDVEG%RVCOV(12)=0.0_JPRB      ! Ice Caps and Glaciers
+!YDVEG%RVCOV(13)=0.6_JPRB    ! Bogs and Marshes
+!YDVEG%RVCOV(14)=0.0_JPRB      ! Inland Water
+!YDVEG%RVCOV(15)=0.0_JPRB      ! Ocean
+!YDVEG%RVCOV(16)=0.5_JPRB      ! Evergreen Shrubs
+!YDVEG%RVCOV(17)=0.5_JPRB      ! Deciduous Shrubs
+!YDVEG%RVCOV(18)=0.9_JPRB    ! Mixed Forest/woodland
+!YDVEG%RVCOV(19)=0.9_JPRB    ! Interrupted Forest
+!YDVEG%RVCOV(20)=0.6_JPRB    ! Water and Land Mixtures
+!YDVEG%RVCOV(0)=YDVEG%RVCOV(8)
+
+! Adjusted RCOV (Cveg) table for the new ESA-CCI v3/v4 cwt maps
 IF(.NOT.ALLOCATED(YDVEG%RVCOV)) ALLOCATE(YDVEG%RVCOV(0:IVTYPES))
 YDVEG%RVCOV(1)=0.9_JPRB     ! Crops, Mixed Farming
 YDVEG%RVCOV(2)=0.85_JPRB    ! Short Grass
@@ -116,18 +184,19 @@ YDVEG%RVCOV(3)=0.9_JPRB     ! Evergreen Needleleaf Trees
 YDVEG%RVCOV(4)=0.9_JPRB     ! Deciduous Needleleaf Trees
 YDVEG%RVCOV(5)=0.9_JPRB     ! Deciduous Broadleaf Trees
 YDVEG%RVCOV(6)=0.99_JPRB    ! Evergreen Broadleaf Trees
-YDVEG%RVCOV(7)=0.7_JPRB     ! Tall Grass
+YDVEG%RVCOV(7)=0.7_JPRB     ! Tall Grass/mixed crops
 YDVEG%RVCOV(8)=0.0_JPRB       ! Desert
 YDVEG%RVCOV(9)=0.5_JPRB       ! Tundra
 YDVEG%RVCOV(10)=0.9_JPRB    ! Irrigated Crops
-YDVEG%RVCOV(11)=0.1_JPRB    ! Semidesert
+YDVEG%RVCOV(11)=0.1_JPRB    ! Semidesert/sparse vegetation
 YDVEG%RVCOV(12)=0.0_JPRB      ! Ice Caps and Glaciers
 YDVEG%RVCOV(13)=0.6_JPRB    ! Bogs and Marshes
 YDVEG%RVCOV(14)=0.0_JPRB      ! Inland Water
 YDVEG%RVCOV(15)=0.0_JPRB      ! Ocean
 YDVEG%RVCOV(16)=0.5_JPRB      ! Evergreen Shrubs
-YDVEG%RVCOV(17)=0.5_JPRB      ! Deciduous Shrubs
-YDVEG%RVCOV(18)=0.9_JPRB    ! Mixed Forest/woodland
+!YDVEG%RVCOV(17)=0.3_JPRB      ! Deciduous Shrubs
+YDVEG%RVCOV(17)=0.4_JPRB      ! Deciduous Shrubs (testing 0.4)
+YDVEG%RVCOV(18)=0.9_JPRB    ! Mixed Forest/woodland/Broad Savanah
 YDVEG%RVCOV(19)=0.9_JPRB    ! Interrupted Forest
 YDVEG%RVCOV(20)=0.6_JPRB    ! Water and Land Mixtures
 YDVEG%RVCOV(0)=YDVEG%RVCOV(8)
@@ -263,33 +332,63 @@ RCEPSW  =1.E-3_JPRB
 !                 for the decreased radiation stress function at full 
 !                 light saturation.
 
+!IF(.NOT.ALLOCATED(YDVEG%RVRSMIN)) ALLOCATE (YDVEG%RVRSMIN(0:IVTYPES))
+!!RVRSMIN(1)=180._JPRB    ! Crops, Mixed Farming
+!!RVRSMIN(2)=110._JPRB    ! Short Grass
+!YDVEG%RVRSMIN(1)=100._JPRB    ! Crops, Mixed Farming
+!YDVEG%RVRSMIN(2)=100._JPRB    ! Short Grass
+!!RVRSMIN(3)=500._JPRB    ! Evergreen Needleleaf Trees
+!!RVRSMIN(4)=500._JPRB    ! Deciduous Needleleaf Trees
+!YDVEG%RVRSMIN(3)=250._JPRB    ! Evergreen Needleleaf Trees
+!YDVEG%RVRSMIN(4)=250._JPRB    ! Deciduous Needleleaf Trees
+!YDVEG%RVRSMIN(5)=175._JPRB    ! Deciduous Broadleaf Trees
+!YDVEG%RVRSMIN(6)=240._JPRB    ! Evergreen Broadleaf Trees
+!YDVEG%RVRSMIN(7)=100._JPRB    ! Tall Grass
+!YDVEG%RVRSMIN(8)=250._JPRB    ! Desert
+!YDVEG%RVRSMIN(9)=80._JPRB     ! Tundra
+!!RVRSMIN(10)=180._JPRB   ! Irrigated Crops
+!YDVEG%RVRSMIN(10)=100._JPRB   ! Irrigated Crops
+!YDVEG%RVRSMIN(11)=150._JPRB   ! Semidesert
+!YDVEG%RVRSMIN(12)=0.0_JPRB      ! Ice Caps and Glaciers
+!YDVEG%RVRSMIN(13)=240._JPRB   ! Bogs and Marshes
+!YDVEG%RVRSMIN(14)=0.0_JPRB      ! Inland Water
+!YDVEG%RVRSMIN(15)=0.0_JPRB      ! Ocean
+!YDVEG%RVRSMIN(16)=225._JPRB   ! Evergreen Shrubs
+!YDVEG%RVRSMIN(17)=225._JPRB   ! Deciduous Shrubs
+!YDVEG%RVRSMIN(18)=250._JPRB   ! Mixed Forest/woodland
+!YDVEG%RVRSMIN(19)=175._JPRB   ! Interrupted Forest
+!YDVEG%RVRSMIN(20)=150._JPRB   ! Water and Land Mixtures
+!YDVEG%RVRSMIN(0)=YDVEG%RVRSMIN(8)
+
+! Adjusted Rsmin table for the new ESA-CCI v4 opt1 cwt maps
 IF(.NOT.ALLOCATED(YDVEG%RVRSMIN)) ALLOCATE (YDVEG%RVRSMIN(0:IVTYPES))
 !RVRSMIN(1)=180._JPRB    ! Crops, Mixed Farming
 !RVRSMIN(2)=110._JPRB    ! Short Grass
-YDVEG%RVRSMIN(1)=100._JPRB    ! Crops, Mixed Farming
-YDVEG%RVRSMIN(2)=100._JPRB    ! Short Grass
+YDVEG%RVRSMIN(1)=125._JPRB    ! Crops, Mixed Farming
+YDVEG%RVRSMIN(2)=80._JPRB    ! Short Grass
 !RVRSMIN(3)=500._JPRB    ! Evergreen Needleleaf Trees
 !RVRSMIN(4)=500._JPRB    ! Deciduous Needleleaf Trees
-YDVEG%RVRSMIN(3)=250._JPRB    ! Evergreen Needleleaf Trees
-YDVEG%RVRSMIN(4)=250._JPRB    ! Deciduous Needleleaf Trees
-YDVEG%RVRSMIN(5)=175._JPRB    ! Deciduous Broadleaf Trees
-YDVEG%RVRSMIN(6)=240._JPRB    ! Evergreen Broadleaf Trees
-YDVEG%RVRSMIN(7)=100._JPRB    ! Tall Grass
+YDVEG%RVRSMIN(3)=395._JPRB    ! Evergreen Needleleaf Trees
+YDVEG%RVRSMIN(4)=320._JPRB    ! Deciduous Needleleaf Trees
+YDVEG%RVRSMIN(5)=215._JPRB    ! Deciduous Broadleaf Trees
+YDVEG%RVRSMIN(6)=320._JPRB    ! Evergreen Broadleaf Trees
+YDVEG%RVRSMIN(7)=100._JPRB    ! mixed crops
 YDVEG%RVRSMIN(8)=250._JPRB    ! Desert
-YDVEG%RVRSMIN(9)=80._JPRB     ! Tundra
+YDVEG%RVRSMIN(9)=45._JPRB     ! Tundra
 !RVRSMIN(10)=180._JPRB   ! Irrigated Crops
-YDVEG%RVRSMIN(10)=100._JPRB   ! Irrigated Crops
-YDVEG%RVRSMIN(11)=150._JPRB   ! Semidesert
+YDVEG%RVRSMIN(10)=110._JPRB   ! Irrigated Crops
+YDVEG%RVRSMIN(11)=45._JPRB   ! sparse vegetation
 YDVEG%RVRSMIN(12)=0.0_JPRB      ! Ice Caps and Glaciers
-YDVEG%RVRSMIN(13)=240._JPRB   ! Bogs and Marshes
+YDVEG%RVRSMIN(13)=130._JPRB   ! Bogs and Marshes
 YDVEG%RVRSMIN(14)=0.0_JPRB      ! Inland Water
 YDVEG%RVRSMIN(15)=0.0_JPRB      ! Ocean
-YDVEG%RVRSMIN(16)=225._JPRB   ! Evergreen Shrubs
-YDVEG%RVRSMIN(17)=225._JPRB   ! Deciduous Shrubs
-YDVEG%RVRSMIN(18)=250._JPRB   ! Mixed Forest/woodland
+YDVEG%RVRSMIN(16)=230._JPRB   ! Evergreen Shrubs
+YDVEG%RVRSMIN(17)=110._JPRB   ! Deciduous Shrubs
+YDVEG%RVRSMIN(18)=180._JPRB   ! Broad/Savana
 YDVEG%RVRSMIN(19)=175._JPRB   ! Interrupted Forest
 YDVEG%RVRSMIN(20)=150._JPRB   ! Water and Land Mixtures
 YDVEG%RVRSMIN(0)=YDVEG%RVRSMIN(8)
+
 
 ! Parameter in humidity stress function (m/s mbar, converted to M/S kgkg-1)
 IF(.NOT.ALLOCATED(YDVEG%RVHSTR)) ALLOCATE (YDVEG%RVHSTR(0:IVTYPES))
@@ -319,25 +418,49 @@ YDVEG%RVHSTR(:)=ZCONV*YDVEG%RVHSTR(:)
 
 ! Roughness length for momentum (Mahfouf et al. 1995)
 
+!IF(.NOT.ALLOCATED(YDVEG%RVZ0M)) ALLOCATE (YDVEG%RVZ0M(0:IVTYPES))
+!YDVEG%RVZ0M(1)=0.25_JPRB     ! Crops, Mixed Farming
+!YDVEG%RVZ0M(2)=0.1_JPRB     ! Short Grass
+!YDVEG%RVZ0M(3)=2.00_JPRB     ! Evergreen Needleleaf Trees
+!YDVEG%RVZ0M(4)=2.00_JPRB     ! Deciduous Needleleaf Trees
+!YDVEG%RVZ0M(5)=2.00_JPRB     ! Deciduous Broadleaf Trees
+!YDVEG%RVZ0M(6)=2.00_JPRB     ! Evergreen Broadleaf Trees
+!YDVEG%RVZ0M(7)=0.47_JPRB     ! Tall Grass
+!YDVEG%RVZ0M(8)=0.013_JPRB    ! Desert                    # Masson et al.
+!YDVEG%RVZ0M(9)=0.034_JPRB     ! Tundra
+!YDVEG%RVZ0M(10)=0.5_JPRB    ! Irrigated Crops           # Crops type 1
+!YDVEG%RVZ0M(11)=0.17_JPRB    ! Semidesert 
+!YDVEG%RVZ0M(12)=0.0013_JPRB  ! Ice Caps and Glaciers     # Mason et al. 
+!YDVEG%RVZ0M(13)=0.5_JPRB    ! Bogs and Marshes
+!YDVEG%RVZ0M(14)=0.0001_JPRB  ! Inland Water              # Not used but needs value here
+!YDVEG%RVZ0M(15)=0.0001_JPRB  ! Ocean                     # Not used but needs value here
+!YDVEG%RVZ0M(16)=0.1_JPRB    ! Evergreen Shrubs
+!YDVEG%RVZ0M(17)=0.25_JPRB    ! Deciduous Shrubs
+!YDVEG%RVZ0M(18)=2.00_JPRB    ! Mixed Forest/woodland
+!YDVEG%RVZ0M(19)=1.1_JPRB    ! Interrupted Forest        # New value invented here
+!YDVEG%RVZ0M(20)=0.02_JPRB    ! Water and Land Mixtures   # Not used but needs value here
+!YDVEG%RVZ0M(0)=YDVEG%RVZ0M(8)      !                           # Bare soil value
+
+! Adjusted Roughness length tables for the new ESA-CCI v3/v4 opt1 cwt maps
 IF(.NOT.ALLOCATED(YDVEG%RVZ0M)) ALLOCATE (YDVEG%RVZ0M(0:IVTYPES))
 YDVEG%RVZ0M(1)=0.25_JPRB     ! Crops, Mixed Farming
 YDVEG%RVZ0M(2)=0.1_JPRB     ! Short Grass
-YDVEG%RVZ0M(3)=2.00_JPRB     ! Evergreen Needleleaf Trees
-YDVEG%RVZ0M(4)=2.00_JPRB     ! Deciduous Needleleaf Trees
-YDVEG%RVZ0M(5)=2.00_JPRB     ! Deciduous Broadleaf Trees
-YDVEG%RVZ0M(6)=2.00_JPRB     ! Evergreen Broadleaf Trees
-YDVEG%RVZ0M(7)=0.47_JPRB     ! Tall Grass
+YDVEG%RVZ0M(3)=2.0_JPRB     ! Evergreen Needleleaf Trees
+YDVEG%RVZ0M(4)=2.0_JPRB     ! Deciduous Needleleaf Trees
+YDVEG%RVZ0M(5)=2.0_JPRB     ! Deciduous Broadleaf Trees
+YDVEG%RVZ0M(6)=2.0_JPRB     ! Evergreen Broadleaf Trees
+YDVEG%RVZ0M(7)=0.5_JPRB     ! mixed crops
 YDVEG%RVZ0M(8)=0.013_JPRB    ! Desert                    # Masson et al.
-YDVEG%RVZ0M(9)=0.034_JPRB     ! Tundra
+YDVEG%RVZ0M(9)=0.03_JPRB     ! Tundra
 YDVEG%RVZ0M(10)=0.5_JPRB    ! Irrigated Crops           # Crops type 1
-YDVEG%RVZ0M(11)=0.17_JPRB    ! Semidesert 
+YDVEG%RVZ0M(11)=0.03_JPRB    ! sparse vegetation 
 YDVEG%RVZ0M(12)=0.0013_JPRB  ! Ice Caps and Glaciers     # Mason et al. 
-YDVEG%RVZ0M(13)=0.5_JPRB    ! Bogs and Marshes
+YDVEG%RVZ0M(13)=0.25_JPRB    ! Bogs and Marshes
 YDVEG%RVZ0M(14)=0.0001_JPRB  ! Inland Water              # Not used but needs value here
 YDVEG%RVZ0M(15)=0.0001_JPRB  ! Ocean                     # Not used but needs value here
-YDVEG%RVZ0M(16)=0.1_JPRB    ! Evergreen Shrubs
-YDVEG%RVZ0M(17)=0.25_JPRB    ! Deciduous Shrubs
-YDVEG%RVZ0M(18)=2.00_JPRB    ! Mixed Forest/woodland
+YDVEG%RVZ0M(16)=0.5_JPRB    ! Evergreen Shrubs
+YDVEG%RVZ0M(17)=0.1_JPRB    ! Deciduous Shrubs
+YDVEG%RVZ0M(18)=1.50_JPRB    ! Broad Savana
 YDVEG%RVZ0M(19)=1.1_JPRB    ! Interrupted Forest        # New value invented here
 YDVEG%RVZ0M(20)=0.02_JPRB    ! Water and Land Mixtures   # Not used but needs value here
 YDVEG%RVZ0M(0)=YDVEG%RVZ0M(8)      !                           # Bare soil value
@@ -346,10 +469,11 @@ YDVEG%RVZ0M(0)=YDVEG%RVZ0M(8)      !                           # Bare soil value
 ! Roughness length for heat
 
 IF(.NOT.ALLOCATED(YDVEG%RVZ0H)) ALLOCATE (YDVEG%RVZ0H(0:IVTYPES))
+! testing roughness for heat for he low veg as 1/10th
 YDVEG%RVZ0H(1)=YDVEG%RVZ0M( 1)/100._JPRB     ! Crops, Mixed Farming
 YDVEG%RVZ0H(2)=YDVEG%RVZ0M( 2)/100._JPRB     ! Short Grass
 YDVEG%RVZ0H(3)=YDVEG%RVZ0M( 3)              ! Evergreen Needleleaf Trees
-YDVEG%RVZ0H(4)=YDVEG%RVZ0M( 4)              ! Deciduous Needleleaf Trees
+YDVEG%RVZ0H(4)=YDVEG%RVZ0M( 4)/10._JPRB     ! Deciduous Needleleaf Trees
 YDVEG%RVZ0H(5)=YDVEG%RVZ0M( 5)              ! Deciduous Broadleaf Trees
 YDVEG%RVZ0H(6)=YDVEG%RVZ0M( 6)              ! Evergreen Broadleaf Trees
 YDVEG%RVZ0H(7)=YDVEG%RVZ0M( 7)/100._JPRB     ! Tall Grass
@@ -363,7 +487,7 @@ YDVEG%RVZ0H(14)=YDVEG%RVZ0M(14)/10._JPRB    ! Inland Water
 YDVEG%RVZ0H(15)=YDVEG%RVZ0M(15)/10._JPRB    ! Ocean 
 YDVEG%RVZ0H(16)=YDVEG%RVZ0M(16)/100._JPRB    ! Evergreen Shrubs
 YDVEG%RVZ0H(17)=YDVEG%RVZ0M(17)/100._JPRB    ! Deciduous Shrubs
-YDVEG%RVZ0H(18)=YDVEG%RVZ0M(18)             ! Mixed Forest/woodland
+YDVEG%RVZ0H(18)=YDVEG%RVZ0M(18)/100._JPRB    ! Mixed Forest/woodland/Broad Savana
 YDVEG%RVZ0H(19)=YDVEG%RVZ0M(19)/100._JPRB    ! Interrupted Forest 
 YDVEG%RVZ0H(20)=YDVEG%RVZ0M(20)/10._JPRB    ! Water and Land Mixtures 
 YDVEG%RVZ0H(0)=YDVEG%RVZ0H(8)        

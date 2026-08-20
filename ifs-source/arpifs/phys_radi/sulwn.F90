@@ -1,10 +1,55 @@
 ! (C) Copyright 1988- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
+
+!**** *SULWN*   - INITIALIZE COMMON YOELW
+
+!     PURPOSE.
+!     --------
+!           INITIALIZE YOELW, THE COMMON THAT CONTAINS COEFFICIENTS
+!           NEEDED TO RUN THE LONGWAVE RADIATION ROUTINES
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *SULWN
+
+!        EXPLICIT ARGUMENTS
+!        --------------------
+!        NONE
+
+!        IMPLICIT ARGUMENTS
+!        --------------------
+!        COMMON YOELW
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION
+
+!     AUTHOR.
+!     -------
+!        JEAN-JACQUES MORCRETTE  *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 88-12-15
+!        J.-J. Morcrette ECMWF 951215: Pseudo-Voigt Line Profiles
+!        97-04-25 J.J. Morcrette Revised Continuum coefficients
+!        97-10-30 J.J. Morcrette cy18
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+
+!     ------------------------------------------------------------------
+
 SUBROUTINE SULWN
 
 !**** *SULWN*   - INITIALIZE COMMON YOELW

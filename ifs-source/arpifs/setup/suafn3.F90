@@ -117,8 +117,10 @@ SUBROUTINE SUAFN3(YDAFN)
 !      R. Brozkova Sep-2018 Added convective temperature, global normal
 !                           irradiance and mean radiant temperature
 !      R. Hogan     15-Jan-2019 6-component MODIS albedo
+!      V. Guidard   13-May-2019 Add new satellites-sensors for ISP
+!      R. El Khatib 12-May-2021 Specific fullpos descriptors (and FA names) for clim fields of Ts, Tp and snow depth
 !      A.Agusti-Panareda : 23-06-2021 Add CO2 photosynthesis type (C3/C4)
-!      R. Forbes    May-2022  Added precip-type most-frequent and most-severe
+!      R. Forbes       May-2022  Added precip-type most-frequent and most-severe
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB
@@ -142,7 +144,7 @@ TYPE (TAFN),  INTENT(IN) :: YDAFN
 INTEGER(KIND=JPIM) :: J,JVAR,JDIAG, IERR, ISIZE, ILIMIT
 
 CHARACTER(LEN=25) :: CLTEXT
-CHARACTER(LEN=34) :: CLTEXU
+CHARACTER(LEN=35) :: CLTEXU
 CHARACTER(LEN=12) :: CLVARN
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -204,8 +206,8 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_TFP('Wind velocity............','TFP_WND ',TFP%WND )
   CALL PRINT_TFP('Equiv. pot. temperature..','TFP_ETH ',TFP%ETH )
   CALL PRINT_TFP('Isobaric equivalent tempe','TFP_IET ',TFP%IET )
-  CALL PRINT_TFP('Simulated reflect. in mmh','TFP_SRE ',TFP%SRE )
-  CALL PRINT_TFP('Simulated reflect. in dBz','TFP_SREDB ',TFP%SREDB )
+  CALL PRINT_TFP('Simulated reflect.(mm/h).','TFP_SRE ',TFP%SRE )
+  CALL PRINT_TFP('Simulated reflect.(dBZ)..','TFP_SREDB',TFP%SREDB)
   CALL PRINT_TFP('Virtual Theta............','TFP_THV ',TFP%THV )
   CALL PRINT_TFP('Absolute Vorticity.......','TFP_ABS ',TFP%ABS )
   CALL PRINT_TFP('Stretching Deformation...','TFP_STD ',TFP%STD )
@@ -235,14 +237,23 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_TFP('RK scheme temper tend ...','TFP_RKTH ',TFP%RKTH )
   CALL PRINT_TFP('RK scheme vapor  tend ...','TFP_RKTQV',TFP%RKTQV)
   CALL PRINT_TFP('RK scheme condens tend ..','TFP_RKTQC',TFP%RKTQC)
-  CALL PRINT_TFP('Lifting Condensation Level','TFP_LCL ',TFP%LCL )
-  CALL PRINT_TFP('Free Convection Level     ','TFP_FCL ',TFP%FCL )
-  CALL PRINT_TFP('Equilibrium Level         ','TFP_EL  ',TFP%EL )
+  CALL PRINT_TFP('Lifting Condensation geo.h','TFP_LCL ',TFP%LCL )
+  CALL PRINT_TFP('Free Convection geopot. h.','TFP_FCL ',TFP%FCL )
+  CALL PRINT_TFP('Equilibrium geopot. height','TFP_EL  ',TFP%EL )
   CALL PRINT_TFP('Convective Liquid Water...','TFP_LCONV',TFP%LCONV )
   CALL PRINT_TFP('Convective Solid Water....','TFP_ICONV',TFP%ICONV )
   CALL PRINT_TFP('Convective Rain...........','TFP_RCONV',TFP%RCONV )
   CALL PRINT_TFP('Convective Snow...........','TFP_SCONV',TFP%SCONV )
   CALL PRINT_TFP('Eddy diffusivity rate.....','TFP_EDR  ',TFP%EDR)
+  CALL PRINT_TFP('Ellrod1 CAT Indice........','TFP_CATTI1',TFP%CATTI1)
+  CALL PRINT_TFP('Ellrod1 max over high lev.','TFP_CATTI1H',TFP%CATTI1H)
+  CALL PRINT_TFP('Ellrod1 max over med. lev.','TFP_CATTI1M',TFP%CATTI1M)
+  CALL PRINT_TFP('CAT Turb. Indice for Aviat','TFP_EDRDC',TFP%EDRDC)
+  CALL PRINT_TFP('EDRDC max ov. High Levels.','TFP_EDRDCH',TFP%EDRDCH)
+  CALL PRINT_TFP('EDRDC max ov. Med. Levels.','TFP_EDRDCM',TFP%EDRDCM)
+  CALL PRINT_TFP('EDRDC max ov. Low. Levels.','TFP_EDRDCL',TFP%EDRDCL)
+  CALL PRINT_TFP('Icing index for Aviation..','TFP_ICING',TFP%ICING)
+  CALL PRINT_TFP('Max of Icing index .......','TFP_ICINGX',TFP%ICINGX)
   DO JVAR=1,JPOSEMIS3D
     WRITE(CLTEXT,FMT='(A18,I2.2,A5)') 'EMIS3D nr ',JVAR,'.....'
     WRITE(CLVARN,FMT='(A8,I2.2,A2)') 'TFP_EMIS3D(',JVAR,') '
@@ -351,10 +362,18 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_TFP('Maxi. simu. reflect(mm/h)','TFP_SREX',TFP%SREX)
   CALL PRINT_TFP('Maxi. simu. reflect (dBZ)','TFP_SREDBX',TFP%SREDBX)
   CALL PRINT_TFP('Pressure of echotop......','TFP_TOPR',TFP%TOPR)
+  CALL PRINT_TFP('Pressure of ceiling cloud','TFP_PCLDCEIL',TFP%PCLDCEIL)
+  CALL PRINT_TFP('Height of ceiling clouds.','TFP_HCLDBASE',TFP%HCLDBASE)
+  CALL PRINT_TFP('Pressure of base cloud...','TFP_PCLDBASE',TFP%PCLDBASE)
+  CALL PRINT_TFP('Height of base clouds....','TFP_HCLDCEIL',TFP%HCLDCEIL)
+  CALL PRINT_TFP('Pressure of top of clouds','TFP_PCLDTOP',TFP%PCLDTOP)
   CALL PRINT_TFP('CAPE.....................','TFP_CAPE',TFP%CAPE)
   CALL PRINT_TFP('CIEN.....................','TFP_CIEN',TFP%CIEN)
+  CALL PRINT_TFP('MUMLCAPE.................','TFP_MLCAPE',TFP%MUMLCAPE)
+  CALL PRINT_TFP('MLCAPE...................','TFP_MLCAPE',TFP%MLCAPE)
   CALL PRINT_TFP('Temperature of convection','TFP_TCVS',TFP%TCVS)
   CALL PRINT_TFP('Storm relative helicity..','TFP_SRH',TFP%SRH)
+  CALL PRINT_TFP('Updraft helicity.........','TFP_UH',TFP%UH)
   CALL PRINT_TFP('Storm motion, u component','TFP_STRMMU',TFP%STRMMU)
   CALL PRINT_TFP('Storm motion, v component','TFP_STRMMU',TFP%STRMMU)
   CALL PRINT_TFP('MOCON....................','TFP_MOCO',TFP%MOCO)
@@ -387,6 +406,22 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_TFP('MSAT9 SEVIRI CH 6........','TFP_MSAT9C6',TFP%MSAT9C6)
   CALL PRINT_TFP('MSAT9 SEVIRI CH 7........','TFP_MSAT9C7',TFP%MSAT9C7)
   CALL PRINT_TFP('MSAT9 SEVIRI CH 8........','TFP_MSAT9C8',TFP%MSAT9C8)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 1.......','TFP_MSAT10C1',TFP%MSAT10C1)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 2.......','TFP_MSAT10C2',TFP%MSAT10C2)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 3.......','TFP_MSAT10C3',TFP%MSAT10C3)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 4.......','TFP_MSAT10C4',TFP%MSAT10C4)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 5.......','TFP_MSAT10C5',TFP%MSAT10C5)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 6.......','TFP_MSAT10C6',TFP%MSAT10C6)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 7.......','TFP_MSAT10C7',TFP%MSAT10C7)
+  CALL PRINT_TFP('MSAT10 SEVIRI CH 8.......','TFP_MSAT10C8',TFP%MSAT10C8)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 1.......','TFP_MSAT11C1',TFP%MSAT11C1)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 2.......','TFP_MSAT11C2',TFP%MSAT11C2)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 3.......','TFP_MSAT11C3',TFP%MSAT11C3)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 4.......','TFP_MSAT11C4',TFP%MSAT11C4)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 5.......','TFP_MSAT11C5',TFP%MSAT11C5)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 6.......','TFP_MSAT11C6',TFP%MSAT11C6)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 7.......','TFP_MSAT11C7',TFP%MSAT11C7)
+  CALL PRINT_TFP('MSAT11 SEVIRI CH 8.......','TFP_MSAT11C8',TFP%MSAT11C8)
   CALL PRINT_TFP('GOES11 IMAGER CH 1.......','TFP_GOES11C1',TFP%GOES11C1)
   CALL PRINT_TFP('GOES11 IMAGER CH 2.......','TFP_GOES11C2',TFP%GOES11C2)
   CALL PRINT_TFP('GOES11 IMAGER CH 3.......','TFP_GOES11C3',TFP%GOES11C3)
@@ -395,14 +430,48 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_TFP('GOES12 IMAGER CH 2.......','TFP_GOES12C2',TFP%GOES12C2)
   CALL PRINT_TFP('GOES12 IMAGER CH 3.......','TFP_GOES12C3',TFP%GOES12C3)
   CALL PRINT_TFP('GOES12 IMAGER CH 4.......','TFP_GOES12C4',TFP%GOES12C4)
+  CALL PRINT_TFP('GOES15 IMAGER CH 1.......','TFP_GOES15C1',TFP%GOES15C1)
+  CALL PRINT_TFP('GOES15 IMAGER CH 2.......','TFP_GOES15C2',TFP%GOES15C2)
+  CALL PRINT_TFP('GOES15 IMAGER CH 3.......','TFP_GOES15C3',TFP%GOES15C3)
+  CALL PRINT_TFP('GOES15 IMAGER CH 4.......','TFP_GOES15C4',TFP%GOES15C4)
+  CALL PRINT_TFP('GOES16 ABI CH 1..........','TFP_GOES16C1',TFP%GOES16C1)
+  CALL PRINT_TFP('GOES16 ABI CH 2..........','TFP_GOES16C2',TFP%GOES16C2)
+  CALL PRINT_TFP('GOES16 ABI CH 3..........','TFP_GOES16C3',TFP%GOES16C3)
+  CALL PRINT_TFP('GOES16 ABI CH 4..........','TFP_GOES16C4',TFP%GOES16C4)
+  CALL PRINT_TFP('GOES16 ABI CH 5..........','TFP_GOES16C5',TFP%GOES16C5)
+  CALL PRINT_TFP('GOES16 ABI CH 6..........','TFP_GOES16C6',TFP%GOES16C6)
+  CALL PRINT_TFP('GOES16 ABI CH 7..........','TFP_GOES16C7',TFP%GOES16C7)
+  CALL PRINT_TFP('GOES16 ABI CH 8..........','TFP_GOES16C8',TFP%GOES16C8)
+  CALL PRINT_TFP('GOES16 ABI CH 9..........','TFP_GOES16C9',TFP%GOES16C9)
+  CALL PRINT_TFP('GOES16 ABI CH 10.........','TFP_GOES16C10',TFP%GOES16C10)
+  CALL PRINT_TFP('GOES17 ABI CH 1..........','TFP_GOES17C1',TFP%GOES17C1)
+  CALL PRINT_TFP('GOES17 ABI CH 2..........','TFP_GOES17C2',TFP%GOES17C2)
+  CALL PRINT_TFP('GOES17 ABI CH 3..........','TFP_GOES17C3',TFP%GOES17C3)
+  CALL PRINT_TFP('GOES17 ABI CH 4..........','TFP_GOES17C4',TFP%GOES17C4)
+  CALL PRINT_TFP('GOES17 ABI CH 5..........','TFP_GOES17C5',TFP%GOES17C5)
+  CALL PRINT_TFP('GOES17 ABI CH 6..........','TFP_GOES17C6',TFP%GOES17C6)
+  CALL PRINT_TFP('GOES17 ABI CH 7..........','TFP_GOES17C7',TFP%GOES17C7)
+  CALL PRINT_TFP('GOES17 ABI CH 8..........','TFP_GOES17C8',TFP%GOES17C8)
+  CALL PRINT_TFP('GOES17 ABI CH 9..........','TFP_GOES17C9',TFP%GOES17C9)
+  CALL PRINT_TFP('GOES17 ABI CH 10.........','TFP_GOES17C10',TFP%GOES17C10)
   CALL PRINT_TFP('MTSAT 1 IMAGER CH 1......','TFP_MTSAT1C1',TFP%MTSAT1C1)
   CALL PRINT_TFP('MTSAT 1 IMAGER CH 2......','TFP_MTSAT1C2',TFP%MTSAT1C2)
   CALL PRINT_TFP('MTSAT 1 IMAGER CH 3......','TFP_MTSAT1C3',TFP%MTSAT1C3)
   CALL PRINT_TFP('MTSAT 1 IMAGER CH 4......','TFP_MTSAT1C4',TFP%MTSAT1C4)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 1......','TFP_HIMA8C1',TFP%HIMA8C1)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 2......','TFP_HIMA8C2',TFP%HIMA8C2)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 3......','TFP_HIMA8C3',TFP%HIMA8C3)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 4......','TFP_HIMA8C4',TFP%HIMA8C4)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 5......','TFP_HIMA8C5',TFP%HIMA8C5)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 6......','TFP_HIMA8C6',TFP%HIMA8C6)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 7......','TFP_HIMA8C7',TFP%HIMA8C7)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 8......','TFP_HIMA8C8',TFP%HIMA8C8)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 9......','TFP_HIMA8C9',TFP%HIMA8C9)
+  CALL PRINT_TFP('HIMAWARI 8 AHI CH 10.....','TFP_HIMA8C10',TFP%HIMA8C10)
   CALL PRINT_TFP('Mask extra domain........','TFP_MSK' ,TFP%MSK ) 
   DO JVAR=1,JPOSFSU
     WRITE(CLTEXT,FMT='(A22,I2.2,A1)') 'Free surface field nr ',JVAR,'.'
-    WRITE(CLVARN,FMT='(A9,I2.2,A1)') ' TFP_FSU(',JVAR,')'
+    WRITE(CLVARN,FMT='(A8,I2.2,A1)') 'TFP_FSU(',JVAR,')'
     CALL PRINT_TFP(CLTEXT,CLVARN,TFP%FSU(JVAR))
     IF (JVAR == ILIMIT) THEN
       WRITE(UNIT=NULOUT, &
@@ -429,7 +498,10 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_GFP('Relax. deep soil wetness..........','GFP_RDSW ',GFP%RDSW )
   CALL PRINT_GFP('Clim. rel. surf soil wetness......','GFP_CSSW ',GFP%CSSW )
   CALL PRINT_GFP('Clim. rel. deep soil wetness......','GFP_CDSW ',GFP%CDSW )
-  CALL PRINT_GFP('Snow depth........................','GFP_SD   ',GFP%SD   )
+  CALL PRINT_GFP('Clim. surface temperature.........','GFP_CST  ',GFP%CST  )
+  CALL PRINT_GFP('Clim. deep soil temperature ......','GFP_CDST ',GFP%CDST )
+  CALL PRINT_GFP('Clim. Snow depth..................','GFP_CSD  ',GFP%CSD  )
+  CALL PRINT_GFP('Snow depth (multi-layer)..........','GFP_SD   ',GFP%SD   )
   CALL PRINT_GFP('Snow depth tot....................','GFP_SDSL ',GFP%SDSL )
   CALL PRINT_GFP('Surface roughness (*g)............','GFP_SR   ',GFP%SR   )
   CALL PRINT_GFP('Roughness length (*g).............','GFP_BSR  ',GFP%BSR  )
@@ -444,7 +516,7 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_GFP('Lake bottom layer temperature.....','GFP_LBLT ',GFP%LBLT )
   CALL PRINT_GFP('Lake total layer temperature......','GFP_LTLT ',GFP%LTLT )
   CALL PRINT_GFP('Lake shape factor.................','GFP_LSHF ',GFP%LSHF )
-  CALL PRINT_GFP('Lake ice temperature..............','GFP_LICT ',GFP%LICT )    
+  CALL PRINT_GFP('Lake ice temperature..............','GFP_LICT ',GFP%LICT )
   CALL PRINT_GFP('Lake ice depth....................','GFP_LICD ',GFP%LICD )
   CALL PRINT_GFP('percentage of vegetation..........','GFP_VEG  ',GFP%VEG  )
   CALL PRINT_GFP('percentage of land................','GFP_LAN  ',GFP%LAN  )
@@ -491,7 +563,7 @@ IF (NPRINTLEV >=1) THEN
 
   DO JVAR=1,JPOSVX2
     WRITE(CLTEXT,FMT='(A14,I2.2,A9)') 'Extra field n ',JVAR,'.........'
-    WRITE(CLVARN,FMT='(A9,I2.2,A1)') ' GFP_VX2(',JVAR,')'
+    WRITE(CLVARN,FMT='(A8,I2.2,A1)') 'GFP_VX2(',JVAR,')'
     CALL PRINT_GFP(CLTEXT,CLVARN,GFP%VX2(JVAR))
     IF (JVAR == ILIMIT) THEN
       WRITE(UNIT=NULOUT, &
@@ -501,7 +573,7 @@ IF (NPRINTLEV >=1) THEN
   ENDDO
   DO JVAR=1,JPOSFSU
     WRITE(CLTEXT,FMT='(A14,I2.2,A9)') 'Free field nr ',JVAR,'.........'
-    WRITE(CLVARN,FMT='(A9,I2.2,A1)') ' GFP_FSU(',JVAR,')'
+    WRITE(CLVARN,FMT='(A8,I2.2,A1)') 'GFP_FSU(',JVAR,')'
     CALL PRINT_GFP(CLTEXT,CLVARN,GFP%FSU(JVAR))
     IF (JVAR == ILIMIT) THEN
       WRITE(UNIT=NULOUT, &
@@ -675,6 +747,7 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_GFP('NET ECOSYSTEM EXCHANGE OF CO2.....','GFP_NEE  ',GFP%NEE  )
   CALL PRINT_GFP('GROSS PRIMARY PRODUCTION OF CO2...','GFP_GPP  ',GFP%GPP  )
   CALL PRINT_GFP('ECOSYSTEM RESPIRATION OF CO2......','GFP_REC  ',GFP%REC  )
+  CALL PRINT_GFP('ACCU.WETLAND CH4 FLUX.............','GFP_ACH4 ',GFP%ACH4 )
   CALL PRINT_GFP('INST.NET ECOSYSTEM EXCHANGE CO2...','GFP_INEE ',GFP%INEE )
   CALL PRINT_GFP('INST.GROSS PRIMARY PRODUCTION CO2.','GFP_IGPP ',GFP%IGPP )
   CALL PRINT_GFP('INST.ECOSYSTEM RESPIRATION CO2....','GFP_IREC ',GFP%IREC )
@@ -749,7 +822,7 @@ IF (NPRINTLEV >=1) THEN
     ENDDO
   ENDDO
   DO JVAR=1,JPOSEMIS2D
-    WRITE(CLTEXU,FMT='(A24,I3.3,A8)') '2D emission flux nr ',JVAR,'........'
+    WRITE(CLTEXU,FMT='(A20,I3.3,A8)') '2D emission flux nr ',JVAR,'........'
     CALL PRINT_GFP(CLTEXU,'GFP_EMIS2D',GFP%EMIS2D(JVAR) )
     IF (JVAR > ILIMIT) THEN
       WRITE(UNIT=NULOUT, &
@@ -758,7 +831,7 @@ IF (NPRINTLEV >=1) THEN
     ENDIF    
   ENDDO
   DO JVAR=1,JPOSEMIS2DAUX
-    WRITE(CLTEXU,FMT='(A24,I3.3,A8)') '2D emission aux fld nr ',JVAR,'........'
+    WRITE(CLTEXU,FMT='(A23,I3.3,A8)') '2D emission aux fld nr ',JVAR,'........'
     CALL PRINT_GFP(CLTEXU,'GFP_EMIS2DAUX',GFP%EMIS2DAUX(JVAR) )
     IF (JVAR > ILIMIT) THEN
       WRITE(UNIT=NULOUT, &
@@ -964,6 +1037,8 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_GFP('Surf.tot sky direct beam SW rad...','GFP_SDSRP',GFP%SDSRP)
   CALL PRINT_GFP('Cloudy brightness temperature.....','GFP_CLBT ',GFP%CLBT )
   CALL PRINT_GFP('Clear-sky brightness temperature..','GFP_CSBT ',GFP%CSBT )
+  CALL PRINT_GFP('Cloudy reflectance................','GFP_CDRFL ',GFP%CDRFL )
+  CALL PRINT_GFP('Clear-sky reflectance.............','GFP_CRRFL ',GFP%CRRFL )
   CALL PRINT_GFP('Visibility due to water/ice cloud.','GFP_VISICLD',GFP%VISICLD)
   CALL PRINT_GFP('Visibility due to Precipitations..','GFP_VISIHYD',GFP%VISIHYD)
   CALL PRINT_GFP('Maximum of CLWC ..................','GFP_MXCLWC',GFP%MXCLWC)
@@ -984,6 +1059,7 @@ IF (NPRINTLEV >=1) THEN
   CALL PRINT_GFP('Ocean sea surface salinity........','GFP_SSS  ',GFP%SSS  )
   CALL PRINT_GFP('Ocean temperature avg 300m........','GFP_TEM3 ',GFP%TEM3 )
   CALL PRINT_GFP('Ocean salnity avg 300m............','GFP_SAL3 ',GFP%SAL3 )
+  CALL PRINT_GFP('Sea Ice Fraction..................','GFP_XSIC',GFP%XSIC)
 
   DO J=1,NSFXPRE_CNT
     CALL PRINT_GFP ('SURFEX Field......................','GFP_SFXPRE        ',GFP%SFXPRE (J))
@@ -1073,6 +1149,11 @@ ELSE
   ENDDO
 ENDIF
 IF (IERR /= 0) THEN
+  ISIZE=SIZE(TFP_DYNDS)
+  WRITE(NULOUT,*) ' PRE-ABORT PRINT : ISIZE = ',ISIZE
+  DO J=1,ISIZE
+    WRITE(NULOUT,*) ' PRE-ABORT PRINT : J, TFP_DYNDS(J)%CLNAME = ',J,TFP_DYNDS(J)%CLNAME
+  ENDDO
   CALL ABOR1('SUAFN3 : ABOR1 CALLED')
 ENDIF
 
@@ -1105,7 +1186,7 @@ IF (LARPEGEF) THEN
      & CDTEXT,CLNAME, YD%CLNAME, YD%IBITS, YD%INTER, YD%IORDR, &
      & YD%CLPAIR, YD%LLGP, YD%ISF, YD%ZFK, YD%CLNIL  
   ELSE
-    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '','' TYPE NAME  '', &
+    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '',''Structure   '', &
      & 1X,''    %CLNAME     '',1X,''%IBITS'',1X,''%INTER'',1X,''%IORDR'',1X, &
      & ''%CLPAIR'',1X,''%LLGP'',1X,''%ISF'',1X,''%ZFK'',1X,''%CLNIL'')')  
   ENDIF
@@ -1119,7 +1200,7 @@ ELSE
        & YD%CLPAIR, YD%LLGP, YD%ISF, YD%ZFK, YD%CLNIL  
     ENDIF
   ELSE
-    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '','' TYPE NAME  '', &
+    WRITE(UNIT=NULOUT,FMT='(3X,''Description'',12X,'' : '',''Structure   '', &
      & 1X,''%IGRIB'',1X,''%IBITS'',1X,''%INTER'',1X,''%IORDR'',1X,           &
      & ''%CLPAIR'',1X,''%LLGP'',1X,''%ISF'',1X,''%ZFK'',1X,''%CLNIL'')')  
   ENDIF
@@ -1130,5 +1211,3 @@ IF (LHOOK) CALL DR_HOOK('SUAFN3:PRINT_TFP',1,ZHOOK_HANDLE)
 END SUBROUTINE PRINT_TFP
 
 END SUBROUTINE SUAFN3
-
-

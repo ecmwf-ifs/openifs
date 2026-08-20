@@ -1,3 +1,38 @@
+
+! (C) Copyright 2001- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**   *SURF_INQ*  Extract information from the surface package
+
+!     Purpose.
+!     --------
+!     Interface routine for extracting information from the surf pack.
+
+!**   Interface.
+!     ----------
+!     CALL SURFINQ(...)
+!     Explicit arguments : All arguments are optional.
+!     --------------------
+
+!     Method.
+!     -------
+
+!     Externals: none
+
+!     Author.
+!     -------
+!        JF Estrade *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 03-10-01
+!        G. Balsamo : Adding soil type relative information
+!     ------------------------------------------------------------------
+
 INTERFACE
 SUBROUTINE SURF_INQ(YDSURF,&
                   & KNVTYPES,KNSOTY,PRRCSOIL,PRWSAT,PRWCAP,PRWPWP,PRQWEVAP,PRQWSBCR,&
@@ -10,13 +45,6 @@ SUBROUTINE SURF_INQ(YDSURF,&
                   & LD_LESNML, RLEVSNMIN, RLEVSNMAX,&
                   & RLEVSNMIN_GL, RLEVSNMAX_GL )
 
-! (C) Copyright 2001- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**   *SURF_INQ*  Extract information from the surface package
 
 !     Purpose.

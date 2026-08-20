@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# (C) Copyright 2021- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation nor
+# does it submit to any jurisdiction.
+
+set -e
+
+while test $# -gt 0; do
+
+  case "$1" in
+    --) # end of ECWAM_LAUNCH_ARGS
+      shift
+      break
+      ;;
+    --*)
+      ECWAM_LAUNCH_ARGS="${ECWAM_LAUNCH_ARGS} $1"
+      shift # past argument
+      ;;
+    -n|-np)
+      ECWAM_LAUNCH_NTASKS="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -c|-nt)
+      ECWAM_LAUNCH_NTHREADS="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    *)    # unknown option, treat as end
+      break
+      ;;
+  esac
+done
+
+command_exists() {
+  type "$1" &> /dev/null ;
+}
+
+if [ -n "${ECWAM_LAUNCH_NTHREADS}" ]; then
+  echo + export OMP_NUM_THREADS=${ECWAM_LAUNCH_NTHREADS}
+  export OMP_NUM_THREADS=${ECWAM_LAUNCH_NTHREADS}
+fi
+
+### SLURM
+if command_exists srun ; then
+
+  LAUNCH="srun"
+
+  if [[ ${ECPLATFORM:-unset} == "hpc2020" ]]; then
+    if [ -z "${SLURM_JOB_QOS}" ]; then
+      ECWAM_LAUNCH_ARGS="${ECWAM_LAUNCH_ARGS} -q np"
+    fi
+  fi
+
+  if [ -n "${ECWAM_LAUNCH_ARGS}" ]; then
+    LAUNCH="${LAUNCH} ${ECWAM_LAUNCH_ARGS}"
+  fi
+  if [ -n "${ECWAM_LAUNCH_NGPUS}" ]; then
+    LAUNCH="${LAUNCH} --gres=gpu:${ECWAM_LAUNCH_NGPUS}"
+  fi
+  if [ -z "${ECWAM_LAUNCH_NTASKS}" ]; then
+    LAUNCH="${LAUNCH} -n 1"
+  else
+    LAUNCH="${LAUNCH} -n ${ECWAM_LAUNCH_NTASKS}"
+  fi
+  if [ -n "${OMP_NUM_THREADS}" ]; then
+    LAUNCH="${LAUNCH} -c ${OMP_NUM_THREADS}"
+  fi
+
+  SLURM_EXPORT_ENV=ALL # Required to propagate environment variables to srun'd program
+
+else
+
+# Use `mpirun -np 1` on macOS to avoid a SIGILL in Debug builds
+if [[ $(uname) == "Darwin" ]]; then
+  ECWAM_LAUNCH_SERIAL_MPI=1
+fi
+
+if [ -n "${ECWAM_LAUNCH_SERIAL_MPI}" ]; then
+  ECWAM_LAUNCH_NTASKS=${ECWAM_LAUNCH_NTASKS:-1}
+fi
+
+### Serial when SLURM is not found
+  if [ -z "${ECWAM_LAUNCH_NTASKS}" ]; then
+    unset LAUNCH
+
+### mpirun/mpiexec
+  elif command_exists mpirun; then
+    LAUNCH="mpirun ${ECWAM_LAUNCH_ARGS} -np ${ECWAM_LAUNCH_NTASKS}"
+  elif command_exists mpiexec; then
+    LAUNCH="mpiexec ${ECWAM_LAUNCH_ARGS} -n ${ECWAM_LAUNCH_NTASKS}"
+  else
+    echo "No MPI driver found (mpirun,mpiexec,aprun,srun)"
+    exit 1
+  fi
+fi
+
+echo + ${LAUNCH} "$@"
+echo
+${LAUNCH} "$@"
+

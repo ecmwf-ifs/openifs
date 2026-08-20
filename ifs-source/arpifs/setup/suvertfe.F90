@@ -54,13 +54,12 @@ SUBROUTINE SUVERTFE(YDGEOMETRY)
 !      T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
 !      K. Yessad (July 2014): Move some variables.
 !      J. Vivoda and P. Smolikova (Sep 2017): new options for VFE-NH
+!      P.Smolikova (Sep 2020): VFE pruning.
 !     ------------------------------------------------------------------
 
 USE GEOMETRY_MOD , ONLY : GEOMETRY
-USE YOMDIMV  , ONLY : TDIMV
 USE PARKIND1 , ONLY : JPRB ,JPIM
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMMP0   , ONLY : NPRINTLEV, LOUTPUT
 USE YOMLUN   , ONLY : NULERR
 
 !     ------------------------------------------------------------------
@@ -131,9 +130,7 @@ IF(YDCVER%LVERTFE) THEN
     ! setup B-spline finite element scheme
     CALL SUNH_VERTFESPLINE(YDGEOMETRY)
     IF (YDGEOMETRY%LNONHYD_GEOM) THEN
-      IF ((YDCVER%LVFE_LAPL.AND.YDCVER%LVFE_LAPL_HALF).OR.YDCVER%LVFE_DELNHPRE) THEN
-        CALL SUNH_VERTFESPLINE_HALF(YDGEOMETRY)
-      ENDIF
+      CALL SUNH_VERTFESPLINE_HALF(YDGEOMETRY)
       IF (YDCVER%LVFE_GW.OR.YDCVER%LVFE_GW_HALF) THEN
         CALL SUNH_VERTFESPLINE_INV(YDGEOMETRY)
       ENDIF

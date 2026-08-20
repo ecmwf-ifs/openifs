@@ -6,7 +6,7 @@
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction
 
-SUBROUTINE SUCUMF2(YDSTA,YDDIMV,YDRIP,YDCUMFS,YDECUMF2,KSMAX)
+SUBROUTINE SUCUMF2(YDSTA,YDDIMV,YDRIP,YDCUMFS,YDECUMF2)
 
 !     THIS ROUTINE DEFINES DISPOSABLE PARAMETERS FOR 
 !     THE LINEARIZED MASSFLUX SCHEME
@@ -31,6 +31,7 @@ SUBROUTINE SUCUMF2(YDSTA,YDDIMV,YDRIP,YDCUMFS,YDECUMF2,KSMAX)
 !     P. Lopez, ECMWF Feb 2019   Retuned shallow convection entrainment coefficients
 !                                Decrease RMFCFL2 for time steps < 900 seconds.
 !     P. Lopez, ECMWF Dec 2020   Added entrainment scaling ENTSTPC32 for PBL height computation.
+!     P. Bechtold,ECMWF Dec 2022 Cleaning obsolete KSMAX dependency
 !
 !---------------------------------------------------------------------
 
@@ -52,7 +53,6 @@ TYPE(TDIMV)         , INTENT(IN)   :: YDDIMV
 TYPE(TRIP)          , INTENT(IN)   :: YDRIP
 TYPE(TCUMFS) ,TARGET, INTENT(INOUT):: YDCUMFS
 TYPE(TECUMF2),TARGET, INTENT(INOUT):: YDECUMF2
-INTEGER(KIND=JPIM)  , INTENT(IN)   :: KSMAX
 
 INTEGER(KIND=JPIM) :: JLEV
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
@@ -176,10 +176,6 @@ RTAUMEL2=5._JPRB*3.6E3_JPRB*0.66_JPRB
 
 RTAU2=3600.0_JPRB
 
-IF (KSMAX > 320) RTAU2=1200.0_JPRB
-IF (KSMAX > 512) RTAU2=600.0_JPRB
-
-!RTAU2=1.0_JPRB+0.33_JPRB*RPLRADI*REAL(800)/REAL(KSMAX)
 RTAU2=0.33_JPRB*RPLRADI
 !RTAU2=MIN(3.0_JPRB,RTAU2)
 

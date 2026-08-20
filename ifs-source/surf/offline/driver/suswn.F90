@@ -1,4 +1,3 @@
-SUBROUTINE SUSWN (KTSW, KSW)
 ! (C) Copyright 1988- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,57 @@ SUBROUTINE SUSWN (KTSW, KSW)
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SUSW*   - INITIALIZE COMMON YOESW
+
+!     PURPOSE.
+!     --------
+!           INITIALIZE YOESW, THE COMMON THAT CONTAINS COEFFICIENTS
+!           NEEDED TO RUN THE SHORTWAVE RADIATION SUBROUTINES
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *SUSW
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!        NONE
+
+!        IMPLICIT ARGUMENTS :
+!        --------------------
+!        COMMON YOESW
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS
+
+!     AUTHOR.
+!     -------
+!        JEAN-JACQUES MORCRETTE *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 88-12-15
+!        97-04-16 JJ Morcrette  2 and 4 interval spectral resolution
+!        00-10-24 JJ Morcrette  sea-ice albedo revisited
+!        00-12-14 JJ Morcrette 
+!               and Ph.Dubuisson B.Bonnel 6 spectral interval resolution
+!        01-04-17 Ph.Dubuisson, B.Bonnel, JJ.Morcrette 6 sp.int.resolu'n
+!        01-06-28 B.Bonnel, JJ.Morcrette, Ph.Dubuisson  Rayleigh (2/4/6)
+!        01-11-05 Ph.Dubuisson, JJMorcrette (new 2 intervals for TL/AD)
+!        03-04-24 JJ Morcrette  SRTM with 14 spectral intervals
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+
+!     ------------------------------------------------------------------
+
+SUBROUTINE SUSWN (KTSW, KSW)
 
 !**** *SUSW*   - INITIALIZE COMMON YOESW
 

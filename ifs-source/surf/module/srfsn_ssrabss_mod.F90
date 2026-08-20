@@ -1,3 +1,64 @@
+
+! (C) Copyright 2020- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFSN_SSRABSS* - Shortwave radiation absorption by snow (simplified)
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES SW ABSORBED BY EACH SNOWPACK LAYER 
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_SSRABSS* IS CALLED FROM *SRFSN_DRIVER*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF POINTS LON
+!    *KLEVSN*     NUMBER OF MAX VERTICAL SNOW LAYERS
+
+
+!     INPUT PARAMETERS (REAL):
+!    *PFRTI*      TILE FRACTION                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LLNOSNOW*     SNOW/NO-SNOW MASK (TRUE IF NO-SNOW)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!     
+!    *PSSNM1M*    SNOW WATER EQUIVALENT T-1                     kg/m**2
+!    *PRSNM1M*    SNOW DENSITY          T-1                     kg/m**3
+!    *PSSRFLTI*   TILED SHORTWAVE RADIATION AT SURFACE           W/m**2
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PSNOTRS*        SOLAR RADIATION ABSORBED BY EACH SNOW LAYER W/m**2
+
+
+!     METHOD.
+!     -------
+          
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          
+
+!     Modifications:
+!     Original   G. Arduini      ECMWF     01/07/2020
+
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_SSRABSS_MOD
 CONTAINS
 SUBROUTINE SRFSN_SSRABSS(KIDIA,KFDIA,KLON,KLEVSN,&
@@ -14,14 +75,6 @@ USE YOS_SOIL , ONLY : TSOIL
 USE YOS_CST  , ONLY : TCST
 
 USE ABORT_SURF_MOD
-
-! (C) Copyright 2020- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SRFSN_SSRABSS* - Shortwave radiation absorption by snow (simplified)
 !     PURPOSE.
@@ -102,6 +155,7 @@ REAL(KIND=JPRB)    :: ZSNEXTCOEFF(KLON,KLEVSN)
 REAL(KIND=JPRB)    :: ZSNOTRSTMP(KLEVSN+1)
 REAL(KIND=JPRB)    :: ZSNSOABS(KLON)
 REAL(KIND=JPRB)    :: ZFRSN(KLON)
+REAL(KIND=JPRB)    :: ZFRSN_TOT
 REAL(KIND=JPRB)    :: ZEPSILON
 INTEGER(KIND=JPIM) :: KLACT
 INTEGER(KIND=JPIM) :: KSNTILES
@@ -138,6 +192,11 @@ DO JT=1,KSNTILES
     ELSE
   
   !! Preparation
+      IF ((PFRTI(JL,5)+PFRTI(JL,7))>YDSOIL%RFRTINY) THEN
+        ZFRSN_TOT=PFRTI(JL,5)+PFRTI(JL,7)
+      ELSE
+        ZFRSN_TOT=YDSOIL%RFRTINY
+      ENDIF
       DO JK=1,KLEVSN
         IF (PSSNM1M(JL,JK) > ZEPSILON ) KLACT=JK
       ENDDO
@@ -146,8 +205,8 @@ DO JT=1,KSNTILES
       ZSNQRAD(JL,1:KLEVSN)=0._JPRB
   
       DO JK=1, KLACT
-        IF (PSSNM1M(JL,JK)/PRSNM1M(JL,JK)<RDSNMAX)THEN
-           ZDSN(JK) = PSSNM1M(JL,JK)/PRSNM1M(JL,JK)
+        IF (PSSNM1M(JL,JK)/(ZFRSN_TOT*PRSNM1M(JL,JK))<RDSNMAX)THEN
+           ZDSN(JK) = PSSNM1M(JL,JK)/(ZFRSN_TOT*PRSNM1M(JL,JK))
         ELSE
            ZDSN(JK) = RDSNMAX
         ENDIF

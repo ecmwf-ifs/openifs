@@ -50,28 +50,28 @@ PUBLIC TFPFIELDS, ALLOC_FPFIELDS, DEALLOC_FPFIELDS, PRINT_FPFIELDS
 !     RFP3PV : post-processing potential vorticity levels
 !     RFP3I  : post-processing temperature levels
 !     RFP3F  : post-processing height (above sea) levels
-!     NRFP3S : post-processing eta levels (CONF. 927 only)
+!     NRFP3S : post-processing eta levels
 
 ! Number of fields
-!     NFP3DF : useful dimension of CFP3DF
-!     NFP3DFS: useful dimension of MFP3DFS
-!     NFP3DFH: useful dimension of MFP3DFH
-!     NFP3DFT: useful dimension of MFP3DFT
-!     NFP3DFV: useful dimension of MFP3DFV
-!     NFP3DFP: useful dimension of MFP3DFP
-!     NFP3DFI: useful dimension of MFP3DFI
-!     NFP3DFF: useful dimension of MFP3DFF
-!     NFP2DF : useful dimension of CFP2DF
-!     NFPPHY : useful dimension of CFPPHY
-!     NFPCFU : useful dimension of CFPCFU
-!     NFPXFU : useful dimension of CFPXFU
-!     NFP3P  : useful dimension of RFP3P
-!     NFP3H  : useful dimension of RFP3H
-!     NFP3I  : useful dimension of RFP3I
-!     NFP3F  : useful dimension of RFP3F
-!     NFP3TH : useful dimension of RFP3TH
-!     NFP3PV : useful dimension of RFP3PV
-!     NFP3S  : useful dimension of NRFP3S
+!     NFP3DF : actual dimension of CFP3DF
+!     NFP3DFS: actual dimension of MFP3DFS
+!     NFP3DFH: actual dimension of MFP3DFH
+!     NFP3DFT: actual dimension of MFP3DFT
+!     NFP3DFV: actual dimension of MFP3DFV
+!     NFP3DFP: actual dimension of MFP3DFP
+!     NFP3DFI: actual dimension of MFP3DFI
+!     NFP3DFF: actual dimension of MFP3DFF
+!     NFP2DF : actual dimension of CFP2DF
+!     NFPPHY : actual dimension of CFPPHY
+!     NFPCFU : actual dimension of CFPCFU
+!     NFPXFU : actual dimension of CFPXFU
+!     NFP3P  : actual dimension of RFP3P
+!     NFP3H  : actual dimension of RFP3H
+!     NFP3I  : actual dimension of RFP3I
+!     NFP3F  : actual dimension of RFP3F
+!     NFP3TH : actual dimension of RFP3TH
+!     NFP3PV : actual dimension of RFP3PV
+!     NFP3S  : actual dimension of NRFP3S
 
 TYPE TFPFIELDS
 

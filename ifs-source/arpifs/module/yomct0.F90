@@ -370,6 +370,8 @@ LOGICAL :: LINFLF1
 
 ! * IFS code called from OOPS
 LOGICAL :: L_OOPS
+! * print extra norms information at various algorithmic points, has runtime cost
+LOGICAL :: L_OOPS_VERBOSE_NORMS
 
 ! * ECMWF / METEO-FRANCE:
 LOGICAL :: LECMWF

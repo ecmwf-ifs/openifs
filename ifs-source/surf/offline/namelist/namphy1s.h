@@ -7,6 +7,8 @@
 ! nor does it submit to any jurisdiction.
 
 !     ------------------------------------------------------------------
+
+!     ------------------------------------------------------------------
 NAMELIST/NAMPHY/ LERADS   ,LESICE   ,LESURF   ,LEVDIF, &
  & LEOCWA,LEOCCO,LEOCSA, LEVGEN, LESSRO, LESN09, &
  & LEFLAKE, LEOCML,LELAIV, &

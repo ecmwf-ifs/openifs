@@ -108,7 +108,7 @@ prognostic:
   comment: 2-d prognostic fields for CANARI
   variables: []
 
-# List of diagnsotic field groups
+# List of diagnostic field groups
 diagnostic:
 - type: group
   name: VARSF
@@ -170,6 +170,71 @@ diagnostic:
   - {name: NUDM, comment: nudging mask}
   - {name: EMIS2D, array: true, comment: 2D emission fields for composition}
   - {name: EMIS2DAUX, array: true, comment: 2D emission auxiliary fields for composition}
+
+- type: group
+  name: VCLIH
+  short: VH
+  dimension: 2
+  comment: convective cloud diagnostic fields
+  variables:
+  - {name: TCCH, comment: total convective cloudiness}
+  - {name: SCCH, comment: convective cloud summit}
+  - {name: BCCH, comment: convective cloud base}
+  - {name: PBLH, comment: PBL height}
+  - {name: SPSH, comment: variable for prognostic convection scheme (ALARO)}
+  - {name: QSH, comment: surface moisture historic variable (used by TOUCANS)}
+  - {name: PCL}
+  - {name: PSL}
+  - {name: PCN}
+  - {name: PSN}
+  - {name: EVA}
+
+- type: group
+  name: VCLIK
+  short: VK
+  dimension: 2
+  comment: Convective cloud pseudo-historic fields
+  variables:
+  - {name: UDGRO, comment: ud top position (accsu)}
+
+- type: group
+  name: VCLIP
+  short: VP
+  dimension: 2
+  comment: deep soil diagnostic fields
+  variables:
+  - {name: TPC, comment: climatological deep layer temperature}
+  - {name: WPC, comment: climatological deep layer moisture}
+
+- type: group
+  name: VCLIV
+  short: VV
+  dimension: 2
+  comment: vegetation diagnostic fields
+  variables:
+  - {name: ARG, comment: silt percentage within soil}
+  - {name: SAB, comment: percentage of sand within the soil}
+  - {name: D2, comment: soil depth}
+  - {name: IVEG, comment: type of vegetation}
+  - {name: RSMIN, comment: stomatal minimum resistance}
+  - {name: LAI, comment: leaf area index}
+  - {name: HV, comment: resistance to evapotranspiration}
+  - {name: Z0H, comment: gravity * roughness length for heat}
+  - {name: ALS, comment: albedo of bare ground}
+  - {name: ALV, comment: albedo of vegetation}
+
+- type: group
+  name: VCLIA
+  short: VA
+  dimension: 2
+  comment: aerosol diagnostic fields
+  variables:
+  - {name: SEA, comment: aerosol sea}
+  - {name: LAN, comment: aerosol land}
+  - {name: SOO, comment: aerosol soot}
+  - {name: DES, comment: aerosol desert}
+  - {name: SUL, comment: aerosol sulfate}
+  - {name: VOL, comment: aerosol volcano}
 
 - type: group
   name: VCLIN
@@ -389,6 +454,8 @@ diagnostic:
   variables:
   - {name: CLBT, comment: Cloudy brightness temperature}
   - {name: CSBT, comment: Clear-sky brightness temperature}
+  - {name: CDRFL, comment: Cloudy reflectance}
+  - {name: CRRFL, comment: Clear-sky reflectance}
 
 - type: group
   name: WAVES
@@ -418,6 +485,8 @@ diagnostic:
   - {name: ZIL, comment: ZI/L passed to the wave model (used for gustiness in WAM).}
   - {name: CIF, comment: Sea ice fraction passed to the wave model (WAM).}
   - {name: CLK, comment: Lake cover passed to the wave model (WAM).}
+  - {name: USTRW, comment: Ocean surface stress U-component passed to the wave model (WAM).}
+  - {name: VSTRW, comment: Ocean surface stress V-component passed to the wave model (WAM).}
   - {name: UCURW, comment: Ocean current    U-component passed to the wave model (WAM).}
   - {name: VCURW, comment: Ocean current    V-component passed to the wave model (WAM).}
 
@@ -429,8 +498,57 @@ diagnostic:
   variables: []
 
 - type: group
+  name: VEXTRDI
+  short: DI
+  dimension: 3
+  comment: targeted 3-d diagnostic fields
+  variables: 
+  - {name: XEDR, comment: Eddy diffusivity rate}
+
+- type: group
+  name: VPRECIP
+  short: XP
+  dimension: 3
+  comment: 3-d diagnostic fields
+  variables: 
+  - {name: PRECIP, comment: Diagnostic of precipitations type}
+
+- type: group
+  name: VPRECIP2
+  short: XP2
+  dimension: 3
+  comment: 3-d diagnostic fields
+  variables: 
+  - {name: PRECIP2, comment: Diagnostic of precipitations type}
+
+- type: group
   name: VEXTR2
   short: X2
   dimension: 2
   comment: extra 2-d diagnostic fields
   variables: []
+
+- type: group
+  name: SFORC
+  short: SFO
+  dimension: 2
+  comment: Surface forcing for 1D model (MUSC)
+  variables: []
+
+- type: group
+  name: SFLUX
+  short: SFL
+  dimension: 2
+  comment: Surface flux for EDKF
+  variables: []
+
+- type: group
+  name: VO3ABC
+  short: VC
+  dimension: 2
+  comment: A,B and C (Climatological ozone profiles) diagnostic fields
+  variables: 
+  - {name: A, comment: A climatological ozone profile}
+  - {name: B, comment: B climatological ozone profile}
+  - {name: C, comment: C climatological ozone profile}
+

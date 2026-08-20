@@ -65,19 +65,14 @@ SUBROUTINE GPRH(LDWMORH,KPROMA,KSTART,KPROF,KFLEV,&
 !     MODIFICATIONS.
 !     --------------
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK    ,DR_HOOK, JPHOOK
-USE YOMCST   , ONLY : RV       ,RCPV     ,RETV     ,RCW      ,&
- &                    RCS      ,RLVTT    ,RLSTT    ,RTT      ,RALPW    ,&
- &                    RBETW    ,RGAMW    ,RALPS    ,RBETS    ,RGAMS    ,&
- &                    RALPD    ,RBETD    ,RGAMD  
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMPHY   , ONLY : YRPHY
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                    R4IES    ,R5LES    ,R5IES    ,R5ALVCP ,R5ALSCP  ,&
- &                    RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE   ,RTICECU,&
- &                    RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of included functions. REK.
 USE YOMCT0   , ONLY : LECMWF
 
 !     ------------------------------------------------------------------
@@ -113,7 +108,17 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('GPRH',0,ZHOOK_HANDLE)
-ASSOCIATE(LNEIGE=>YRPHY%LNEIGE)
+ASSOCIATE(LNEIGE=>YRPHY%LNEIGE, &
+ & RCPV=>YDCST%RCPV, RETV=>YDCST%RETV, RCW=>YDCST%RCW, RCS=>YDCST%RCS, RLVTT=>YDCST%RLVTT, &
+ & RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, RALPW=>YDCST%RALPW, RBETW=>YDCST%RBETW, &
+ & RGAMW=>YDCST%RGAMW, RALPS=>YDCST%RALPS, RBETS=>YDCST%RBETS, RGAMS=>YDCST%RGAMS, &
+ & RALPD=>YDCST%RALPD, RBETD=>YDCST%RBETD, RGAMD=>YDCST%RGAMD, RV=>YDCST%RV, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, &
+ & R4IES=>YDTHF%R4IES, R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, &
+ & R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, RALSDCP=>YDTHF%RALSDCP, &
+ & RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, &
+ & RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R)
+
 IF (PRESENT(LDSONNTAG)) THEN
   LLSONNTAG=LDSONNTAG
 ELSE

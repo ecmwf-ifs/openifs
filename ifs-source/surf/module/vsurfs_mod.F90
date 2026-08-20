@@ -1,21 +1,3 @@
-MODULE VSURFS_MOD
-CONTAINS
-SUBROUTINE VSURFS(KIDIA,KFDIA,KLON,KLEVS,KTILE,&
- & KTVL,KTVH,&
- & PLAIL, PLAIH, &
- & PTMLEV, PQMLEV  ,PAPHMS,&
- & PTSKM1M,PWSAM1M,PTSAM1M,KSOTY,&
- & PSRFD ,PRAQ  ,&
- & YDCST ,YDVEG ,YDSOIL,&
- & PQSAM ,PQS   ,PDQS  ,&
- & PWETB ,PCPTS ,PWETL, PWETH, PWETHS)
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_THF  , ONLY : R4LES, R5LES, R2ES, R4IES,  R3LES, R3IES, R5IES, RVTMP2
-USE YOS_CST  , ONLY : TCST
-USE YOS_VEG  , ONLY : TVEG
-USE YOS_SOIL , ONLY : TSOIL
 
 ! (C) Copyright 1990- ECMWF.
 !
@@ -40,6 +22,100 @@ USE YOS_SOIL , ONLY : TSOIL
 !                                computation of its TL/AD versions
 !     G. Balsamo     01-12-2006  Add soil type
 !     S. Boussetta/G.Balsamo May 2009 Add lai
+!     S. Boussetta     21/06/2022   Added Ronda (Ronda et al. 2002, J. App. Met.) Soil moisture stress function
+!     I. Ayan-Miguez   July 2023    Added PSSDP2 and PSSDP3 objects for spatially distributed parameters
+
+!     PURPOSE
+!     -------
+
+!     PREPARE SURFACE BOUNDARY CONDITION FOR Q AND T, E.G. FRACTIONAL
+!     SURFACE COVER (SNOW AND VEGETATION), SATURATION SPECIFIC HUMIDITY
+!     AT THE SURFACE, RELATIVE HUMIDITY OVER BARE LAND AND THE STOMATAL
+!     RESISTANCE.
+
+!     INTERFACE
+!     ---------
+
+!     *VSURF* IS CALLED BY *SURFEXCDRIVER*
+
+!     INPUT PARAMETERS (INTEGER):
+
+!     *KIDIA*        START POINT
+!     *KFDIA*        END POINT
+!     *KLON*         NUMBER OF GRID POINTS PER PACKET
+!     *KLEVS*        NUMBER OF SOIL LAYERS
+!     *KTILE*        TILE INDEX
+!     *KTVL*         VEGETATION TYPE FOR LOW VEGETATION FRACTION
+!     *KTVH*         VEGETATION TYPE FOR HIGH VEGETATION FRACTION
+!     *PLAIL*        LAI OF LOW VEGETATION
+!     *PLAIH*        LAI OF HIGH VEGETATION
+!     *KSOTY*        SOIL TYPE (1-7)
+
+!     INPUT PARAMETERS (REAL):
+
+!     *PTMLEV*      TEMPERATURE AT T-1, lowest model level
+!     *PQMLEV*      SPECIFIC HUMIDITY AT T-1, lowest model level
+!     *PAPHMS*      PRESSURE AT T-1, surface
+!     *PTSKM1M*      SURFACE TEMPERATURE
+!     *PWSAM1M*      SOIL MOISTURE ALL LAYERS                   M**3/M**3
+!     *PTSAM1M*      SOIL TEMPERATURE ALL LAYERS  
+!     *PSRFD*        DOWNWARD SHORT WAVE RADIATION FLUX AT SURFACE
+!     *PRAQ*         PRELIMINARY AERODYNAMIC RESISTANCE
+
+!     OUTPUT PARAMETERS (REAL):
+
+!     *PQSAM*        SPECIFIC HUMIDITY AT THE SURFACE
+!     *PQS*          SATURATION Q AT SURFACE
+!     *PDQS*         DERIVATIVE OF SATURATION Q-CURVE AT SURFACE T
+!     *PWETB*        BARE SOIL RESISTANCE
+!     *PCPTS*        DRY STATIC ENRGY AT SURFACE
+!     *PWETL*        CANOPY RESISTANCE LOW VEGETATION
+!     *PWETH*        CANOPY RESISTANCE HIGH VEGETATION, SNOW FREE
+!     *PWETHS*       CANOPY RESISTANCE HIGH VEGETATION WITH SNOW
+
+!     METHOD
+!     ------
+
+!     SEE DOCUMENTATION
+
+!     ------------------------------------------------------------------
+
+MODULE VSURFS_MOD
+CONTAINS
+SUBROUTINE VSURFS(KIDIA,KFDIA,KLON,KLEVS,KTILE,&
+ & KTVL,KTVH,&
+ & PLAIL, PLAIH, &
+ & PTMLEV, PQMLEV  ,PAPHMS,&
+ & PTSKM1M,PWSAM1M,PTSAM1M,KSOTY,&
+ & PSRFD ,PRAQ  ,&
+ & YDCST ,YDVEG ,YDSOIL,&
+ & PQSAM ,PQS   ,PDQS  ,&
+ & PWETB ,PCPTS ,PWETL, PWETH, PWETHS)
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_THF  , ONLY : R4LES, R5LES, R2ES, R4IES,  R3LES, R3IES, R5IES, RVTMP2
+USE YOS_CST  , ONLY : TCST
+USE YOS_VEG  , ONLY : TVEG
+USE YOS_SOIL , ONLY : TSOIL
+
+
+!     ------------------------------------------------------------------
+
+!**   *VSURFS* - PREPARES SURFACE BOUNDARY CONDITION FOR T AND Q
+
+!     DERIVED FROM VDIFF (CY34) BY
+!     A.C.M. BELJAARS       E.C.M.W.F.    18-1-90
+!     Modified P.VITERBO AND A.C.M. BELJAARS  E.C.M.W.F.    16-3-93
+!     Modified ACM Beljaars  26-03-99  Tiling of the surface
+!     P. Viterbo     24-05-2004     Change surface units
+!     P. Viterbo ECMWF 12/05/2005 Externalize SURF
+!                     (based on VDFSURF)
+!     M. Janiskova   14-02-2006  Code re-organization for efficient 
+!                                computation of its TL/AD versions
+!     G. Balsamo     01-12-2006  Add soil type
+!     S. Boussetta/G.Balsamo May 2009 Add lai
+!     S. Boussetta     21/06/2022   Added Ronda (Ronda et al. 2002, J. App. Met.) Soil moisture stress function
 
 !     PURPOSE
 !     -------
@@ -136,7 +212,7 @@ REAL(KIND=JPRB) ::      ZLIQ(KLON,KLEVS)
 INTEGER(KIND=JPIM) :: JK, JL, JS
 
 REAL(KIND=JPRB) ::   &
- & ZCOR, ZEPSF3, ZF, ZF1H, ZF1L, ZF2H, ZF2L, ZF2B, &
+ & ZCOR, ZEPSF3, ZF, ZF1H, ZF1L, ZF2H, ZF2L, ZF2B,ZF21H, ZF21L, ZF21B, &
  & ZF3H, ZF3L, ZHSTRH, ZHSTRL, ZLAIH, ZLAIL, &
  & ZQSAIR, ZROOT1H, ZROOT1L, ZROOT2H, ZROOT2L, &
  & ZROOT3H, ZROOT3L, ZROOT4H, ZROOT4L, ZRSMINH, &
@@ -274,15 +350,18 @@ IF (KTILE  ==  4) THEN
        ZF2L=RCEPSW
        ZF2H=RCEPSW
     ELSE
-       ZF2L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
-       ZF2H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
+       ZF21L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
+       ZF21H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
+       ZF2L=2_JPRB*ZF21L-(ZF21L*ZF21L)
+       ZF2H=2_JPRB*ZF21H-(ZF21H*ZF21H)
     ENDIF
 
 !    ZF2L=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTL-ZWPWP)*ZQWEVAP))
 !    ZF2H=MAX(RCEPSW,MIN(1.0_JPRB,(ZWROOTH-ZWPWP)*ZQWEVAP))
 
 
-    ZF2B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+    ZF21B=MAX(RCEPSW,MIN(1.0_JPRB,(ZLIQ(JL,1)-ZWPWP)*ZQWEVAP))
+    ZF2B=2_JPRB*ZF21B-(ZF21B*ZF21B)
 
 !           radiation stress function (proposed by Alan Betts): ZF1 
     ZSRFL=PSRFD(JL)/250._JPRB

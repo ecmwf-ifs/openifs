@@ -1,3 +1,82 @@
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!**** *SRFSNS_LWIMP* - CONTAINS SNOW PARAMETRIZATION
+!
+!     PURPOSE.
+!     --------
+!          COMPUTES CHANGES IN SNOW TEMPERATURE
+
+!**   INTERFACE.
+!     ----------
+!          *SRFSN_SLWIMP* IS CALLED FROM *SURFTSTPS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PSSNM1M*    SNOW MASS (per unit area)                    kg/m**2/s
+!    *PTSNM1M*    SNOW TEMPERATURE                               K
+!    *PRSNM1M*    SNOW DENSITY                                 KG/M3
+!    *PTSAM1M*    SOIL TEMPERATURE                               K
+!    *PHLICEM1M*  LAKE ICE THICKNESS                             m
+!    *PSSRFLTI*   NET SHORTWAVE RADIATION AT THE SURFACE,
+!                  FOR EACH TILE                                 W/M**2
+!    *PSLRFL*     NET LONGWAVE  RADIATION AT THE SURFACE         W/M**2
+!    *PFRTI*      TILE FRACTIONS                                 -
+!    *PAHFSTI*    TILE SENSIBLE HEAT FLUX                      W/M**2
+!    *PEVAPTI*    TILE EVAPORATION                             KG/M**2/S
+!    *PSSFC*      CONVECTIVE  SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PSSFL*      LARGE SCALE SNOW FLUX AT THE SURFACE         KG/M**2/S
+!    *PEVAPSNW*   EVAPORATION FROM SNOW UNDER FOREST           KG/M2/S
+!    *PTSFC*      Convective Throughfall at the surface        KG/M**2/S
+!    *PTSFL*      Large Scale Throughfall at the surface       KG/M**2/S
+
+!     PARAMETERS AT T+1 :
+!    *PTSN*       SNOW TEMPERATURE                               K
+
+!    FLUXES FROM SNOW SCHEME:
+!    *PGSN*       GROUND HEAT FLUX FROM SNOW DECK TO SOIL     W/M**2   (#)
+
+! (#) THOSE TWO QUANTITIES REPRESENT THE WHOLE GRID-BOX. IN RELATION
+!       TO THE DOCUMENTATION, THEY ARE PGSN=Fr_s*G_s
+
+!     METHOD.
+!     -------
+!     Based on the original snow (as in ERA-40) with the following updates:
+!     - Liquid water as a diagnostics
+!     - Interception of rainfall
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original:
+!     ---------
+!          Simplified version based on SRFSN_LWIMP
+!     M. Janiskova              E.C.M.W.F.     26-07-2011  
+
+!     Modifications
+!     -------------
+!     I. Ayan-Miguez (BSC) Sep 2023 Added PSSDP3 object for spatially distributed parameters 
+!     ------------------------------------------------------------------
+
 MODULE SRFSN_LWIMPMLS_MOD
 CONTAINS
 SUBROUTINE SRFSN_LWIMPMLS(KIDIA  ,KFDIA  ,KLON   ,PTMST,        &
@@ -18,13 +97,6 @@ USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_FLAKE , ONLY : TFLAKE
 
 #ifdef DOC
-! (C) Copyright 2011- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !**** *SRFSNS_LWIMP* - CONTAINS SNOW PARAMETRIZATION
 !
 !     PURPOSE.

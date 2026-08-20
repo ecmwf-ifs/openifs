@@ -1,3 +1,54 @@
+! (C) Copyright 1995- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SUFCDF  * - ROUTINE TO SETUP THE ATMOSPHERIC FORCING DATA
+!                  FROM NETCDF INPUT
+
+!     PURPOSE.
+!     --------
+!        Initialize the common block YOMFORC
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *SUFCDF*
+
+!     EXPLICIT ARGUMENTS :  
+!     --------------------
+
+!     IMPLICIT ARGUMENTS :
+!     --------------------
+!        COMMON  YOMFORC
+!        COMMON  YOMRIP
+!        COMMON  YOMLUN1S
+!        COMMON  YOMDYN1S
+!        COMMON  YOMGC1S
+!        COMMON  YOMLOG1S
+
+!     METHOD.
+!     -------
+!     EXTERNALS.
+!     ----------
+!        IYMD2C
+
+!     REFERENCE.
+!     ----------
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS
+
+!     AUTHOR.
+!     -------
+!        JEAN-FRANCOIS MAHFOUF AND PEDRO VITERBO  *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 95-03-13
+!        BART VD HURK (KNMI): READING NETCDF INPUT
+!        ANNA AGUSTI-PANAREDA: 2020-11-17 VARIABLE ATMOSPHERIC CO2 FORCING
+
 SUBROUTINE SUFCDF
 
 USE YOMFORC1S, ONLY : JPSTPFC  ,UFI      ,VFI      ,TFI      ,&
@@ -25,13 +76,6 @@ USE YOMHOOK   ,ONLY : DR_HOOK, JPHOOK, LHOOK
 USE MPL_MODULE
 
 #ifdef DOC
-! (C) Copyright 1995- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SUFCDF  * - ROUTINE TO SETUP THE ATMOSPHERIC FORCING DATA
 !                  FROM NETCDF INPUT
@@ -89,7 +133,7 @@ CHARACTER*100 CNAME
 REAL*4,ALLOCATABLE :: ZREAL3(:,:)
 REAL*4,ALLOCATABLE :: ZLATI(:)
 REAL*4,ALLOCATABLE :: ZLONI(:)
-INTEGER ISTART3(3),ICOUNT3(3),IDUMAR(10)
+INTEGER ISTART3(3),ICOUNT3(3),IDUMAR(20)
 INTEGER ISTART2(2),ICOUNT2(2)
 INTEGER NCID,IERR,NIDLON,NILON,NIDLAT,NILAT,NIDTIM,NITIM,NVARID,IDUM,&
      &       NVARS,NDIM,NGATTS,IRECDIM

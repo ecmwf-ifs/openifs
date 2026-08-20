@@ -68,7 +68,14 @@ DO JPERT=1, YDCONF%SM%NACT
     !
     !   loop over random fields for jpert-th perturbation
     !
-    CALL EVOLVE_ARP(   YDSPP%SP_ARP(IRF) )
+    IF (YDCONF%LSPG_SPP) THEN
+    !CALL EVOLVE_ARP_SPG(YDSPP%SP_ARP(IRF), &
+       !&                YDSPP%SP_ARP_SPG(IRF,1), &
+       !&                YDSPP%SP_ARP_SPG(IRF,2), &
+       !&                YDSPP%SP_ARP_SPG(IRF,3))
+    ELSE
+      CALL EVOLVE_ARP(   YDSPP%SP_ARP(IRF) )
+    ENDIF
   ENDDO
 ENDDO
 

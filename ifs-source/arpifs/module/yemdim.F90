@@ -27,7 +27,7 @@ SAVE
 
 !   NBZONG : half-difference between the size of C+I and C zone in meridional direction
 !   NBZONL : half-difference between the size of C+I and C zone in zonal direction
-
+!   NBZONU : number of levels in coupling zone
 !   NNOEXTZL : alternative extension zone (E') zonal dimension
 !   NNOEXTZG : alternative extension zone (E') meridional dimension
 
@@ -49,6 +49,7 @@ TYPE :: TEDIM
 INTEGER(KIND=JPIM) :: NSECPLG
 INTEGER(KIND=JPIM) :: NBZONG
 INTEGER(KIND=JPIM) :: NBZONL
+INTEGER(KIND=JPIM) :: NBZONU
 INTEGER(KIND=JPIM) :: NNOEXTZG
 INTEGER(KIND=JPIM) :: NNOEXTZL
 INTEGER(KIND=JPIM), POINTER :: NISMAX(:) => NULL()

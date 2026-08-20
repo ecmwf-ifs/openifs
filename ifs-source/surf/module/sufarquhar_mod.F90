@@ -1,7 +1,3 @@
-MODULE SUFARQUHAR_MOD
-CONTAINS
-SUBROUTINE SUFARQUHAR(PRVCMAX25,PRHUMREL,PRA1,PRB1,PRG0,PRGM25,PRE_VCMAX,PRE_JMAX,YDVEG,YDAGS,YDAGF)
-!***
 ! (C) Copyright 2021- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -9,6 +5,40 @@ SUBROUTINE SUFARQUHAR(PRVCMAX25,PRHUMREL,PRA1,PRB1,PRG0,PRGM25,PRE_VCMAX,PRE_JMA
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**   *SUFARQUHAR* - DOES THE INITIALISATION OF AGS PARAMETERS
+ 
+!    PURPOSE
+!    -------
+
+!     Initialize model to calculate net assimilation of 
+!     CO2 and stomatal conductance.
+!              
+!     METHOD
+!    ------
+!     Yin et al. (2009) [from model of Farquhar(1980)]
+
+!     EXTERNAL
+!     --------
+!     none
+
+!     REFERENCE
+!     ---------
+
+!     Yin et al. (2009)
+
+!     MODIFICATIONS
+!     -------------
+!     V.Bastrikov,F.Maignan,P.Peylin,A.Agusti-Panareda/S.Boussetta Feb 2021 Add Farquhar photosynthesis model
+
+
+!     -------------------------------------------------------------------------
+!
+
+MODULE SUFARQUHAR_MOD
+CONTAINS
+SUBROUTINE SUFARQUHAR(PRVCMAX25,PRHUMREL,PRA1,PRB1,PRG0,PRGM25,PRE_VCMAX,PRE_JMAX,YDVEG,YDAGS,YDAGF)
+!***
 
 !**   *SUFARQUHAR* - DOES THE INITIALISATION OF AGS PARAMETERS
  

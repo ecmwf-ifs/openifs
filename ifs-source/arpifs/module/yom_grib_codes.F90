@@ -102,9 +102,15 @@ SAVE
 ! NGRBTCSLW - 228088 Total column supercooled liquid water
 ! NGRBSPD  -  80 !! 80 and 81 extra grib code introduced to 
 ! NGRBSVD  -  81 !! introduce extra fields for NH Not MARS codes!!!!!!
-! NGRBALPHA-  80 Alpha control variable
 
 ! NGRB082 to NGRB117 reserved for extra fields. Do not use for permanent post-processed fields
+
+! Codes for Extended control variable
+! NGRBALPHA  - 90 Alpha control variable 
+! NGRBSKTECV - 91 Skin temperatures
+! NGRBSSHECV - 92 Sea surface height
+! NGRBTSLECV - 93 Surface temperatures
+! NGRBSDFORE - 100 Standard deviation of a filtered orography
 
 ! Codes for the lake model
 ! NGRBDL    - 228007 Lake depth
@@ -183,7 +189,7 @@ SAVE
 ! NGRB0DEGL- 228024 Zero deg. level
 ! NGRBM10DEGL- 228020 -10 deg. level
 ! NGRBVISIH- 3020 Visibility ! Changed from 228025 to be WMO compliant
-! NGRBCIN  - 228001 Convective Inhibition
+! NGRBMUCIN  - 228236 Convective Inhibition = MUCIN
 ! NGRBMLCIN50  - 228232 Convective Inhibition for near surface 50 hPa mixed layer parcel
 ! NGRBMLCIN100 - 228234 Convective Inhibition for near surface 100 hPa mixed layer parcel
 ! NGRBKINDEX - 260121 Convective K-Index
@@ -225,6 +231,8 @@ SAVE
 ! NGRBBTMP - 194 Brightness temperature (K)
 ! NGRBCLBT - 260510 Cloudy brightness temperature
 ! NGRBCSBT - 260511 Clear-sky brightness temperature
+! NGRBCDRFL - 260512 Cloudy reflectance
+! NGRBCRRFL - 260513 Clear-sky reflectance
 ! NGRBLGWS - 195 Latitudinal component of gravity wave stress
 ! NGRBMGWS - 196 Meridional component of gravity wave stress
 ! NGRBGWD  - 197 Gravity wave dissipation
@@ -384,7 +392,7 @@ SAVE
 ! NGRBAERPR   - 046 aerosol precursor mixing ratio 
 ! NGRBAERSM   - 047 small aerosols mixing ratio  
 ! NGRBAERLG   - 048 large aerosols mixing ratio ! This is used for the total mixing 
-!                                                 ratio if JB_STRUCT%JB_DATA%NAEROCV=1
+!                                                 ratio if YDML_GCONFIG%YGFL%NAEROCV=1
 ! NGRBAODPR   - 049 aerosol precursor opt.depth 2D
 ! NGRBAODSM   - 050 small aerosols opt. depth   2D
 ! NGRBAODLG   - 051 large aerosols opt. depth   2D
@@ -446,7 +454,8 @@ SAVE
 ! NGRBCO2FIRE   - 210080 CO2 - biomass burning
 ! NGRBCH4F      - 210070 CH4 surface fluxes - aggregated field
 ! NGRBCH4FIRE   - 210082 CH4 - fire emissions
-! NGRBCH4       - 219004 CH4 emissions (wetlands)
+! NGRBICH4WET   - 228104 Instantaenous CH4 emissions (wetlands)
+! NGRBCH4WET    - 228109 Accumulated CH4 emissions (wetlands)
 !
 ! Lightning fields
 ! NGRBLITOTI  - 228050 Instantaneous total lightning flash density
@@ -571,6 +580,10 @@ INTEGER(KIND=JPIM), PARAMETER :: NGRB080   = 80
 INTEGER(KIND=JPIM), PARAMETER :: NGRB081   = 81
 ! LECV
 INTEGER(KIND=JPIM), PARAMETER :: NGRBALPHA= 90
+INTEGER(KIND=JPIM), PARAMETER :: NGRBSKTECV=91
+INTEGER(KIND=JPIM), PARAMETER :: NGRBSSHECV=92
+INTEGER(KIND=JPIM), PARAMETER :: NGRBTSLECV=93
+INTEGER(KIND=JPIM), PARAMETER :: NGRBSDFORE=100
 
 INTEGER(KIND=JPIM), PARAMETER :: NGRBMINXTRA  = 082
 INTEGER(KIND=JPIM), PARAMETER :: NGRBMAXXTRA  = 117
@@ -680,7 +693,7 @@ INTEGER(KIND=JPIM), PARAMETER :: NGRBDSRP = 47
 INTEGER(KIND=JPIM), PARAMETER :: NGRBCBASE= 228023
 INTEGER(KIND=JPIM), PARAMETER :: NGRB0DEGL= 228024
 INTEGER(KIND=JPIM), PARAMETER :: NGRBM10DEGL= 228020
-INTEGER(KIND=JPIM), PARAMETER :: NGRBCIN  = 228001
+INTEGER(KIND=JPIM), PARAMETER :: NGRBMUCIN  = 228236
 INTEGER(KIND=JPIM), PARAMETER :: NGRBMLCIN50 = 228232 
 INTEGER(KIND=JPIM), PARAMETER :: NGRBMLCIN100= 228234
 INTEGER(KIND=JPIM), PARAMETER :: NGRBKINDEX = 260121
@@ -728,6 +741,8 @@ INTEGER(KIND=JPIM), PARAMETER :: NGRBNEOV = 193
 INTEGER(KIND=JPIM), PARAMETER :: NGRBBTMP = 194
 INTEGER(KIND=JPIM), PARAMETER :: NGRBCLBT = 260510
 INTEGER(KIND=JPIM), PARAMETER :: NGRBCSBT = 260511
+INTEGER(KIND=JPIM), PARAMETER :: NGRBCDRFL = 260512
+INTEGER(KIND=JPIM), PARAMETER :: NGRBCRRFL = 260513
 INTEGER(KIND=JPIM), PARAMETER :: NGRBLGWS = 195
 INTEGER(KIND=JPIM), PARAMETER :: NGRBMGWS = 196
 INTEGER(KIND=JPIM), PARAMETER :: NGRBGWD  = 197
@@ -965,7 +980,8 @@ INTEGER(KIND=JPIM), PARAMETER :: NGRBCO2APF  = 210069
 INTEGER(KIND=JPIM), PARAMETER :: NGRBCO2FIRE = 210080
 INTEGER(KIND=JPIM), PARAMETER :: NGRBCH4F    = 210070
 INTEGER(KIND=JPIM), PARAMETER :: NGRBCH4FIRE = 210082
-INTEGER(KIND=JPIM), PARAMETER :: NGRBCH4WET  = 228104
+INTEGER(KIND=JPIM), PARAMETER :: NGRBICH4WET = 228104
+INTEGER(KIND=JPIM), PARAMETER :: NGRBCH4WET  = 228109
 !---------------------------------------------------
 INTEGER(KIND=JPIM), PARAMETER :: NGRBFASGPPCOEF = 228078 
 INTEGER(KIND=JPIM), PARAMETER :: NGRBFASRECCOEF = 228079

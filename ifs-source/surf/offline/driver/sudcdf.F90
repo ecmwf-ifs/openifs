@@ -1,8 +1,3 @@
-SUBROUTINE SUDCDF
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
-USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
-
-#ifdef DOC
 ! (C) Copyright 2000- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -10,6 +5,74 @@ USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *SUDCDF * - Routine to initialize NetCDF output
+
+!     Purpose.
+!     --------
+!           Initialize NetCDF output files:
+
+!                o_efl.nc (energy fluxes)
+!                o_wat.nc (water balance)
+!                o_sus.nc (surface state)
+!                o_sub.nc (subsurface state)
+!                o_eva.nc (evaporation components)
+!                o_cld.nc (cold-season processes)
+!                o_fix.nc (fixed climate fields)
+!                o_lke.nc (lake related fluxes)
+!                o_ocd.nc (ocean mixed layer diagnostic variables)
+!
+!                o_co2.nc (CO2 fluxes)
+!                o_bio.nc (biomass)
+!		 o_veg.nc (vegetation)
+!                o_ext.nc (extra)
+!                o_til.nc (tiled output)
+!                o_vty.nc (output per vegetation type)
+
+!                o_d2m.nc (inst. 2 meters temp, dewpoint, rel. humi)
+
+
+!**   Interface.
+!     ----------
+!        *CALL* *SUDCDF
+
+!     Explicit arguments :
+!     --------------------
+!        none
+
+!     Method.
+!     -------
+
+!     Externals.
+!     ----------
+
+!     Reference.
+!     ----------
+
+!     Author.
+!     -------
+!        Bart vd HURK (KNMI)
+
+!     Modifications.
+!     --------------
+!        Original     : 2000-7-14
+!        E. Dutra  :  Add new output file for lakes data (o_lke.nc)  : 2008-07-04
+!        E. Dutra    :11-2009  snow 2009
+!        S. Boussetta/G.Balsamo May 2010 Add CTESSEL based on:  
+!	             Marita Voogt (KNMI) new tiling (13), vegetation types (7)
+!                            and climatology (dec 2004)
+!                    Sebastien LAFONT (ECMWF) LAI,fract,Z0 are read for all the vegetation type
+!                                 Then the value are computed only 
+!                                 for the dominant low and dominant high
+!        E. Dutra : 12/2013 :new o_d2m.nc output 
+!        E. Dutra : June 2014 - netcf4 
+!        A. Agusti-Panareda: 2020-11-17 Atmospheric CO2 forcing
+
+SUBROUTINE SUDCDF
+USE PARKIND1  ,ONLY : JPIM     ,JPRB,  JPRD
+USE YOMHOOK   ,ONLY : LHOOK    ,DR_HOOK, JPHOOK
+
+#ifdef DOC
 
 !**** *SUDCDF * - Routine to initialize NetCDF output
 

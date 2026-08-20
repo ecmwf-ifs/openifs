@@ -26,6 +26,7 @@ MODULE YOMIO_SERV
 !      P.Marguinaud : 10-10-2014 : Cleaning
 !      R. El Khatib : 09-03-2015 : flexible directory for output xml files
 !      P.Marguinaud : 04-10-2016 : Port to single precision
+!      P.Marguinaud & LF Meunier : 20-Jan-2021 : IDISTIO feature
 
 USE PARKIND1, ONLY : JPIM, JPRB, JPIB, JPRD
 
@@ -149,9 +150,9 @@ TYPE IO_SERV_WAVEMODEL
   LOGICAL                     :: LWACTIVE            ! True if wave model is active
   INTEGER(KIND=JPIM)          :: NTOTMX              ! Max grid points per proc
   INTEGER(KIND=JPIM)          :: NTOTG               ! Total grid points
-  INTEGER(KIND=JPIM)          :: NGX                 ! YOWPARAM
-  INTEGER(KIND=JPIM)          :: NGY                 ! YOWPARAM
-  CHARACTER(LEN=1)            :: CLDOMAIN            ! YOWPARAM
+  INTEGER(KIND=JPIM)          :: NGX                 ! YOWMAP
+  INTEGER(KIND=JPIM)          :: NGY                 ! YOWMAP
+  CHARACTER(LEN=1)            :: CLDOMAIN            ! YOWMAP
   INTEGER(KIND=JPIM)          :: IU06                ! YOWTEST
   INTEGER(KIND=JPIM)          :: ITEST               ! YOWTEST
   LOGICAL                     :: LGRHDIFS            ! YOWGRIBHD
@@ -184,6 +185,7 @@ TYPE IO_SERV_WAVEMODEL
 
   INTEGER (KIND=JPIM)          :: NGRIB_HANDLE_WAM_S = -99_JPIM
   INTEGER (KIND=JPIM)          :: NGRIB_HANDLE_WAM_I = -99_JPIM
+  INTEGER (KIND=JPIM)          :: NGRIB_HANDLE_WAM_I2 = -99_JPIM
   
 END TYPE IO_SERV_WAVEMODEL
   
@@ -276,6 +278,10 @@ TYPE IO_SERV
 ! Time after which a warning will be printed by compute tasks
 ! reporting time in IO server routines (in seconds)
   REAL(KIND=JPRD)    :: WAIT_TIME_THRESHOLD = 0.5_JPRD
+
+! Minimum pace (fc hours/hour), warning will be issued if forecast drops
+! below this threshold
+  REAL(KIND=JPRD)    :: PACE_WARN_THRESHOLD = 10._JPRD
 
 ! processing level (see enumeration above NIO_SERV_PROCESS_NONE ...)
   INTEGER(KIND=JPIM) :: NPROCESS_LEVEL = NIO_SERV_PROCESS_LAST
@@ -403,6 +409,13 @@ TYPE IO_SERV
 ! will be named ICMSHFCST+0000
 
   REAL (KIND=JPRB) :: ZTDEC = 0._JPRB
+
+! The method to distribute IO tasks
+! IDISTIO == 0 : locate IO tasks at the end of the global communicator
+! IDISTIO < 0  : locate IO tasks at the begining of the global communicator
+! IDISTIO > 0  ! put IO tasks every IDISTIO tasks of the global communicator
+
+  INTEGER (KIND=JPIM) :: IDISTIO = 0
 
 END TYPE IO_SERV
 

@@ -14,14 +14,15 @@
 SUBROUTINE CLOUDSC &
  !---input
  & (YDECLDP,YDECUMF,YDEPHLI,YDERAD, YDEPHY, YDVDF, YDSPP_CONFIG,&
- & KIDIA,    KFDIA,    KLON,    KLEV, &
+ & KIDIA,    KFDIA,    KLON,    KLEV, LDDIAG, &
  & PTSPHY, &
  & PT, PQ, &
  & PTENDENCY_CML_T, PTENDENCY_CML_Q, PTENDENCY_CML_A, PTENDENCY_CML_CLD, &
  & PTENDENCY_LOC_T, PTENDENCY_LOC_Q, PTENDENCY_LOC_A, PTENDENCY_LOC_CLD, &
- & PVFA, PVFL, PVFI, PDYNA, PDYNL, PDYNI, PDYNR, PDYNS,&
+ & PVFA, PVFL, PVFI,&
+ & PDYNA, PDYNL, PDYNI, PDYNR, PDYNS,&
  & PHRSW,    PHRLW, &
- & PVERVEL,  PAP,      PAPH, &
+ & PVERVEL,  PAP,      PAPH,     PGEOM, &
  & PLSM,     PGAW,     LDCUM,    KCTOP,    KTYPE,    KPBLTYPE, PEIS,&
  & PLU,      PLUDE,    PLUDELI,  PSNDE,    PMFU,     PMFD, PGP2DSPP, &
  & LDSLPHY, &
@@ -150,6 +151,9 @@ SUBROUTINE CLOUDSC &
 !        2020-12 : R.Forbes Added PSACR and PRACS processes, modified fallspeed code
 !        2020-10 : M.Leutbecher & S. Lang SPP abstraction and revision
 !        2021-10 : R.Forbes Removed warm autoconv to snow, turned on PSACR to allow frz drz
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
+!        F. Vana   (Jan 2023): new seq. physics order
+!        2023-05 : R.Forbes Added option for variable fall speed for ice
 !
 !     REFERENCES.
 !     ----------
@@ -174,10 +178,8 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMLUN   , ONLY : NULOUT
 USE YOMMP0   , ONLY : LSCMEC
-USE YOMCST   , ONLY : RG, RD, RCPD, RETV, RLVTT, RLSTT, RTT, RV, RA, RPI  
-USE YOETHF   , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, &
- &                    R5ALVCP, R5ALSCP, RALVDCP, RALSDCP, RALFDCP, RTWAT, RTICE, RTICECU, &
- &                    RTWAT_RTICE_R, RTWAT_RTICECU_R, RKOOP1, RKOOP2
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of fcttre.func.h below. REK.
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of fcttre.func.h and fccld.func.h below. REK.
 USE YOECUMF  , ONLY : TECUMF
 USE YOEVDF   , ONLY : TVDF
 USE SPP_MOD     , ONLY : TSPP_CONFIG
@@ -200,6 +202,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA
 INTEGER(KIND=JPIM),INTENT(IN)    :: KFDIA 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON             ! Number of grid points
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV             ! Number of levels
+LOGICAL           ,INTENT(IN)    :: LDDIAG           ! Key to activate diagnostics
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSPHY           ! Physics timestep
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PT(KLON,KLEV)    ! T at start of callpar
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PQ(KLON,KLEV)    ! Q at start of callpar
@@ -224,6 +227,7 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PHRLW(KLON,KLEV) ! Long-wave heating rate
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVERVEL(KLON,KLEV) ! Vertical velocity
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV)   ! Pressure on full levels
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1)! Pressure on half levels
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOM(KLON,KLEV) ! Geopotential on full levels
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PLSM(KLON)       ! Land fraction (0-1) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAW(KLON)       ! Grid area=PGAW*4*RPI*RA**2
 ! From convection parametrization 
@@ -231,7 +235,7 @@ LOGICAL           ,INTENT(IN)    :: LDCUM(KLON)      ! Convection active
 INTEGER(KIND=JPIM),INTENT(IN)    :: KCTOP(KLON)      ! Convection level top
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTYPE(KLON)      ! Convection type 0,1,2,3
 INTEGER(KIND=JPIM),INTENT(IN)    :: KPBLTYPE(KLON)   ! BL type 0,1,2,3
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PEIS(KLON)       ! PBL Inversion strength
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PEIS(KLON)       ! PBL Inversion strength
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PLU(KLON,KLEV)   ! Conv. condensate
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PLUDE(KLON,KLEV) ! Conv. detrained water 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PLUDELI(KLON,KLEV,4)! Conv. detrained liq/ice/vapor/T
@@ -344,7 +348,7 @@ REAL(KIND=JPRB) :: ZLCRIT
 REAL(KIND=JPRB) :: ZMFDN
 REAL(KIND=JPRB) :: ZPRECIP
 REAL(KIND=JPRB) :: ZQE
-REAL(KIND=JPRB) :: ZQTMST, ZRDCP
+REAL(KIND=JPRB) :: ZQTMST, ZRDCP, ZRCPD
 REAL(KIND=JPRB) :: ZRHC, ZSIG, ZSIGK
 REAL(KIND=JPRB) :: ZWTOT
 REAL(KIND=JPRB) :: ZZCO, ZZRH, ZQADJ
@@ -358,7 +362,7 @@ REAL(KIND=JPRB) :: ZVPLIQ, ZVPICE
 REAL(KIND=JPRB) :: ZADD, ZBDD, ZCVDS, ZICE0, ZDEPOS
 REAL(KIND=JPRB) :: ZRE_ICE
 REAL(KIND=JPRB) :: ZRLDCP
-REAL(KIND=JPRB) :: ZDZ
+REAL(KIND=JPRB) :: ZDZ, ZDT
 REAL(KIND=JPRB) :: ZXRAMID
 REAL(KIND=JPRB) :: ZQ_UPD(KLON)
 REAL(KIND=JPRB) :: ZT_UPD(KLON)
@@ -369,12 +373,12 @@ INTEGER(KIND=JPIM) :: IFTLIQICE
 
 ! A bunch of SPP variables 
 LOGICAL            :: LLPERT_RAMID,  LLPERT_RCLDIFF,  LLPERT_RCLCRIT,  LLPERT_RLCRITSNOW
-LOGICAL            :: LLPERT_RAINEVAP,  LLPERT_SNOWSUBLIM,  LLPERT_CLOUDINHOM
-INTEGER(KIND=JPIM) :: IPRAMID,  IPRCLDIFF,  IPRCLCRIT,  IPRLCRITSNOW              ! SPP random field pointer
+LOGICAL            :: LLPERT_RAINEVAP,  LLPERT_SNOWSUBLIM,  LLPERT_CLOUDINHOM, LLPERT_FALLSPEED
+INTEGER(KIND=JPIM) :: IPRAMID,  IPRCLDIFF,  IPRCLCRIT,  IPRLCRITSNOW, IPFALLSPEED ! SPP random field pointer
 INTEGER(KIND=JPIM) :: IPRAINEVAP,  IPSNOWSUBLIM, IPCLOUDINHOMAUT, IPCLOUDINHOMACC ! SPP random field pointer
 INTEGER(KIND=JPIM) :: IPN  ! SPP perturbation pointer
 TYPE(SPP_PERT)     :: PN1RAMID, PN1RCLDIFF, PN1RCLCRIT, PN1RLCRITSNOW  ! SPP pertn. configs.
-TYPE(SPP_PERT)     :: PN1RAINEVAP, PN1SNOWSUBLIM, PN1CLOUDINHOM        ! SPP pertn. configs.
+TYPE(SPP_PERT)     :: PN1RAINEVAP, PN1SNOWSUBLIM, PN1CLOUDINHOM, PN1FALLSPEED ! SPP pertn. configs.
 
 INTEGER(KIND=JPIM) :: IPHASE(NCLV) ! marker for water phase of each species
                                    ! 0=vapour, 1=liquid, 2=ice
@@ -495,7 +499,8 @@ INTEGER(KIND=JPIM) :: IP_SNOW_ACCRETES_RAIN   ! Snow accretion of rain
 INTEGER(KIND=JPIM) :: IP_RAIN_ACCRETES_SNOW   ! Rain accretion of snow
 INTEGER(KIND=JPIM) :: IP_ICE_ACCRETES_RAIN    ! Ice accretion of rain
 INTEGER(KIND=JPIM) :: IP_RAIN_ACCRETES_ICE    ! Rain accretion of ice
-INTEGER(KIND=JPIM) :: IVARFALL
+INTEGER(KIND=JPIM) :: IVARFALL_RAIN
+INTEGER(KIND=JPIM) :: IVARFALL_ICE
 INTEGER(KIND=JPIM) :: ITURBEROSION
 
 ! Autoconversion/accretion/riming/evaporation
@@ -588,6 +593,8 @@ REAL(KIND=JPRB), PARAMETER :: ZU4=-0.744527_JPRB
 
 LOGICAL            :: LLINDEX3(KLON,NCLV) ! index variable
 INTEGER(KIND=JPIM) :: IORDER(KLON,NCLV), IORDV(NCLV) ! arrays for sorting explicit terms
+INTEGER(KIND=JPIM) :: JC(3), JCC
+REAL(KIND=JPRB) :: ZQT, ZSLGM1,ZSLGSM1(KLON,3)
 REAL(KIND=JPRB) :: ZSINKSUM(KLON) 
 REAL(KIND=JPRB) :: ZRATIO(KLON,NCLV), ZZRATIO, ZRAT, ZMAX
 REAL(KIND=JPRB) :: ZEPSILON
@@ -658,12 +665,21 @@ ASSOCIATE(LAERICEAUTO=>YDECLDP%LAERICEAUTO, LAERICESED=>YDECLDP%LAERICESED, &
  & RTAUMEL=>YDECLDP%RTAUMEL, RTHOMO=>YDECLDP%RTHOMO, RVICE=>YDECLDP%RVICE, &
  & RVRAIN=>YDECLDP%RVRAIN, RVRFACTOR=>YDECLDP%RVRFACTOR, &
  & RVSNOW=>YDECLDP%RVSNOW, LMFDSNOW=>YDECUMF%LMFDSNOW, &
+ & NJKT6=>YDECUMF%NJKT6, NJKT3=>YDECUMF%NJKT3, &
  & RMFADVW=>YDECUMF%RMFADVW, RMFADVWDD=>YDECUMF%RMFADVWDD, REISTHSC=>YDVDF%REISTHSC, &
+ & RG=>YDCST%RG, RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RLVTT=>YDCST%RLVTT, RV=>YDCST%RV, RD=>YDCST%RD, &
+ & RLSTT=>YDCST%RLSTT, RLMLT=>YDCST%RLMLT, RTT=>YDCST%RTT, RA=>YDCST%RA, RPI=>YDCST%RPI, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, R4IES=>YDTHF%R4IES, &
+ & R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, &
+ & RALSDCP=>YDTHF%RALSDCP, RALFDCP=>YDTHF%RALFDCP, RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, &
+ & RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, RKOOP1=>YDTHF%RKOOP1, RKOOP2=>YDTHF%RKOOP2, &
  & LCLOUD_INHOMOG=>YDECLDP%LCLOUD_INHOMOG, &
  & RCL_INHOMOGAUT    => YDECLDP%RCL_INHOMOGAUT, &
  & RCL_INHOMOGACC    => YDECLDP%RCL_INHOMOGACC, &
  & RCL_OVERLAPLIQICE => YDECLDP%RCL_OVERLAPLIQICE, &
- & RCL_EFFRIME       => YDECLDP%RCL_EFFRIME )
+ & RCL_EFFRIME       => YDECLDP%RCL_EFFRIME, &
+ & RXFALLSPEEDRAIN   => YDECLDP%RXFALLSPEEDRAIN, &
+ & RXFALLSPEEDICE    => YDECLDP%RXFALLSPEEDICE)
 !===============================================================================
 
 
@@ -766,7 +782,8 @@ IP_RAIN_ACCRETES_ICE  = 0
 ! IVARFALL = 0 ! Fixed fall speeds
 ! IVARFALL = 1 ! Variable fall speeds based on particle size distribution
 ! ---------------------------------------------------------------------
-IVARFALL = 1
+IVARFALL_RAIN = 1
+IVARFALL_ICE  = 0
 ! ---------------------------------------------------------------------
 ! Set version of cloud edge erosion
 ! ITURBEROSION = 1 ! Original formulation
@@ -781,6 +798,7 @@ ITURBEROSION = 3
 ZQTMST  = 1.0_JPRB/PTSPHY
 ZGDCP   = RG/RCPD
 ZRDCP   = RD/RCPD
+ZRCPD   = 1.0_JPRB/RCPD
 ZEPSEC  = 1.E-14_JPRB
 ZRG_R   = 1.0_JPRB/RG
 ZRLDCP  = 1.0_JPRB/(RALSDCP-RALVDCP)
@@ -891,6 +909,15 @@ IF (YDSPP_CONFIG%LSPP) THEN
     IPSNOWSUBLIM   = PN1SNOWSUBLIM%MP
   ENDIF
 
+  ! Fall speeds
+  !
+  IPN = YDSPP_CONFIG%PPTR%FALLSPEED
+  LLPERT_FALLSPEED = IPN > 0
+  IF (LLPERT_FALLSPEED) THEN
+    PN1FALLSPEED  = YDSPP_CONFIG%SM%PN(IPN)
+    IPFALLSPEED   = PN1FALLSPEED%MP
+  ENDIF
+
   ! Calculate inhomogeneity
   !
   IPN = YDSPP_CONFIG%PPTR%CLOUDINHOM
@@ -908,6 +935,7 @@ ELSE
   LLPERT_RAINEVAP   =.FALSE.
   LLPERT_SNOWSUBLIM =.FALSE.
   LLPERT_CLOUDINHOM =.FALSE.
+  LLPERT_FALLSPEED  =.FALSE.
 ENDIF
 
 !initialize local FSD arrays
@@ -1759,6 +1787,9 @@ DO JK=NCLDTOP,KLEV
     ZFALLSPEED(JL,NCLDQI) = ZVQX(NCLDQI)
     ZFALLSPEED(JL,NCLDQS) = ZVQX(NCLDQS)
 
+    ! Fallspeed air density correction 
+    ZFALLCORR = (RDENSREF/ZRHO(JL))**0.4_JPRB
+
     !-----------
     ! Cloud ice 
     !-----------
@@ -1771,26 +1802,38 @@ DO JK=NCLDTOP,KLEV
       ZFALLSPEED(JL,NCLDQI) = 0.002_JPRB*ZRE_ICE**1.0_JPRB
     ENDIF
 
+    ! perturb ice fall speed
+    IF (LLPERT_FALLSPEED) THEN
+      ZFALLSPEED(JL,NCLDQI)=ZFALLSPEED(JL,NCLDQI)*EXP(PN1FALLSPEED%MU(1)+PN1FALLSPEED%XMAG(1)*PGP2DSPP(JL, IPFALLSPEED))
+    ENDIF
+
     ! Option to modify as fn(p,T) Heymsfield and Iaquinta JAS 2000
     !  ZFALL(JL,JM) = ZFALL(JL,JM)*((PAP(JL,JK)*RICEHI1)**(-0.178_JPRB)) &
     !             &*((ZTP1(JL,JK)*RICEHI2)**(-0.394_JPRB))
+    
+    IF (IVARFALL_ICE == 1) THEN  ! if variable fallspeed on
+
+      !  Water content (kg/kg) simple average between this layer and layer above
+      ZTEMP = 0.5_JPRB*(ZQX(JL,JK,NCLDQI)+ZQXNM1(JL,NCLDQI))          
+ 
+      ! Calculate fallspeed (exponent based on Heymsfield et al. 1977)
+      ZFALLSPEED(JL,NCLDQI) = RXFALLSPEEDICE*(ZRHO(JL)*ZTEMP)**(0.17)*ZFALLCORR
+    
+    ENDIF
        
     !---------------------------------
     ! Rain
     !---------------------------------
-    IF (IVARFALL == 1) THEN  ! if variable fallspeed on
-
-      ! Fallspeed air density correction 
-      ZFALLCORR = (RDENSREF/ZRHO(JL))**0.4_JPRB
+    IF (IVARFALL_RAIN == 1) THEN  ! if variable fallspeed on
      
-      ! Rain water content (kg/kg) simple average between this layer and layer above
+      ! Water content (kg/kg) simple average between this layer and layer above
       ZTEMP = 0.5_JPRB*(ZQX(JL,JK,NCLDQR)+ZQXNM1(JL,NCLDQR))          
 
       ! Reciprocal of slope of particle size distribution
       ZRLAMBDA = (ZRHO(JL)*ZTEMP/RCL_LAM1R)**RCL_LAM2R 
   
       ! Calculate fallspeed
-      ZFALLSPEED(JL,NCLDQR) = ZFALLCORR*RCL_CONST7R*ZRLAMBDA**RCL_DR
+      ZFALLSPEED(JL,NCLDQR) = RXFALLSPEEDRAIN*ZFALLCORR*RCL_CONST7R*ZRLAMBDA**RCL_DR
     
     ELSE
  
@@ -3792,6 +3835,12 @@ ENDIF ! on ISUBLSNOW
     IS = 0
   ENDIF
 
+  IF (LCLDBUD_TIMEINT) THEN
+    ZDT = PTSPHY
+  ELSE
+    ZDT = 1.0_JPRB
+  ENDIF
+  
   !-----------------------------------------------------------------
   ! Vertical integral of all cloud process terms in one 3D field 
   ! Requires certain number of levels.
@@ -3807,86 +3856,86 @@ ENDIF ! on ISUBLSNOW
       ZDZ = ZDP(JL)/(ZRHO(JL)*RG)
 
       IK = 0
-      !PEXTRA(JL,IK+1,1)  = PEXTRA(JL,IK+1,1)  + ZBUDCC(JL,10)*ZDZ  ! + Condensation of new cloud
-      !PEXTRA(JL,IK+2,1)  = PEXTRA(JL,IK+2,1)  + ZBUDCC(JL,10)*ZDZ  ! + Evaporation of cloud
-      !PEXTRA(JL,IK+3,1)  = PEXTRA(JL,IK+3,1)  + ZBUDCC(JL,2)*ZDZ   ! + Supersat clipping after cloud_satadj
-      PEXTRA(JL,IK+4,1)  = PEXTRA(JL,IK+4,1)  + ZBUDCC(JL,2)*ZDZ  ! + Supersat clipping after cloudsc
-      !PEXTRA(JL,IK+5,1)  = PEXTRA(JL,IK+5,1)  + ZBUDCC(JL,2)*ZDZ   ! + Supersat clipping after sltend
-      PEXTRA(JL,IK+6,1)  = PEXTRA(JL,IK+6,1)  + ZBUDCC(JL,3)*ZDZ   ! + Convective detrainment
-      PEXTRA(JL,IK+7,1)  = PEXTRA(JL,IK+7,1)  + (ZBUDCC(JL,4)+ZBUDCC(JL,6))*ZDZ ! +- Convective subsidence source and sink
-      PEXTRA(JL,IK+8,1)  = PEXTRA(JL,IK+8,1)  + ZBUDCC(JL,5)*ZDZ   ! - Convective subsidence evaporation
-      PEXTRA(JL,IK+9,1)  = PEXTRA(JL,IK+9,1)  + ZBUDCC(JL,7)*ZDZ   ! - Turbulent erosion
-      PEXTRA(JL,IK+10,1) = PEXTRA(JL,IK+10,1) + ZBUDCC(JL,12)*ZDZ  ! Tidy up
-      PEXTRA(JL,IK+11,1) = PEXTRA(JL,IK+11,1) + PVFA(JL,JK)*ZDZ    ! Vertical diffusion
-      PEXTRA(JL,IK+12,1) = PEXTRA(JL,IK+12,1) + PDYNA(JL,JK)*ZDZ   ! Advection from dynamics
+      !PEXTRA(JL,IK+1,IS+1)  = PEXTRA(JL,IK+1,IS+1)  + ZBUDCC(JL,10)*ZDZ*ZDT  ! + Condensation of new cloud
+      !PEXTRA(JL,IK+2,IS+1)  = PEXTRA(JL,IK+2,IS+1)  + ZBUDCC(JL,10)*ZDZ*ZDT  ! + Evaporation of cloud
+      !PEXTRA(JL,IK+3,IS+1)  = PEXTRA(JL,IK+3,IS+1)  + ZBUDCC(JL,2)*ZDZ*ZDT   ! + Supersat clipping after cloud_satadj
+      PEXTRA(JL,IK+4,IS+1)  = PEXTRA(JL,IK+4,IS+1)  + ZBUDCC(JL,2)*ZDZ*ZDT  ! + Supersat clipping after cloudsc
+      !PEXTRA(JL,IK+5,IS+1)  = PEXTRA(JL,IK+5,IS+1)  + ZBUDCC(JL,2)*ZDZ*ZDT   ! + Supersat clipping after sltend
+      PEXTRA(JL,IK+6,IS+1)  = PEXTRA(JL,IK+6,IS+1)  + ZBUDCC(JL,3)*ZDZ*ZDT   ! + Convective detrainment
+      PEXTRA(JL,IK+7,IS+1)  = PEXTRA(JL,IK+7,IS+1)  + (ZBUDCC(JL,4)+ZBUDCC(JL,6))*ZDZ*ZDT ! +- Convective subsidence source and sink
+      PEXTRA(JL,IK+8,IS+1)  = PEXTRA(JL,IK+8,IS+1)  + ZBUDCC(JL,5)*ZDZ*ZDT   ! - Convective subsidence evaporation
+      PEXTRA(JL,IK+9,IS+1)  = PEXTRA(JL,IK+9,IS+1)  + ZBUDCC(JL,7)*ZDZ*ZDT   ! - Turbulent erosion
+      PEXTRA(JL,IK+10,IS+1) = PEXTRA(JL,IK+10,IS+1) + ZBUDCC(JL,12)*ZDZ*ZDT  ! Tidy up
+      PEXTRA(JL,IK+11,IS+1) = PEXTRA(JL,IK+11,IS+1) + PVFA(JL,JK)*ZDZ*ZDT    ! Vertical diffusion
+      PEXTRA(JL,IK+12,IS+1) = PEXTRA(JL,IK+12,IS+1) + PDYNA(JL,JK)*ZDZ*ZDT   ! Advection from dynamics
       
       IK = 14
-      !PEXTRA(JL,IK+1,1)  = PEXTRA(JL,IK+1,1) + ZBUDL(JL,10)*ZDZ ! + Condensation of new cloud (dqs decreasing = supersat)
-      !PEXTRA(JL,IK+2,1)  = PEXTRA(JL,IK+2,1) + ZBUDL(JL,9)*ZDZ  ! + Condensation of existing cloud (dqs decreasing = supersat)
-      !PEXTRA(JL,IK+3,1)  = PEXTRA(JL,IK+3,1) + ZBUDL(JL,8)*ZDZ  ! - Evaporation of existing cloud (dqs increasing = subsat)
-      !PEXTRA(JL,IK+4,1)  = PEXTRA(JL,IK+4,1) + ZBUDL(JL,1)*ZDZ  ! + Supersat clipping after cloud_satadj
-      PEXTRA(JL,IK+5,1)  = PEXTRA(JL,IK+5,1) + ZBUDL(JL,2)*ZDZ  ! + Supersat clipping after cloudsc
-      !PEXTRA(JL,IK+6,1)  = PEXTRA(JL,IK+6,1) + ZBUDL(JL,2)*ZDZ  ! + Supersat clipping after sltend
-      PEXTRA(JL,IK+7,1)  = PEXTRA(JL,IK+7,1) + ZBUDL(JL,3)*ZDZ ! + Convective detrainment
-      PEXTRA(JL,IK+8,1)  = PEXTRA(JL,IK+8,1) + (ZBUDL(JL,4)+ZBUDL(JL,6))*ZDZ ! +- Convective subsidence source and sink
-      PEXTRA(JL,IK+9,1)  = PEXTRA(JL,IK+9,1) + ZBUDL(JL,5)*ZDZ ! +- Evaporation due to convective subsidence
-      PEXTRA(JL,IK+10,1) = PEXTRA(JL,IK+10,1) + ZBUDL(JL,7)*ZDZ ! - Turbulent erosion
-      PEXTRA(JL,IK+11,1) = PEXTRA(JL,IK+11,1) + ZBUDL(JL,11)*ZDZ ! - Deposition of liquid to ice
-      PEXTRA(JL,IK+12,1) = PEXTRA(JL,IK+12,1) + ZBUDL(JL,14)*ZDZ ! - Autoconversion to rain (IMPLICIT)(ZRAINAUT)
-      PEXTRA(JL,IK+13,1) = PEXTRA(JL,IK+13,1) + ZBUDL(JL,15)*ZDZ ! - Accretion of cloud to rain (IMPLICIT)(ZRAINACC)
-      PEXTRA(JL,IK+14,1) = PEXTRA(JL,IK+14,1) + ZBUDL(JL,12)*ZDZ ! - Autoconversion to rain+freezing->snow (ZRAINAUT)
-      PEXTRA(JL,IK+15,1) = PEXTRA(JL,IK+15,1) + ZBUDL(JL,13)*ZDZ ! - Accretion of cloud to rain+freezing->snow (ZRAINACC)
-      PEXTRA(JL,IK+16,1) = PEXTRA(JL,IK+16,1) + ZBUDL(JL,17)*ZDZ ! + Melting of ice to liquid
-      PEXTRA(JL,IK+17,1) = PEXTRA(JL,IK+17,1) + (ZBUDL(JL,18)+ZBUDL(JL,19))*ZDZ ! - Freezing of rain-to-snow, liq-to-ice
-      PEXTRA(JL,IK+18,1) = PEXTRA(JL,IK+18,1) + ZBUDL(JL,20)*ZDZ ! - Evaporation of rain
-      PEXTRA(JL,IK+19,1) = PEXTRA(JL,IK+19,1) + ZBUDL(JL,21)*ZDZ ! - Riming of cloud liquid to snow
-      PEXTRA(JL,IK+20,1) = PEXTRA(JL,IK+20,1) + ZPRACS(JL)*ZDZ*ZQTMST ! Rain accretes snow -> snow
-      PEXTRA(JL,IK+21,1) = PEXTRA(JL,IK+21,1) + ZPSACR(JL)*ZDZ*ZQTMST ! Snow accretes rain -> snow
-      PEXTRA(JL,IK+22,1) = PEXTRA(JL,IK+22,1) + ZPRACI(JL)*ZDZ*ZQTMST ! Rain accretes ice -> ice
-      PEXTRA(JL,IK+23,1) = PEXTRA(JL,IK+23,1) + ZPIACR(JL)*ZDZ*ZQTMST ! Ice accretes rain -> ice
-      PEXTRA(JL,IK+24,1) = PEXTRA(JL,IK+24,1) + PVFL(JL,JK)*ZDZ  ! +- Vertical diffusion
-      PEXTRA(JL,IK+25,1) = PEXTRA(JL,IK+25,1) + PDYNL(JL,JK)*ZDZ ! +- Advection of liquid from dynamics
-      !PEXTRA(JL,IK+26,1) = PEXTRA(JL,IK+26,1) + PDYNR(JL,JK)*ZDZ ! +- Advection of rain from dyn
+      !PEXTRA(JL,IK+1,IS+1)  = PEXTRA(JL,IK+1,IS+1) + ZBUDL(JL,10)*ZDZ*ZDT ! + Condensation of new cloud (dqs decreasing = supersat)
+      !PEXTRA(JL,IK+2,IS+1)  = PEXTRA(JL,IK+2,IS+1) + ZBUDL(JL,9)*ZDZ*ZDT  ! + Condensation of existing cloud (dqs decreasing = supersat)
+      !PEXTRA(JL,IK+3,IS+1)  = PEXTRA(JL,IK+3,IS+1) + ZBUDL(JL,8)*ZDZ*ZDT  ! - Evaporation of existing cloud (dqs increasing = subsat)
+      !PEXTRA(JL,IK+4,IS+1)  = PEXTRA(JL,IK+4,IS+1) + ZBUDL(JL,1)*ZDZ*ZDT  ! + Supersat clipping after cloud_satadj
+      PEXTRA(JL,IK+5,IS+1)  = PEXTRA(JL,IK+5,IS+1) + ZBUDL(JL,2)*ZDZ*ZDT  ! + Supersat clipping after cloudsc
+      !PEXTRA(JL,IK+6,IS+1)  = PEXTRA(JL,IK+6,IS+1) + ZBUDL(JL,2)*ZDZ*ZDT  ! + Supersat clipping after sltend
+      PEXTRA(JL,IK+7,IS+1)  = PEXTRA(JL,IK+7,IS+1) + ZBUDL(JL,3)*ZDZ*ZDT ! + Convective detrainment
+      PEXTRA(JL,IK+8,IS+1)  = PEXTRA(JL,IK+8,IS+1) + (ZBUDL(JL,4)+ZBUDL(JL,6))*ZDZ*ZDT ! +- Convective subsidence source and sink
+      PEXTRA(JL,IK+9,IS+1)  = PEXTRA(JL,IK+9,IS+1) + ZBUDL(JL,5)*ZDZ*ZDT ! +- Evaporation due to convective subsidence
+      PEXTRA(JL,IK+10,IS+1) = PEXTRA(JL,IK+10,IS+1) + ZBUDL(JL,7)*ZDZ*ZDT ! - Turbulent erosion
+      PEXTRA(JL,IK+11,IS+1) = PEXTRA(JL,IK+11,IS+1) + ZBUDL(JL,11)*ZDZ*ZDT ! - Deposition of liquid to ice
+      PEXTRA(JL,IK+12,IS+1) = PEXTRA(JL,IK+12,IS+1) + ZBUDL(JL,14)*ZDZ*ZDT ! - Autoconversion to rain (IMPLICIT)(ZRAINAUT)
+      PEXTRA(JL,IK+13,IS+1) = PEXTRA(JL,IK+13,IS+1) + ZBUDL(JL,15)*ZDZ*ZDT ! - Accretion of cloud to rain (IMPLICIT)(ZRAINACC)
+      PEXTRA(JL,IK+14,IS+1) = PEXTRA(JL,IK+14,IS+1) + ZBUDL(JL,12)*ZDZ*ZDT ! - Autoconversion to rain+freezing->snow (ZRAINAUT)
+      PEXTRA(JL,IK+15,IS+1) = PEXTRA(JL,IK+15,IS+1) + ZBUDL(JL,13)*ZDZ*ZDT ! - Accretion of cloud to rain+freezing->snow (ZRAINACC)
+      PEXTRA(JL,IK+16,IS+1) = PEXTRA(JL,IK+16,IS+1) + ZBUDL(JL,17)*ZDZ*ZDT ! + Melting of ice to liquid
+      PEXTRA(JL,IK+17,IS+1) = PEXTRA(JL,IK+17,IS+1) + (ZBUDL(JL,18)+ZBUDL(JL,19))*ZDZ*ZDT ! - Freezing of rain-to-snow, liq-to-ice
+      PEXTRA(JL,IK+18,IS+1) = PEXTRA(JL,IK+18,IS+1) + ZBUDL(JL,20)*ZDZ*ZDT ! - Evaporation of rain
+      PEXTRA(JL,IK+19,IS+1) = PEXTRA(JL,IK+19,IS+1) + ZBUDL(JL,21)*ZDZ*ZDT ! - Riming of cloud liquid to snow
+      PEXTRA(JL,IK+20,IS+1) = PEXTRA(JL,IK+20,IS+1) + ZPRACS(JL)*ZDZ*ZDT*ZQTMST ! Rain accretes snow -> snow
+      PEXTRA(JL,IK+21,IS+1) = PEXTRA(JL,IK+21,IS+1) + ZPSACR(JL)*ZDZ*ZDT*ZQTMST ! Snow accretes rain -> snow
+      PEXTRA(JL,IK+22,IS+1) = PEXTRA(JL,IK+22,IS+1) + ZPRACI(JL)*ZDZ*ZDT*ZQTMST ! Rain accretes ice -> ice
+      PEXTRA(JL,IK+23,IS+1) = PEXTRA(JL,IK+23,IS+1) + ZPIACR(JL)*ZDZ*ZDT*ZQTMST ! Ice accretes rain -> ice
+      PEXTRA(JL,IK+24,IS+1) = PEXTRA(JL,IK+24,IS+1) + PVFL(JL,JK)*ZDZ*ZDT  ! +- Vertical diffusion
+      PEXTRA(JL,IK+25,IS+1) = PEXTRA(JL,IK+25,IS+1) + PDYNL(JL,JK)*ZDZ*ZDT ! +- Advection of liquid from dynamics
+      !PEXTRA(JL,IK+26,IS+1) = PEXTRA(JL,IK+26,IS+1) + PDYNR(JL,JK)*ZDZ*ZDT ! +- Advection of rain from dyn
 
       IK = 39
-      !PEXTRA(JL,IK+1,1)  = PEXTRA(JL,IK+1,1) + ZBUDI(JL,10)*ZDZ ! + Condensation of new cloud (dqs decreasing = supersat)
-      !PEXTRA(JL,IK+2,1)  = PEXTRA(JL,IK+2,1) + ZBUDI(JL,9)*ZDZ  ! + Condensation of existing cloud (dqs decreasing = supersat)
-      !PEXTRA(JL,IK+3,1)  = PEXTRA(JL,IK+3,1) + ZBUDI(JL,8)*ZDZ  ! - Evaporation of existing cloud (dqs increasing = subsat)
-      !PEXTRA(JL,IK+4,1)  = PEXTRA(JL,IK+4,1) + ZBUDI(JL,1)*ZDZ  ! + Supersat clipping after cloud_satadj
-      PEXTRA(JL,IK+5,1)  = PEXTRA(JL,IK+5,1) + ZBUDI(JL,2)*ZDZ  ! + Supersat clipping after cloudsc
-      !PEXTRA(JL,IK+6,1)  = PEXTRA(JL,IK+6,1) + ZBUDI(JL,2)*ZDZ  ! + Supersat clipping after sltend
-      PEXTRA(JL,IK+7,1)  = PEXTRA(JL,IK+7,1) + ZBUDI(JL,3)*ZDZ  ! + Convective detrainment
-      PEXTRA(JL,IK+8,1)  = PEXTRA(JL,IK+8,1) + (ZBUDI(JL,4)+ZBUDI(JL,6))*ZDZ ! +- Convective subsidence source and sink
-      PEXTRA(JL,IK+9,1)  = PEXTRA(JL,IK+9,1) + ZBUDI(JL,5)*ZDZ  ! +- Evaporation due to convective subsidence
-      PEXTRA(JL,IK+10,1) = PEXTRA(JL,IK+10,1) + ZBUDI(JL,7)*ZDZ  ! - Turbulent erosion
-      PEXTRA(JL,IK+11,1) = PEXTRA(JL,IK+11,1) + ZBUDI(JL,11)*ZDZ ! + Deposition of liquid to ice
-      PEXTRA(JL,IK+12,1) = PEXTRA(JL,IK+12,1) + (ZBUDI(JL,12)+ZBUDI(JL,13))*ZDZ  ! Ice sedimentation
-      PEXTRA(JL,IK+13,1) = PEXTRA(JL,IK+13,1) + ZBUDI(JL,14)*ZDZ ! - Autoconversion to snow (IMPLICIT)(ZSNOWAUT)
-      PEXTRA(JL,IK+14,1) = PEXTRA(JL,IK+14,1) + ZBUDI(JL,16)*ZDZ ! - Melting of snow to rain
-      PEXTRA(JL,IK+15,1) = PEXTRA(JL,IK+15,1) + ZBUDI(JL,17)*ZDZ ! - Evaporation of rain
-      PEXTRA(JL,IK+16,1) = PEXTRA(JL,IK+16,1) + ZPSDEP(JL)*ZQTMST*ZDZ !+ Deposition of vapour on snow
-      PEXTRA(JL,IK+17,1) = PEXTRA(JL,IK+17,1) + PVFI(JL,JK)*ZDZ  ! +- Vertical diffusion
-      PEXTRA(JL,IK+18,1) = PEXTRA(JL,IK+18,1) + PDYNI(JL,JK)*ZDZ ! +- Advection of ice from dynamics
-      PEXTRA(JL,IK+19,1) = PEXTRA(JL,IK+19,1) + PDYNS(JL,JK)*ZDZ ! +- Advection of snow from dynamics
+      !PEXTRA(JL,IK+1,IS+1)  = PEXTRA(JL,IK+1,IS+1) + ZBUDI(JL,10)*ZDZ*ZDT ! + Condensation of new cloud (dqs decreasing = supersat)
+      !PEXTRA(JL,IK+2,IS+1)  = PEXTRA(JL,IK+2,IS+1) + ZBUDI(JL,9)*ZDZ*ZDT  ! + Condensation of existing cloud (dqs decreasing = supersat)
+      !PEXTRA(JL,IK+3,IS+1)  = PEXTRA(JL,IK+3,IS+1) + ZBUDI(JL,8)*ZDZ*ZDT  ! - Evaporation of existing cloud (dqs increasing = subsat)
+      !PEXTRA(JL,IK+4,IS+1)  = PEXTRA(JL,IK+4,IS+1) + ZBUDI(JL,1)*ZDZ*ZDT  ! + Supersat clipping after cloud_satadj
+      PEXTRA(JL,IK+5,IS+1)  = PEXTRA(JL,IK+5,IS+1) + ZBUDI(JL,2)*ZDZ*ZDT  ! + Supersat clipping after cloudsc
+      !PEXTRA(JL,IK+6,IS+1)  = PEXTRA(JL,IK+6,IS+1) + ZBUDI(JL,2)*ZDZ*ZDT  ! + Supersat clipping after sltend
+      PEXTRA(JL,IK+7,IS+1)  = PEXTRA(JL,IK+7,IS+1) + ZBUDI(JL,3)*ZDZ*ZDT  ! + Convective detrainment
+      PEXTRA(JL,IK+8,IS+1)  = PEXTRA(JL,IK+8,IS+1) + (ZBUDI(JL,4)+ZBUDI(JL,6))*ZDZ*ZDT ! +- Convective subsidence source and sink
+      PEXTRA(JL,IK+9,IS+1)  = PEXTRA(JL,IK+9,IS+1) + ZBUDI(JL,5)*ZDZ*ZDT  ! +- Evaporation due to convective subsidence
+      PEXTRA(JL,IK+10,IS+1) = PEXTRA(JL,IK+10,IS+1) + ZBUDI(JL,7)*ZDZ*ZDT  ! - Turbulent erosion
+      PEXTRA(JL,IK+11,IS+1) = PEXTRA(JL,IK+11,IS+1) + ZBUDI(JL,11)*ZDZ*ZDT ! + Deposition of liquid to ice
+      PEXTRA(JL,IK+12,IS+1) = PEXTRA(JL,IK+12,IS+1) + (ZBUDI(JL,12)+ZBUDI(JL,13))*ZDZ*ZDT  ! Ice sedimentation
+      PEXTRA(JL,IK+13,IS+1) = PEXTRA(JL,IK+13,IS+1) + ZBUDI(JL,14)*ZDZ*ZDT ! - Autoconversion to snow (IMPLICIT)(ZSNOWAUT)
+      PEXTRA(JL,IK+14,IS+1) = PEXTRA(JL,IK+14,IS+1) + ZBUDI(JL,16)*ZDZ*ZDT ! - Melting of snow to rain
+      PEXTRA(JL,IK+15,IS+1) = PEXTRA(JL,IK+15,IS+1) + ZBUDI(JL,17)*ZDZ*ZDT ! - Evaporation of rain
+      PEXTRA(JL,IK+16,IS+1) = PEXTRA(JL,IK+16,IS+1) + ZPSDEP(JL)*ZQTMST*ZDZ*ZDT !+ Deposition of vapour on snow
+      PEXTRA(JL,IK+17,IS+1) = PEXTRA(JL,IK+17,IS+1) + PVFI(JL,JK)*ZDZ*ZDT  ! +- Vertical diffusion
+      PEXTRA(JL,IK+18,IS+1) = PEXTRA(JL,IK+18,IS+1) + PDYNI(JL,JK)*ZDZ*ZDT ! +- Advection of ice from dynamics
+      PEXTRA(JL,IK+19,IS+1) = PEXTRA(JL,IK+19,IS+1) + PDYNS(JL,JK)*ZDZ*ZDT ! +- Advection of snow from dynamics
       
       IK = 60
-      PEXTRA(JL,IK,1)   = PRAINFRAC_TOPRFZ(JL)
+      PEXTRA(JL,IK,IS+1)   = PRAINFRAC_TOPRFZ(JL)
       
       IK = 70
-      IF (KTYPE(JL) == 0)        PEXTRA(JL,IK,1)   = PEXTRA(JL,IK,1) + 1.0_JPRB
-      IF (KTYPE(JL) == 1)        PEXTRA(JL,IK+1,1) = PEXTRA(JL,IK+1,1) + 1.0_JPRB
-      IF (KTYPE(JL) == 2)        PEXTRA(JL,IK+2,1) = PEXTRA(JL,IK+2,1) + 1.0_JPRB
-      IF (KTYPE(JL) == 3)        PEXTRA(JL,IK+3,1) = PEXTRA(JL,IK+3,1) + 1.0_JPRB
-      IF (KPBLTYPE(JL) == 0)     PEXTRA(JL,IK+4,1) = PEXTRA(JL,IK+4,1) + 1.0_JPRB
-      IF (KPBLTYPE(JL) == 1)     PEXTRA(JL,IK+5,1) = PEXTRA(JL,IK+5,1) + 1.0_JPRB
-      IF (KPBLTYPE(JL) == 2)     PEXTRA(JL,IK+6,1) = PEXTRA(JL,IK+6,1) + 1.0_JPRB
-      IF (KPBLTYPE(JL) == 3)     PEXTRA(JL,IK+7,1) = PEXTRA(JL,IK+7,1) + 1.0_JPRB
-      PEXTRA(JL,IK+8,1) = PEXTRA(JL,IK+8,1) + PEIS(JL)
-      IF (PEIS(JL) > 6.0_JPRB)  PEXTRA(JL,IK+9,1) = PEXTRA(JL,IK+9,1) + 1.0_JPRB
-      IF (PEIS(JL) > 8.0_JPRB)  PEXTRA(JL,IK+10,1) = PEXTRA(JL,IK+10,1) + 1.0_JPRB
-      IF (PEIS(JL) > 10.0_JPRB) PEXTRA(JL,IK+11,1) = PEXTRA(JL,IK+11,1) + 1.0_JPRB
-      IF (KTYPE(JL) >= 2 .AND. PEIS(JL)<REISTHSC) PEXTRA(JL,IK+12,1) = PEXTRA(JL,IK+12,1) + 1.0_JPRB
-      IF (KTYPE(JL) > 0) PEXTRA(JL,IK+13,1) = KCTOP(JL)   
+      IF (KTYPE(JL) == 0)        PEXTRA(JL,IK,IS+1)   = PEXTRA(JL,IK,IS+1) + 1.0_JPRB
+      IF (KTYPE(JL) == IS+1)        PEXTRA(JL,IK+1,IS+1) = PEXTRA(JL,IK+1,IS+1) + 1.0_JPRB
+      IF (KTYPE(JL) == 2)        PEXTRA(JL,IK+2,IS+1) = PEXTRA(JL,IK+2,IS+1) + 1.0_JPRB
+      IF (KTYPE(JL) == 3)        PEXTRA(JL,IK+3,IS+1) = PEXTRA(JL,IK+3,IS+1) + 1.0_JPRB
+      IF (KPBLTYPE(JL) == 0)     PEXTRA(JL,IK+4,IS+1) = PEXTRA(JL,IK+4,IS+1) + 1.0_JPRB
+      IF (KPBLTYPE(JL) == IS+1)     PEXTRA(JL,IK+5,IS+1) = PEXTRA(JL,IK+5,IS+1) + 1.0_JPRB
+      IF (KPBLTYPE(JL) == 2)     PEXTRA(JL,IK+6,IS+1) = PEXTRA(JL,IK+6,IS+1) + 1.0_JPRB
+      IF (KPBLTYPE(JL) == 3)     PEXTRA(JL,IK+7,IS+1) = PEXTRA(JL,IK+7,IS+1) + 1.0_JPRB
+      PEXTRA(JL,IK+8,IS+1) = PEXTRA(JL,IK+8,IS+1) + PEIS(JL)
+      IF (PEIS(JL) > 6.0_JPRB)  PEXTRA(JL,IK+9,IS+1) = PEXTRA(JL,IK+9,IS+1) + 1.0_JPRB
+      IF (PEIS(JL) > 8.0_JPRB)  PEXTRA(JL,IK+10,IS+1) = PEXTRA(JL,IK+10,IS+1) + 1.0_JPRB
+      IF (PEIS(JL) > 10.0_JPRB) PEXTRA(JL,IK+11,IS+1) = PEXTRA(JL,IK+11,IS+1) + 1.0_JPRB
+      IF (KTYPE(JL) >= 2 .AND. PEIS(JL)<REISTHSC) PEXTRA(JL,IK+12,IS+1) = PEXTRA(JL,IK+12,IS+1) + 1.0_JPRB
+      IF (KTYPE(JL) > 0) PEXTRA(JL,IK+13,IS+1) = KCTOP(JL)   
 
     ENDDO
     IS = IS + 1
@@ -3900,18 +3949,18 @@ ENDIF ! on ISUBLSNOW
     
     DO JL=KIDIA,KFDIA
 !      CVEXTRA(IS+1) = 'QSUPSATADJCLDSC'
-!      PEXTRA(JL,JK,IS+1)  = PEXTRA(JL,JK,IS+1) + ZBUDCC(JL,10) ! Condensation of new cloud
-!      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZBUDCC(JL,11) ! Evaporation of cloud 
-!      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZBUDCC(JL,1)  ! Supersat clipping after cloud_satadj
-      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4)  + ZBUDCC(JL,2)   ! Supersat clipping after cloudsc
-!      PEXTRA(JL,JK,IS+5)  = PEXTRA(JL,JK,IS+5) + ZBUDCC(JL,2)  ! Supersat clipping from t-1 sltend
-      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6)  + ZBUDCC(JL,3)  ! Convective detrainment
-      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7)  + ZBUDCC(JL,4)+ZBUDCC(JL,6)  ! Convective subsidence
-      PEXTRA(JL,JK,IS+8)  = PEXTRA(JL,JK,IS+8)  + ZBUDCC(JL,5)  ! Convective subsidence evaporation
-      PEXTRA(JL,JK,IS+9)  = PEXTRA(JL,JK,IS+9)  + ZBUDCC(JL,7)  ! Turbulent erosion
-!      PEXTRA(JL,JK,IS+10)  = PEXTRA(JL,JK,IS+10)  + ZBUDCC(JL,?)  ! Tidyup
-      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + PVFA(JL,JK)   ! Vertical diffusion
-      PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) + PDYNA(JL,JK)  ! Advection from dynamics
+!      PEXTRA(JL,JK,IS+1)  = PEXTRA(JL,JK,IS+1) + ZBUDCC(JL,10)*ZDT ! Condensation of new cloud
+!      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZBUDCC(JL,11)*ZDT ! Evaporation of cloud 
+!      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZBUDCC(JL,1)*ZDT  ! Supersat clipping after cloud_satadj
+      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4)  + ZBUDCC(JL,2)*ZDT   ! Supersat clipping after cloudsc
+!      PEXTRA(JL,JK,IS+5)  = PEXTRA(JL,JK,IS+5) + ZBUDCC(JL,2)*ZDT  ! Supersat clipping from t-1 sltend
+      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6)  + ZBUDCC(JL,3)*ZDT  ! Convective detrainment
+      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7)  + (ZBUDCC(JL,4)+ZBUDCC(JL,6))*ZDT  ! Convective subsidence
+      PEXTRA(JL,JK,IS+8)  = PEXTRA(JL,JK,IS+8)  + ZBUDCC(JL,5)*ZDT  ! Convective subsidence evaporation
+      PEXTRA(JL,JK,IS+9)  = PEXTRA(JL,JK,IS+9)  + ZBUDCC(JL,7)*ZDT  ! Turbulent erosion
+!      PEXTRA(JL,JK,IS+10)  = PEXTRA(JL,JK,IS+10)  + ZBUDCC(JL,?)*ZDT  ! Tidyup
+      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + PVFA(JL,JK)*ZDT   ! Vertical diffusion
+      PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) + PDYNA(JL,JK)*ZDT  ! Advection from dynamics
     ENDDO
     IS = IS + 12
     IF (IS > KFLDX) CALL ABOR1('CLOUDSC ERROR: Not enough PEXTRA variables for cloud fraction budget.')
@@ -3922,32 +3971,32 @@ ENDIF ! on ISUBLSNOW
   !-----------------------------------------------------------------
   IF (LCLDBUDL) THEN
     DO JL=KIDIA,KFDIA
-!      PEXTRA(JL,JK,IS+1) = PEXTRA(JL,JK,IS+1) + ZBUDL(JL,10) ! + Condensation of new cloud (dqs decreasing = supersat)
-!      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZBUDL(JL,9)  ! + Condensation of existing cloud (dqs decreasing = supersat)
-!      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZBUDL(JL,8) ! - Evaporation of existing cloud (dqs increasing = subsat)
-!      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + ZBUDL(JL,2) ! + Supersat clipping after cloud_satadj
-       PEXTRA(JL,JK,IS+5)  = PEXTRA(JL,JK,IS+5) + ZBUDL(JL,2) ! + Supersat clipping after cloudsc
-!      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6) + ZBUDL(JL,2) ! + Supersat clipping after sltend (PSUPSAT)
-      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7) + ZBUDL(JL,3) ! + Convective detrainment
-      PEXTRA(JL,JK,IS+8)  = PEXTRA(JL,JK,IS+8) + ZBUDL(JL,4)+ZBUDL(JL,6)! +- Convective subsidence
-      PEXTRA(JL,JK,IS+9)  = PEXTRA(JL,JK,IS+9) + ZBUDL(JL,5)! - Convective subsidence evaporation
+!      PEXTRA(JL,JK,IS+1) = PEXTRA(JL,JK,IS+1) + ZBUDL(JL,10)*ZDT ! + Condensation of new cloud (dqs decreasing = supersat)
+!      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZBUDL(JL,9)*ZDT  ! + Condensation of existing cloud (dqs decreasing = supersat)
+!      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZBUDL(JL,8)*ZDT ! - Evaporation of existing cloud (dqs increasing = subsat)
+!      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + ZBUDL(JL,2)*ZDT ! + Supersat clipping after cloud_satadj
+       PEXTRA(JL,JK,IS+5)  = PEXTRA(JL,JK,IS+5) + ZBUDL(JL,2)*ZDT ! + Supersat clipping after cloudsc
+!      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6) + ZBUDL(JL,2)*ZDT ! + Supersat clipping after sltend (PSUPSAT)
+      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7) + ZBUDL(JL,3)*ZDT ! + Convective detrainment
+      PEXTRA(JL,JK,IS+8)  = PEXTRA(JL,JK,IS+8) + (ZBUDL(JL,4)+ZBUDL(JL,6))*ZDT! +- Convective subsidence
+      PEXTRA(JL,JK,IS+9)  = PEXTRA(JL,JK,IS+9) + ZBUDL(JL,5)*ZDT ! - Convective subsidence evaporation
        ! ZBUDL(JL,4) + Convective subsidence source from layer above
        ! ZBUDL(JL,5) - Convective subsidence source evaporation in layer
        ! ZBUDL(JL,6) - Convective subsidence sink to layer below (IMPLICIT) (ZCONVSINK)
-      PEXTRA(JL,JK,IS+10)  = PEXTRA(JL,JK,IS+10) + ZBUDL(JL,7) ! - Turbulent erosion
-      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + ZBUDL(JL,11)! - Deposition of liquid to ice
-      PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) + ZBUDL(JL,12)! - Autoconversion to rain+freezing->snow (IMPLICIT)(ZRAINAUT) 
-      PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZBUDL(JL,13)! - Accretion of cloud to rain+freezing->snow (IMPLICIT)(ZRAINACC)
-      PEXTRA(JL,JK,IS+14) = PEXTRA(JL,JK,IS+14) + ZBUDL(JL,14)! - Autoconversion to rain (IMPLICIT)(ZRAINAUT)
-      PEXTRA(JL,JK,IS+15) = PEXTRA(JL,JK,IS+15) + ZBUDL(JL,15)! - Accretion of cloud to rain (IMPLICIT)(ZRAINACC)
-      PEXTRA(JL,JK,IS+16) = PEXTRA(JL,JK,IS+16) + ZBUDL(JL,17)! + Melting of ice to liquid
-      PEXTRA(JL,JK,IS+17) = PEXTRA(JL,JK,IS+17) + ZBUDL(JL,18)+ZBUDL(JL,19) ! - Freezing of rain/liq
+      PEXTRA(JL,JK,IS+10)  = PEXTRA(JL,JK,IS+10) + ZBUDL(JL,7)*ZDT ! - Turbulent erosion
+      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + ZBUDL(JL,11)*ZDT! - Deposition of liquid to ice
+      PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) + ZBUDL(JL,12)*ZDT! - Autoconversion to rain+freezing->snow (IMPLICIT)(ZRAINAUT) 
+      PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZBUDL(JL,13)*ZDT! - Accretion of cloud to rain+freezing->snow (IMPLICIT)(ZRAINACC)
+      PEXTRA(JL,JK,IS+14) = PEXTRA(JL,JK,IS+14) + ZBUDL(JL,14)*ZDT! - Autoconversion to rain (IMPLICIT)(ZRAINAUT)
+      PEXTRA(JL,JK,IS+15) = PEXTRA(JL,JK,IS+15) + ZBUDL(JL,15)*ZDT! - Accretion of cloud to rain (IMPLICIT)(ZRAINACC)
+      PEXTRA(JL,JK,IS+16) = PEXTRA(JL,JK,IS+16) + ZBUDL(JL,17)*ZDT! + Melting of ice to liquid
+      PEXTRA(JL,JK,IS+17) = PEXTRA(JL,JK,IS+17) + (ZBUDL(JL,18)+ZBUDL(JL,19))*ZDT ! - Freezing of rain/liq
        ! ZBUDL(JL,18) - Freezing of rain to snow
        ! ZBUDL(JL,19) - Freezing of liquid to ice
-      PEXTRA(JL,JK,IS+18) = PEXTRA(JL,JK,IS+18) + ZBUDL(JL,20) ! - Evaporation of rain
-      PEXTRA(JL,JK,IS+19) = PEXTRA(JL,JK,IS+19) + ZBUDL(JL,21) ! - Riming of cloud liquid to snow
-      PEXTRA(JL,JK,IS+20) = PEXTRA(JL,JK,IS+20) + PVFL(JL,JK)  ! +- Vertical diffusion
-      PEXTRA(JL,JK,IS+21) = PEXTRA(JL,JK,IS+21) + PDYNL(JL,JK) ! +- Advection from dynamics
+      PEXTRA(JL,JK,IS+18) = PEXTRA(JL,JK,IS+18) + ZBUDL(JL,20)*ZDT ! - Evaporation of rain
+      PEXTRA(JL,JK,IS+19) = PEXTRA(JL,JK,IS+19) + ZBUDL(JL,21)*ZDT ! - Riming of cloud liquid to snow
+      PEXTRA(JL,JK,IS+20) = PEXTRA(JL,JK,IS+20) + PVFL(JL,JK)*ZDT  ! +- Vertical diffusion
+      PEXTRA(JL,JK,IS+21) = PEXTRA(JL,JK,IS+21) + PDYNL(JL,JK)*ZDT ! +- Advection from dynamics
       PEXTRA(JL,JK,IS+22) = PEXTRA(JL,JK,IS+22) + ZQXN(JL,NCLDQL)  ! Final condensate
     ENDDO
     IS = IS + 22
@@ -3959,33 +4008,33 @@ ENDIF ! on ISUBLSNOW
   !-----------------------------------------------------------------
   IF (LCLDBUDI) THEN
     DO JL=KIDIA,KFDIA
-!      PEXTRA(JL,JK,IS+1) = PEXTRA(JL,JK,IS+1) + ZBUDI(JL,10) ! + Condensation of new cloud (dqs decreasing = supersat)
-!      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZBUDI(JL,9)  ! + Condensation of existing cloud (dqs decreasing = supersat)
-!      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZBUDI(JL,8)  ! - Evaporation of existing cloud (dqs increasing = subsat)
-!      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + ZBUDI(JL,2)  ! + Supersat clipping after cloud_satadj
-      PEXTRA(JL,JK,IS+5)  = PEXTRA(JL,JK,IS+5) + ZBUDI(JL,2)   ! + Supersat clipping after cloudsc
-!      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6) + ZBUDI(JL,2)  ! + Supersat clipping after sltend
-      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7) + ZBUDI(JL,3)   ! + Convective detrainment
-      PEXTRA(JL,JK,IS+8)  = PEXTRA(JL,JK,IS+8) + ZBUDI(JL,4)+ZBUDI(JL,6)! +- Convective subsidence
-      PEXTRA(JL,JK,IS+9)  = PEXTRA(JL,JK,IS+9) + ZBUDI(JL,5)! - Convective subsidence evaporation
+!      PEXTRA(JL,JK,IS+1) = PEXTRA(JL,JK,IS+1) + ZBUDI(JL,10)*ZDT ! + Condensation of new cloud (dqs decreasing = supersat)
+!      PEXTRA(JL,JK,IS+2)  = PEXTRA(JL,JK,IS+2) + ZBUDI(JL,9)*ZDT  ! + Condensation of existing cloud (dqs decreasing = supersat)
+!      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ZBUDI(JL,8)*ZDT  ! - Evaporation of existing cloud (dqs increasing = subsat)
+!      PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + ZBUDI(JL,2)*ZDT  ! + Supersat clipping after cloud_satadj
+      PEXTRA(JL,JK,IS+5)  = PEXTRA(JL,JK,IS+5) + ZBUDI(JL,2)*ZDT   ! + Supersat clipping after cloudsc
+!      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6) + ZBUDI(JL,2)*ZDT  ! + Supersat clipping after sltend
+      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7) + ZBUDI(JL,3)*ZDT   ! + Convective detrainment
+      PEXTRA(JL,JK,IS+8)  = PEXTRA(JL,JK,IS+8) + (ZBUDI(JL,4)+ZBUDI(JL,6))*ZDT! +- Convective subsidence
+      PEXTRA(JL,JK,IS+9)  = PEXTRA(JL,JK,IS+9) + ZBUDI(JL,5)*ZDT! - Convective subsidence evaporation
        ! ZBUDI(JL,4) + Convective subsidence source from layer above
        ! ZBUDI(JL,5) - Convective subsidence source evaporation in layer
        ! ZBUDI(JL,6) - Convective subsidence sink to layer below (IMPLICIT) (ZCONVSINK)
-      PEXTRA(JL,JK,IS+10)  = PEXTRA(JL,JK,IS+10) + ZBUDI(JL,7)  ! - Turbulent erosion
+      PEXTRA(JL,JK,IS+10)  = PEXTRA(JL,JK,IS+10) + ZBUDI(JL,7)*ZDT  ! - Turbulent erosion
       ! Microphysics
-      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + ZBUDI(JL,11)! + Deposition of liquid to ice
-      PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) + ZBUDI(JL,12)+ZBUDI(JL,13)! + Ice sedimentation
+      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + ZBUDI(JL,11)*ZDT! + Deposition of liquid to ice
+      PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) + (ZBUDI(JL,12)+ZBUDI(JL,13))*ZDT! + Ice sedimentation
        ! ZBUDI(JL,12) + Ice sedimentation source from above
        ! ZBUDI(JL,13) - Ice sedimentation sink to below (IMPLICIT)(ZFALLSINK)
-      PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZBUDI(JL,14) ! - Autoconversion to snow (IMPLICIT) (ZSNOWAUT)
-      PEXTRA(JL,JK,IS+14) = PEXTRA(JL,JK,IS+14) + ZBUDI(JL,15)+ZBUDI(JL,16) ! - Melting of ice/snow to rain
+      PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZBUDI(JL,14)*ZDT ! - Autoconversion to snow (IMPLICIT) (ZSNOWAUT)
+      PEXTRA(JL,JK,IS+14) = PEXTRA(JL,JK,IS+14) + (ZBUDI(JL,15)+ZBUDI(JL,16))*ZDT ! - Melting of ice/snow to rain
        ! ZBUDI(JL,15)! - Melting of ice to rain
        ! ZBUDI(JL,16)! - Melting of snow to rain
-      PEXTRA(JL,JK,IS+15) = PEXTRA(JL,JK,IS+15) + ZPSDEP(JL)*ZQTMST ! Deposition of vapour to snow
-      PEXTRA(JL,JK,IS+16) = PEXTRA(JL,JK,IS+16) + ZBUDI(JL,17)! - Evaporation of snow
-      PEXTRA(JL,JK,IS+17) = PEXTRA(JL,JK,IS+17) + PVFI(JL,JK) ! Vertical diffusion
-      PEXTRA(JL,JK,IS+18) = PEXTRA(JL,JK,IS+18) + ZPIEVAP(JL)*ZQTMST ! Evaporation of precipitating ice
-      PEXTRA(JL,JK,IS+19) = PEXTRA(JL,JK,IS+19) + PDYNI(JL,JK)! Advection from dynamics
+      PEXTRA(JL,JK,IS+15) = PEXTRA(JL,JK,IS+15) + ZPSDEP(JL)*ZQTMST*ZDT ! Deposition of vapour to snow
+      PEXTRA(JL,JK,IS+16) = PEXTRA(JL,JK,IS+16) + ZBUDI(JL,17)*ZDT! - Evaporation of snow
+      PEXTRA(JL,JK,IS+17) = PEXTRA(JL,JK,IS+17) + PVFI(JL,JK)*ZDT ! Vertical diffusion
+      PEXTRA(JL,JK,IS+18) = PEXTRA(JL,JK,IS+18) + ZPIEVAP(JL)*ZQTMST*ZDT ! Evaporation of precipitating ice
+      PEXTRA(JL,JK,IS+19) = PEXTRA(JL,JK,IS+19) + PDYNI(JL,JK)*ZDT! Advection from dynamics
       PEXTRA(JL,JK,IS+20) = PEXTRA(JL,JK,IS+20) + ZQXN(JL,NCLDQI)  ! Final condensate
     ENDDO
     IS = IS + 20
@@ -4011,49 +4060,49 @@ ENDIF ! on ISUBLSNOW
       !    = "Supersat adjust cloudsc" + "Supersat adjust sltend t-1" 
       !    + "Existing cloud" + "New cloud"
 
-      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + (ZBUDL(JL,1) + ZBUDL(JL,2) &
+      PEXTRA(JL,JK,IS+3)  = PEXTRA(JL,JK,IS+3) + ((ZBUDL(JL,1) + ZBUDL(JL,2) &
      &                     + ZBUDL(JL,9) + ZBUDL(JL,10))*RALVDCP&
-     &                     -ZBUDI(JL,11)*RALVDCP
+     &                     -ZBUDI(JL,11)*RALVDCP)*ZDT
 
       ! Condensation (vapour to ice) (heating +ve RALSDCP) 
       !    = "Supersat adjust cloudsc" + "Supersat adjust sltend t-1" 
       !    + "Existing cloud" + "New cloud"
       PEXTRA(JL,JK,IS+4)  = PEXTRA(JL,JK,IS+4) + (ZBUDI(JL,1) + ZBUDI(JL,2) &
-     &                     + ZBUDI(JL,9) + ZBUDI(JL,10)+ZBUDI(JL,11))*RALSDCP
+     &                     + ZBUDI(JL,9) + ZBUDI(JL,10)+ZBUDI(JL,11))*RALSDCP*ZDT
 
       ! Deposition of liquid to ice  (Bergeron Findeisen liquid-vapour-ice) (heating +ve RALFDCP)        
-      PEXTRA(JL,JK,IS+5) = PEXTRA(JL,JK,IS+5) + ZBUDI(JL,11) * RALFDCP                                      
+      PEXTRA(JL,JK,IS+5) = PEXTRA(JL,JK,IS+5) + ZBUDI(JL,11) * RALFDCP*ZDT                                      
       	
       ! Evaporation (liquid to vapour) (cooling -ve RALVDCP)
       !    = "Turbulent erosion" + "Evaporation of existing cloud" 
       !    + "Convective subsidence evap" 
-      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6) + (ZBUDL(JL,7) + ZBUDL(JL,8) + ZBUDL(JL,5))*RALVDCP
+      PEXTRA(JL,JK,IS+6)  = PEXTRA(JL,JK,IS+6) + (ZBUDL(JL,7) + ZBUDL(JL,8) + ZBUDL(JL,5))*RALVDCP*ZDT
 
       ! Evaporation (ice to vapour) (cooling -ve RALSDCP)
       !    = "Turbulent erosion" + "Evaporation of existing cloud" 
       !    + "Convective subsidence evap" 
-      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7) + (ZBUDI(JL,7) + ZBUDI(JL,8) + ZBUDI(JL,5))*RALSDCP
+      PEXTRA(JL,JK,IS+7)  = PEXTRA(JL,JK,IS+7) + (ZBUDI(JL,7) + ZBUDI(JL,8) + ZBUDI(JL,5))*RALSDCP*ZDT
 
       ! Evaporation of rain to vapour (cooling -ve RALVDCP)
-      PEXTRA(JL,JK,IS+8) = PEXTRA(JL,JK,IS+8) + ZBUDL(JL,20) * RALVDCP
+      PEXTRA(JL,JK,IS+8) = PEXTRA(JL,JK,IS+8) + ZBUDL(JL,20) * RALVDCP*ZDT
 
       ! Evaporation of snow to vapour (cooling -ve RALSDCP)
-      PEXTRA(JL,JK,IS+9) = PEXTRA(JL,JK,IS+9) + ZBUDI(JL,17) * RALSDCP 
+      PEXTRA(JL,JK,IS+9) = PEXTRA(JL,JK,IS+9) + ZBUDI(JL,17) * RALSDCP*ZDT
 
       ! Melting of ice to liquid (cooling -ve RALFDCP)
-      PEXTRA(JL,JK,IS+10) = PEXTRA(JL,JK,IS+10) + ZBUDI(JL,15) * RALFDCP                                       
+      PEXTRA(JL,JK,IS+10) = PEXTRA(JL,JK,IS+10) + ZBUDI(JL,15) * RALFDCP*ZDT                                       
 
       ! Melting of snow to rain (cooling -ve RALFDCP)
-      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + ZBUDI(JL,16) * RALFDCP                                       
+      PEXTRA(JL,JK,IS+11) = PEXTRA(JL,JK,IS+11) + ZBUDI(JL,16) * RALFDCP*ZDT                                   
              
       ! Freezing rate of liquid to ice (heating +ve RALFDCP)
       !    "Autoconversion & Accretion to rain+freezing->snow" 
       !    + "Freezing of rain to snow" + "Freezing of liquid to ice"
       PEXTRA(JL,JK,IS+12) = PEXTRA(JL,JK,IS+12) - (ZBUDL(JL,12) + ZBUDL(JL,13) + ZBUDL(JL,18) + &
-     &                       ZBUDL(JL,19)) * RALFDCP 
+     &                       ZBUDL(JL,19)) * RALFDCP*ZDT
 
       ! Riming of liquid to snow
-      PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZBUDL(JL,21) * RALFDCP                                       
+      PEXTRA(JL,JK,IS+13) = PEXTRA(JL,JK,IS+13) + ZBUDL(JL,21) * RALFDCP*ZDT
       
     ENDDO
     IS = IS + 13

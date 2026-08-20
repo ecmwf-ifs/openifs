@@ -1,3 +1,49 @@
+
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!------------------------------------------------------------------------------
+!
+! Description:
+!
+!  Computes the radiation fluxes 
+!  at the ice-water, air-water, 
+!  mixed layer-thermocline and water column-bottom sediment interfaces,
+!  the mean radiation flux over the mixed layer,
+!  and the mean radiation flux over the thermocline.
+!
+!
+! Current Code Owner: DWD, Dmitrii Mironov
+!  Phone:  +49-69-8062 2705
+!  Fax:    +49-69-8062 3721
+!  E-mail: dmitrii.mironov@dwd.de
+!
+! History:
+! Version    Date       Name
+! ---------- ---------- ----
+! 1.00       2005/11/17 Dmitrii Mironov 
+!  Initial release
+! <Modifications> 
+! !VERSION!  !DATE!     <Your name>
+! 1.01T    27-Feb-2008  V. M. Stepanenko
+! The code relevant to snow is dropped
+! M. Kelbling and S. Thober (UFZ) 11/6/2020 use of parameter values defined in namelist
+! <End modifications>
+!
+! Code Description:
+! Language: Fortran 90.
+! Software Standards: "European Standards for Writing and
+! Documenting Exchangeable Fortran 90 Code".
+!==============================================================================
+!
+! Declarations:
+!
+! Modules used:
+
 MODULE FLAKERAD_MOD
 CONTAINS
 SUBROUTINE FLAKERAD&
@@ -9,13 +55,6 @@ SUBROUTINE FLAKERAD&
   &  PI_ICE_FLK   , PI_BOT_FLK      , PI_W_FLK        ,  &
   &  PI_H_FLK     , PI_INTM_0_H_FLK , PI_INTM_H_D_FLK    )
 
-! (C) Copyright 2005- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 !------------------------------------------------------------------------------
 !
 ! Description:

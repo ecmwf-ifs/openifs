@@ -28,6 +28,10 @@ TYPE SPHYS_HIST_TYPE
   REAL (KIND=JPRB), DIMENSION (:,:), POINTER :: RADLWM=>NULL(), RADLWM5=>NULL() ! downward longwave emmissivity (0:KLEV)
   REAL (KIND=JPRB), DIMENSION (:,:), POINTER :: TGWDWMSU=>NULL(), TGWDWMSU5=>NULL() ! u-tendencies from non-orographic GWD
   REAL (KIND=JPRB), DIMENSION (:,:), POINTER :: TGWDWMSV=>NULL(), TGWDWMSV5=>NULL() ! v-tendencies from non-orographic GWD
+  REAL (KIND=JPRB), DIMENSION (:), POINTER :: DIFTQ_S=>NULL(), DIFTQ_S5=>NULL() ! surface fluxes of q from vert. diff
+  REAL (KIND=JPRB), DIMENSION (:), POINTER :: DIFTS_S=>NULL(), DIFTS_S5=>NULL() ! surface fluxes of s from vert. diff
+  REAL (KIND=JPRB), DIMENSION (:,:), POINTER :: TENU_VD9=>NULL(), TENV_VD9=>NULL(), &
+  &  TENT_VD9=>NULL(), TENQ_VD9=>NULL() ! VDIFF tendencies from previous TS
 END TYPE SPHYS_HIST_TYPE
 
 !!TYPE(SPHYS_HIST_TYPE), POINTER :: GPHIST(:) => NULL()

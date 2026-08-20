@@ -88,13 +88,15 @@ SUBROUTINE CUSTRAT &
 !     MODIFICATIONS.
 !     --------------
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 !----------------------------------------------------------------------
 
 USE YOEPHLI  , ONLY : TEPHLI
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG       ,RD       ,RCPD     ,RETV
+USE YOMCST   , ONLY : YRCST
+USE YOETHF   , ONLY : YRTHF
 
 IMPLICIT NONE
 
@@ -138,6 +140,8 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !                  ---------------------------------
 
 IF (LHOOK) CALL DR_HOOK('CUSTRAT',0,ZHOOK_HANDLE)
+ASSOCIATE(RG=>YRCST%RG, RCPD=>YRCST%RCPD, RETV=>YRCST%RETV, RD=>YRCST%RD)
+
 ZTPFAC1=PVDIFTS
 ZTPFAC2=1.0_JPRB/ZTPFAC1
 ZKDIFF1=10._JPRB
@@ -210,7 +214,7 @@ DO JK=KLEV-1,ILEVH,-1
   IK=JK
   ICALL=1
   CALL CUADJTQ &
-   & ( YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK,&
+   & ( YRTHF, YRCST, YDEPHLI,  KIDIA,    KFDIA,    KLON,     KLEV,     IK,&
    &   ZPP,      ZTC,      ZQC,      LLFLAG,   ICALL)  
 
   DO JL=KIDIA,KFDIA
@@ -355,5 +359,6 @@ ENDDO
 
 700 CONTINUE
 
+END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('CUSTRAT',1,ZHOOK_HANDLE)
 END SUBROUTINE CUSTRAT

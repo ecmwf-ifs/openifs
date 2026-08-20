@@ -7,10 +7,10 @@
 ! nor does it submit to any jurisdiction
 
 !OPTIONS XOPT(HSFUN)
-SUBROUTINE VDFHGHTN (YDEPHLI, YDECLDP  , YDECUMF , YDVDF, YDSPP_CONFIG, &
-                   & KIDIA   , KFDIA   , KLON    , KLEV    , PTMST, LDLAND,&
-                   & PTM1    , PQM1    , PSLGSM1 , PUM1    , PVM1   ,  PCPTGZ,&
-                   & PAPHM1  , PAPM1   , PGEOM1  , PGEOH   , PBLH  ,&
+SUBROUTINE VDFHGHTN (PPLDARE, PPLRG, YDEPHLI, YDECLDP  , YDECUMF , YDVDF, YDSPP_CONFIG, &
+                   & KIDIA   , KFDIA   , KLON    , KLEV    , PTMST  , LDLAND ,&
+                   & PTM1    , PQM1    , PSLGSM1 , PUM1    , PVM1   ,  PCPTGZ,  PQE, &
+                   & PAPHM1  , PAPM1   , PGEOM1  , PGEOH   , PBLH   ,&
                    & PKMFL   , PKHFL   , PKQFL   , PGP2DSPP,PKHVFL,  PMFLX,&
                    & PSLGUH  , PQTUH   , PUUH    , PVUH    ,&
                    & PZINV   , KINV    , KCLDBASE, KCLDTOP ,PZCLDBASE, PRI,  PEIS   , KPBLTYPE)  
@@ -24,6 +24,7 @@ SUBROUTINE VDFHGHTN (YDEPHLI, YDECLDP  , YDECUMF , YDVDF, YDSPP_CONFIG, &
 !     P. Lopez         02/06/2005 Removed useless option LPHYLIN
 !     P. Bechtold, I Sandu, N Semane 01/2019: complete revision=as shallow ascent
 !     P. Bechtold      26/03/2019 Add updraught momentum
+!     R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 
 !     PURPOSE
 !     -------
@@ -60,7 +61,8 @@ SUBROUTINE VDFHGHTN (YDEPHLI, YDECLDP  , YDECUMF , YDVDF, YDSPP_CONFIG, &
 !     *PKMFL*        SURFACE KINEMATIC MOMENTUM FLUX              M2/S2  
 !     *PKHFL*        SURFACE KINEMATIC HEAT FLUX                  K*M/S
 !     *PKQFL*        SURFACE KINEMATIC MOISTURE FLUX              M/S
-!     *PCPTGZ*       DRY STATIC ENERGY
+!     *PCPTGZ*       DRY STATIC ENERGY                            J/KG
+!     *PQE*          TOTAL ADVECTIVE MOISTURE TENDECY            KG/KG/S
 
 !     OUTPUT PARAMETERS (REAL):
 
@@ -93,20 +95,22 @@ SUBROUTINE VDFHGHTN (YDEPHLI, YDECLDP  , YDECUMF , YDVDF, YDSPP_CONFIG, &
 
 USE PARKIND1 , ONLY : JPIM, JPRB, JPRD
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOMCST   , ONLY : RG, RD, RCPD, RETV, RLVTT, RLSTT, RTT      
+USE YOMCST    , ONLY : YDCST=>YRCST ! allows use of fcttre.func.h below. REK.
 USE PARPHY   , ONLY : RKAP, REPDU2
-USE YOETHF   , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, &
- & RVTMP2, R5ALVCP, R5ALSCP, RALVDCP, RALSDCP, RTWAT, RTICE, RTICECU, &
- & RTWAT_RTICE_R, RTWAT_RTICECU_R
+USE YOETHF    , ONLY : YDTHF=>YRTHF ! allows use of fcttre.func.h below. REK.
 USE YOEPHLI  , ONLY : TEPHLI
 USE YOECLDP  , ONLY : TECLDP
 USE YOECUMF  , ONLY : TECUMF
 USE YOEVDF   , ONLY : TVDF
 USE SPP_MOD  , ONLY : TSPP_CONFIG
+USE SPP_GEN_MOD, ONLY : SPP_PERT
+
 IMPLICIT NONE
 
 !*         0.1    GLOBAL VARIABLES
 
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLDARE
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PPLRG
 TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 TYPE(TECLDP)      ,INTENT(IN)    :: YDECLDP
 TYPE(TECUMF)      ,INTENT(IN)    :: YDECUMF
@@ -124,6 +128,7 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PSLGSM1(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PUM1(KLON,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVM1(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCPTGZ(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQE(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPHM1(KLON,KLEV+1) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPM1(KLON,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOM1(KLON,KLEV) 
@@ -169,6 +174,14 @@ REAL(KIND=JPRB) ::    ZDZ   , ZZ    ,ZCPM    , ZCONS10 , ZRG, ZRGOCPD,&
                     & ZRCPD, ZMFMAX, ZRHO  ,ZENTR   , ZCM     ,&
                     & ZDMFN, ZFAC, ZDU2, ZDRORO
 
+REAL(KIND=JPRB)  :: ZPRKAP(KLON)
+
+! A bunch of SPP variables
+LOGICAL            :: LLPERT_RKAP, LLPERT_RKAP1, LLPERT_RKAP2, LLPERT_RKAP3 ! SPP perturbation on?
+INTEGER(KIND=JPIM) :: IPN ! SPP perturbation pointer
+INTEGER(KIND=JPIM) :: IPRKAP, IPRKAP1, IPRKAP2, IPRKAP3 ! SPP random field pointer
+TYPE(SPP_PERT)     :: PNRKAP, PNRKAP1, PNRKAP2, PNRKAP3 ! SPP pertn. configs
+
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 #include "cubasen.intfb.h"
@@ -185,6 +198,12 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 !                 ------------------------------------------
 
 IF (LHOOK) CALL DR_HOOK('VDFHGHTN',0,ZHOOK_HANDLE)
+ASSOCIATE(RG=>YDCST%RG, RCPD=>YDCST%RCPD, RETV=>YDCST%RETV, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, &
+ & RV=>YDCST%RV, RD=>YDCST%RD, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, R4IES=>YDTHF%R4IES, &
+ & R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, &
+ & RALSDCP=>YDTHF%RALSDCP, RALFDCP=>YDTHF%RALFDCP, RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, &
+ & RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, RVTMP2=>YDTHF%RVTMP2)
 
 ASSOCIATE(  NJKT1=>YDECUMF%NJKT1, NJKT2=>YDECUMF%NJKT2,NJKT5=>YDECUMF%NJKT5, NJKT6=>YDECUMF%NJKT6,&
  &NJKT3=>YDECUMF%NJKT3,NJKT4=>YDECUMF%NJKT4,&
@@ -207,10 +226,48 @@ DO JL=KIDIA,KFDIA
   KPBLTYPE(JL)   = 0
   KINV(JL)       = KLEV
   IINV(JL)       = KLEV
-  PEIS(JL)       = -999_JPRB   ! default for inversion strength
+  PEIS(JL)       = -999._JPRB   ! default for inversion strength
   ZDPSUM(JL)     = 0.0_JPRB
   ZRICRI(JL)     = 50.0_JPRB
 ENDDO
+
+!  Prepare SPP -------------------------------------------------------------
+
+IF (YDSPP_CONFIG%LSPP) THEN
+  IPN = YDSPP_CONFIG%PPTR%RKAP
+  LLPERT_RKAP= IPN > 0
+  IF (LLPERT_RKAP) THEN
+    PNRKAP  = YDSPP_CONFIG%SM%PN(IPN)
+    IPRKAP = PNRKAP%MP
+  ENDIF
+
+  IPN = YDSPP_CONFIG%PPTR%RKAP1
+  LLPERT_RKAP1= IPN > 0
+  IF (LLPERT_RKAP1) THEN
+    PNRKAP1  = YDSPP_CONFIG%SM%PN(IPN)
+    IPRKAP1 = PNRKAP1%MP
+  ENDIF
+
+  IPN = YDSPP_CONFIG%PPTR%RKAP2
+  LLPERT_RKAP2= IPN > 0
+  IF (LLPERT_RKAP2) THEN
+    PNRKAP2  = YDSPP_CONFIG%SM%PN(IPN)
+    IPRKAP2 = PNRKAP2%MP
+  ENDIF
+
+  IPN = YDSPP_CONFIG%PPTR%RKAP3
+  LLPERT_RKAP3= IPN > 0
+  IF (LLPERT_RKAP3) THEN
+    PNRKAP3  = YDSPP_CONFIG%SM%PN(IPN)
+    IPRKAP3 = PNRKAP3%MP
+  ENDIF
+
+ELSE
+  LLPERT_RKAP  =.FALSE.
+  LLPERT_RKAP1 =.FALSE.
+  LLPERT_RKAP2 =.FALSE.
+  LLPERT_RKAP3 =.FALSE.
+ENDIF
 
 !---------------------------------------------------------------------
 
@@ -241,12 +298,12 @@ ENDDO
 
 !Note that in convection routines updraught values go from [1,KLEV]
 
-CALL SATUR (KIDIA , KFDIA , KLON  , NJKT2 , KLEV, YDEPHLI%LPHYLIN,&
+CALL SATUR (YDTHF, YDCST,KIDIA , KFDIA , KLON  , NJKT2 , KLEV, YDEPHLI%LPHYLIN,&
  & PAPM1   , PTM1  , ZQSAT , 1  )
 
 !---------------------------------------------------------------------
 CALL CUININ &
- & ( YDEPHLI, YDECUMF, KIDIA,    KFDIA,    KLON,    KLEV,&
+ & ( YDCST,  YDTHF,    YDEPHLI, YDECUMF, KIDIA,    KFDIA,    KLON,    KLEV,&
  & PTM1,     PQM1,     ZQSAT,    PUM1,     PVM1,&
  & PGEOM1,   PAPHM1,&
  & ILAB,&
@@ -270,9 +327,10 @@ ENDDO
 ! Nota: 
 if(.false.) then
 CALL CUBASEN &
- & ( YDEPHLI, YDECLDP, YDECUMF,  YDSPP_CONFIG, KIDIA,    KFDIA,    KLON,    KLEV,   IKDT,  .false.,&
+ & ( PPLDARE, PPLRG, YDTHF, YDCST, YDEPHLI, YDECLDP, YDECUMF,  YDSPP_CONFIG,&
+ & KIDIA,    KFDIA,    KLON,    KLEV,   IKDT,  .false., LDLAND, .FALSE.,&
  & ZTENH,    ZQENH,    PGEOH,    PAPHM1,&
- & ZKQFL,    ZKHFL,    PGP2DSPP, PKMFL,&
+ & ZKQFL,    ZKHFL,    PQE,      PGP2DSPP, PKMFL,&
  & PTM1,     PQM1,     ZQSAT,    PGEOM1, &  
  & ZTU,      ZQU,      ZLU,      ZWU2H,  ZWUBASE,&
  & ILAB,     LLCUM,    LLSC,     KCLDBASE,    IBOTSC,&
@@ -281,9 +339,10 @@ endif
 ! use stronger entrainment inside cloud only for quasi-dry PBL top and erase above results, ie ZWU2H 
 ! for all other PBL types. Nota: draft properties for dry mas flux not affected as limited to below cloud.
 CALL CUBASEN &
- & ( YDEPHLI, YDECLDP, YDECUMF,  YDSPP_CONFIG, KIDIA,    KFDIA,    KLON,    KLEV,    IKDT,  .true.,&
+ & ( PPLDARE, PPLRG, YDTHF, YDCST, YDEPHLI, YDECLDP, YDECUMF,  YDSPP_CONFIG, &
+ & KIDIA,    KFDIA,    KLON,    KLEV,    IKDT,  .true., LDLAND, .FALSE.,&
  & ZTENH,    ZQENH,    PGEOH,    PAPHM1,&
- & ZKQFL,    ZKHFL,    PGP2DSPP, PKMFL,&
+ & ZKQFL,    ZKHFL,    PQE,      PGP2DSPP, PKMFL,&
  & PTM1,     PQM1,     ZQSAT,    PGEOM1, &  
  & ZTU,      ZQU,      ZLU,      ZWU2H,  ZWUBASE,&
  & ILAB,     LLCUM,    LLSC,     KCLDBASE,    IBOTSC,&
@@ -397,6 +456,20 @@ ENDDO
 !               (ignore u* term following Anton's suggestion
 !               - consistency with similarity theory close to the surface)
 
+DO JL=KIDIA,KFDIA
+  IF (KPBLTYPE(JL) == 0 .AND. LLPERT_RKAP) THEN
+    ZPRKAP(JL) = EXP(PNRKAP%MU(1)+PNRKAP%XMAG(1)*PGP2DSPP(JL, IPRKAP))
+  ELSEIF (KPBLTYPE(JL) == 1 .AND. LLPERT_RKAP1) THEN
+    ZPRKAP(JL) = EXP(PNRKAP1%MU(1)+PNRKAP1%XMAG(1)*PGP2DSPP(JL, IPRKAP1))
+  ELSEIF (KPBLTYPE(JL) == 2 .AND. LLPERT_RKAP2) THEN
+    ZPRKAP(JL) = EXP(PNRKAP2%MU(1)+PNRKAP2%XMAG(1)*PGP2DSPP(JL, IPRKAP2))
+  ELSEIF (KPBLTYPE(JL) == 3 .AND. LLPERT_RKAP3) THEN
+    ZPRKAP(JL) = EXP(PNRKAP3%MU(1)+PNRKAP3%XMAG(1)*PGP2DSPP(JL, IPRKAP3))
+  ELSE ! do not perturb
+    ZPRKAP(JL) = 1.0_JPRB
+  ENDIF
+ENDDO
+
 ZCONS10 = 3.0_JPRB/(RG*PTMST)
 
 !DIR$ LOOP_INFO EST_TRIPS(16)
@@ -405,7 +478,7 @@ ZCONS10 = 3.0_JPRB/(RG*PTMST)
     IF ( ZINV(JL) > ZZ .AND. KPBLTYPE(JL)<=1) THEN
       ZRHO=PAPM1(JL,KLEV)/(RD*PTM1(JL,KLEV)*(1.0_JPRB+RETV*PQM1(JL,KLEV)))
       PMFLX(JL,KLEV) = ZCM * 1.2_JPRB &
-       & * (  1.5_JPRB * RKAP * MAX(0.0_JPRB,-PKHVFL(JL)) * RG * ZZ / PTM1(JL,KLEV) )**0.33333_JPRB &
+       & * (  1.5_JPRB * RKAP * ZPRKAP(JL) * MAX(0.0_JPRB,-PKHVFL(JL)) * RG * ZZ / PTM1(JL,KLEV) )**0.33333_JPRB &
        & * ( 1.0_JPRB - ZZ / ZINV(JL) ) ** 0.5_JPRB * ZRHO  
       ZMFMAX = (PAPM1(JL,KLEV)-PAPM1(JL,KLEV-1)) * ZCONS10
       PMFLX(JL,KLEV)=MIN(PMFLX(JL,KLEV),ZMFMAX)
@@ -414,7 +487,7 @@ ZCONS10 = 3.0_JPRB/(RG*PTMST)
 
 !*         6.2  mass flux  profile
 
-  DO JK=KLEV-1,1,-1
+  DO JK=KLEV-1,2,-1
 !DIR$ LOOP_INFO EST_TRIPS(16)
     DO JL=KIDIA,KFDIA
       ZZ = PGEOH(JL,KLEV)*ZRG
@@ -437,6 +510,7 @@ ZCONS10 = 3.0_JPRB/(RG*PTMST)
 
 !----------------------------------------------------------------------
 
+END ASSOCIATE
 END ASSOCIATE
 IF (LHOOK) CALL DR_HOOK('VDFHGHTN',1,ZHOOK_HANDLE)
 END SUBROUTINE VDFHGHTN

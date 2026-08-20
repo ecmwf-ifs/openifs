@@ -364,9 +364,9 @@ DO JWL=1,NWLID
           ZLIR(JAER)=RALI_SS(IIRH,IWAVL,IBIN)
           ZFAC = RSS_RH80_MASSFAC
         ELSEIF (ITYP == 2) THEN
-          ZALF(JAER)= ALF_DD(IBIN,IWAVL)
-          ZOMG(JAER)= OMG_DD(IBIN,IWAVL)
-          ZLIR(JAER)=RALI_DD(IBIN,IWAVL)
+          ZALF(JAER)= ALF_DD(IIRH,IWAVL,IBIN)
+          ZOMG(JAER)= OMG_DD(IIRH,IWAVL,IBIN)
+          ZLIR(JAER)=RALI_DD(IIRH,IWAVL,IBIN)
         ELSEIF (ITYP == 3) THEN
           IF (IBIN == 2) IIRH=IEFRH
           ZALF(JAER)= ALF_OM(IIRH,IWAVL)
@@ -416,9 +416,9 @@ DO JWL=1,NWLID
             ZOMG(JAER)= OMG_BC(IWAVL)
             ZLIR(JAER)=RALI_BC(IWAVL)
           ELSEIF (NVOLOPTP == 3) THEN
-            ZALF(JAER)= ALF_DD(3,IWAVL)
-            ZOMG(JAER)= OMG_DD(3,IWAVL)
-            ZLIR(JAER)=RALI_DD(3,IWAVL)
+            ZALF(JAER)= ALF_DD(1,IWAVL,3)
+            ZOMG(JAER)= OMG_DD(1,IWAVL,3)
+            ZLIR(JAER)=RALI_DD(1,IWAVL,3)
           ENDIF
         ENDIF
 

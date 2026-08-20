@@ -50,6 +50,7 @@ SUBROUTINE SU4FPOS(YDNAMFPSCI,YDAFN,YDFPCNT,KFLEVG,KLEVSNOW,LDPHYS,KTIME,KFPDOM,
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
 !      R. El Khatib 17-Jul-2013 FABEC post-processing
 !      K. Yessad (July 2014): Move some variables.
+!      R. El Khatib 09-Feb-2020 Multi-instanciable NPDIRL
 !     ------------------------------------------------------------------
 
 USE PARKIND1  , ONLY :  JPIM     ,JPRB
@@ -109,7 +110,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SU4FPOS',0,ZHOOK_HANDLE)
-ASSOCIATE(LFPCNT=>YDFPCNT%LFPCNT, LFPNAMELIST=>YDFPCNT%LFPNAMELIST, CNAM=>YDFPCNT%CNAM, &
+ASSOCIATE(LFPCNT=>YDFPCNT%LFPCNT, LFPNAMELIST=>YDFPCNT%LFPNAMELIST, CNAM=>YDFPCNT%CNAM, NPDIRL=>YDFPCNT%NPDIRL, &
  & TFP_DYNDS=>YDAFN%TFP_DYNDS)
 !     ------------------------------------------------------------------
 
@@ -120,7 +121,7 @@ WRITE(NULOUT,'(''--- Set up Fullpos fields list'')')
 IF (LECMWF) THEN
   !*    Initialize Fullpos fields request
   IF (LFPCNT) THEN
-    CALL PPREQ(KTIME,LLNOPPFIL,CLYFILE)
+    CALL PPREQ(NPDIRL,KTIME,LLNOPPFIL,CLYFILE)
     CALL SUFPC(YDNAMFPL=YLNAMFPL,LDPRINT=.FALSE.,CDPATH=CLYFILE,LDNAMELIST=LFPNAMELIST)
   ELSEIF (CNAM == ' ') THEN
     CALL SUFPC(YDNAMFPL=YLNAMFPL,LDPRINT=.FALSE.)
@@ -138,7 +139,7 @@ ELSE
   ENDIF
   CALL SUFPFIELDS(YLNAMFPL,KFLEVG,KLEVSNOW,YDFPFIELDS,YDFPVAB,LDPRINT=.TRUE.)
   IF (LFPCNT) THEN
-    CALL PPREQ(KTIME,LLNOPPFIL,CLYFILE) ! a selection file is read as a complement to the standard namelist
+    CALL PPREQ(NPDIRL,KTIME,LLNOPPFIL,CLYFILE) ! a selection file is read as a complement to the standard namelist
   ELSE
     LLNOPPFIL=.TRUE.
   ENDIF

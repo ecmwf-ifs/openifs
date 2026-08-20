@@ -1,10 +1,11 @@
-! (C) Copyright 1989- ECMWF.
+! (C) Copyright 2005- ECMWF.
+!
 ! This software is licensed under the terms of the Apache Licence Version 2.0
 ! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! 
+!
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction
+! nor does it submit to any jurisdiction.
 
 SUBROUTINE CUANCAPE2(YDECUMF,YDEPHLI, KIDIA,  KFDIA,  KLON,  KLEV,&
                    &PAP,    PAPH,   PT,    PQ,   PCAPE,   PCIN,  PPDEPL)
@@ -63,15 +64,14 @@ SUBROUTINE CUANCAPE2(YDECUMF,YDEPHLI, KIDIA,  KFDIA,  KLON,  KLEV,&
 !                                    enable accurate computations using Theta_v
 !     28-12-2020 P. Bechtold and I. Tsonevski: Introduce max unstable and
 !                                   50 and 100 hPa mixed layer CAPE/CIN using Theta_v
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 
 !-------------------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOETHF   , ONLY : R2ES, R3LES, R3IES, R4LES, R4IES, R5LES, R5IES, &
- &                    R5ALVCP, R5ALSCP, RALVDCP, RALSDCP, RTWAT, RTICE, RTICECU, &
- &                    RTWAT_RTICE_R, RTWAT_RTICECU_R
-USE YOMCST   , ONLY : RETV, RLVTT, RLSTT, RTT, RD, RKAPPA, RATM, RESTT, RCPD, RV
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of fcttre.func.h below. REK.
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of fcttre.func.h below. REK.
 USE YOECUMF  , ONLY : TECUMF
 USE YOEPHLI  , ONLY : TEPHLI
 
@@ -110,7 +110,13 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 #include "cuadjtq.intfb.h"
 !-------------------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('CUANCAPE2',0,ZHOOK_HANDLE)
-ASSOCIATE(NJKT1=>YDECUMF%NJKT1, NJKT2=>YDECUMF%NJKT2, NJKT4=>YDECUMF%NJKT4, RMINCIN=>YDECUMF%RMINCIN)
+ASSOCIATE(NJKT1=>YDECUMF%NJKT1, NJKT2=>YDECUMF%NJKT2, NJKT4=>YDECUMF%NJKT4, RMINCIN=>YDECUMF%RMINCIN, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, R4IES=>YDTHF%R4IES, &
+ & R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, R5ALSCP=>YDTHF%R5ALSCP, &
+ & RALVDCP=>YDTHF%RALVDCP, RALSDCP=>YDTHF%RALSDCP, RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, &
+ & RTICECU=>YDTHF%RTICECU, RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, &
+ & RETV=>YDCST%RETV, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, RTT=>YDCST%RTT, RKAPPA=>YDCST%RKAPPA, &
+ & RATM=>YDCST%RATM, RESTT=>YDCST%RESTT, RCPD=>YDCST%RCPD, RV=>YDCST%RV, RD=>YDCST%RD)
 
 ZORKAPPA=1.0_JPRB/RKAPPA
 ZCST=1.0_JPRB/(RESTT*RD/RV)
@@ -316,7 +322,7 @@ IF(LLCAPE_REC) THEN
        ENDDO
   
        CALL CUADJTQ &
-       & ( YDEPHLI, KIDIA,    KFDIA,    KLON,    KLEV, JK,&
+     & ( YDTHF, YDCST, YDEPHLI, KIDIA,    KFDIA,    KLON,    KLEV, JK,&
        &   PAP(:,JK),   ZTU,   ZQS,     LLZ,   1)
   
        DO JL=KIDIA,KFDIA

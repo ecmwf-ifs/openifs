@@ -1,33 +1,3 @@
-MODULE SURFPP_CTL_MOD
-CONTAINS
-SUBROUTINE SURFPP_CTL( KIDIA,KFDIA,KLON,KTILES, KDHVTLS, KDHFTLS &
- & , PTSTEP &
-! input
- & , PFRTI, PAHFLTI, PG0TI, PSTRTULEV, PSTRTVLEV, PTSKM1M &
- & , PUMLEV, PVMLEV, PQMLEV, PGEOMLEV, PCPTSPP ,PCPTGZLEV &
- & , PAPHMS, PZ0MW, PZ0HW, PZ0QW, PZDL, PQSAPP, PBLEND, PFBLEND, PBUOM &
- & , PZ0M, PEVAPSNW, PSSRFLTI, PSLRFL, PSST &
- & , PUCURR, PVCURR, PUSTOKES, PVSTOKES &
- & , YDCST, YDEXC, YDFLAKE &
-! updated
- & , PAHFSTI, PEVAPTI, PTSKE1, PTSKTIP1 &
-! output
- & , PDIFTSLEV, PDIFTQLEV, PUSTRTI, PVSTRTI, PTSKTI, PAHFLEV, PAHFLSB, PFWSB  &
- & , PU10M, PV10M, PT2M, PD2M, PQ2M &
- & , PGUST, P10NU, P10NV, PUST &
-! output DDH
- & , PDHTLS &
- & , PRPLRG)
-
-USE PARKIND1 , ONLY : JPIM, JPRB
-USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
-USE YOS_CST  , ONLY : TCST
-USE YOS_EXC  , ONLY : TEXC
-USE YOS_FLAKE, ONLY : TFLAKE
-
-USE SPPCFL_MOD
-USE SPPGUST_MOD
-USE VOSKIN_MOD
 
 ! (C) Copyright 2005- ECMWF.
 !
@@ -57,6 +27,152 @@ USE VOSKIN_MOD
 !    A. Beljaars      ECMWF Feb 2006  Revised gust to accomodate stochastic physics
 !    E. Dutra/G. Balsamo    May 2008  Add lake tile
 !    N.Semane+P.Bechtold 04-10-2012 Add PRPLRG factor for small planet
+!    J. McNorton           24/08/2022 urban tile
+
+!  INTERFACE: 
+
+!    Integers (In):
+!      KIDIA    :    Begin point in arrays
+!      KFDIA    :    End point in arrays
+!      KLON     :    Length of arrays
+!      KTILES   :    Number of files
+!      KDHVTLS  :    Number of variables for individual tiles
+!      KDHFTLS  :    Number of fluxes for individual tiles
+
+
+!    Reals (In):
+!      PTSTEP    :  Timestep                                          s
+!      PFRTI     :  TILE FRACTIONS                                   (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+!      PAHFLTI   :  Surface latent heat flux                         Wm-2
+!      PG0TI     :  Surface ground heat flux                         W/m2
+!      PSTRTULEV :  TURBULENT FLUX OF U-MOMEMTUM                     kg/(m*s2)
+!      PSTRTVLEV :  TURBULENT FLUX OF V-MOMEMTUM                     kg/(m*s2)
+!      PTSKM1M   :  Skin temperature, t                              K
+!      PUMLEV    :  X-VELOCITY COMPONENT, lowest atmospheric level   m/s
+!      PVMLEV    :  Y-VELOCITY COMPONENT, lowest atmospheric level   m/s
+!      PQMLEV    :  SPECIFIC HUMIDITY                                kg/kg
+!      PGEOMLEV  :  Geopotential, lowest atmospehric level           m2/s2
+!      PCPTSPP   :  Cp*Ts for post-processing of weather parameters  J/kg
+!      PCPTGZLEV :  Geopotential, lowest atmospehric level           J/kg
+!      PAPHMS    :  Surface pressure                                 Pa
+!      PZ0MW     :  Roughness length for momentum, WMO station       m
+!      PZ0HW     :  Roughness length for heat, WMO station           m
+!      PZ0QW     :  Roughness length for moisture, WMO station       m
+!      PZDL      :  z/L                                              -
+!      PQSAPP    :  Apparent surface humidity                        kg/kg
+!      PBLEND    :  Blending weight for 10 m wind postprocessing     m
+!      PFBLEND   :  Wind speed at blending weight for 10 m wind PP   m/s
+!      PBUOM     :  Buoyancy flux, for post-processing of gustiness  ????
+!      PZ0M     :    AERODYNAMIC ROUGHNESS LENGTH                    m
+!      PEVAPSNW :    Evaporation from snow under forest              kgm-2s-1
+!      PSSRFLTI  :  NET SOLAR RADIATION AT THE SURFACE, TILED        Wm-2
+!      PSLRFL    :  NET THERMAL RADIATION AT THE SURFACE             Wm-2
+!      PSST      :  Sea surface temperatute                          K
+!      PUCURR    :  U component of ocean surface current             m/s
+!      PVCURR    :  V component of ocean surface current             m/s
+!      PUSTOKES  :  U component of surface Stokes velocity           m/s
+!      PVSTOKES  :  V component of surface Stokes velocity           m/s
+
+!    Reals (Updated):
+!      PAHFSTI   :  SURFACE SENSIBLE HEAT FLUX                       W/m2
+!      PEVAPTI   :  SURFACE MOISTURE FLUX                            kg/m2/s
+!      PTSKE1    :  SKIN TEMPERATURE TENDENCY                        K/s
+!      PTSKTIP1  :  Tile skin temperature, t+1                       K
+
+!    Reals (Out):
+!      PDIFTSLEV :  TURBULENT FLUX OF HEAT                           J/(m2*s)
+!      PDIFTQLEV :  TURBULENT FLUX OF SPECIFIC HUMIDITY              kg/(m2*s)
+!      PUSTRTI   :  SURFACE U-STRESS                                 N/m2 
+!      PVSTRTI   :  SURFACE V-STRESS                                 N/m2 
+!      PTSKTI    :  SKIN TEMPERATURE                                 K
+!      PAHFLEV   :  LATENT HEAT FLUX  (SNOW/ICE FREE PART)           W/m2
+!      PAHFLSB   :  LATENT HEAT FLUX  (SNOW/ICE COVERED PART)        W/m2
+!      PFWSB     :  EVAPORATION OF SNOW                              kg/(m**2*s)
+!      PU10M     :  U-COMPONENT WIND AT 10 M                         m/s
+!      PV10M     :  V-COMPONENT WIND AT 10 M                         m/s
+!      P10NU     :  U-COMPONENT NEUTRAL WIND AT 10 M                 m/s
+!      P10NV     :  V-COMPONENT NEUTRAL WIND AT 10 M                 m/s
+!      PUST      :  FRICTION VELOCITY                                m/s
+!      PT2M      :  TEMPERATURE AT 2M                                K
+!      PD2M      :  DEW POINT TEMPERATURE AT 2M                      K
+!      PQ2M      :  SPECIFIC HUMIDITY AT 2M                          kg/kg
+!      PGUST     :  GUST AT 10 M                                     m/s
+!      PDHTLS    :  Diagnostic array for tiles (see module yomcdh)
+!                      (Wm-2 for energy fluxes, kg/(m2s) for water fluxes)
+
+!     EXTERNALS.
+!     ----------
+
+!     ** SURFPP_CTL CALLS SUCCESSIVELY:
+!         *SPPCFL*
+!         *SPPGUST*
+!         *VOSKIN*
+
+!  DOCUMENTATION:
+!    See Physics Volume of IFS documentation
+
+!------------------------------------------------------------------------
+
+MODULE SURFPP_CTL_MOD
+CONTAINS
+SUBROUTINE SURFPP_CTL( KIDIA,KFDIA,KLON,KTILES, KDHVTLS, KDHFTLS &
+ & , PTSTEP, LPERT_COLDSKIN &
+! input
+ & , PFRTI, PAHFLTI, PG0TI, PSTRTULEV, PSTRTVLEV, PTSKM1M &
+ & , PUMLEV, PVMLEV, PQMLEV, PGEOMLEV, PCPTSPP ,PCPTGZLEV &
+ & , PAPHMS, PZ0MW, PZ0HW, PZ0QW, PZDL, PQSAPP, PBLEND, PFBLEND, PBUOM &
+ & , PZ0M, PEVAPSNW, PSSRFLTI, PSLRFL, PSST &
+ & , PUCURR, PVCURR, PUSTOKES, PVSTOKES, PGP2DSPP &
+ & , YDCST, YDEXC, YDFLAKE, YDURB &
+! input, tile dependent
+ & , PZ0MTIW, PZ0HTIW, PZ0QTIW, PZDLTI, PQSAPPTI, PCPTSPPTI &
+! updated
+ & , PAHFSTI, PEVAPTI, PTSKE1, PTSKTIP1 &
+! output
+ & , PDIFTSLEV, PDIFTQLEV, PUSTRTI, PVSTRTI, PTSKTI, PAHFLEV, PAHFLSB, PFWSB  &
+ & , PU10M, PV10M, PT2M, PD2M, PQ2M &
+ & , PGUST, P10NU, P10NV, PUST &
+! output DDH
+ & , PDHTLS &
+ & , PRPLRG)
+
+USE PARKIND1 , ONLY : JPIM, JPRB
+USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
+USE YOS_CST  , ONLY : TCST
+USE YOS_EXC  , ONLY : TEXC
+USE YOS_FLAKE, ONLY : TFLAKE
+USE YOS_URB  , ONLY : TURB
+
+USE SPPCFL_MOD
+USE SPPGUST_MOD
+USE VOSKIN_MOD
+
+!------------------------------------------------------------------------
+
+!  PURPOSE:
+!    Routine SURFPP controls the computation of quantities at the end of
+!     vertical diffusion, including routines to post-process weather elements
+!     and gustiness.
+
+!  SURFPP is called by VDFMAIN
+
+!  METHOD:
+!    This routine is a shell needed by the surface library  externalisation.
+
+!  AUTHOR:
+!    P. Viterbo       ECMWF May 2005
+
+!  REVISION HISTORY:
+!    05-01-2006    T. Stockdale   ocean surface currents
+!    A. Beljaars      ECMWF Feb 2006  Revised gust to accomodate stochastic physics
+!    E. Dutra/G. Balsamo    May 2008  Add lake tile
+!    N.Semane+P.Bechtold 04-10-2012 Add PRPLRG factor for small planet
+!    J. McNorton           24/08/2022 urban tile
 
 !  INTERFACE: 
 
@@ -157,6 +273,7 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KLON
 INTEGER(KIND=JPIM),INTENT(IN)    :: KTILES
 INTEGER(KIND=JPIM),INTENT(IN)    :: KDHVTLS
 INTEGER(KIND=JPIM),INTENT(IN)    :: KDHFTLS
+LOGICAL           ,INTENT(IN)    :: LPERT_COLDSKIN
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTSTEP
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PFRTI(:,:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAHFLTI(:,:)
@@ -188,9 +305,19 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PUCURR(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVCURR(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PUSTOKES(:)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVSTOKES(:)
+! Tile dependent pp
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0MTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0HTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZ0QTIW(:,:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PZDLTI(:,:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQSAPPTI(:,:)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCPTSPPTI(:,:)
+     
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PGP2DSPP(:)
 TYPE(TCST)        ,INTENT(IN)    :: YDCST
 TYPE(TEXC)        ,INTENT(IN)    :: YDEXC
 TYPE(TFLAKE)      ,INTENT(IN)    :: YDFLAKE
+TYPE(TURB)        ,INTENT(IN)    :: YDURB
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PAHFSTI(:,:)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PEVAPTI(:,:)
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTSKE1(:)
@@ -214,21 +341,31 @@ REAL(KIND=JPRB)   ,INTENT(OUT)   :: PQ2M(:)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PGUST(:) 
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PDHTLS(:,:,:) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PRPLRG
+LOGICAL :: LT2MTILE
+LOGICAL :: LWIND
 
 ! Local variables
 
 INTEGER(KIND=JPIM) :: JTILE, JL
 
 REAL(KIND=JPRB) :: ZTSK(KLON),ZAHFSM(KLON),ZEVAPM(KLON),ZUSTAR(KLON)
+REAL(KIND=JPRB) :: ZT2M(KLON,KTILES), ZD2M(KLON,KTILES), ZQ2M(KLON,KTILES)
+
+REAL(KIND=JPRB) :: ZT2M_DL(KLON), ZQ2M_DL(KLON), ZD2M_DL(KLON)
+REAL(KIND=JPRB) :: ZU10M_DUMMY(KLON), ZV10M_DUMMY(KLON), Z10NU_DUMMY(KLON),&
+                 & Z10NV_DUMMY(KLON), ZUST_DUMMY(KLON)
+
 REAL(KIND=JPRB) :: ZRTMST,ZRHO
+REAL(KIND=JPRB) :: ZEPS
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SURFPP_CTL_MOD:SURFPP_CTL',0,ZHOOK_HANDLE)
-ASSOCIATE(LEFLAKE=>YDFLAKE%LEFLAKE, &
+ASSOCIATE(LEFLAKE=>YDFLAKE%LEFLAKE, LEURBAN=>YDURB%LEURBAN, &
  & RD=>YDCST%RD, RETV=>YDCST%RETV, RLSTT=>YDCST%RLSTT, &
  & LEOCWA=>YDEXC%LEOCWA, LEOCCO=>YDEXC%LEOCCO, REPUST=>YDEXC%REPUST)
 
 ZRTMST      = 1.0_JPRB/PTSTEP    ! optimization
+ZEPS = EPSILON(ZEPS)
 
 !*         1.     SURFACE FLUXES - TILES
 !                 ----------------------
@@ -254,7 +391,7 @@ DO JTILE=1,KTILES
 
     PUSTRTI(JL,JTILE)=PSTRTULEV(JL)
     PVSTRTI(JL,JTILE)=PSTRTVLEV(JL)
-    IF (PFRTI(JL,JTILE) == 0._JPRB .AND. JTILE <= 8 ) THEN
+    IF (PFRTI(JL,JTILE) <= ZEPS .AND. JTILE <= 8 ) THEN
       PAHFSTI(JL,JTILE)=ZAHFSM(JL)
       PEVAPTI(JL,JTILE)=ZEVAPM(JL)
     ENDIF
@@ -276,6 +413,9 @@ DO JL=KIDIA,KFDIA
   IF (LEFLAKE) THEN
     PAHFLEV(JL)=PAHFLEV(JL)+PFRTI(JL,9)*PAHFLTI(JL,9)     
   ENDIF
+  IF (LEURBAN) THEN
+    PAHFLEV(JL)=PAHFLEV(JL)+PFRTI(JL,10)*PAHFLTI(JL,10)
+  ENDIF
   PAHFLSB(JL)=PFRTI(JL,2)*PAHFLTI(JL,2)+PFRTI(JL,5)*PAHFLTI(JL,5)&
    & +PFRTI(JL,7)*RLSTT*PEVAPSNW(JL)  
   PFWSB(JL) = PFRTI(JL,5)*PEVAPTI(JL,5)&
@@ -290,12 +430,64 @@ ENDDO
 !      2. Post-processing of weather parameters
 !         -------------------------------------
 
-CALL SPPCFL(KIDIA,KFDIA,KLON &
- & , PUMLEV, PVMLEV, PQMLEV, PGEOMLEV, PCPTSPP, PCPTGZLEV &
- & , PAPHMS, PZ0MW, PZ0HW, PZ0QW, PZDL, PQSAPP &
- & , PBLEND, PFBLEND, PUCURR, PVCURR &
- & , YDCST, YDEXC &
- & , PU10M, PV10M, P10NU, P10NV, PUST, PT2M, PD2M, PQ2M, PRPLRG)
+! This is hardcoded at the moment.
+LT2MTILE=.TRUE. 
+IF (LT2MTILE)THEN
+   ! Initialise just for safety
+   ZT2M(KIDIA:KFDIA,1:KTILES)=0._JPRB
+   ZD2M(KIDIA:KFDIA,1:KTILES)=0._JPRB
+   ZQ2M(KIDIA:KFDIA,1:KTILES)=0._JPRB
+   ! Dummy fields for second call to sppcfl for wind calculation
+   ZT2M_DL(KIDIA:KFDIA)=0._JPRB
+   ZD2M_DL(KIDIA:KFDIA)=0._JPRB
+   ZQ2M_DL(KIDIA:KFDIA)=0._JPRB
+   ! Dummy fields for first call to sppcfl for winds
+   ZU10M_DUMMY(KIDIA:KFDIA)=0._JPRB
+   ZV10M_DUMMY(KIDIA:KFDIA)=0._JPRB
+   Z10NU_DUMMY(KIDIA:KFDIA)=0._JPRB
+   Z10NV_DUMMY(KIDIA:KFDIA)=0._JPRB
+   ZUST_DUMMY(KIDIA:KFDIA)=0._JPRB
+
+   ! Wind calculations made separately after loop on tiles.
+   ! Temperature and humidity are computed per tile and averaged afterwards
+   LWIND=.FALSE.
+   DO JTILE=1,KTILES
+     CALL SPPCFL(KIDIA,KFDIA,KLON,JTILE &
+     & , PUMLEV, PVMLEV, PQMLEV, PGEOMLEV, PCPTSPPTI(KIDIA:KFDIA,JTILE), PCPTGZLEV &
+     & , PAPHMS, PZ0MW, PZDL    & ! For wind calc
+     & , PZ0MTIW(KIDIA:KFDIA,JTILE),PZ0HTIW(KIDIA:KFDIA,JTILE), PZ0QTIW(KIDIA:KFDIA,JTILE) &
+     & , PZDLTI(KIDIA:KFDIA,JTILE), PQSAPPTI(KIDIA:KFDIA,JTILE) &
+     & , PBLEND, PFBLEND, PUCURR, PVCURR  &
+     & , YDCST, YDEXC                     &
+     ! Dummy fields for LWIND=false
+     & , ZU10M_DUMMY, ZV10M_DUMMY, Z10NU_DUMMY, Z10NV_DUMMY, ZUST_DUMMY &
+     & , ZT2M(KIDIA:KFDIA,JTILE), ZD2M(KIDIA:KFDIA,JTILE), ZQ2M(KIDIA:KFDIA,JTILE), PRPLRG &
+     & , LWIND)
+   ENDDO
+   ! Compute postprocessed wind over dominant low
+   LWIND=.TRUE.
+   CALL SPPCFL(KIDIA,KFDIA,KLON,KLON &
+    & , PUMLEV, PVMLEV, PQMLEV, PGEOMLEV, PCPTSPP, PCPTGZLEV &
+    & , PAPHMS, PZ0MW, PZDL & ! For wind calc
+    & , PZ0MW, PZ0HW, PZ0QW, PZDL, PQSAPP & 
+    & , PBLEND, PFBLEND, PUCURR, PVCURR &
+    & , YDCST, YDEXC &
+    & , PU10M, PV10M, P10NU, P10NV, PUST &
+    ! Dummy fields for LWIND=true
+    & , ZT2M_DL, ZD2M_DL, ZQ2M_DL, PRPLRG &
+    & , LWIND )
+
+ELSE
+  LWIND=.TRUE.
+  CALL SPPCFL(KIDIA,KFDIA,KLON,KLON &
+    & , PUMLEV, PVMLEV, PQMLEV, PGEOMLEV, PCPTSPP, PCPTGZLEV &
+    & , PAPHMS, PZ0MW, PZDL & ! For wind calc
+    & , PZ0MW, PZ0HW, PZ0QW, PZDL, PQSAPP & 
+    & , PBLEND, PFBLEND, PUCURR, PVCURR &
+    & , YDCST, YDEXC &
+    & , PU10M, PV10M, P10NU, P10NV, PUST, PT2M, PD2M, PQ2M, PRPLRG &
+    & , LWIND )
+ENDIF
 
 !      3. Post-processing of wind gusts
 !         -----------------------------
@@ -317,7 +509,7 @@ IF (LEOCWA .OR. LEOCCO) THEN
    & PUSTRTI(:,1),PVSTRTI(:,1),&
    & PUMLEV,PVMLEV,PTSKTI(:,1),PSST,PUSTOKES,PVSTOKES,&
    & YDCST,YDEXC,&
-   & PTSKTIP1(:,1),PRPLRG)  
+   & PTSKTIP1(:,1),PRPLRG,PGP2DSPP,LPERT_COLDSKIN)
 ENDIF
 
 !         4.2 SKIN TEMPERATURE AVERAGING OVER TILES 
@@ -331,7 +523,7 @@ ENDDO
 
 DO JTILE=1,KTILES
   DO JL=KIDIA,KFDIA
-    IF (PFRTI(JL,JTILE) == 0._JPRB .AND. JTILE <= 8 ) THEN
+    IF (PFRTI(JL,JTILE) == 0._JPRB .AND. (JTILE <= 8 .OR. JTILE == 10)) THEN
       PTSKTI(JL,JTILE)=ZTSK(JL)
     ELSE
       PTSKTI(JL,JTILE)=PTSKTIP1(JL,JTILE)
@@ -339,8 +531,34 @@ DO JTILE=1,KTILES
   ENDDO
 ENDDO
 
+!      4.3 2M DIAGNOSTICS (t2m,d2m,q2m) AVERAGING OVER TILES 
+!          For ocean tiles (1 and 2), we still use dominant .
+IF (LT2MTILE)THEN
+  PT2M(KIDIA:KFDIA)=0._JPRB
+  PD2M(KIDIA:KFDIA)=0._JPRB
+  PQ2M(KIDIA:KFDIA)=0._JPRB
+  DO JTILE=1,KTILES
+    DO JL=KIDIA,KFDIA
+      PT2M(JL)=PT2M(JL)+&
+                       &PFRTI(JL,JTILE)*ZT2M(JL,JTILE)
+      PD2M(JL)=PD2M(JL)+&
+                       &PFRTI(JL,JTILE)*ZD2M(JL,JTILE)
+      PQ2M(JL)=PQ2M(JL)+&
+                       &PFRTI(JL,JTILE)*ZQ2M(JL,JTILE)
+    ENDDO
+  ENDDO
+  ! Overwrite where dominant water or sea-ice. 
+  ! Using PLSM would be cleaner, but this should be eq.
+  DO JL=KIDIA,KFDIA
+    IF ((PFRTI(JL,3)+PFRTI(JL,4)+PFRTI(JL,5)+PFRTI(JL,6)+PFRTI(JL,7)+PFRTI(JL,8)+PFRTI(JL,9))<1.0_JPRB)THEN
+       PT2M(JL)=ZT2M_DL(JL)
+       PD2M(JL)=ZD2M_DL(JL)
+       PQ2M(JL)=ZQ2M_DL(JL)
+    ENDIF
+  ENDDO
+ENDIF
 
-!         4.3 SKIN LAYER TENDENCY 
+!         4.4 SKIN LAYER TENDENCY 
 
 DO JL=KIDIA,KFDIA
   PTSKE1(JL) = PTSKE1(JL) + ( ZTSK(JL) - PTSKM1M(JL) ) * ZRTMST

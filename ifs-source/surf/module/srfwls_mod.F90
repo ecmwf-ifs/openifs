@@ -1,3 +1,79 @@
+
+! (C) Copyright 2011- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SRFWLS* - COMPUTES CHANGES IN THE SKIN RESERVOIR.
+!     PURPOSE.
+!     --------
+!          THIS ROUTINE COMPUTES THE CHANGES IN THE SKIN RESERVOIR AND
+!     THE RUN-OFF BEFORE THE SNOW MELTS.
+
+!**   INTERFACE.
+!     ----------
+!          *SRFWLS* IS CALLED FROM *SURFS*.
+
+!     PARAMETER   DESCRIPTION                                    UNITS
+!     ---------   -----------                                    -----
+
+!     INPUT PARAMETERS (INTEGER):
+!    *KIDIA*      START POINT
+!    *KFDIA*      END POINT
+!    *KLON*       NUMBER OF GRID POINTS PER PACKET
+
+!     INPUT PARAMETERS (REAL):
+!    *PTMST*      TIME STEP                                      S
+
+!     INPUT PARAMETERS (LOGICAL):
+!    *LDLAND*     LAND/SEA MASK (TRUE/FALSE)
+
+!     INPUT PARAMETERS AT T-1 OR CONSTANT IN TIME (REAL):
+!    *PWLM1M*     SKIN RESERVOIR WATER CONTENT                   kg/m**2
+!    *PCVL*       LOW VEGETATION COVER  (CORRECTED)              (0-1)
+!    *PCVH*       HIGH VEGETATION COVER (CORRECTED)              (0-1)
+!    *PWLMX*      MAXIMUM SKIN RESERVOIR CAPACITY                kg/m**2
+!    *PFRTI*      TILE FRACTIONS                                 (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!    *PEVAPTI*      SURFACE MOISTURE FLUX, FOR EACH TILE       KG/M2/S
+!    *PRSFC*      CONVECTIVE RAIN FLUX AT THE SURFACE          KG/M**2/S
+!    *PRSFL*      LARGE SCALE RAIN FLUX AT THE SURFACE         KG/M**2/S
+
+!     OUTPUT PARAMETERS AT T+1 (UNFILTERED,REAL):
+!    *PTSFC*      CONVECTIVE THROUGHFALL AT THE SURFACE        KG/M**2/S
+!    *PTSFL*      LARGE SCALE THROUGHFALL AT THE SURFACE       KG/M**2/S
+!                  (NB: THROUGHFALL=RAINFALL-INTERCEPTION)
+
+!     METHOD.
+!     -------
+!          STRAIGHTFORWARD ONCE THE DEFINITION OF THE CONSTANTS IS
+!     UNDERSTOOD. FOR THIS REFER TO DOCUMENTATION.
+
+!     EXTERNALS.
+!     ----------
+!          NONE.
+
+!     REFERENCE.
+!     ----------
+!          SEE SOIL PROCESSES' PART OF THE MODEL'S DOCUMENTATION FOR
+!     DETAILS ABOUT THE MATHEMATICS OF THIS ROUTINE.
+
+!     Original   
+!     --------
+!          Simplified version based on SRFWL
+!     M. Janiskova              E.C.M.W.F.     27-07-2011  
+
+!     Modifications
+!     -------------
+
+!     ------------------------------------------------------------------
+
 MODULE SRFWLS_MOD
 CONTAINS
 SUBROUTINE SRFWLS(KIDIA,KFDIA,KLON,&
@@ -14,15 +90,6 @@ USE YOS_SOIL  , ONLY : TSOIL
 USE YOS_VEG   , ONLY : TVEG
 
 #ifdef DOC
-
-! (C) Copyright 2011- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !**** *SRFWLS* - COMPUTES CHANGES IN THE SKIN RESERVOIR.
 !     PURPOSE.
 !     --------

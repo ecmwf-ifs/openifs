@@ -32,7 +32,8 @@ PROGRAM intwaminput
 
 !**   INTERFACE.
 !     ----------
-!     gridglou must be present and connected to unit 7 (i.e fort.7)
+!     The model grid configuration is provide by file wam_grid_tables
+!     The model spectral configuration by namelist intwaminput_input (only needed if the input are spectra)
 !     The input should be in input_field
 !     The output will be placed in output_field
 
@@ -47,23 +48,22 @@ PROGRAM intwaminput
 
       USE PARKIND_WAVE, ONLY : JWIM, JWRB, JWRU
 
-      USE YOWFRED  , ONLY : FR       ,TH
+      USE YOWFRED  , ONLY : FR       ,TH      ,IFRE1    , FR1
       USE YOWGRIB_HANDLES , ONLY :NGRIB_HANDLE_WAM_I,NGRIB_HANDLE_WAM_S
       USE YOWGRIBHD, ONLY : PPEPS    ,PPREC    ,NGRBRESI ,PPMIN_RESET,  &
      &            NGRBRESS ,HOPERI   ,HOPERS   ,LGRHDIFS ,LNEWLVTP ,    &
      &            LPADPOLES,NGRIB_VERSION
       USE YOWGRID  , ONLY : DELPHI   ,IJS, IJL, NTOTIJ, NPROMA_WAM, NCHNK    
       USE YOWMAP   , ONLY : IRGG     ,AMOWEP   ,AMOSOP   ,AMOEAP   ,    &
-     &            AMONOP   ,XDELLA   ,ZDELLO   ,NLONRGG  ,IQGAUSS
+     &            AMONOP   ,XDELLA   ,ZDELLO   ,NLONRGG  ,IQGAUSS  ,    &
+     &            NGX      ,NGY      ,NIBLO    ,CLDOMAIN
       USE YOWMPP   , ONLY : IRANK    ,NPROC    ,NINF     ,NSUP     ,    &
      &            KTAG     ,NPRECR   ,NPRECI
-      USE YOWPARAM , ONLY : NANG     ,NFRE     ,NGX      ,NGY      ,    &
-     &            NIBLO    ,CLDOMAIN
+      USE YOWPARAM , ONLY : NANG     ,NFRE     ,NFRE_RED ,LLUNSTR
       USE YOWPCONS , ONLY : ZMISS    ,EPSMIN
       USE YOWSTAT  , ONLY : MARSTYPE ,YCLASS   ,YEXPVER  ,ISTREAM  ,    &
      &            NLOCGRB , IREFRA   ,NENSFNB  ,NTOTENS
       USE YOWSPEC  , ONLY : NSTART   ,NEND
-      USE YOWUNPOOL ,ONLY : LLUNSTR
       USE YOWTEST  , ONLY : IU06     ,ITEST
       USE MPL_MODULE,ONLY : MPL_INIT, MPL_END
 
@@ -80,9 +80,11 @@ PROGRAM intwaminput
 #include "iwam_get_unit.intfb.h"
 #include "iniwcst.intfb.h"
 #include "kgribsize.intfb.h"
+#include "mfredir.intfb.h"
 #include "preset_wgrib_template.intfb.h"
-#include "readpre.intfb.h"
+#include "readmdlconf.intfb.h"
 #include "wgribenout.intfb.h"
+#include "wposnam.intfb.h"
 #include "wstream_strg.intfb.h"
 
       INTEGER(KIND=JWIM) :: NBIT = 1600000
@@ -99,7 +101,7 @@ PROGRAM intwaminput
      &                      KKKPR, NGYFULL
       INTEGER(KIND=JWIM) :: IPERIODIC, NRFULL, JSTREAM, ISTART, ISTOP,  &
      &                      IDUM
-      INTEGER(KIND=JWIM) :: IU07, ILEVTYPE, KSTREAM
+      INTEGER(KIND=JWIM) :: IU05, IU07, ILEVTYPE, KSTREAM
       INTEGER(KIND=JWIM) :: KAMONOP, KAMOEAP, KAMOSOP, KAMOWEP
       INTEGER(KIND=JWIM) :: KRMONOP, KRMOEAP, KRMOSOP, KRMOWEP
       INTEGER(KIND=JWIM) :: LFILE, KFILE_HANDLE, KGRIB_HANDLE, IGRIB_LEN
@@ -127,6 +129,7 @@ PROGRAM intwaminput
       REAL(KIND=JWRB), ALLOCATABLE :: SCFR(:), SCTH(:)
 
 
+      CHARACTER(LEN=70) :: CLHEADER
       CHARACTER(LEN=2) :: MARSFCTYPE
       CHARACTER(LEN=4) :: CSTREAM
       CHARACTER(LEN=8) :: CSTEPTYPE
@@ -136,6 +139,8 @@ PROGRAM intwaminput
       CHARACTER(LEN=12) :: CGRIDTYPE
       CHARACTER(LEN=150):: CMDMSG
 
+      LOGICAL :: LLEXISTS
+      LOGICAL :: LLEOF
       LOGICAL :: LLINTERPOL, LLNONWAVE, LASTREAM
       LOGICAL :: LLFR1OK
       LOGICAL :: LLEXIST
@@ -144,7 +149,10 @@ PROGRAM intwaminput
 
 ! ----------------------------------------------------------------------
 
+      NAMELIST /NALINE/ CLHEADER, CLDOMAIN, NANG, IFRE1, FR1, NFRE
+
       CALL MPL_INIT()
+      IU05 = 5
       IU06 = 6
       IU07 = IWAM_GET_UNIT(IU06, 'wam_grid_tables', 'r', 'u', 0, 'READWRITE')
 
@@ -155,6 +163,7 @@ PROGRAM intwaminput
 
       PRPLRADI=1.0_JWRB
       CALL INIWCST(PRPLRADI)
+
 
 !     1.1 INITIALISATION OF VARIABLES WITH DEFAULT VALUES
 !         ---------------------------------------------------
@@ -191,7 +200,49 @@ PROGRAM intwaminput
 !*    2. READ PREPROC OUTPUT.
 !        --------------------
 
-      CALL READPRE (IU07)
+      CLHEADER  = ' '
+      CLDOMAIN = 'g'
+      NANG  = 0
+      NFRE  = 0
+      IFRE1 = -1
+      FR1   = 0.0_JWRB
+
+
+      INQUIRE(FILE="intwaminput_input", EXIST=LLEXISTS)
+      IF (.NOT. LLEXISTS) THEN
+        WRITE(IU06,*)'++++++++++++++++++++++++++++++++++++++++++++'
+        WRITE(IU06,*)'+                                          +'
+        WRITE(IU06,*)'+ INTWAMINPUT :                            +'
+        WRITE(IU06,*)'+ NAMELIST FILENAME: intwaminput_input     +'
+        WRITE(IU06,*)'+ NOT PROVIDED !!!                         +'
+        WRITE(IU06,*)'+                                          +'
+        WRITE(IU06,*)'++++++++++++++++++++++++++++++++++++++++++++'
+      ENDIF
+
+!     READ MODEL SPECTRAL DETAILS (if given)
+      IU05 =  IWAM_GET_UNIT (IU06, 'intwaminput_input', 'r', 'f', 0, 'READ')
+
+      CALL WPOSNAM (IU05, 'NALINE', LLEOF)
+      IF (.NOT. LLEOF) THEN
+        READ (IU05, NALINE)
+        WRITE(IU06,*)' NANG  = ',NANG
+        WRITE(IU06,*)' NFRE  = ',NFRE
+        WRITE(IU06,*)' IFRE1 = ',IFRE1
+        WRITE(IU06,*)' FR1   = ',FR1
+      ELSE
+        WRITE(IU06,*)'++++++++++++++++++++++++++++++'
+        WRITE(IU06,*)'+ NO INPUT NAMELIST FOUND    +'
+        WRITE(IU06,*)'+ WILL USE ALL THE DEFAULTS  +'
+        WRITE(IU06,*)'++++++++++++++++++++++++++++++'
+      ENDIF
+      CALL FLUSH(IU06)
+
+!     INITIALISE THE MODEL FREQUENCY AND DIRECTION ARRAYS
+      NFRE_RED = NFRE
+      IF( NANG > 0 .AND. NFRE > 0 .AND. IFRE1 > 0 .AND. FR1 > 0.0_JWRB ) CALL MFREDIR
+
+
+      CALL READMDLCONF (IU07)
 
       NINF=1
       NSUP=NIBLO
@@ -430,7 +481,7 @@ PROGRAM intwaminput
         ENDDO
         DEALLOCATE(PL)
 
-        IF( JQGAUSS.NE.1 ) THEN
+        IF( JQGAUSS /= 1 ) THEN
           CALL IGRIB_GET_VALUE(KGRIB_HANDLE, 'jDirectionIncrementInDegrees',DELLA)
           RMONOP =  RMONOP-ISTART*DELLA
           RMOSOP =  RMOSOP+ISTOP*DELLA
@@ -446,6 +497,17 @@ PROGRAM intwaminput
       ENDIF
 
       IF (IPARAM == 251) THEN
+
+        IF( NANG <= 0 .OR. NFRE <= 0 .OR. IFRE1 <=0 .OR. FR1 <= 0.0_JWRB ) THEN
+          WRITE(IU06,*) '*************************************************************************'
+          WRITE(IU06,*) '* INTWAMINPUT:  ERROR !'
+          WRITE(IU06,*) '* PLEASE SPECIFY THE FOLLOWING MODEL PARAMETERS via the input namelist !!'
+          WRITE(IU06,*) '* NANG, NFRE, IFRE1, FR1'
+          WRITE(IU06,*) '* currently:', NANG, NFRE, IFRE1, FR1
+          WRITE(IU06,*) '*************************************************************************'
+          CALL ABORT1
+        ENDIF
+
         CALL IGRIB_GET_VALUE(KGRIB_HANDLE,'numberOfDirections',KANG)
         CALL IGRIB_GET_VALUE(KGRIB_HANDLE,'numberOfFrequencies',KFRE)
 

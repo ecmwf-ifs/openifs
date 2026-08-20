@@ -174,6 +174,19 @@ CALL SUMP0(NULOUT,NULNAM)
 !*    Initialize control of variational assimilation
 WRITE(NULOUT,*) '---- Set up variational assimilation ',CLINE
 CALL SETUP_VAR(NULOUT)
+
+!*    Initialize extended control variable options
+
+
+
+
+
+!*    Initialize rwrk path names
+
+
+
+
+
 !*    DISABLED: Initialize nudging
 LNUDG = .FALSE.
 !WRITE(NULOUT,*) '------ Set up nudging ',CLINE

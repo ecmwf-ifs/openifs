@@ -19,6 +19,7 @@ MODULE EINT_MOD
 !   --------------
 !     M. Fisher   7-March-2012 Use DEALLOCATE_IF_ASSOCIATED
 !     T. Wilhelmsson (Sept 2013) Geometry and setup refactoring.
+!     R. El Khatib 01-Jun-2022 Remove JPDUP
 !--------------------------------------------------------------------------
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
@@ -27,8 +28,7 @@ IMPLICIT NONE
 SAVE
 
 PRIVATE
-PUBLIC SL_STRUCT, DEALLO_SL_STRUCT, UNUSED_HALO_STATS, SLHALO_DEBUG, &
-       & JPDUP
+PUBLIC SL_STRUCT, DEALLO_SL_STRUCT, UNUSED_HALO_STATS, SLHALO_DEBUG
 
 TYPE SL_STRUCT
 
@@ -216,18 +216,6 @@ END TYPE SL_STRUCT
 ! YRRO : radiation grid to model grid
 !! TYPE(SL_STRUCT),POINTER :: YRRO !! moved to MODEL_PHYSICS_RADIATION_TYPE
 
-! -----------------------------------------------------------------------------
-
-! * Duplication of some dummy or local arrays for optimisation on NEC platform.
-#ifdef NECSX
-!Note: To make this way of preventing memory bank conflict on vector machines to work again
-!      some coding effort is required for LASCAW/TL/AD and routines bellow.
-!      Possibly this problem is no longer an issue for current computers.
-INTEGER(KIND=JPIM), PARAMETER :: JPDUP=33
-#else
-INTEGER(KIND=JPIM), PARAMETER :: JPDUP=1
-#endif
- 
 ! ------------------------------------------------------------------
 CONTAINS
 ! ------------------------------------------------------------------
@@ -235,11 +223,11 @@ CONTAINS
 SUBROUTINE PRINT_CONFIGURATION(SELF, KDEPTH, KOUTNO, CNAME)
   IMPLICIT NONE
   CLASS(SL_STRUCT), INTENT(IN) :: SELF
-  INTEGER         , INTENT(IN) :: KDEPTH
-  INTEGER         , INTENT(IN) :: KOUTNO
+  INTEGER(KIND=JPIM), INTENT(IN) :: KDEPTH
+  INTEGER(KIND=JPIM), INTENT(IN) :: KOUTNO
   CHARACTER(LEN=*), INTENT(IN) :: CNAME
 
-  INTEGER :: IDEPTHLOC
+  INTEGER(KIND=JPIM) :: IDEPTHLOC
 
   IDEPTHLOC = KDEPTH+2
 

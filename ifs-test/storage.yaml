@@ -11,14 +11,15 @@ external_data:
 
   data_source:
     # Specify different data sources. When a file should be fetched, the fetch
-    # script will sequentially try the data sources until it was able to fetch 
+    # script will sequentially try the data sources until it was able to fetch
     # the file. Data sources can be
     # * file (some directory on the local file system is used)
     # * download (data is downloaded from a given URL)
-    
+
     # Default path on Atos.
     - type:     file
-      root: /ec/fwsm/lb/project/ifs-test-inidata/   
+      root: /ec/fwsm/lb/project/ifs-test-inidata/
+       
 
     # Default path on Lumi.
     - type:     file
@@ -35,23 +36,25 @@ external_data:
     # If extract_path is specified, the archive file will first be stored in
     # target_path and then extracted to extract_path.
 
-    - source_path: 48r1/scm/2025_09_15-scm_in.nc
+    - source_path: 49r1/scm/2026_07_06_scm_in.nc
       target_path: scm/scm_in.nc
 
-    - source_path: 48r1/shared/2025_09_15_ifsdata.tar.gz
+    - source_path: 49r1/shared/2026_07_06_ifsdata.tar.gz
       target_path: ifsdata.tar.gz
-      extract_path: ifsdata 
+      extract_path: ifsdata
 
-    - source_path: 48r1/t21/2025_09_15_inidata.tar.gz
+    - source_path: 49r1/t21/2026_07_06_inidata.tar.gz
       target_path: t21/inidata.tar.gz
-      extract_path: t21/inidata 
+      extract_path: t21/inidata
 
-    - source_path: 48r1/t42/2025_09_15_inidata.tar.gz
+    - source_path: 49r1/t42/2026_07_06_inidata.tar.gz
       target_path: t42/inidata.tar.gz
       extract_path: t42/inidata
 
-    - source_path: 48r1/compo/2025_09_15_compo_data.tar.gz
+    - source_path: 49r1/t21/2026_07_06_forcing.tar.gz
+      target_path: t21/forcing.tar.gz
+      extract_path: t21/forcing
+
+    - source_path: 49r1/compo/2026_07_06_compo_data.tar.gz
       target_path: compo_data.tar.gz
       extract_path: compo_data
-
-

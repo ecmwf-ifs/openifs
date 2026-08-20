@@ -18,8 +18,11 @@ MODULE VARIABLE_MODULE
   ! and metadata for individual variables and associates them with the
   ! respective FIELDS objects that store the data.
 
-USE PARKIND1, ONLY: JPIM, JPRB
-USE FIELD_MODULE, ONLY: FIELD_2D, FIELD_3D, FIELD_4D
+USE PARKIND1, ONLY: JPIM, JPRB, JPRD
+USE FIELD_MODULE, ONLY: FIELD_2RB, FIELD_3RB, FIELD_4RB
+#ifdef PARKIND1_SINGLE
+USE FIELD_MODULE, ONLY: FIELD_2RD, FIELD_3RD, FIELD_4RD
+#endif
 
 IMPLICIT NONE
 
@@ -39,7 +42,11 @@ TYPE, ABSTRACT :: VARIABLE_BASE
   LOGICAL            :: LPH9      = .FALSE.   ! Field in t-dt physics
   LOGICAL            :: LDL       = .FALSE.   ! Field has zontal derivative
   LOGICAL            :: LDM       = .FALSE.   ! Field has meridional derivative
+  LOGICAL            :: LDL9      = .FALSE.   ! Field has zontal derivative at t-dt
+  LOGICAL            :: LDM9      = .FALSE.   ! Field has meridional derivative at t-dt
   LOGICAL            :: LADV      = .FALSE.   ! Field advected or not
+  LOGICAL            :: LWATER    = .FALSE.   
+  REAL (KIND=JPRB)   :: RCP       = 0._JPRB
 
   ! TODO: Storage backend for Atlas (guard by #ifdef)
 
@@ -54,45 +61,59 @@ ABSTRACT INTERFACE
   END SUBROUTINE VARIABLE_BASE_FINAL
 END INTERFACE
 
+#:set type_list = [['', 'RB', 'JPRB', '', ''], ['D', 'RD', 'JPRD', '#ifdef PARKIND1_SINGLE', '#endif']]
+
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
 #:set shape = shapes[rank-1]
-TYPE, EXTENDS(VARIABLE_BASE) :: VARIABLE_${rank}$D
+${ifdef}$
+TYPE, EXTENDS(VARIABLE_BASE) :: VARIABLE_${pref}$${rank}$D
   ! TODO: Allocation-specific metadata, like shapes and dimensions
   ! Note that storing things like NLEV would break templating
 
   ! Array view pointers, to be set up from associated fields
-  REAL(KIND=JPRB), POINTER :: P(${shape}$)  => NULL()  ! Basic field at t
-  REAL(KIND=JPRB), POINTER :: T0(${shape}$) => NULL()  ! Basic field at t (alias of P)
-  REAL(KIND=JPRB), POINTER :: T1(${shape}$) => NULL()  ! Basic field at t+dt
-  REAL(KIND=JPRB), POINTER :: T9(${shape}$) => NULL()  ! Basic field at t-dt
-  REAL(KIND=JPRB), POINTER :: PH9(${shape}$)=> NULL()  ! Basic field for physics
-  REAL(KIND=JPRB), POINTER :: DL(${shape}$) => NULL()  ! Zonal derivative field
-  REAL(KIND=JPRB), POINTER :: DM(${shape}$) => NULL()  ! Meridional derivative field
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: P(${shape}$)  => NULL()  ! Basic field at t
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: T0(${shape}$) => NULL()  ! Basic field at t (alias of P)
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: T1(${shape}$) => NULL()  ! Basic field at t+dt
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: T9(${shape}$) => NULL()  ! Basic field at t-dt
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: PH9(${shape}$)=> NULL()  ! Basic field for physics
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: DL(${shape}$) => NULL()  ! Zonal derivative field
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: DM(${shape}$) => NULL()  ! Meridional derivative field
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: DL9(${shape}$) => NULL()  ! Zonal derivative field at t-dt
+  REAL(KIND=${kind}$), POINTER, CONTIGUOUS :: DM9(${shape}$) => NULL()  ! Meridional derivative field at t-dt
 
   ! Pointers to associated FIELD objects
-  TYPE(FIELD_${rank}$D), POINTER :: FT0 => NULL()  ! Basic field at t
-  TYPE(FIELD_${rank}$D), POINTER :: FT1 => NULL()  ! Basic field at t+dt
-  TYPE(FIELD_${rank}$D), POINTER :: FT9 => NULL()  ! Basic field at t-dt
-  TYPE(FIELD_${rank}$D), POINTER :: FPH9 => NULL() ! Basic field for physics
-  TYPE(FIELD_${rank}$D), POINTER :: FDL => NULL()  ! Zonal derivative field
-  TYPE(FIELD_${rank}$D), POINTER :: FDM => NULL()  ! Meridional derivative field
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FT0 => NULL()  ! Basic field at t
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FT1 => NULL()  ! Basic field at t+dt
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FT9 => NULL()  ! Basic field at t-dt
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FPH9 => NULL() ! Basic field for physics
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FDL => NULL()  ! Zonal derivative field
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FDM => NULL()  ! Meridional derivative field
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FDL9 => NULL() ! Zonal derivative field at t-dt
+  CLASS(FIELD_${rank}$${suff}$), POINTER :: FDM9 => NULL() ! Meridional derivative field at t-dt
 
 CONTAINS
-  PROCEDURE :: UPDATE_VIEW => VARIABLE_${rank}$D_UPDATE_VIEW
-  PROCEDURE :: CLONE => VARIABLE_${rank}$D_CLONE
-  PROCEDURE :: FINAL => VARIABLE_${rank}$D_FINAL
-
+  PROCEDURE :: UPDATE_VIEW => VARIABLE_${pref}$${rank}$D_UPDATE_VIEW
+  PROCEDURE :: FINAL => VARIABLE_${pref}$${rank}$D_FINAL
   ! Timestepping utilities
-  PROCEDURE :: PH9TOT0 => VARIABLE_${rank}$D_PH9TOT0
-  PROCEDURE :: PH9TOT9 => VARIABLE_${rank}$D_PH9TOT9
-END TYPE VARIABLE_${rank}$D
+  PROCEDURE :: PH9TOT0 => VARIABLE_${pref}$${rank}$D_PH9TOT0
+  PROCEDURE :: PH9TOT9 => VARIABLE_${pref}$${rank}$D_PH9TOT9
+END TYPE VARIABLE_${pref}$${rank}$D
+${endif}$
+#:endfor
 #:endfor
 
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
-INTERFACE VARIABLE_${rank}$D
-  MODULE PROCEDURE :: VARIABLE_${rank}$D_INIT
+${ifdef}$
+INTERFACE VARIABLE_${pref}$${rank}$D
+  MODULE PROCEDURE :: VARIABLE_${pref}$${rank}$D_INIT
   ! MODULE PROCEDURE :: VARIABLE_FROM_NAMELIST
-END INTERFACE VARIABLE_${rank}$D
+END INTERFACE VARIABLE_${pref}$${rank}$D
+${endif}$
+#:endfor
 #:endfor
 
 INTERFACE ARGUMENT_VALUE
@@ -158,14 +179,19 @@ CONTAINS
   END FUNCTION ARGUMENT_VALUE_LOGICAL
 
 
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
-  FUNCTION VARIABLE_${rank}$D_INIT(NAME, CNAME, IGRBCODE, LACTIVE, LADV, LT1, LT9, LPH9, LDL, LDM) RESULT(SELF)
+${ifdef}$
+  FUNCTION VARIABLE_${pref}$${rank}$D_INIT(NAME, CNAME, IGRBCODE, LACTIVE, LADV, LT1, LT9, LPH9, LDL, LDM, LDL9, LDM9, LWATER, RCP) RESULT(SELF)
+    USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_vALUE, IEEE_QUIET_NAN
     ! Templated constructor that creates new instances
-    TYPE(VARIABLE_${rank}$D) :: SELF
+    TYPE(VARIABLE_${pref}$${rank}$D) :: SELF
     CHARACTER(LEN=*), INTENT(IN) :: NAME
     CHARACTER(LEN=*), OPTIONAL, INTENT(IN) :: CNAME
     INTEGER(KIND=JPIM), OPTIONAL, INTENT(IN) :: IGRBCODE
-    LOGICAL, OPTIONAL, INTENT(IN) :: LACTIVE, LADV, LT1, LT9, LPH9, LDL, LDM
+    LOGICAL, OPTIONAL, INTENT(IN) :: LACTIVE, LADV, LT1, LT9, LPH9, LDL, LDM, LDL9, LDM9, LWATER
+    REAL(KIND=JPRB), OPTIONAL, INTENT (IN) :: RCP
 
     SELF%NAME = NAME
     SELF%CNAME = ARGUMENT_VALUE(ARG=CNAME, DEFAULT=NAME)
@@ -177,69 +203,108 @@ CONTAINS
     SELF%LPH9 = ARGUMENT_VALUE(ARG=LPH9, DEFAULT=.FALSE.)
     SELF%LDL = ARGUMENT_VALUE(ARG=LDL, DEFAULT=.FALSE.)
     SELF%LDM = ARGUMENT_VALUE(ARG=LDM, DEFAULT=.FALSE.)
-  END FUNCTION VARIABLE_${rank}$D_INIT
+    SELF%LDL9 = ARGUMENT_VALUE(ARG=LDL9, DEFAULT=.FALSE.)
+    SELF%LDM9 = ARGUMENT_VALUE(ARG=LDM9, DEFAULT=.FALSE.)
+    SELF%LWATER = ARGUMENT_VALUE(ARG=LWATER, DEFAULT=.FALSE.)
+    SELF%RCP = ARGUMENT_VALUE(ARG=RCP, DEFAULT=IEEE_VALUE (RCP, IEEE_QUIET_NAN))
+  END FUNCTION VARIABLE_${pref}$${rank}$D_INIT
+${endif}$
+#:endfor
 #:endfor
 
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
-  FUNCTION VARIABLE_${rank}$D_CLONE(SELF) RESULT(NEWOBJ)
-    ! Clone (deep-copy) this VARIABLE object to replicate associated FIELD objects
-    !
-    ! This is required create per-thread replication of the data view pointers
-    ! under the fields associated with this VARIABLE.
-    CLASS(VARIABLE_${rank}$D) :: SELF
-    TYPE(VARIABLE_${rank}$D) :: NEWOBJ
-
-    NEWOBJ = SELF
-    NEWOBJ%NAME = SELF%NAME
-    NEWOBJ%CNAME = SELF%CNAME
-    IF (ASSOCIATED(SELF%FT0))  NEWOBJ%FT0 => SELF%FT0%CLONE()
-    IF (ASSOCIATED(SELF%FT1))  NEWOBJ%FT1 => SELF%FT1%CLONE()
-    IF (ASSOCIATED(SELF%FT9))  NEWOBJ%FT9 => SELF%FT9%CLONE()
-    IF (ASSOCIATED(SELF%FPH9)) NEWOBJ%FPH9 => SELF%FPH9%CLONE()
-    IF (ASSOCIATED(SELF%FDL))  NEWOBJ%FDL => SELF%FDL%CLONE()
-    IF (ASSOCIATED(SELF%FDM))  NEWOBJ%FDM => SELF%FDM%CLONE()
-  END FUNCTION VARIABLE_${rank}$D_CLONE
-#:endfor
-
-#:for rank in ranks
-  SUBROUTINE VARIABLE_${rank}$D_UPDATE_VIEW(SELF, BLOCK_INDEX)
+${ifdef}$
+  SUBROUTINE VARIABLE_${pref}$${rank}$D_UPDATE_VIEW(SELF, BLOCK_INDEX)
     ! Update the internal data view pointers of all associated fields
-    CLASS(VARIABLE_${rank}$D) :: SELF
+    CLASS(VARIABLE_${pref}$${rank}$D) :: SELF
     INTEGER(KIND=JPIM), INTENT(IN) :: BLOCK_INDEX
+    REAL(KIND=${kind}$), TARGET, SAVE :: ZDUM(${ ', '.join (['1'] * (rank-1)) }$)
 
     ! Set on-object data view pointers from storage FIELDS
-    IF (ASSOCIATED(SELF%FT0))  SELF%T0 => SELF%FT0%GET_VIEW(BLOCK_INDEX)
-    IF (ASSOCIATED(SELF%FT1))  SELF%T1 => SELF%FT1%GET_VIEW(BLOCK_INDEX)
-    IF (ASSOCIATED(SELF%FT9))  SELF%T9 => SELF%FT9%GET_VIEW(BLOCK_INDEX)
-    IF (ASSOCIATED(SELF%FPH9)) SELF%PH9=> SELF%FPH9%GET_VIEW(BLOCK_INDEX)
-    IF (ASSOCIATED(SELF%FDL))  SELF%DL => SELF%FDL%GET_VIEW(BLOCK_INDEX)
-    IF (ASSOCIATED(SELF%FDM))  SELF%DM => SELF%FDM%GET_VIEW(BLOCK_INDEX)
+    IF (ASSOCIATED(SELF%FT0))  THEN
+      SELF%T0 => SELF%FT0%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%T0 => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FT1))  THEN
+      SELF%T1 => SELF%FT1%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%T1 => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FT9))  THEN
+      SELF%T9 => SELF%FT9%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%T9 => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FPH9)) THEN
+      SELF%PH9=> SELF%FPH9%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%PH9 => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FDL))  THEN
+      SELF%DL => SELF%FDL%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%DL => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FDM))  THEN
+      SELF%DM => SELF%FDM%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%DM => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FDL9)) THEN
+      SELF%DL9=> SELF%FDL9%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%DL9 => ZDUM
+    ENDIF
+    IF (ASSOCIATED(SELF%FDM9)) THEN
+      SELF%DM9=> SELF%FDM9%GET_VIEW(BLOCK_INDEX)
+    ELSE
+      SELF%DM9 => ZDUM
+    ENDIF
     SELF%P => SELF%T0  ! Alias T0 pointer
-  END SUBROUTINE VARIABLE_${rank}$D_UPDATE_VIEW
+  END SUBROUTINE VARIABLE_${pref}$${rank}$D_UPDATE_VIEW
+${endif}$
+#:endfor
 #:endfor
 
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
-  SUBROUTINE VARIABLE_${rank}$D_PH9TOT0(SELF)
+${ifdef}$
+  SUBROUTINE VARIABLE_${pref}$${rank}$D_PH9TOT0(SELF)
     ! Utility routine that aliases the PH9 field with T0
-    CLASS(VARIABLE_${rank}$D), TARGET :: SELF
+    CLASS(VARIABLE_${pref}$${rank}$D), TARGET :: SELF
 
-    IF (SELF%LT9) SELF%FPH9%PTR => SELF%FT0%DATA
-  END SUBROUTINE VARIABLE_${rank}$D_PH9TOT0
+    IF (SELF%LT9) SELF%FPH9%PTR => SELF%FT0%PTR
+  END SUBROUTINE VARIABLE_${pref}$${rank}$D_PH9TOT0
+${endif}$
+#:endfor
 #:endfor
 
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
-  SUBROUTINE VARIABLE_${rank}$D_PH9TOT9(SELF)
+${ifdef}$
+  SUBROUTINE VARIABLE_${pref}$${rank}$D_PH9TOT9(SELF)
     ! Utility routine that aliases the PH9 field with T9
-    CLASS(VARIABLE_${rank}$D), TARGET :: SELF
+    CLASS(VARIABLE_${pref}$${rank}$D), TARGET :: SELF
 
-    IF (SELF%LT9) SELF%FPH9%PTR => SELF%FT9%DATA
-  END SUBROUTINE VARIABLE_${rank}$D_PH9TOT9
+    IF (SELF%LT9) SELF%FPH9%PTR => SELF%FT9%PTR
+  END SUBROUTINE VARIABLE_${pref}$${rank}$D_PH9TOT9
+${endif}$
+#:endfor
 #:endfor
 
+
+#:for type in type_list
+#:set pref, suff, kind, ifdef, endif = type
 #:for rank in ranks
-  SUBROUTINE VARIABLE_${rank}$D_FINAL(SELF)
+${ifdef}$
+  SUBROUTINE VARIABLE_${pref}$${rank}$D_FINAL(SELF)
     ! Templated destructor that cleans up an object instance
-    CLASS(VARIABLE_${rank}$D) :: SELF
+    CLASS(VARIABLE_${pref}$${rank}$D) :: SELF
 
     IF (ASSOCIATED(SELF%FT0)) THEN
       CALL SELF%FT0%FINAL()
@@ -265,7 +330,17 @@ CONTAINS
       CALL SELF%FDM%FINAL()
       DEALLOCATE(SELF%FDM)
     END IF
-  END SUBROUTINE VARIABLE_${rank}$D_FINAL
+    IF (ASSOCIATED(SELF%FDL9)) THEN
+      CALL SELF%FDL9%FINAL()
+      DEALLOCATE(SELF%FDL9)
+    END IF
+    IF (ASSOCIATED(SELF%FDM9)) THEN
+      CALL SELF%FDM9%FINAL()
+      DEALLOCATE(SELF%FDM9)
+    END IF
+  END SUBROUTINE VARIABLE_${pref}$${rank}$D_FINAL
+${endif}$
+#:endfor
 #:endfor
 
 END MODULE VARIABLE_MODULE

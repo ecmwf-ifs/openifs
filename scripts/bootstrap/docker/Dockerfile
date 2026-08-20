@@ -31,7 +31,7 @@ RUN apt update && \
         libomp-dev libboost-dev libboost-date-time-dev libboost-filesystem-dev \
         libboost-serialization-dev libboost-program-options-dev netcdf-bin \
         libnetcdf-dev libnetcdff-dev liblapack-dev libeigen3-dev vim less \
-        wget bc ca-certificates && \
+        wget bc ca-certificates time && \
     update-ca-certificates && \
     cd /tmp && \
     wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.10.tar.gz && \

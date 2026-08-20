@@ -7,7 +7,7 @@
 ! nor does it submit to any jurisdiction
 
 SUBROUTINE WRTD1C_NC(YDGEOMETRY,YDMODEL,YDSURF, &
-  & PCPR    ,PCPS    ,PSPR    ,PSPS    ,PIRUNOF ,PFWMLT  ,PFWSB&
+  &  PCPR    ,PCPS    ,PSPR    ,PSPS    ,PIRUNOF ,PFWMLT  ,PFWSB&
   & ,PISLHF  ,PSWRF0  ,PSWRFN  ,PLWRF0  ,PLWRFN&
   & ,PVDIS   ,PVDISG  ,PUSTRG  ,PVSTRG&
   & ,PQTEND  ,PTTEND  ,PUTEND  ,PVTEND  ,PLTEND  ,PITEND  ,PATEND&
@@ -20,7 +20,7 @@ SUBROUTINE WRTD1C_NC(YDGEOMETRY,YDMODEL,YDSURF, &
   & ,PSTRCU  ,PSTRCV  ,PSTRDU  ,PSTRDV  ,PSTRTU  ,PSTRTV&
   & ,PDIFTI  ,PDIFTL  ,PFCCQN  ,PFCCQL  ,PFCSQN  ,PFCSQL  ,PFCQLNG ,PFCQNNG&
   & ,ICBOT   ,ICTOP   ,PLUDE   ,PLU&
-  &,PPHIF9  ,PPHI9   ,PPRESH9 ,PPRESF9)
+  & ,PPHIF9  ,PPHI9   ,PPRESH9 ,PPRESF9)
 
 !*****WRTD1C_NC* - Write diagnostic variables of the one-column model
 
@@ -208,6 +208,7 @@ ICSS = YSP_SBD%NLEVS
 !*         1.     PREPARING THE OUTPUT
 !                 ---------------------
 
+! Transform accumulated variables to average from the start of the simulation to the current timestep
 ZDE   = VDE   (1)/((NSTEP+1)*TSTEP)
 ZDSSHF= VDSSHF(1)/((NSTEP+1)*TSTEP)
 ZDSLHF= VDSLHF(1)/((NSTEP+1)*TSTEP)
@@ -608,13 +609,12 @@ CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'liq_flx_str_cond', PFC
 CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'liq_flx_turb_pos', PFCQLNG)
 CALL VARWRITE1C_NC (INCID(2), NFLEVG+1, ISTART2,ICOUNT3, 'ice_flx_turb_pos', PFCQNNG)
 
-!do n=1,nvxtr2
+! Note: YSD_X2D%NUMFLDS == NVXTR2,  YSD_XAD%NUMFLDS == NVEXTR
 DO N=1,YSD_X2D%NUMFLDS
   ZEXTR2=VEXTR2(1,N)
   WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
   CALL VARWRITE1C_NC (INCID(2), 1,     (/ISTART1/),(/ICOUNT1/), 'extra_sfc_'//NTXT, ZEXTR2)
 ENDDO
-!do n=1,nvextr
 DO N=1,YSD_XAD%NUMFLDS
   ZEXTRA(1:YSD_XAD%NLEVS)=VEXTRA(1,1:YSD_XAD%NLEVS,N)
   WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
@@ -639,7 +639,6 @@ IF ( NSTEP == 0 ) THEN
 
   DO N=1,NVEXTR
     ! Write out the names for the extra variables
-    !WRITE(6,*) 'NVEXTR',N,LEN(YDPHYDS%CVEXTRA(N)), YDPHYDS%CVEXTRA(N)
     WRITE(NTXT,"(2i1)") INT(N/10), MOD(N,10)
     ISTATUS = NF_INQ_VARID   (INCID(2), 'extra_col_'//NTXT, IVARID)
     CALL HANDLE_ERR_NC(ISTATUS)

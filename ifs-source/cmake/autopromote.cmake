@@ -18,7 +18,7 @@
 #
 # TODO:
 #   - The listed files under "ENABLE_MANUAL_AUTOPROMOTE" should be adapted with explicit REAL kinds
-#   - Apply remaining autopromote flags explicitly to wam, scat, ifsaux/ddh, satrad/emos_interpolation sources
+#   - Apply remaining autopromote flags explicitly to scat, ifsaux/ddh, satrad/emos_interpolation sources
 #   - Investigate intentionally ignored files for autopromotion, whichg parser triggered, but we refuse to autopromote
 #       # Otherwise ifstraj/ifsmin *not* bit-reproducible. Please fully qualify REALs even if it breaks bit-reproducibility.
 #          satrad/module/yoamsu.F90
@@ -134,8 +134,8 @@ if( ENABLE_MANUAL_AUTOPROMOTE )
 
   foreach(src ${all_srcs})
 
-    # FIXME: WAM and SCAT are using implicit typing!
-    if(src MATCHES "^wam/.*|^scat/.*")
+    # FIXME: SCAT is using implicit typing!
+    if(src MATCHES "^scat/.*")
       list(APPEND autopromote_srcs ${src})
       continue()
     endif()
@@ -182,8 +182,8 @@ else()
       continue()
     endif()
 
-    # FIXME: WAM and SCAT are using implicit typing!
-    if(src MATCHES "^wam/.*|^scat/.*")
+    # FIXME: SCAT is using implicit typing!
+    if(src MATCHES "^scat/.*")
       list(APPEND autopromote_srcs ${src})
       continue()
     endif()

@@ -10,7 +10,7 @@
 ! 
 
 SUBROUTINE SUVFE_OPER_SETUP( YDCVER,&
- & LDFIX_ORDER, KTBC, KBBC, KFLEV_IN, &
+ & KTBC, KBBC, KFLEV_IN, &
  & KORDER, KBASIS, KINTERNALS, KOFF, KKNOTS )
 
 !**** *SUVFE_OPER_SETUP*  - Set Up VFE - OPERATOR SETUP
@@ -22,7 +22,6 @@ SUBROUTINE SUVFE_OPER_SETUP( YDCVER,&
 !     Explicit arguments :
 !     --------------------
 !      * INPUT:
-!        LDFIX_ORDER  : T/F - fixed order of basis/fixed knots
 !        KTBC/KBBC    : KTBC/KBBC(1) = 1  - value of basis at top/bottom BC is 0,
 !                       KTBC/KBBC(2) = N  - all derivatives up to N-order of basis
 !                       at top/bottom are set to 0
@@ -38,23 +37,12 @@ SUBROUTINE SUVFE_OPER_SETUP( YDCVER,&
 !     Method.
 !     -------
 ! This subroutine is supposed to be called inside suvertfeb.
-! Orders of splines are determined by the key LVFE_FIX_ORDER.
-!
-! This routine is called for IN basis and for OUT basis independently
-! but the key LVFE_FIX_ORDER must be kept consistent.
-!
-! To ensure consistency of VFE_SETUP for the key LVFE_FIX_ORDER=.F.
-! (when fixed internals knots are considered) is mandatory 
-! condition for the definition of invertible operators. The order of spline
-! in this case is computed from the number of internal knots and the KBASIS functions.
-! The full knots vector is then constructed by addition of appropriate multiple knots
-! at edges. The internal knots are defined in VFE_SETUP in suvertfe and they are in 
-! the field VFE_KNOTS. 
+! This routine is called for IN basis and for OUT basis independently.
 !
 ! An example of order calculation for invertible operators when general order is NVFE_ORDER=4:
 ! 
 ! integral is required to be 0 at the surface => KBBC_OUT(1) = 1
-! (we integrate from surface to model top). The derivated function must i
+! (we integrate from surface to model top). The derivated function must
 ! therefore fullfill the same condition due to consistency:
 ! KBBC_IN(1) = 1. The operator is defined for NFLEVG+1 levels. 
 !
@@ -84,6 +72,7 @@ SUBROUTINE SUVFE_OPER_SETUP( YDCVER,&
 
 !     Modifications.
 !     --------------
+!      P.Smolikova (Sep 2020): VFE pruning.
 !     ------------------------------------------------------------------
 
 USE PARKIND1, ONLY : JPRB, JPIM
@@ -94,7 +83,6 @@ USE YOMCVER , ONLY : TCVER
 IMPLICIT NONE
 
 TYPE(TCVER),INTENT(IN)         :: YDCVER
-LOGICAL, INTENT(IN)            :: LDFIX_ORDER
 INTEGER(KIND=JPIM), INTENT(IN) :: KTBC(2)
 INTEGER(KIND=JPIM), INTENT(IN) :: KBBC(2)
 INTEGER(KIND=JPIM), INTENT(IN) :: KFLEV_IN
@@ -119,14 +107,8 @@ KOFF = KTBC(1) + KTBC(2)
 
 KBASIS = KFLEV_IN + KOFF + KBBC(1) + KBBC(2)
 
-IF( LDFIX_ORDER )THEN
-  KORDER     = YDCVER%NVFE_ORDER       ! order of splines consistent with namelist
-  KINTERNALS = KBASIS - KORDER
-ELSE
-  KINTERNALS = YDCVER%NVFE_INTERNALS   ! number of internal knots consistent with VFE_SETUP
-  KORDER     = KBASIS - KINTERNALS
-ENDIF
-
+KORDER     = YDCVER%NVFE_ORDER       ! order of splines consistent with namelist
+KINTERNALS = KBASIS - KORDER
 KKNOTS     = KBASIS + KORDER
 
 WRITE(NULOUT,*) "(SUVFE_OPER_SETUP) NORDER : ", KORDER, " NBASIS : ", KBASIS, &

@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+
+# (C) Copyright 2020- ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+ECWAM_PROJECT_NAME="@PROJECT_NAME@"
+ECWAM_VERSION_STR="@PROJECT_VERSION_STR@"
+ECWAM_VERSION="@PROJECT_VERSION@"
+ECWAM_GIT_SHA1="@PROJECT_GIT_SHA1@"
+
+#################################################################
+# Commands
+#################################################################
+
+usage()
+{
+  echo "Usage: ${ECWAM_PROJECT_NAME} [--version] [--info] [--git] [--precision]"
+  exit $1
+}
+
+version()
+{
+  echo "${ECWAM_VERSION_STR}"
+}
+
+precision()
+{
+  echo "@PROJECT_PRECISION@"
+}
+
+append_git()
+{
+  if (( $# > b )); then
+    git="$@"
+    echo ", git-sha1 ${git::${#git}-33}"
+  fi
+}
+
+info()
+{
+  echo "${ECWAM_PROJECT_NAME} version (${ECWAM_VERSION_STR})$(append_git ${ECWAM_GIT_SHA1})"
+  echo ""
+  echo "Build:"
+  echo "  build type      : @CMAKE_BUILD_TYPE@"
+  echo "  timestamp       : @EC_BUILD_TIMESTAMP@"
+  echo "  op. system      : @CMAKE_SYSTEM@ (@EC_OS_NAME@.@EC_OS_BITS@)"
+  echo "  processor       : @CMAKE_SYSTEM_PROCESSOR@"
+  echo "  fortran compiler: @CMAKE_Fortran_COMPILER_ID@ @CMAKE_Fortran_COMPILER_VERSION@"
+  echo "    flags         : @Fortran_flags@"
+  echo ""
+  echo "Features:"
+  echo "  MPI             : @HAVE_MPI@"
+  echo "  OMP             : @HAVE_OMP@"
+  echo "  PRECISION       : @PROJECT_PRECISION@"
+  echo ""
+  echo "Dependencies: "
+  echo "  fiat version (@fiat_VERSION@)$(append_git @fiat_GIT_SHA1@)"
+}
+
+gitsha1()
+{
+  echo "${ECWAM_GIT_SHA1}"
+}
+
+
+#################################################################
+# Parse command-line
+#################################################################
+
+if test $# -eq 0; then
+    usage 1
+fi
+
+while test $# -gt 0; do
+
+    # Split --option=value in $opt="--option" and $val="value"
+
+    opt=""
+    val=""
+
+    case "$1" in
+    --*=*)
+      opt=`echo "$1" | sed 's/=.*//'`
+      val=`echo "$1" | sed 's/--[_a-zA-Z0-9]*=//'`
+      ;;
+    --*)
+      opt=$1
+      ;;
+    *)
+      break
+      ;;
+    esac
+
+    # Parse options
+    case "$opt" in
+      --version)
+        version
+        ;;
+      --git)
+        gitsha1
+          ;;
+      --info)
+        info
+        ;;
+      --precision)
+        precision
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        echo "unknown option: $opt"
+        usage 1
+        ;;
+    esac
+    shift
+done

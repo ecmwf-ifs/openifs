@@ -51,6 +51,7 @@ SUBROUTINE FPGEOPHY(YDRQPHY,KST,KEND,KFPROMA,PGNXO,PGNYO,PGMO,KFIELDS,KORDER,PRO
 !      R. El Khatib : 02-21-20 Fullpos B-level distribution + remove IO scheme
 !      R. El Khatib : 03-04-17 Fullpos improvemnts
 !      M.Hamrud      01-Oct-2003 CY28 Cleaning
+!      R. El Khatib 11-Mar-2021 Add internal test if mismatch detected in U/V pairs
 !     ------------------------------------------------------------------
 
 USE PARKIND1 , ONLY   : JPIM     ,JPRB
@@ -108,6 +109,7 @@ DO JF=1, KFIELDS
         IPTR2=IPTR2+1
       ENDIF
     ENDDO
+    IF (IPTR2 > KFIELDS) CALL ABOR1('FPGEOPHY : INTERNAL ERROR IPTR2 => CHECK %CLPAIR UNICITY')
     IU=IPTR
     IV=IPTR2
     DO JL=0,INC-1
@@ -125,3 +127,4 @@ IF (IPTR-1 /= KFIELDS) CALL ABOR1('FPGEOPHY : INTERNAL ERROR 2')
 
 IF (LHOOK) CALL DR_HOOK('FPGEOPHY',1,ZHOOK_HANDLE)
 END SUBROUTINE FPGEOPHY
+

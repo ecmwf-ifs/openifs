@@ -1,4 +1,3 @@
-      SUBROUTINE WRTP1S
 ! (C) Copyright 1995- ECMWF.
 !
 ! This software is licensed under the terms of the Apache Licence Version 2.0
@@ -6,6 +5,48 @@
 ! In applying this licence, ECMWF does not waive the privileges and immunities
 ! granted to it by virtue of its status as an intergovernmental organisation
 ! nor does it submit to any jurisdiction.
+
+!**** *WRTP1S*  - Writing prognostic variables of the one-column surface model
+
+!     Purpose.
+!     --------
+!     Write out prognostic variables
+
+!**   Interface.
+!     ----------
+!        *CALL* *WRTP1S
+
+!        Explicit arguments :
+!        --------------------
+
+
+!        Implicit arguments :
+!        --------------------
+
+!     Method.
+!     -------
+!        See documentation
+
+!     Externals.
+!     ----------
+!        None
+
+!     Reference.
+!     ----------
+!        ECMWF Research Department documentation 
+!        of the one-column surface model
+
+!     Author.
+!     -------
+!        Jean-Francois Mahfouf and Pedro Viterbo  *ECMWF*
+
+!     Modifications.
+!     --------------
+!        Original : 95-03-22
+
+!     ------------------------------------------------------------------
+
+      SUBROUTINE WRTP1S
 
 !**** *WRTP1S*  - Writing prognostic variables of the one-column surface model
 

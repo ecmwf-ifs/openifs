@@ -49,6 +49,7 @@ SUBROUTINE DDR_ZH_SEASON(KIDIA, KFDIA, KLON, KMONTH, KDAY,  PLAT,               
 !!    Original    July 1999
 !!    adapted for IFS land classes , J. Flemming 1.6.2015
 !!    adapted for Zhang et al land classes , S.Rémy 17/1/2017
+!!    Add Urban tile    J. McNorton                        24 August 2022
 !!
 !!-------------------------------------------------------------------------------
 
@@ -205,7 +206,7 @@ IF (LHOOK) CALL DR_HOOK('DDR_ZH_SEASON',0,ZHOOK_HANDLE)
               if (iveg_ifs ==  18_JPIM)  kveg_ZH(jl) = 5_JPIM 
               if (iveg_ifs ==  19_JPIM)  kveg_ZH(jl) = 10_JPIM 
               kseason(jl) = 4_JPIM   
-           CASE (8)
+           CASE (8,10)
               kveg_ZH(jl) = 8_JPIM 
         END SELECT
 

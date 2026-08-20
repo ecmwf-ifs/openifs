@@ -16,6 +16,7 @@ if(HAVE_NEMO)
   add_subdirectory(nemo)
 
   set( NEMOVAR_LIBRARIES ${NEMO_${PREC}_LIBRARIES} )
+  set( NEMOGCMCOUP_LIBRARIES nemogcmcoup.${PREC} )
 
   # Finally, if we are using single precision for NEMO, add the
   # PARKIND1_SINGLE_NEMO preprocessor definition to set the ocean working

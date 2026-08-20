@@ -7,15 +7,17 @@
 ! nor does it submit to any jurisdiction
 
 SUBROUTINE CUCALLN2 &
- & (  YDERAD,YDML_PHY_SLIN,YDML_PHY_EC,&
+ & (  YDTHF, YDCST, YDERAD,YDML_PHY_SLIN,YDML_PHY_EC,&
  & KIDIA,    KFDIA,    KLON,   KLEV,&
  & LDLAND, LDSLPHY, LDRAIN1D, &
  & PTSPHY,PVDIFTS,&
  & PTM1,     PQM1,     PUM1,     PVM1,&
- & PVERVEL,  PQHFL,    PAHFS,    PAPHM1,&
+ & PVERVEL,  PQHFL_S,  PAHFS_S,  PAPHM1,&
  & PAP,      PAPH,     PGEO,     PGEOH, PGAW,&
- & PTENT,    PTTENT,   PTENQ,    PTTENQ, &
- & PTENU,    PTTENU,   PTENV,    PTTENV, PARPRC,&
+ & PTENT,    PTTENT,   PTENT_VD9,&
+ & PTENQ,    PTTENQ,   PTENQ_VD9,&
+ & PTENU,    PTTENU,   PTENU_VD9,&
+ & PTENV,    PTTENV,   PTENV_VD9, PARPRC,&
  & KTOPC,    KBASEC,   KTYPE,&
  & KCBOT,    KCTOP,    KBOTSC,   LDCUM,   LDSC,&
  & PLU,      PLUDE,    PMFU,     PMFD,&
@@ -70,8 +72,8 @@ SUBROUTINE CUCALLN2 &
 !    *PVM1*         Y-VELOCITY COMPONENT (T-1)                    M/S
 !    *PCM1*         CHEMICAL TRACERS (T-1)                        KG/KG
 !    *PVERVEL*      VERTICAL VELOCITY                             PA/S
-!    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)     KG/(SM2)
-!    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
+!    *PQHFL_S*      SURF MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)   KG/(SM2)
+!    *PAHFS_S*      SURFACE SENSIBLE HEAT FLUX                    W/M2
 !    *PAPHM1*       PRESSURE ON HALF LEVELS                       PA
 !    *PAP*          PROVISIONAL PRESSURE ON FULL LEVELS           PA 
 !    *PAPH*         PROVISIONAL PRESSURE ON HALF LEVELS           PA
@@ -96,6 +98,12 @@ SUBROUTINE CUCALLN2 &
 !    *PTTENQ*       MOISTURE TENDENCY                            KG/(KG S)
 !    *PTTENU*       TENDENCY OF U-COMP. OF WIND (guess)          M/S2
 !    *PTTENV*       TENDENCY OF V-COMP. OF WIND (guess)          M/S2 
+
+!    ii/ The stored tendencies from vertical diffusion of previous TS
+!    *PTENT_VD9*    TEMPERATURE TENDENCY                         K/S 
+!    *PTENQ_VD9*    MOISTURE TENDENCY                            KG/(KG S)
+!    *PTENU_VD9*    TENDENCY OF U-COMP. OF WIND (guess)          M/S2
+!    *PTENV_VD9*    TENDENCY OF V-COMP. OF WIND (guess)          M/S2 
 
 !    *PTENC*        TENDENCY OF CHEMICAL TRACERS                 1/S
 !    *PARPRC*       ACCUMULATED PRECIPITATION AMMOUNT           KG/(M2*S)
@@ -161,6 +169,8 @@ SUBROUTINE CUCALLN2 &
 !        F. Vana       18-May-2012 Cleaning
 !        F. Vana       Oct-2013    Bug fix maintaining symetry with the NL scheme
 !        P. Lopez      10-05-2016  Changed tendency computations to match full scheme
+!        R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
+!        F. Vana       (Jan 2023): new seq. physics order + fix
 
 !-------------------------------------------------------------------------
 
@@ -170,18 +180,14 @@ USE YOERAD                       , ONLY : TERAD
 USE PARKIND1                     , ONLY : JPIM     ,JPRB
 USE YOMHOOK                      , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST                       , ONLY : RG       ,RV       ,RCPD     ,RCPV     ,&
- &                                        RETV     ,RCW      ,RCS      ,RLVTT    ,RLSTT    ,&
- &                                        RTT      ,RALPW    ,RBETW    ,RGAMW    ,RALPS    ,&
- &                                        RBETS    ,RGAMS    ,RALPD    ,RBETD    ,RGAMD  
-USE YOETHF                       , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                                        R4IES    ,R5LES    ,R5IES    ,RVTMP2   ,R5ALVCP  ,&
- &                                        R5ALSCP  ,RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,&
- &                                        RTICECU, RTWAT_RTICECU_R, RTWAT_RTICE_R  
+USE YOMCST                       , ONLY : TCST  
+USE YOETHF                       , ONLY : TTHF  
 USE YOMCT3                       , ONLY : NSTEP
 
 IMPLICIT NONE
 
+TYPE(TTHF)                         ,INTENT(IN)    :: YDTHF
+TYPE(TCST)                         ,INTENT(IN)    :: YDCST
 TYPE(TERAD)                        ,INTENT(INOUT) :: YDERAD
 TYPE(MODEL_PHYSICS_ECMWF_TYPE)     ,INTENT(INOUT) :: YDML_PHY_EC
 TYPE(MODEL_PHYSICS_SIMPLINEAR_TYPE),INTENT(INOUT) :: YDML_PHY_SLIN
@@ -201,8 +207,8 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PUM1(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVM1(KLON,KLEV) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCM1(KLON,KLEV,KTRAC) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PVERVEL(KLON,KLEV)
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PQHFL(KLON,KLEV+1)
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PAHFS(KLON,KLEV+1)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PQHFL_S(KLON)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAHFS_S(KLON)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPHM1(KLON,KLEV+1) 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1)
@@ -211,12 +217,16 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PGEOH(KLON,KLEV+1)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PGAW(KLON)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTENT(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTTENT(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENT_VD9(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTENQ(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTTENQ(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENQ_VD9(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTENU(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTTENU(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENU_VD9(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTENV(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PTTENV(KLON,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTENV_VD9(KLON,KLEV)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PSCAV(KTRAC) 
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PTENC(KLON,KLEV,KTRAC) 
 REAL(KIND=JPRB)   ,INTENT(INOUT) :: PARPRC(KLON) 
@@ -285,15 +295,17 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('CUCALLN2',0,ZHOOK_HANDLE)
 ASSOCIATE(NJKT22=>YDML_PHY_SLIN%YRECUMF2%NJKT22, &
  & LPHYLIN=>YDML_PHY_SLIN%YREPHLI%LPHYLIN, RLPTRC=>YDML_PHY_SLIN%YREPHLI%RLPTRC, &
+ & RCPD=>YDCST%RCPD, RG=>YDCST%RG, RLSTT=>YDCST%RLSTT, RLVTT=>YDCST%RLVTT, &
+ & RVTMP2=>YDTHF%RVTMP2, &
  & LEPCLD=>YDML_PHY_EC%YREPHY%LEPCLD, LMFTRAC=>YDML_PHY_EC%YREPHY%LMFTRAC, &
  & LENCLD2=>YDML_PHY_SLIN%YRPHNC%LENCLD2,LEPCLD2=>YDML_PHY_SLIN%YRPHNC%LEPCLD2)
 ! Setup of tendencies
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
-    PTENQ(JL,JK)=PTTENQ(JL,JK)
-    PTENT(JL,JK)=PTTENT(JL,JK)
-    PTENV(JL,JK)=PTTENV(JL,JK)
-    PTENU(JL,JK)=PTTENU(JL,JK)
+    PTENQ(JL,JK)=PTTENQ(JL,JK)+PTENQ_VD9(JL,JK)
+    PTENT(JL,JK)=PTTENT(JL,JK)+PTENT_VD9(JL,JK)
+    PTENV(JL,JK)=PTTENV(JL,JK)+PTENV_VD9(JL,JK)
+    PTENU(JL,JK)=PTTENU(JL,JK)+PTENU_VD9(JL,JK)
     ZENTHD(JL,JK)=0.0_JPRB
     ZENTHS(JL,JK)=0.0_JPRB
   ENDDO
@@ -312,10 +324,10 @@ ENDDO
 
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
-    ZUP1(JL,JK)=PUM1(JL,JK)+PTTENU(JL,JK)*PTSPHY
-    ZVP1(JL,JK)=PVM1(JL,JK)+PTTENV(JL,JK)*PTSPHY
-    ZTP1(JL,JK)=PTM1(JL,JK)+PTTENT(JL,JK)*PTSPHY
-    ZQP1(JL,JK)=PQM1(JL,JK)+PTTENQ(JL,JK)*PTSPHY
+    ZUP1(JL,JK)=PUM1(JL,JK)+PTENU(JL,JK)*PTSPHY
+    ZVP1(JL,JK)=PVM1(JL,JK)+PTENV(JL,JK)*PTSPHY
+    ZTP1(JL,JK)=PTM1(JL,JK)+PTENT(JL,JK)*PTSPHY
+    ZQP1(JL,JK)=PQM1(JL,JK)+PTENQ(JL,JK)*PTSPHY
     ZQSAT(JL,JK)=ZQP1(JL,JK)
   ENDDO
 ENDDO
@@ -351,7 +363,7 @@ IF (LDRAIN1D) THEN
   CALL SATUR_1D (KIDIA , KFDIA , KLON  , NJKT22 , KLEV,&
    & PAP   , ZTP1  , ZQSAT )  
 ELSE
-  CALL SATUR (KIDIA , KFDIA , KLON  , NJKT22 , KLEV, YDML_PHY_SLIN%YREPHLI%LPHYLIN, &
+  CALL SATUR (YDTHF, YDCST, KIDIA , KFDIA , KLON  , NJKT22 , KLEV, YDML_PHY_SLIN%YREPHLI%LPHYLIN, &
    & PAP   , ZTP1  , ZQSAT , IFLAG  ) 
 ENDIF 
 
@@ -368,11 +380,11 @@ ENDDO
 !*           ---------------------------------------------- 
 
 CALL CUMASTRN2 &
- & (  YDML_PHY_SLIN,   YDML_PHY_EC,  &
+ & (YDTHF, YDCST, YDML_PHY_SLIN,   YDML_PHY_EC,  &
  & KIDIA,    KFDIA,    KLON,    KLEV,&
  & LDLAND,   LDRAIN1D, PTSPHY,&
  & ZTP1,     ZQP1,     ZUP1,     ZVP1,&
- & PVERVEL,  ZQSAT,    PQHFL,    PAHFS,&
+ & PVERVEL,  ZQSAT,    PQHFL_S,  PAHFS_S,&
  & PAP,      PAPH,     PGEO,     PGEOH, PGAW,&
  & PTENT,    PTENQ,    PTENU,    PTENV,&
  & LDCUM,    KTYPE,    KCBOT,    KCTOP,&
@@ -384,29 +396,31 @@ CALL CUMASTRN2 &
  & KTRAC,    ZCP1,     PTENC,    PSCAV )  
 
 !----------------------------------------------------------------------
-!-----------------------------------------------------------------------
 
-!*    3.0       CALL 'CUCCDIA' TO UPDATE CLOUD PARAMETERS FOR RADIATION
-!               -------------------------------------------------------
-
-CALL CUCCDIA &
- & (  YDERAD,YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YREPHY, &
- & KIDIA,    KFDIA,    KLON,   KLEV,&
- & NSTEP,    KCBOT,    KCTOP,&
- & LDCUM,    ZQU,      PLU,      PMFU,    ZRAIN,&
- & PARPRC,   KTOPC,    KBASEC                   )  
-
-!----------------------------------------------------------------------
-! SECTION 4 IS ONLY REQUIRED IF THE DIAGNOSTIC CLOUD SCHEME IS USED :
+! SECTIONS 3 AND 4 ARE ONLY REQUIRED IF THE DIAGNOSTIC CLOUD SCHEME IS USED :
 ! I.E., LEPCLD=.FALSE.
-
-!*    4.0          CALL 'CUSTRAT' FOR PARAMETERIZATION OF PBL-CLOUDS
-!                  -------------------------------------------------
 
 LLTEST = (.NOT.LEPCLD.AND..NOT.LENCLD2.AND..NOT.LEPCLD2).OR. &
   & (LPHYLIN.AND..NOT.LENCLD2.AND..NOT.LEPCLD2).AND..NOT.LDRAIN1D
 
 IF (LLTEST) THEN
+
+!-----------------------------------------------------------------------
+
+!*    3.0       CALL 'CUCCDIA' TO UPDATE CLOUD PARAMETERS FOR RADIATION
+!               -------------------------------------------------------
+
+  CALL CUCCDIA &
+   & (  YDERAD,YDML_PHY_SLIN%YREPHLI,YDML_PHY_EC%YREPHY, &
+   & KIDIA,    KFDIA,    KLON,   KLEV,&
+   & NSTEP,    KCBOT,    KCTOP,&
+   & LDCUM,    ZQU,      PLU,      PMFU,    ZRAIN,&
+   & PARPRC,   KTOPC,    KBASEC                   )  
+
+!----------------------------------------------------------------------
+
+!*    4.0          CALL 'CUSTRAT' FOR PARAMETERIZATION OF PBL-CLOUDS
+!                  -------------------------------------------------
 
   CALL CUSTRAT &
    & (  YDML_PHY_SLIN%YREPHLI, &
@@ -423,10 +437,10 @@ ENDIF
 ! Extraction of tendencies
 DO JK=1,KLEV
   DO JL=KIDIA,KFDIA
-    PTENQ(JL,JK)=PTENQ(JL,JK)-PTTENQ(JL,JK)
-    PTENT(JL,JK)=PTENT(JL,JK)-PTTENT(JL,JK)
-    PTENV(JL,JK)=PTENV(JL,JK)-PTTENV(JL,JK)
-    PTENU(JL,JK)=PTENU(JL,JK)-PTTENU(JL,JK)
+    PTENQ(JL,JK)=PTENQ(JL,JK)-PTTENQ(JL,JK)-PTENQ_VD9(JL,JK)
+    PTENT(JL,JK)=PTENT(JL,JK)-PTTENT(JL,JK)-PTENT_VD9(JL,JK)
+    PTENV(JL,JK)=PTENV(JL,JK)-PTTENV(JL,JK)-PTENV_VD9(JL,JK)
+    PTENU(JL,JK)=PTENU(JL,JK)-PTTENU(JL,JK)-PTENU_VD9(JL,JK)
   ENDDO
 ENDDO
 

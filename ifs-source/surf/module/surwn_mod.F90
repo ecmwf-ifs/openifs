@@ -1,3 +1,66 @@
+! (C) Copyright 1988- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURWN*   - INITIALIZE COMMON YOESW
+
+!     PURPOSE.
+!     --------
+!           INITIALIZE YOESW, THE COMMON THAT CONTAINS COEFFICIENTS
+!           NEEDED TO RUN THE SHORTWAVE RADIATION SUBROUTINES
+
+!**   INTERFACE.
+!     ----------
+!        *CALL* *SUSW
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+
+!      Input arguments
+!    KSIL          :
+!    PTSTAND       :
+!    PXP           :
+!    PRSUN         :
+
+!     METHOD.
+!     -------
+!        SEE DOCUMENTATION
+
+!     EXTERNALS.
+!     ----------
+
+!     REFERENCE.
+!     ----------
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE IFS
+
+!     AUTHOR.
+!     -------
+!        JEAN-JACQUES MORCRETTE *ECMWF*
+
+!     MODIFICATIONS.
+!     --------------
+!        ORIGINAL : 88-12-15
+!        97-04-16 JJ Morcrette  2 and 4 interval spectral resolution
+!        00-10-24 JJ Morcrette  sea-ice albedo revisited
+!        00-12-14 JJ Morcrette 
+!               and Ph.Dubuisson B.Bonnel 6 spectral interval resolution
+!        01-04-17 Ph.Dubuisson, B.Bonnel, JJ.Morcrette 6 sp.int.resolu'n
+!        01-06-28 B.Bonnel, JJ.Morcrette, Ph.Dubuisson  Rayleigh (2/4/6)
+!        01-11-05 Ph.Dubuisson, JJMorcrette (new 2 intervals for TL/AD)
+!         03-10-01 J.F. Estrade *ECMWF*  move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!        JJMorcrette       20060530 MODIS Albedo
+!        E.Dutra/G.Balsamo 20070501 add lake tile
+!        JJMorcrette       20120723 fix spectral definition of snow albedo
+!        R. El Khatib 27-Apr-2015 dummy init. if NWS==1
+!        R. Hogan     14-Jan-2019 Replace LE4ALB with NALBEDOSCHEME
+!        R. Hogan     26-Feb-2019 Removed RWEIGHT
+!     ------------------------------------------------------------------
+
 MODULE SURWN_MOD
 CONTAINS
 SUBROUTINE SURWN (KSIL,PTSTAND,PXP,PRSUN,YDDIM,YDRAD,YDLW,YDSW)
@@ -9,14 +72,6 @@ USE YOS_RAD   , ONLY : TRAD
 USE YOS_LW    , ONLY : TLW
 USE YOS_SW    , ONLY : TSW
 USE ABORT_SURF_MOD
-! (C) Copyright 1988- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
-
 !**** *SURWN*   - INITIALIZE COMMON YOESW
 
 !     PURPOSE.

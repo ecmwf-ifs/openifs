@@ -40,7 +40,8 @@ USE YOMDYNCORE         , ONLY : LAQUA
 !               KFILE = 4 the CFNGG  file is read
 !               KFILE = 6 a climat. file is read
 !               KFILE = 8 the CFANS  file is read
-!               KFILE =12 the CFNBGHRGG file is read
+!               KFILE = 12 the CFNBGHRGG file is read
+!               KFILE = 200001 the windfarm file is read
 !        PSPOR
 !        LDSPOR
 !        PBLH

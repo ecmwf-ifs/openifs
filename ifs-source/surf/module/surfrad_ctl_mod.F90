@@ -1,3 +1,130 @@
+
+! (C) Copyright 1991- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+
+!**** *SURFRAD  - COMPUTES RADIATIVE PROPERTIES OF SURFACE
+
+!     PURPOSE.
+!     --------
+
+!**   INTERFACE.
+!     ----------
+!        CALL *SURFRAD* FROM *CALLPAR*
+
+!        EXPLICIT ARGUMENTS :
+!        --------------------
+!     ==== INPUTS ===
+! LDNH   : LOGICAL  : .TRUE. FOR Northern Hemisphere
+! LDLAND : LOGICAL  : .TRUE. FOR Land point
+! PALBF  : REAL     : FIXED BACKGROUND SURFACE SHORTWAVE ALBEDO
+! PALBICEF REAL     : FIXED SEA-ICE ALBEDO (FROM COUPLER)
+! PTVH   : REAL     : DOMINANT HIGH VEGETATION TYPE
+! PCUR   : REAL     : URBAN COVER (CORRECTED)
+! PCVH   : REAL     : HIGH VEGETATION
+! PALCOEFF : REAL   : MODIS albedo coefficients:
+!   For the 4-component scheme, the second dimension indexes
+!      1: UV/Vis direct,  2: UV/Vis diffuse,
+!      3: Near-IR direct, 4: Near-IR diffuse,
+!   For the 6-component scheme, the second dimension indexes
+!      1: UV/Vis isotropic,  2: UV/Vis volumetric,  3: UV/Vis geometric
+!      4: Near-IR isotropic, 5: Near-IR volumetric, 6: Near-IR geometric
+! PASN   : REAL     : ALBEDO OF EXPOSED SNOW (TYPE 5)
+! PMU0   : REAL     : COSINE OF SOLAR ZENITH ANGLE
+! PTS    : REAL     : SURFACE TEMPERATURE
+! PWND   : REAL     : WIND INTENSITY AT LOWEST LEVEL
+! PWS1   : REAL     : TOP LAYER SOIL MOISTURE CONTENT
+! KSOTY  : INTEGER  : SOIL TYPE                           (1-7)
+! PFRTI  : REAL     : TILE FRACTIONS                      (0-1)
+!            1 : WATER                  5 : SNOW ON LOW-VEG+BARE-SOIL
+!            2 : ICE                    6 : DRY SNOW-FREE HIGH-VEG
+!            3 : WET SKIN               7 : SNOW UNDER HIGH-VEG
+!            4 : DRY SNOW-FREE LOW-VEG  8 : BARE SOIL
+!            9 : LAKE                  10 : URBAN
+! PHLICE : REAL     : LAKE ICE THICKNESS (m) 
+! PTLICE : REAL     : LAKE ICE TEMPERATURE (K) 
+
+!     ==== OUTPUTS ===
+! PALBD  : REAL     : SURFACE ALBEDO FOR DIFFUSE RADIATION
+! PALBP  : REAL     : SURFACE ALBEDO FOR PARALLEL RADIATION
+! PALB   : REAL     : AVERAGE SW ALBEDO (DIAGNOSTIC ONLY)
+! PSPECTRALEMISS : REAL : SURFACE LONGWAVE SPECTRAL EMISSIVITY
+! PEMIT  : REAL     : BROADBAND SURFACE LONGWAVE EMISSIVITY
+! PALBTI : REAL     : BROADBAND ALBEDO FOR TILE FRACTIONS
+! PCCNL  : REAL     : CCN CONCENTRATION OVER LAND
+! PCCNO  : REAL     : CCN CONCENTRATION OVER OCEAN
+
+!     ==== OUTPUTS ===
+
+!        IMPLICIT ARGUMENTS :   NONE
+!        --------------------
+
+!     METHOD.
+!     -------
+
+! WARNING: this routine is used in several configurations.  In the
+! full nonlinear model it is configured with YDRAD%NSW=6 shortwave
+! spectral intervals (see susrad_mod.F90), and called requesting
+! shortwave albedos in KSW=6 intervals.  In the offline surface scheme
+! it is configured with 2 shortwave intervals and called with 2.
+! However, in data assimilation, it is configured with 6 intervals,
+! but after the nonlinear model has run, this routine is called again
+! (by callpartl.F90 and callparad.F90) requesting only KSW=2
+! intervals. This results in the albedo returned in the near infrared
+! being incorrect, as it is taken from interval 2 of the various
+! 6-interval albedo parameterizations in this routine.  This doesn't
+! actually matter as callpar??.F90 immediately call sualb2si, which
+! overwrites them with the correct values. However, the broadband
+! albedo of each tile PALBTI (returned by the present subroutine),
+! *is* used in by the subsequent TL/AD physics code, and PALBTI is
+! strongly underestimated since it is weighted by the first two RSUN
+! elements even though RSUN is configured for 6 intervals. This ought
+! to be fixed.  Robin Hogan, 8 May 2019.
+
+!     EXTERNALS.
+!     ----------
+!          NONE
+
+!     REFERENCE.
+!     ----------
+!        SEE RADIATION'S PART OF THE MODEL'S DOCUMENTATION AND
+!        ECMWF RESEARCH DEPARTMENT DOCUMENTATION OF THE "I.F.S"
+
+!     AUTHOR.
+!     -------
+!     J.-J. MORCRETTE  E.C.M.W.F.    91/03/15
+
+!     MODIFICATIONS.
+!     --------------
+!     J.-J. MORCRETTE  ECMWF 94/11/15  DIRECT/DIFFUSE ALBEDOS
+!     J.-J. MORCRETTE 96/06/07  moisture dep. emissiv. / spectral alb.  
+!     PJANSSEN/JJMORCRETTE ECMWF     96/11/07  WIND DEPENDENT SEA ALBEDO
+!     PViterbo         ECMWF 99/03/03  Albedo for tile fractions
+!     J.-J. Morcrette ECMWF 00/10/24 Spectral albedo for all surfaces
+!     JJMorcrette     01-10-08  CCNs concentration over ocean
+!     J.F. Estrade *ECMWF* 03-10-01 move in surf vob
+!        M.Hamrud      01-Oct-2003 CY28 Cleaning
+!     JJMorcrette 20060511 MODIS albedo
+!     G. Balsamo    ECMWF   08-01-2006 Include Van Genuchten Hydro.
+!     G. Balsamo    ECMWF   03-07-2006 Add soil type
+!     E. Dutra/G. Balsamo   01-05-2008 Add lake tile
+!     E. Dutra              16-11-2009 snow 2099 cleaning / changes albedo of shaded snow 
+!     Linus Magnusson       28-09-2010 Sea-ice
+!     Robin Hogan   ECMWF   15-01-2019 MODIS albedo 2x3-components 
+!     Robin Hogan   ECMWF   26-02-2019 Removed general spectral rescaling (RWEIGHT)
+!     Robin Hogan   ECMWF   26-02-2019 Use Moody et al. for snow albedo in 2 spectral bands
+!     M. Kelbling and S. Thober (UFZ) 11/6/2020 implemented spatially distributed parameters and
+!                                               use of parameter values defined in namelist
+!     S. Boussetta          22-06-2022 Added explicit snow albedo for snow under high veg
+!     J. McNorton           24-08-2022 urban tile
+!     I. Ayan-Miguez (BSC)  Sep 2023   Added PSSDP3 object for spatially distributed parameters
+!     G. Arduini            Sep 2024   Land and sea ice tile
+!-----------------------------------------------------------------------
+
 MODULE SURFRAD_CTL_MOD
 CONTAINS
 SUBROUTINE SURFRAD_CTL(KDDN,KMMN,KMON,KSECO,&
@@ -25,14 +152,6 @@ USE YOS_FLAKE, ONLY : TFLAKE
 USE YOS_URB  , ONLY : TURB
 USE CANALB_MOD
 USE ABORT_SURF_MOD
-
-! (C) Copyright 1991- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 
 !**** *SURFRAD  - COMPUTES RADIATIVE PROPERTIES OF SURFACE
 
@@ -143,6 +262,8 @@ USE ABORT_SURF_MOD
 !     Robin Hogan   ECMWF   15-01-2019 MODIS albedo 2x3-components 
 !     Robin Hogan   ECMWF   26-02-2019 Removed general spectral rescaling (RWEIGHT)
 !     Robin Hogan   ECMWF   26-02-2019 Use Moody et al. for snow albedo in 2 spectral bands
+!     S. Boussetta          22-06-2022 Added explicit snow albedo for snow under high veg
+!     J. McNorton           24-08-2022 urban tile
 !-----------------------------------------------------------------------
 
 IMPLICIT NONE
@@ -256,7 +377,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('SURFRAD_CTL_MOD:SURFRAD_CTL',0,ZHOOK_HANDLE)
 
 ASSOCIATE(RDAY=>YDCST%RDAY, RTT=>YDCST%RTT, &
- & LEFLAKE=>YDFLAKE%LEFLAKE, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
+ & LEFLAKE=>YDFLAKE%LEFLAKE,LEURBAN=>YDURB%LEURBAN, RH_ICE_MIN_FLK=>YDFLAKE%RH_ICE_MIN_FLK, &
  & NSIL=>YDLW%NSIL, TSTAND=>YDLW%TSTAND, XP=>YDLW%XP, &
  & LCCNL=>YDRAD%LCCNL, LCCNO=>YDRAD%LCCNO, NALBEDOSCHEME=>YDRAD%NALBEDOSCHEME, &
  & NEMISSSCHEME=>YDRAD%NEMISSSCHEME, RCCNLND=>YDRAD%RCCNLND ,RCCNSEA=>YDRAD%RCCNSEA, &
@@ -385,7 +506,7 @@ DO JL=KIDIA,KFDIA
   ZSPECTRALEMISS = SUM(ZEMISSTI(:,1:8) * SPREAD(PFRTI(JL,1:8),1,NLWEMISS), 2)
 
 ! URBAN
-  IF (KTILES .GT. 9) THEN
+  IF (LEURBAN) THEN
     ZEMISSTI(:,10) = RURBEMIS
     ZSPECTRALEMISS = SUM(ZEMISSTI(:,1:8) * SPREAD(PFRTI(JL,1:8),1,NLWEMISS), 2) +&
     & ZEMISSTI(:,10) * SPREAD(PFRTI(JL,10),1,NLWEMISS)
@@ -562,8 +683,11 @@ DO JSW=1,KSW
 ! BARE SOIL
     ZADTI8=ZALBD
     ZAPTI8=ZALBP
+ ! SNOW UNDER HIGH-VEG    
+    ZADTI7=ZALBD
+    ZAPTI7=ZALBP   
 ! URBAN
-    IF (KTILES .GT. 9) THEN
+    IF (LEURBAN) THEN
       ZADTI10=RROOALB*(1.0_JPRB/(1.0_JPRB+RWRR)) + PCANALB(JL)*(RWRR/(1.0_JPRB+RWRR))
       ZAPTI10=RROOALB*(1.0_JPRB/(1.0_JPRB+RWRR)) + PCANALB(JL)*(RWRR/(1.0_JPRB+RWRR))
       ZADTI3=ZADTI3*(1.0_JPRB-PCUR(JL))+ZADTI10*PCUR(JL)    
@@ -617,35 +741,43 @@ DO JSW=1,KSW
       ZADTI5 = MIN(0.98_JPRB, MAX(0.02_JPRB, ZADTI5)) ! Security
     ENDIF
     ZAPTI5 = ZADTI5 ! Direct albedo = Diffuse albedo
-
-! SNOW UNDER HIGH-VEG
-    IF ( LESN09 ) THEN
-      IHIGH_VEG_TYPE = NINT(PTVH(JL))
-    ELSE
-      ! Note that RALB_SNOW_FOREST(0,:) contains the default
-      ! snow/forest albedos
-      IHIGH_VEG_TYPE = 0
-    ENDIF
-
-    IF (JSW <= NUVVIS) THEN
-      ZADTI7=RALB_SNOW_FOREST(IHIGH_VEG_TYPE,1) ! UV/Vis
-    ELSE
-      ZADTI7=RALB_SNOW_FOREST(IHIGH_VEG_TYPE,2) ! Near-IR
-    END IF
-    ZAPTI7 = ZADTI7 ! Direct albedo = Diffuse albedo
-
-! CORRECT FOR URBAN - TILE 7 (URBAN SNOW = HIGVEG SNOW)
-    IF (KTILES .GT. 9) THEN
+    !UPDATE FOR URBAN SNOW AS A FUNCTION OF SNOW COVER (Jarvi et al. 2014 - upto 0.85)
+    ! Assume linear relationship from 0.18-0.85
+    IF (LEURBAN) THEN
      IF (PCUR(JL) .GT. 0.0_JPRB) THEN
-      ZAPTI7 = ZAPTI7*(PCVH(JL)*(1.0_JPRB-PCUR(JL))) &
-      & +(0.5_JPRB*ZAPTI7+0.5_JPRB*ZAPTI10)*PCUR(JL)
-      ZAPTI7 = ZAPTI7/(PCVH(JL)*(1.0_JPRB-PCUR(JL)) + PCUR(JL))
-      ZADTI7 = ZADTI7*(PCVH(JL)*(1.0_JPRB-PCUR(JL))) &
-      & +(0.5_JPRB*ZADTI7+0.5_JPRB*ZADTI10)*PCUR(JL)
-      ZADTI7 = ZADTI7/(PCVH(JL)*(1.0_JPRB-PCUR(JL)) + PCUR(JL))
+      ZAPTI5 = ZAPTI5*(1.0_JPRB-PCUR(JL))+(PCUR(JL)*MAX(0.18_JPRB+0.67_JPRB*(PFRTI(JL,5)+PFRTI(JL,7)),ZAPTI10))
+      ZADTI5 = ZAPTI5
      ENDIF
-
     ENDIF
+
+!! SNOW UNDER HIGH-VEG
+!    IF ( LESN09 ) THEN
+!      IHIGH_VEG_TYPE = NINT(PTVH(JL))
+!    ELSE
+!      ! Note that RALB_SNOW_FOREST(0,:) contains the default
+!      ! snow/forest albedos
+!      IHIGH_VEG_TYPE = 0
+!    ENDIF
+
+!    IF (JSW <= NUVVIS) THEN
+!      ZADTI7=RALB_SNOW_FOREST(IHIGH_VEG_TYPE,1) ! UV/Vis
+!    ELSE
+!      ZADTI7=RALB_SNOW_FOREST(IHIGH_VEG_TYPE,2) ! Near-IR
+!    END IF
+!    ZAPTI7 = ZADTI7 ! Direct albedo = Diffuse albedo
+
+!! CORRECT FOR URBAN - TILE 7 (URBAN SNOW = HIGVEG SNOW)
+!    IF (KTILES .GT. 9) THEN
+!     IF (PCUR(JL) .GT. 0.0_JPRB) THEN
+!      ZAPTI7 = ZAPTI7*(PCVH(JL)*(1.0_JPRB-PCUR(JL))) &
+!      & +(0.5_JPRB*ZAPTI7+0.5_JPRB*ZAPTI10)*PCUR(JL)
+!      ZAPTI7 = ZAPTI7/(PCVH(JL)*(1.0_JPRB-PCUR(JL)) + PCUR(JL))
+!      ZADTI7 = ZADTI7*(PCVH(JL)*(1.0_JPRB-PCUR(JL))) &
+!      & +(0.5_JPRB*ZADTI7+0.5_JPRB*ZADTI10)*PCUR(JL)
+!      ZADTI7 = ZADTI7/(PCVH(JL)*(1.0_JPRB-PCUR(JL)) + PCUR(JL))
+!     ENDIF
+!
+!    ENDIF
 
 !  LAKES 
     !* use new formulation for lake ice albedo calculation 
@@ -674,11 +806,12 @@ DO JSW=1,KSW
     PALBTI(JL,6)=PALBTI(JL,6)+RSUN(JSW)*(ZADTI6+ZAPTI6)*0.5_JPRB
     PALBTI(JL,7)=PALBTI(JL,7)+RSUN(JSW)*(ZADTI7+ZAPTI7)*0.5_JPRB
     PALBTI(JL,8)=PALBTI(JL,8)+RSUN(JSW)*(ZADTI8+ZAPTI8)*0.5_JPRB
-    IF (KTILES .GT. 9) THEN
-     PALBTI(JL,10)=PALBTI(JL,10)+RSUN(JSW)*(ZADTI10+ZAPTI10)*0.5_JPRB
-    ENDIF
+
     IF (LEFLAKE) THEN 
       PALBTI(JL,9)=PALBTI(JL,9)+RSUN(JSW)*(ZADTI9+ZAPTI9)*0.5_JPRB   
+    ENDIF
+    IF (LEURBAN) THEN
+     PALBTI(JL,10)=PALBTI(JL,10)+RSUN(JSW)*(ZADTI10+ZAPTI10)*0.5_JPRB
     ENDIF
     
 !* SUM OVER TILES SPECTRALLY DEFINED FOR THE INDIVIDUAL SPECTRAL 
@@ -698,13 +831,12 @@ DO JSW=1,KSW
      & +PFRTI(JL,7)*ZADTI7 &
      & +PFRTI(JL,8)*ZADTI8 
 
-    IF (KTILES .GT. 9) THEN
-     PALBD(JL,JSW)=PALBD(JL,JSW)+PFRTI(JL,10)*ZADTI10
-    ENDIF
-
     IF (LEFLAKE) THEN
       PALBD(JL,JSW)=PALBD(JL,JSW) &
      & +PFRTI(JL,9)*ZADTI9    
+    ENDIF
+    IF (LEURBAN) THEN
+     PALBD(JL,JSW)=PALBD(JL,JSW)+PFRTI(JL,10)*ZADTI10
     ENDIF
 
 !* DONE FOR DIRECT ALBEDO
@@ -718,13 +850,12 @@ DO JSW=1,KSW
      & +PFRTI(JL,7)*ZAPTI7 &
      & +PFRTI(JL,8)*ZAPTI8
 
-    IF (KTILES .GT. 9) THEN
-     PALBP(JL,JSW)=PALBP(JL,JSW)+PFRTI(JL,10)*ZAPTI10
-    ENDIF
-
     IF (LEFLAKE) THEN
       PALBP(JL,JSW)=PALBP(JL,JSW) &
      & +PFRTI(JL,9)*ZAPTI9
+    ENDIF
+    IF (LEURBAN) THEN
+     PALBP(JL,JSW)=PALBP(JL,JSW)+PFRTI(JL,10)*ZAPTI10
     ENDIF
      
 !* AVERAGE (DIFFUSE) ALBEDO OVER SHORTWAVE SPECTRUM 

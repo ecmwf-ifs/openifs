@@ -560,7 +560,7 @@ static volatile sig_atomic_t signal_handler_called = 0;
 static volatile sig_atomic_t signal_handler_ignore_atexit = 0;
 static volatile sig_atomic_t unlimited_corefile_retcode = 9999;
 static volatile unsigned long long int saved_corefile_hardlimit = 0;
-static int allow_coredump = -1; /* -1 denotes ALL MPI-tasks, 1..NPES == myproc, 0 = coredump will not be enabled by DrHook at init */
+static int allow_coredump = 0; /* -1 denotes ALL MPI-tasks, 1..NPES == myproc, 0 = coredump will not be enabled by DrHook at init */
 static drhook_sig_t siglist[1+NSIG] = { 0 };
 static char *a_out = NULL;
 static char *mon_out = NULL;

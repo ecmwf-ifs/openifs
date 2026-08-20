@@ -29,6 +29,7 @@ USE YOMTRAJ          , ONLY : LTRAJSAVE,LTRAJSLAG
 USE YOMLUN           , ONLY : NULOUT, NULERR
 USE GEOMETRY_MOD     , ONLY : GEOMETRY_SAME
 USE DATETIME_TMP_MOD , ONLY : DATETIME_TMP, SETRIP0, GETRIPSTEP, SETRIPSTEP
+USE IOSTREAM_MIX     , ONLY : YGBH
 USE YOMFPC           , ONLY : LOCEDELAY
 
 
@@ -39,12 +40,14 @@ IMPLICIT NONE
 
 
 
+#include "su_grib_api.intfb.h"
 #include "wvcouple.intfb.h"
 #include "couplnemo.intfb.h"
 #include "updnemoocean.intfb.h"
 #include "getnemodiag.intfb.h"
 #include "getnemodiag3d.intfb.h"
 #include "abor1.intfb.h"
+#include "sugco0.intfb.h"
 
 TYPE(MODEL)        ,           INTENT(INOUT) :: SELF
 TYPE(FIELDS)       ,           INTENT(INOUT) :: YDFIELDS
@@ -195,6 +198,12 @@ CALL GETRIPSTEP(SELF%YRML_GCONF%YRRIP%TSTEP, YDTIME, KSECS)
 
 ! Couple with the wave model
 IF(SELF%YREWCOU%LWCOU) THEN
+  ! We always should do this to make sure YGBH conforms to geometry
+  ! The fact that YGBH is global needs to be sorted /MH
+    !WRITE(0,*)'MODEL_MOD:MODEL_STEP: HACK for YGBH%NGRIB_HANDLE_GG < 0 '
+  CALL SU_GRIB_API(YDFIELDS%GEOM,YDFIELDS%GEOM%YRVAB, &
+   &               SELF%YRML_AOC%YRMCC%LMCC04,YGBH)
+
   ISTPW=1
   LLSTOP=.FALSE.
   LLWRRW=.FALSE.
@@ -206,6 +215,7 @@ ENDIF
 IF (YDFIELDS%YMCUF%LMCUF) &
  & CALL SPMCUF(YDFIELDS%GEOM,YDFIELDS%YRSPEC,YDFIELDS%YMCUF)
 
+IF (NSTEP==SELF%YRML_GCONF%YRRIP%NSTOP.AND.SELF%YRML_PHY_MF%YRARPHY%LMSE) CALL ARO_SURF_DELETE()
 CALL MODEL_UNSET(SELF)
 
 END ASSOCIATE

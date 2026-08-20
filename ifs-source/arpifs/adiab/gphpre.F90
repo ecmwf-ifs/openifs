@@ -9,7 +9,8 @@
 ! (C) Copyright 1989- Meteo-France.
 ! 
 
-SUBROUTINE GPHPRE(KPROMA,KFLEV,KSTART,KPROF,YDVAB,YDCVER,PRESH,PXYB,PRESF)
+SUBROUTINE GPHPRE(KPROMA,KFLEV,K1,K2,VAB,YDCVER,PRESH,PXYB,PRESF,LHSET,LDELP,LALPHA,LRTGR,LRPP,&
+                & PDELP, PLNPR, PRDELP, PALPH, PRTGR, PRPRE, PRPP)
 
 !**** *GPHPRE* - Computes half and full level pressure
 !                Modern version of former GPPRE.
@@ -34,6 +35,7 @@ SUBROUTINE GPHPRE(KPROMA,KFLEV,KSTART,KPROF,YDVAB,YDCVER,PRESH,PXYB,PRESF)
 !          PRESH     : half level pressure                                    (inout)
 !          PXYB      : contains pressure depth, "delta", "alpha"              (opt out)
 !          PRESF     : full level pressure                                    (opt out)
+!          LDELP,LALPHA,... : activation keys for partial computations        (opt in)
 
 !        Implicit arguments :  NONE.
 !        --------------------
@@ -57,237 +59,387 @@ SUBROUTINE GPHPRE(KPROMA,KFLEV,KSTART,KPROF,YDVAB,YDCVER,PRESH,PXYB,PRESF)
 !     --------------
 !   K. Yessad (Dec 2016): Prune obsolete options.
 !   K. Yessad (Mar 2017): Introduce NDLNPR=2 for NHQE model.
+!   H Petithomme (Dec 2020): add options, use of pointers, group VFE tests
 !     ------------------------------------------------------------------
 
-USE PARKIND1  , ONLY : JPIM, JPRB
+USE PARKIND1,ONLY: JPIM,JPRB
 USE YOMHOOK   , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMCVER   , ONLY : TCVER
-USE YOMCST    , ONLY : RD, RCVD
-USE YOMVERT   , ONLY : TVAB, TOPPRES
-USE INTDYN_MOD, ONLY : YYTXYB
-
-!     ------------------------------------------------------------------
+USE YOMCST,ONLY: RD,RCVD
+USE YOMVERT,ONLY: TVAB,TOPPRES
+USE INTDYN_MOD,ONLY: YYTXYB
+USE CODETOOLS,ONLY: SETDEFAULTL
 
 IMPLICIT NONE
 
-INTEGER(KIND=JPIM)         ,INTENT(IN)    :: KPROMA 
-INTEGER(KIND=JPIM)         ,INTENT(IN)    :: KFLEV 
-INTEGER(KIND=JPIM)         ,INTENT(IN)    :: KSTART 
-INTEGER(KIND=JPIM)         ,INTENT(IN)    :: KPROF 
-TYPE(TVAB)                 ,INTENT(IN)    :: YDVAB
+TYPE(TVAB),INTENT(IN) :: VAB
+INTEGER(KIND=JPIM),INTENT(IN) :: KPROMA,KFLEV,K1,K2
+LOGICAL,OPTIONAL,INTENT(IN) :: LHSET,LDELP,LALPHA,LRTGR,LRPP
 TYPE(TCVER)                ,INTENT(IN)    :: YDCVER
-REAL(KIND=JPRB)            ,INTENT(INOUT) :: PRESH(KPROMA,0:KFLEV)
-REAL(KIND=JPRB),OPTIONAL   ,INTENT(OUT)   :: PXYB(KPROMA,KFLEV,YYTXYB%NDIM)
-REAL(KIND=JPRB),OPTIONAL   ,INTENT(OUT)   :: PRESF(KPROMA,KFLEV)
+REAL(KIND=JPRB),INTENT(INOUT) :: PRESH(KPROMA,0:KFLEV)
+REAL(KIND=JPRB),TARGET,OPTIONAL,INTENT(OUT) :: PXYB(KPROMA,KFLEV,YYTXYB%NDIM)
+REAL(KIND=JPRB),TARGET,OPTIONAL,INTENT(OUT) :: PRESF(KPROMA,KFLEV)
+REAL(KIND=JPRB),TARGET,OPTIONAL,INTENT(OUT) :: PDELP(KPROMA,KFLEV), PLNPR(KPROMA,KFLEV), PRDELP(KPROMA,KFLEV), PALPH(KPROMA,KFLEV)
+REAL(KIND=JPRB),TARGET,OPTIONAL,INTENT(OUT) :: PRTGR(KPROMA,KFLEV), PRPRE(KPROMA,KFLEV), PRPP(KPROMA,KFLEV)
 
-!     ------------------------------------------------------------------
-
-INTEGER(KIND=JPIM) :: IFIRST, JLEV, JLON, JJ, JTEMP, JM
-REAL(KIND=JPRB) :: ZPRESF,ZPRESFD
-REAL(KIND=JPRB) :: ZPRESTOP(KPROMA)
-REAL(KIND=JPRB) :: ZRPRES(KPROMA,2)
-REAL(KIND=JPRB) :: ZXYB(KPROMA,KFLEV,YYTXYB%NDIM)
-
+INTEGER(KIND=JPIM) :: IFIRST,JL,JP
+LOGICAL :: LLHSET,LLDELP,LLALPHA,LLRTGR,LLRPP,LTEST,LLXYB
+REAL(KIND=JPRB) :: ZPRE(KPROMA)
+REAL(KIND=JPRB),CONTIGUOUS,POINTER :: ZXYB(:,:,:),ZPRESF(:,:)
+REAL(KIND=JPRB),ALLOCATABLE,TARGET :: ZZXYB(:,:,:),ZZPRESF(:,:)
+REAL(KIND=JPRB), POINTER :: ZDELP (:,:), ZLNPR (:,:), ZRDELP (:,:), ZALPH (:,:), ZRTGR (:,:), ZRPRE (:,:), ZRPP (:,:)  
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
-!     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('GPHPRE',0,ZHOOK_HANDLE)
-!     ------------------------------------------------------------------
 
-!     ------------------------------------------------------------------
+LLHSET = SETDEFAULTL(.FALSE.,LHSET)
+LLXYB  = PRESENT(PXYB) .OR. &
+& (PRESENT (PDELP) .AND.  PRESENT (PLNPR) .AND.  PRESENT (PRDELP) .AND.  PRESENT (PALPH) .AND. &
+&  PRESENT (PRTGR) .AND.  PRESENT (PRPRE) .AND.  PRESENT (PRPP))
 
-!*       1.    PRELIMINARY CALCULATIONS
-!              ------------------------
+ZXYB   => NULL ()
+ZPRESF => NULL ()
 
-IF (PRESENT(PXYB).OR.PRESENT(PRESF)) THEN
-
-  ! This is introduced to get rid of the implicit
-  ! assumption that the top level input for pressure is 0 hPa.
-  ! The first block if is for economy (no do loop start up) and the second for safety.
-  DO JLON=KSTART,KPROF
-    ZPRESTOP(JLON)=YDVAB%VAH(0)+YDVAB%VBH(0)*PRESH(JLON,KFLEV)
+IF (.NOT.LLHSET) THEN
+  DO JL=0,KFLEV-1
+    PRESH(K1:K2,JL) = VAB%VAH(JL)+VAB%VBH(JL)*PRESH(K1:K2,KFLEV)
   ENDDO
-  IF(ZPRESTOP(KSTART) <= TOPPRES)THEN
-    IFIRST=2
-  ELSE
-    IFIRST=1
-    DO JLON=KSTART,KPROF
-      IF(ZPRESTOP(JLON) <= TOPPRES)THEN
-        IFIRST=2
-        EXIT
+ENDIF
+
+ASSOCIATE(X=>YYTXYB)
+
+IF (YDCVER%LVERTFE) THEN
+  IF (LLXYB) THEN
+    LLDELP = SETDEFAULTL(.TRUE.,LDELP)
+    LLALPHA = SETDEFAULTL(.TRUE.,LALPHA)
+    LLRTGR = SETDEFAULTL(.TRUE.,LRTGR)
+
+    IF (PRESENT (PXYB)) THEN
+      ZDELP  => PXYB (:,:,X%M_DELP )
+      ZLNPR  => PXYB (:,:,X%M_LNPR )
+      ZRDELP => PXYB (:,:,X%M_RDELP)
+      ZALPH  => PXYB (:,:,X%M_ALPH )
+      ZRTGR  => PXYB (:,:,X%M_RTGR )
+      ZRPRE  => PXYB (:,:,X%M_RPRE )
+      ZRPP   => PXYB (:,:,X%M_RPP  )
+    ELSE
+      ZDELP  => PDELP 
+      ZLNPR  => PLNPR 
+      ZRDELP => PRDELP
+      ZALPH  => PALPH 
+      ZRTGR  => PRTGR 
+      ZRPRE  => PRPRE 
+      ZRPP   => PRPP  
+    ENDIF
+
+    IF (PRESENT(PRESF)) THEN
+      ZPRESF => PRESF(:,:)
+    ELSE
+      ALLOCATE(ZZPRESF(KPROMA,KFLEV))
+      ZPRESF => ZZPRESF
+    ENDIF
+
+    ! useless:
+    !PXYB(:,:,:) = 0
+
+    DO JL=1,KFLEV
+      !DIR$ IVDEP
+      !CDIR NODEP
+      DO JP=K1,K2
+        ZDELP(JP,JL) = VAB%VDELA(JL)+VAB%VDELB(JL)*PRESH(JP,KFLEV)
+        ZPRESF(JP,JL) = VAB%VAF(JL)+VAB%VBF(JL)*PRESH(JP,KFLEV)
+        ZPRE(JP) = 1._JPRB/ZPRESF(JP,JL)
+        ZLNPR(JP,JL) = ZDELP(JP,JL)*ZPRE(JP)
+      ENDDO
+
+      IF (LLDELP) THEN
+        !DIR$ IVDEP
+        !CDIR NODEP
+        DO JP=K1,K2
+          ZRDELP(JP,JL) = 1._JPRB/ZDELP(JP,JL)
+        ENDDO
       ENDIF
+
+      IF (LLALPHA) THEN
+        !DIR$ IVDEP
+        !CDIR NODEP
+        DO JP=K1,K2
+          ZALPH(JP,JL) = (PRESH(JP,JL)-ZPRESF(JP,JL))*ZPRE(JP)
+        ENDDO
+      ENDIF
+
+      IF (LLRTGR) THEN
+        !DIR$ IVDEP
+        !CDIR NODEP
+        DO JP=K1,K2
+          ZRTGR(JP,JL) = VAB%VBF(JL)*ZPRE(JP)
+        ENDDO
+      ENDIF
+    ENDDO
+  ELSE IF (PRESENT(PRESF)) THEN
+    DO JL=1,KFLEV
+      !DIR$ IVDEP
+      !CDIR NODEP
+      DO JP=K1,K2
+        PRESF(JP,JL) = VAB%VAF(JL)+VAB%VBF(JL)*PRESH(JP,KFLEV)
+      ENDDO
     ENDDO
   ENDIF
+ELSE
+  IF (LLXYB) THEN
+    LLDELP = SETDEFAULTL(.TRUE.,LDELP)
+    LLALPHA = SETDEFAULTL(.TRUE.,LALPHA)
+    LLRTGR = SETDEFAULTL(.TRUE.,LRTGR)
+    LLRPP = SETDEFAULTL(.TRUE.,LRPP)
 
-ENDIF
+    ! broader condition for computing alpha: 
+    IF (PRESENT(PRESF)) LLALPHA = LLALPHA.OR.YDCVER%NDLNPR == 1.OR.YDCVER%NDLNPR == 2.OR..NOT.YDCVER%LAPRXPK
 
-!     ------------------------------------------------------------------
-
-!*       2.    COMPUTES HALF LEVEL PRESSURES
-!              -----------------------------
-
-! * compute upper-air PRESH from surface PRESH.
-DO JLEV=0,KFLEV-1
-  DO JLON=KSTART,KPROF
-    PRESH(JLON,JLEV)=YDVAB%VAH(JLEV)+YDVAB%VBH(JLEV)*PRESH(JLON,KFLEV)
-  ENDDO
-ENDDO
-
-!     ------------------------------------------------------------------
-
-!*       3.    COMPUTES PXYB
-!              -------------
-
-IF (PRESENT(PXYB).OR.PRESENT(PRESF)) THEN
-
-  ZXYB(:,:,:)=0.0_JPRB
-
-  IF(YDCVER%LVERTFE) THEN
-
-    DO JLEV=1,KFLEV
-      DO JLON=KSTART,KPROF
-        ZXYB(JLON,JLEV,YYTXYB%M_DELP)=YDVAB%VDELA(JLEV)+YDVAB%VDELB(JLEV)*PRESH(JLON,KFLEV)
-        ZXYB(JLON,JLEV,YYTXYB%M_RDELP)=1.0_JPRB/ZXYB(JLON,JLEV,YYTXYB%M_DELP)
-        ZPRESF=YDVAB%VAF(JLEV)+YDVAB%VBF(JLEV)*PRESH(JLON,KFLEV)
-        ZPRESFD=1.0_JPRB/ZPRESF
-        ZXYB(JLON,JLEV,YYTXYB%M_LNPR)=ZXYB(JLON,JLEV,YYTXYB%M_DELP)*ZPRESFD
-        ZXYB(JLON,JLEV,YYTXYB%M_RTGR)=YDVAB%VBF(JLEV)*ZPRESFD
-        ZXYB(JLON,JLEV,YYTXYB%M_ALPH)=(PRESH(JLON,JLEV)-ZPRESF)*ZPRESFD
-      ENDDO
-    ENDDO
-
+    IF (PRESENT (PXYB)) THEN
+      ZXYB => PXYB(:,:,:)
+    ENDIF
   ELSE
+    LLDELP = .FALSE.
+    LLRTGR = .FALSE.
+    LLRPP = .FALSE.
+
+    ! reduced condition for computing alpha: 
+    LLALPHA = PRESENT(PRESF).AND.(YDCVER%NDLNPR == 1.OR.YDCVER%NDLNPR == 2.OR..NOT.YDCVER%LAPRXPK)
+
+    IF (LLALPHA) THEN
+      ALLOCATE(ZZXYB(KPROMA,KFLEV,X%NDIM))
+      ZXYB => ZZXYB
+    ENDIF
+  ENDIF
+
+  IF (ASSOCIATED (ZXYB)) THEN
+    ZDELP  => ZXYB (:,:,X%M_DELP )
+    ZLNPR  => ZXYB (:,:,X%M_LNPR )
+    ZRDELP => ZXYB (:,:,X%M_RDELP)
+    ZALPH  => ZXYB (:,:,X%M_ALPH )
+    ZRTGR  => ZXYB (:,:,X%M_RTGR )
+    ZRPRE  => ZXYB (:,:,X%M_RPRE )
+    ZRPP   => ZXYB (:,:,X%M_RPP  )
+  ELSE
+    ZDELP  => PDELP  
+    ZLNPR  => PLNPR  
+    ZRDELP => PRDELP 
+    ZALPH  => PALPH  
+    ZRTGR  => PRTGR  
+    ZRPRE  => PRPRE  
+    ZRPP   => PRPP   
+  ENDIF
+
+  IF (LLXYB.OR.LLALPHA) THEN
+    ! pressure at top
+    ZPRE(K1:K2) = VAB%VAH(0)+VAB%VBH(0)*PRESH(K1:K2,KFLEV)
+
+    DO JP=K1,K2
+      IF (ZPRE(JP) <= TOPPRES) EXIT
+    END DO
+
+    IF (JP > K2) THEN
+      IFIRST = 1
+    ELSE
+      IFIRST = 2
+    ENDIF
+
+    ! useless:
+    !ZXYB(:,:,:) = 0
 
     IF(YDCVER%NDLNPR == 0) THEN
+      IF (IFIRST == 2) THEN
+        ZLNPR(K1:K2,1) = LOG(PRESH(K1:K2,1)/TOPPRES)
 
-      JJ=1
-      JM=2
-      DO JLON=KSTART,KPROF
-        ZRPRES(JLON,JM)=1.0_JPRB/PRESH(JLON,IFIRST-1)
-      ENDDO
-      DO JLEV=IFIRST,KFLEV
-        DO JLON=KSTART,KPROF
-          ZRPRES(JLON,JJ)=1.0_JPRB/PRESH(JLON,JLEV)
-          ZXYB(JLON,JLEV,YYTXYB%M_DELP)=PRESH(JLON,JLEV)-PRESH(JLON,JLEV-1)
-          ZXYB(JLON,JLEV,YYTXYB%M_RDELP)=1.0_JPRB/ZXYB(JLON,JLEV,YYTXYB%M_DELP)
-          ZXYB(JLON,JLEV,YYTXYB%M_LNPR)=LOG(PRESH(JLON,JLEV)*ZRPRES(JLON,JM))
-          ZXYB(JLON,JLEV,YYTXYB%M_RPRE)=ZRPRES(JLON,JJ)
-          ZXYB(JLON,JLEV,YYTXYB%M_ALPH)=1.0_JPRB-PRESH(JLON,JLEV-1)*ZXYB(JLON,JLEV,YYTXYB%M_RDELP)&
-           & *ZXYB(JLON,JLEV,YYTXYB%M_LNPR)
-          ZXYB(JLON,JLEV,YYTXYB%M_RPP)=ZRPRES(JLON,JJ)*ZRPRES(JLON,JM)
-          ZXYB(JLON,JLEV,YYTXYB%M_RTGR)=ZXYB(JLON,JLEV,YYTXYB%M_RDELP)&
-           & *(YDVAB%VDELB(JLEV)+YDVAB%VC(JLEV)*ZXYB(JLON,JLEV,YYTXYB%M_LNPR)*ZXYB(JLON,JLEV,YYTXYB%M_RDELP))
-        ENDDO
-        JTEMP=JM
-        JM=JJ
-        JJ=JTEMP
-      ENDDO
-      DO JLEV=1,IFIRST-1
-        DO JLON=KSTART,KPROF
-          ZXYB(JLON,JLEV,YYTXYB%M_DELP)=PRESH(JLON,JLEV)-PRESH(JLON,JLEV-1)
-          ZXYB(JLON,JLEV,YYTXYB%M_RDELP)=1.0_JPRB/ZXYB(JLON,JLEV,YYTXYB%M_DELP)
-          ZXYB(JLON,JLEV,YYTXYB%M_LNPR)=LOG(PRESH(JLON,1)/TOPPRES)
-          ZXYB(JLON,JLEV,YYTXYB%M_RPRE)=1.0_JPRB/PRESH(JLON,1)
-          ZXYB(JLON,JLEV,YYTXYB%M_ALPH)=YDCVER%RHYDR0
-          ZXYB(JLON,JLEV,YYTXYB%M_RPP)=1.0_JPRB/(PRESH(JLON,1)*TOPPRES)
-          ZXYB(JLON,JLEV,YYTXYB%M_RTGR)=ZXYB(JLON,JLEV,YYTXYB%M_RDELP)*YDVAB%VDELB(JLEV)
-        ENDDO
-      ENDDO
-
-    ELSEIF(YDCVER%NDLNPR == 1 .OR. YDCVER%NDLNPR == 2) THEN
-
-      DO JLEV=IFIRST,KFLEV
-        DO JLON=KSTART,KPROF
-          ZXYB(JLON,JLEV,YYTXYB%M_DELP)=PRESH(JLON,JLEV)-PRESH(JLON,JLEV-1)
-          ZXYB(JLON,JLEV,YYTXYB%M_RDELP)=1.0_JPRB/ZXYB(JLON,JLEV,YYTXYB%M_DELP)
-          ZXYB(JLON,JLEV,YYTXYB%M_RPP)=1.0_JPRB/(PRESH(JLON,JLEV)*PRESH(JLON,JLEV-1))
-          ZXYB(JLON,JLEV,YYTXYB%M_LNPR)=ZXYB(JLON,JLEV,YYTXYB%M_DELP)*SQRT(ZXYB(JLON,JLEV,YYTXYB%M_RPP))
-          ZXYB(JLON,JLEV,YYTXYB%M_ALPH)=1.0_JPRB-PRESH(JLON,JLEV-1)*ZXYB(JLON,JLEV,YYTXYB%M_RDELP)&
-           & *ZXYB(JLON,JLEV,YYTXYB%M_LNPR)
-          ZXYB(JLON,JLEV,YYTXYB%M_RTGR)=ZXYB(JLON,JLEV,YYTXYB%M_RDELP)&
-           & *(YDVAB%VDELB(JLEV)+YDVAB%VC(JLEV)*ZXYB(JLON,JLEV,YYTXYB%M_LNPR)*ZXYB(JLON,JLEV,YYTXYB%M_RDELP))
-          ZXYB(JLON,JLEV,YYTXYB%M_RPRE)=1.0_JPRB/PRESH(JLON,JLEV)
-        ENDDO
-      ENDDO
-
-      IF(YDCVER%NDLNPR == 1) THEN
-        DO JLEV=1,IFIRST-1
-          DO JLON=KSTART,KPROF
-            ZXYB(JLON,JLEV,YYTXYB%M_DELP)=PRESH(JLON,JLEV)
-            ZXYB(JLON,JLEV,YYTXYB%M_LNPR)=2.0_JPRB+RCVD/RD
+        IF (LLDELP.OR.LLRTGR) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZDELP(JP,1) = PRESH(JP,1)-PRESH(JP,0)
+            ZRDELP(JP,1) = 1._JPRB/ZDELP(JP,1)
           ENDDO
-        ENDDO
-      ELSE
-        DO JLEV=1,IFIRST-1
-          DO JLON=KSTART,KPROF
-            ZXYB(JLON,JLEV,YYTXYB%M_DELP)=PRESH(JLON,JLEV)
-            ZXYB(JLON,JLEV,YYTXYB%M_LNPR)=1.0_JPRB+ZXYB(JLON,JLEV+1,YYTXYB%M_LNPR) &
-             & *(ZXYB(JLON,JLEV,YYTXYB%M_DELP)/ZXYB(JLON,JLEV+1,YYTXYB%M_DELP))*SQRT(PRESH(JLON,JLEV+1)/PRESH(JLON,JLEV))
+        ENDIF
+
+        IF (LLALPHA) ZALPH(K1:K2,1) = YDCVER%RHYDR0
+
+        IF (LLRTGR) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZRTGR(JP,1) = ZRDELP(JP,1)*VAB%VDELB(1)
           ENDDO
-        ENDDO
+        ENDIF
+
+        IF (LLRPP) THEN
+          DO JP=K1,K2
+            ZRPRE(JP,1) = 1._JPRB/PRESH(JP,1)
+            ZRPP(JP,1) = 1._JPRB/(PRESH(JP,1)*TOPPRES)
+          ENDDO
+        ENDIF
       ENDIF
 
-      DO JLEV=1,IFIRST-1
-        DO JLON=KSTART,KPROF
-          ZXYB(JLON,JLEV,YYTXYB%M_RDELP)=1.0_JPRB/ZXYB(JLON,JLEV,YYTXYB%M_DELP)
-          ZXYB(JLON,JLEV,YYTXYB%M_ALPH)=1.0_JPRB
-          ZXYB(JLON,JLEV,YYTXYB%M_RTGR)=ZXYB(JLON,JLEV,YYTXYB%M_RDELP)*YDVAB%VDELB(JLEV)
-          ZXYB(JLON,JLEV,YYTXYB%M_RPRE)=1.0_JPRB/PRESH(JLON,1)
-          ZXYB(JLON,JLEV,YYTXYB%M_RPP)=(ZXYB(JLON,JLEV,YYTXYB%M_LNPR)*ZXYB(JLON,JLEV,YYTXYB%M_RDELP))**2
-        ENDDO
+      ZPRE(K1:K2) = 1._JPRB/PRESH(K1:K2,IFIRST-1)
+
+      DO JL=IFIRST,KFLEV
+        ZLNPR(K1:K2,JL) = LOG(PRESH(K1:K2,JL)*ZPRE(K1:K2))
+
+        IF (LLDELP.OR.LLALPHA.OR.LLRTGR) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZDELP(JP,JL) = PRESH(JP,JL)-PRESH(JP,JL-1)
+            ZRDELP(JP,JL) = 1._JPRB/ZDELP(JP,JL)
+          ENDDO
+        ENDIF
+
+        IF (LLALPHA) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZALPH(JP,JL) = 1._JPRB-PRESH(JP,JL-1)*ZRDELP(JP,JL)*&
+              ZLNPR(JP,JL)
+          ENDDO
+        ENDIF
+
+        IF (LLRTGR) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZRTGR(JP,JL) = ZRDELP(JP,JL)*(VAB%VDELB(JL)+&
+              VAB%VC(JL)*ZLNPR(JP,JL)*ZRDELP(JP,JL))
+          ENDDO
+        ENDIF
+
+        IF (LLRPP) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZRPRE(JP,JL) = 1._JPRB/PRESH(JP,JL)
+            ZRPP(JP,JL) = ZRPRE(JP,JL)*ZPRE(JP)
+            ZPRE(JP) = ZRPRE(JP,JL)
+          ENDDO
+        ELSE
+          ZPRE(K1:K2) = 1._JPRB/PRESH(K1:K2,JL)
+        ENDIF
+      ENDDO
+    ELSE IF (YDCVER%NDLNPR == 1.OR.YDCVER%NDLNPR == 2) THEN
+      LTEST = LLDELP.OR.LLALPHA.OR.LLRTGR
+
+      DO JL=IFIRST,KFLEV
+        ! optim: keep lnpr separate but consistent
+        IF (LTEST) THEN
+          DO JP=K1,K2
+            ZDELP(JP,JL) = PRESH(JP,JL)-PRESH(JP,JL-1)
+            ZRDELP(JP,JL) = 1._JPRB/ZDELP(JP,JL)
+            ZRPP(JP,JL) = 1._JPRB/(PRESH(JP,JL)*PRESH(JP,JL-1))
+            ZLNPR(JP,JL) = ZDELP(JP,JL)*SQRT(ZRPP(JP,JL))
+          ENDDO
+        ELSE
+          DO JP=K1,K2
+            ZLNPR(JP,JL) = (PRESH(JP,JL)-PRESH(JP,JL-1))/&
+              SQRT(PRESH(JP,JL)*PRESH(JP,JL-1))
+          ENDDO
+        ENDIF
+
+        IF (LLALPHA) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZALPH(JP,JL) = 1._JPRB-PRESH(JP,JL-1)*ZRDELP(JP,JL)*&
+              ZLNPR(JP,JL)
+          ENDDO
+        ENDIF
+
+        IF (LLRTGR) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZRTGR(JP,JL) = ZRDELP(JP,JL)*(VAB%VDELB(JL)+&
+              VAB%VC(JL)*ZLNPR(JP,JL)*ZRDELP(JP,JL))
+          ENDDO
+        ENDIF
+
+        IF (LLRPP) ZRPRE(K1:K2,JL) = 1._JPRB/PRESH(K1:K2,JL)
       ENDDO
 
-    ENDIF ! NDLNPR
+      IF (IFIRST == 2) THEN
+        !DIR$ IVDEP
+        !CDIR NODEP
+        DO JP=K1,K2
+          ZDELP(JP,1) = PRESH(JP,1)
+          ZRDELP(JP,1) = 1._JPRB/ZDELP(JP,1)
+        ENDDO
 
-  ENDIF ! LVERTFE
+        IF (YDCVER%NDLNPR == 1) THEN
+          ZLNPR(K1:K2,1) = 2._JPRB+RCVD/RD
+        ELSE
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZLNPR(JP,1) = 1._JPRB+ZLNPR(JP,2)*&
+              (ZDELP(JP,1)/ZDELP(JP,2))*SQRT(PRESH(JP,2)/PRESH(JP,1))
+          ENDDO
+        ENDIF
 
-  IF (PRESENT(PXYB)) PXYB(:,:,:)=ZXYB(:,:,:)
+        IF (LLALPHA) ZALPH(K1:K2,1) = 1._JPRB
 
-ENDIF
+        IF (LLRTGR) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZRTGR(JP,1) = ZRDELP(JP,1)*VAB%VDELB(1)
+          ENDDO
+        ENDIF
 
-!     ------------------------------------------------------------------
+        IF (LLRPP) THEN
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            ZRPRE(JP,1) = 1._JPRB/PRESH(JP,1)
+            ZRPP(JP,1) = (ZLNPR(JP,1)*ZRDELP(JP,1))**2
+          ENDDO
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
 
-!*       4.    COMPUTES FULL LEVEL PRESSURES
-!              -----------------------------
-
-IF (PRESENT(PRESF)) THEN
-
-  IF (YDCVER%LVERTFE) THEN
-    DO JLEV=1,KFLEV
-      PRESF(KSTART:KPROF,JLEV)=YDVAB%VAF(JLEV)+YDVAB%VBF(JLEV)*PRESH(KSTART:KPROF,KFLEV)
-    ENDDO
-  ELSE
+  IF (PRESENT(PRESF)) THEN
     IF (YDCVER%NDLNPR == 0) THEN
       IF (YDCVER%LAPRXPK) THEN
-        DO JLEV=1,KFLEV
-          DO JLON=KSTART,KPROF
-            PRESF(JLON,JLEV)=(PRESH(JLON,JLEV-1)+PRESH(JLON,JLEV))*0.5_JPRB
-          ENDDO
+        DO JL=1,KFLEV
+          PRESF(K1:K2,JL) = (PRESH(K1:K2,JL-1)+PRESH(K1:K2,JL))*0.5_JPRB
         ENDDO
       ELSE
-        DO JLEV=1,KFLEV
-          DO JLON=KSTART,KPROF
-            PRESF(JLON,JLEV)=EXP(-ZXYB(JLON,JLEV,YYTXYB%M_ALPH))*PRESH(JLON,JLEV)
+        DO JL=1,KFLEV
+          !DIR$ IVDEP
+          !CDIR NODEP
+          DO JP=K1,K2
+            PRESF(JP,JL) = EXP(-ZALPH(JP,JL))*PRESH(JP,JL)
           ENDDO
         ENDDO
       ENDIF
     ELSEIF (YDCVER%NDLNPR == 1 .OR. YDCVER%NDLNPR == 2) THEN
-      DO JLEV=IFIRST,KFLEV
-        DO JLON=KSTART,KPROF
-          PRESF(JLON,JLEV)=(1.0_JPRB-ZXYB(JLON,JLEV,YYTXYB%M_ALPH))*PRESH(JLON,JLEV)
+      DO JL=IFIRST,KFLEV
+        !DIR$ IVDEP
+        !CDIR NODEP
+        DO JP=K1,K2
+          PRESF(JP,JL) = (1._JPRB-ZALPH(JP,JL))*PRESH(JP,JL)
         ENDDO
       ENDDO
-      DO JLEV=1,IFIRST-1
-        DO JLON=KSTART,KPROF
-          PRESF(JLON,JLEV)=PRESH(JLON,JLEV)/ZXYB(JLON,JLEV,YYTXYB%M_LNPR)
+
+      IF (IFIRST == 2) THEN
+        !DIR$ IVDEP
+        !CDIR NODEP
+        DO JP=K1,K2
+          PRESF(JP,1) = PRESH(JP,1)/ZLNPR(JP,1)
         ENDDO
-      ENDDO
-    ENDIF ! NDLNPR
-  ENDIF ! LVERTFE
+      ENDIF
+    ENDIF
+  ENDIF
 
 ENDIF
-
-!     ------------------------------------------------------------------
+END ASSOCIATE
 
 IF (LHOOK) CALL DR_HOOK('GPHPRE',1,ZHOOK_HANDLE)
-END SUBROUTINE GPHPRE
+END SUBROUTINE
+

@@ -67,21 +67,16 @@ SUBROUTINE AER_CLCLD ( &
 !     Modifications:
 !     --------------
 !      K. Yessad (July 2014): Move some variables.
+!        R. El Khatib 08-Jul-2022 Contribution to the encapsulation of YOMCST and YOETHF
 ! -----------------------------------------------------------------------------
 
 USE TYPE_MODEL , ONLY : MODEL
 USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RG       ,RD       ,RETV     ,&
- & RLVTT    ,RLSTT    ,RTT     ,RPI
+USE YOMCST   , ONLY : YDCST=>YRCST ! allows use of included functions. REK.
 USE YOMCT3    ,ONLY : NSTEP
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- & R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
- & RALVDCP  ,RALSDCP  ,RTWAT    ,&
- & RTICE    ,RTICECU  ,&
- & RTWAT_RTICE_R      ,RTWAT_RTICECU_R,&
- & RKOOP1   ,RKOOP2
+USE YOETHF   , ONLY : YDTHF=>YRTHF ! allows use of included functions. REK.
 USE YOEAEROP , ONLY : ALF_BC, ALF_DD, ALF_SS, ALF_SU
 
 ! -----------------------------------------------------------------------------
@@ -196,6 +191,13 @@ ASSOCIATE(RRHTAB=>YDEAERSNK%RRHTAB, &
  & RCLDMAX=>YDECLDP%RCLDMAX, RLCRITSNOW=>YDECLDP%RLCRITSNOW, &
  & RNICE=>YDECLDP%RNICE, &
  & LEPO3RA=>YDERAD%LEPO3RA, &
+ & RG=>YDCST%RG, RETV=>YDCST%RETV, RLVTT=>YDCST%RLVTT, RLSTT=>YDCST%RLSTT, &
+ & RTT=>YDCST%RTT, RPI=>YDCST%RPI, RD=>YDCST%RD, &
+ & R2ES=>YDTHF%R2ES, R3LES=>YDTHF%R3LES, R3IES=>YDTHF%R3IES, R4LES=>YDTHF%R4LES, &
+ & R4IES=>YDTHF%R4IES, R5LES=>YDTHF%R5LES, R5IES=>YDTHF%R5IES, R5ALVCP=>YDTHF%R5ALVCP, &
+ & R5ALSCP=>YDTHF%R5ALSCP, RALVDCP=>YDTHF%RALVDCP, RALSDCP=>YDTHF%RALSDCP, &
+ & RTWAT=>YDTHF%RTWAT, RTICE=>YDTHF%RTICE, RTICECU=>YDTHF%RTICECU, RTWAT_RTICE_R=>YDTHF%RTWAT_RTICE_R, &
+ & RTWAT_RTICECU_R=>YDTHF%RTWAT_RTICECU_R, RKOOP1=>YDTHF%RKOOP1, RKOOP2=>YDTHF%RKOOP2, &
  & NSTART=>YDRIP%NSTART)
 !--------------------------------------------------------------------------
 
@@ -343,7 +345,7 @@ DO JTYP=1,4
       IF      (JTYP == JAERSS) THEN
         ZALF=ALF_SS(IRH(JL,JK),IWAVL,IBIN)
       ELSEIF (JTYP == JAERDD) THEN
-        ZALF=ALF_DD(IBIN,IWAVL)
+        ZALF=ALF_DD(IRH(JL,JK),IWAVL,IBIN)
       ELSEIF (JTYP == JAERSU) THEN
         ZALF=ALF_SU(IRH(JL,JK),IWAVL)
       ELSEIF (JTYP == JAERBC) THEN

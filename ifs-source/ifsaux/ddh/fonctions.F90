@@ -1252,7 +1252,7 @@ DO JETAPES=1,IETAPES
         ! est récupérée par la vapeur d'eau pour se réchauffer.
         !
         ZL=FOLH(ZT,ZDELARG) ; ZDERL=FDERFOLH(ZDELARG)
-;        !
+        !
         ! Calcul où l'on considère qu'une part seulement de la chaleur latente libérée
         ! est récupérée par la vapeur d'eau pour se réchauffer:
         ! le reste reste dans l'eau liquide ou glace.

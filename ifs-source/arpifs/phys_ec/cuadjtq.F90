@@ -11,7 +11,7 @@
 @PROCESS HOT NOSTRICT
 #endif
 SUBROUTINE CUADJTQ &
- & (YDEPHLI,KIDIA,    KFDIA,    KLON,    KLEV,     KK,&
+ & (YDTHF, YDCST, YDEPHLI,KIDIA,    KFDIA,    KLON,    KLEV,     KK,&
  &  PSP,      PT,       PQ,      LDFLAG,   KCALL,   LDOFLAG)  
 
 !          PURPOSE.
@@ -72,20 +72,20 @@ SUBROUTINE CUADJTQ &
 !      J.HAGUE               03-07-07   More MASS V.F.
 !      M.Hamrud              01-Oct-2003 CY28 Cleaning
 !      J.Hague & D.Salmond   22-Nov-2005 Optimisations 
+!     R. El Khatib 22-Jun-2022 A contribution to simplify phasing after the refactoring of YOMCLI/YOMCST/YOETHF.
 !----------------------------------------------------------------------
 
 USE PARKIND1 , ONLY : JPIM     ,JPRB
 USE YOMHOOK  , ONLY : LHOOK,   DR_HOOK, JPHOOK
 
-USE YOMCST   , ONLY : RETV     ,RLVTT    ,RLSTT    ,RTT
-USE YOETHF   , ONLY : R2ES     ,R3LES    ,R3IES    ,R4LES    ,&
- &                    R4IES    ,R5LES    ,R5IES    ,R5ALVCP  ,R5ALSCP  ,&
- &                    RALVDCP  ,RALSDCP  ,RTWAT    ,RTICE    ,RTICECU  ,&
- &                    RTWAT_RTICE_R      ,RTWAT_RTICECU_R  
+USE YOMCST   , ONLY : TCST
+USE YOETHF   , ONLY : TTHF  
 USE YOEPHLI  , ONLY : TEPHLI
 
 IMPLICIT NONE
 
+TYPE(TTHF)        ,INTENT(IN)    :: YDTHF
+TYPE(TCST)        ,INTENT(IN)    :: YDCST
 TYPE(TEPHLI)      ,INTENT(IN)    :: YDEPHLI
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLON 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
@@ -111,14 +111,11 @@ LOGICAL :: LLFLAG(KLON)
 
 !DIR$ VFUNCTION EXPHF
 #include "fcttre.func.h"
+#include "cuadjtq.func.h"
 
 !     STATEMENT FUNCTIONS
 
-REAL(KIND=JPRB) :: MINJ, MAXJ, X, Y
-REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
-
-MINJ(X,Y) = Y - 0.5_JPRB*(ABS(X-Y)-(X-Y))
-MAXJ(X,Y) = Y + 0.5_JPRB*(ABS(X-Y)+(X-Y))
+REAL(KIND=JPRB) :: ZHOOK_HANDLE
 
 !----------------------------------------------------------------------
 
@@ -129,7 +126,10 @@ MAXJ(X,Y) = Y + 0.5_JPRB*(ABS(X-Y)+(X-Y))
 IF (LHOOK) CALL DR_HOOK('CUADJTQ',0,ZHOOK_HANDLE)
 #endif
 ASSOCIATE(LPHYLIN=>YDEPHLI%LPHYLIN, RLPAL1=>YDEPHLI%RLPAL1, &
- & RLPAL2=>YDEPHLI%RLPAL2, RLPTRC=>YDEPHLI%RLPTRC)
+ & R2ES=>YDTHF%R2ES, R3IES=>YDTHF%R3IES, R3LES=>YDTHF%R3LES, R4IES=>YDTHF%R4IES, &
+ & R4LES=>YDTHF%R4LES, R5ALSCP=>YDTHF%R5ALSCP, R5ALVCP=>YDTHF%R5ALVCP, RALSDCP=>YDTHF%RALSDCP, &
+ & RALVDCP=>YDTHF%RALVDCP, &
+ & RLPAL2=>YDEPHLI%RLPAL2, RLPTRC=>YDEPHLI%RLPTRC, RETV=>YDCST%RETV, RTT=>YDCST%RTT)
 
 ZQMAX=0.5_JPRB
 
@@ -176,7 +176,7 @@ IF (.NOT.LPHYLIN) THEN
         ZQSAT=R2ES *(FOEALFCU(PT(JL,KK))*EXP(R3LES*(PT(JL,KK)-RTT)*ZL)+&
           &(1.0_JPRB-FOEALFCU(PT(JL,KK)))*EXP(R3IES*(PT(JL,KK)-RTT)*ZI))
         ZQSAT=ZQSAT*ZQP
-        ZQSAT=MINJ(0.5_JPRB,ZQSAT)
+        ZQSAT=FMINJ(0.5_JPRB,ZQSAT)
         ZCOR=1.0_JPRB-RETV*ZQSAT
         ZF=FOEALFCU(PT(JL,KK))*R5ALVCP*ZL**2 +&
           &(1.0_JPRB-FOEALFCU(PT(JL,KK)))*R5ALSCP*ZI**2
@@ -205,7 +205,7 @@ IF (.NOT.LPHYLIN) THEN
           ZL=1.0_JPRB/(PT(JL,KK)-R4LES)
           ZQSAT=R2ES *EXP(R3LES*(PT(JL,KK)-RTT)*ZL)
           ZQSAT=ZQSAT*ZQP
-          ZQSAT=MINJ(0.5_JPRB,ZQSAT)
+          ZQSAT=FMINJ(0.5_JPRB,ZQSAT)
           ZCOR=1.0_JPRB-RETV*ZQSAT
           ZF=R5ALVCP*ZL**2
           ZCOND1=(PQ(JL,KK)*ZCOR**2-ZQSAT*ZCOR)/(ZCOR**2+ZQSAT*ZF)

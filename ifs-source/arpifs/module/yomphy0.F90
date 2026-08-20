@@ -60,6 +60,7 @@ TYPE TPHY0
 !               : PARAMETER FOR THE DISSIPATION LENGTH CALCULATION.
 !       ALMAV   : LONGUEUR DE MELANGE ASYMPTOTIQUE POUR LE VENT.
 !               : MOMENTUM EXCHANGE ASYMPTOTIC MIXING LENGTH.
+!       ALMAVE  : MINIMUM BL89 MIXING LENGTH IN THE FREE ATMOSPHERE.
 !       ALPHAE  : CONSTANTE POUR LE CALCUL DES COEFF. D'ECHANGE (ECT).
 !               : PARAMETER FOR THE EXCHANGE COEFF. CALCULATION.
 !       ALPHAT  : CONSTANTE POUR LE CALCUL DES COEFF. D'ECHANGE (ECT).
@@ -374,6 +375,7 @@ TYPE TPHY0
 !    RRAUTCS  : RATIO (CONV/STRAT) OF EFFICIENCY FOR AUTOCONVERSION OF W->R
 !    RAUTEFS  : EFFICIENCY FOR AUTOCONVERSION OF ICE->SNOW.
 !    RAUTSBET : "BETA" EFFICIENCY PARAMETER FOR AUTOCONV ICE->SNOW.
+!    RAUTEFG  : EFFICIENCY FOR AUTOCONVERSION OF WATER->GRAUPEL.
 !    REVASX   : MAXIMUM EVAPORATION RATE FOR STRATIFORM PRECIPITATION.
 !    RNINTR   : INTERCEPT PARAMETER FOR RAIN.
 !    RNINTS   : INTERCEPT PARAMETER FOR ICE.
@@ -444,7 +446,16 @@ TYPE TPHY0
 !    ETKE_ENTRN: minimal entrainment value for MF SCC diagnostics
 !    ETKE_KLM:   mixing length modulation parameter K
 !    ETKE_TAULM: mixing length modulation parameter TAU
+!    ETKE_C0SHEAR: tuning parameter for shear term in extended BL89 mix. length
+!    ETKE_R1SIM: z/h_PBL where transition from kappa.(z+z0) to BL89 mxl starts
+!    ETKE_R2SIM: z/h_PBL where transition from kappa.(z+z0) to BL89 mxl ends
+!    ETKE_GB08A: tuning parameter for buyancy term in GB08 mixing length
+!    ETKE_GB08B: tuning parameter for shear term in GB08 mixing length
 !    ETKE_MIN:   minimum value of TKE or TTE
+!    ETKE_CRIT:  critical value of SQRT(TKE^2 + TTE^2),
+!                pushing Rif to Rifc with weight 1/2
+!    ETKE_DELTA: weight given to TKE_tild* and TTE_tild* in solvers for
+!                prognostic TKE and TTE
 !    TOUCANS - EFB scheme
 !    EFB_AZ0
 !    EFB_UR   : Unstable prolongation of R of EFB
@@ -693,6 +704,7 @@ REAL(KIND=JPRB) :: RAUTEFR
 REAL(KIND=JPRB) :: RRAUTCS
 REAL(KIND=JPRB) :: RAUTEFS
 REAL(KIND=JPRB) :: RAUTSBET
+REAL(KIND=JPRB) :: RAUTEFG
 REAL(KIND=JPRB) :: REVASX
 REAL(KIND=JPRB) :: RNINTR
 REAL(KIND=JPRB) :: RNINTS
@@ -748,9 +760,16 @@ REAL(KIND=JPRB) :: ETKE_TALPH
 REAL(KIND=JPRB) :: ETKE_ALPH0
 REAL(KIND=JPRB) :: ETKE_ENTRX
 REAL(KIND=JPRB) :: ETKE_ENTRN
-REAL(KIND=JPRB) :: ETKE_KLM  
+REAL(KIND=JPRB) :: ETKE_KLM
 REAL(KIND=JPRB) :: ETKE_TAULM
+REAL(KIND=JPRB) :: ETKE_C0SHEAR
+REAL(KIND=JPRB) :: ETKE_R1SIM
+REAL(KIND=JPRB) :: ETKE_R2SIM
+REAL(KIND=JPRB) :: ETKE_GB08A
+REAL(KIND=JPRB) :: ETKE_GB08B
 REAL(KIND=JPRB) :: ETKE_MIN
+REAL(KIND=JPRB) :: ETKE_CRIT
+REAL(KIND=JPRB) :: ETKE_DELTA
 REAL(KIND=JPRB) :: EFB_AZ0
 REAL(KIND=JPRB) :: EFB_UR
 REAL(KIND=JPRB) :: REFB_1
@@ -1118,6 +1137,9 @@ LOGICAL :: LGPRONI1 ! PROtection against Non-linear Instability: integrate fluxe
 INTEGER(KIND=JPIM) :: NPRONI ! PROtection against Non-linear Instability: check massflux CFL.
 REAL(KIND=JPRB) :: GPRONI ! PROtection against Non-linear Instability: check massflux CFL.
 REAL(KIND=JPRB)    :: RNEBCX ! MAXIMUM CONVECTIVE CLOUDINESS.
+REAL(KIND=JPRB)    :: GLIGHTT1 ! Lightning parametrization tuning parameter.
+REAL(KIND=JPRB)    :: GLIGHTT2 ! Lightning parametrization tuning parameter.
+REAL(KIND=JPRB)    :: GLIGHTT3 ! Lightning parametrization tuning parameter.
 !     ------------------------------------------------------------------
 
 !*    * Defining the transformed sphere: physics input
@@ -1138,6 +1160,17 @@ REAL(KIND=JPRB) :: REFLKUO
 REAL(KIND=JPRB) :: REFLCAPE
 REAL(KIND=JPRB) :: TEQK
 REAL(KIND=JPRB) :: TEQC
+
+REAL(KIND=JPRB) :: REPS
+! RHUC      : HUMIDITE CRITIQUE PAR NIVEAU POUR LE CALCUL DE PNEB
+! RHUC      : CRITICAL MOISTURE FOR EACH LEVEL FOR PNEB CALCULATION.
+REAL(KIND=JPRB), ALLOCATABLE :: RHUC (:)
+REAL(KIND=JPRB), ALLOCATABLE :: RQSMOD (:)
+REAL(KIND=JPRB), ALLOCATABLE :: RSURF (:)
+! Tableaux pour les fonctions de "condens.f90" de Meso-NH
+REAL(KIND=JPRB), ALLOCATABLE :: RN1D (:), RRC1D (:), RSRC1D (:)
+
+REAL(KIND=JPRB) :: RCOEFRAIN (2), RCOEFSNOW (2)
 
 END TYPE TPHY0
 

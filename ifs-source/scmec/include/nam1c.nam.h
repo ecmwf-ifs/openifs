@@ -13,6 +13,6 @@ NAMELIST/NAM1C/LDYNFOR , LUGVG   , LVERVEL , LETADOT  &
              &,LVARSST , LRELAX  , LUVREL  , LTQREL  , LSFCFLX  &
              &,NFRFOR  , NFRSST  , NFROBS  , RDTRELAX, NSTRTINI &
              &,NPOSPRG , NPOSDIA , OUTFORM , CMODID  , CSIMID   &
-             &,RUVREL_PLEV, RTQREL_PLEV
+             &,RUVREL_PLEV, RTQREL_PLEV, LROUGH, REXTZ0M, REXTZ0H
 !    -----------------------------------------------------------------
 

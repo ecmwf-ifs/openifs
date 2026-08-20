@@ -1,3 +1,37 @@
+
+
+! (C) Copyright 1994- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+! -------
+!   This routine is the main driver for the ocean mixed layer model (KPP).
+
+! Interface :
+! ---------
+
+! Method :
+! ------
+!   K-profile parameterization
+
+! Externals :
+! ---------
+
+! Reference :
+! ---------
+!   Large, W. G., J. C. McWilliams, S. C. Doney (1994), Rev. Geophys.
+
+! Modifications :
+! -------------
+!   06-Jun-1994  Bill Large
+!          2002  Steve Woolnough, Reading Univ.
+!   07-Oct-2008  Yuhei Takaya,    E.C.M.W.F.    Implemented to IFS.
+! End Modifications :
+!---------------------------------------------------------------------
+
 MODULE OCEAN_ML_DRIVER_MOD
 
 CONTAINS
@@ -15,13 +49,6 @@ SUBROUTINE OCEAN_ML_DRIVER &
  &   YDCST    ,YDOCEAN_ML)
 
 
-! (C) Copyright 1994- ECMWF.
-!
-! This software is licensed under the terms of the Apache Licence Version 2.0
-! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
-! In applying this licence, ECMWF does not waive the privileges and immunities
-! granted to it by virtue of its status as an intergovernmental organisation
-! nor does it submit to any jurisdiction.
 ! -------
 !   This routine is the main driver for the ocean mixed layer model (KPP).
 

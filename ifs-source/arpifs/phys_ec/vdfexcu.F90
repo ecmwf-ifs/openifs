@@ -193,7 +193,7 @@ IF (LHOOK) CALL DR_HOOK('VDFEXCU',0,ZHOOK_HANDLE)
 ZEPSILON=100._JPRB*EPSILON(ZEPSILON)
 
 ZENTRSFC  = 0.2_JPRB       ! factor for surface based top entrainment 
-ZENTRRAD  = 0.2_JPRB       ! factor for radiative based top entrainment 
+ZENTRRAD  = 0.3_JPRB       ! factor for radiative based top entrainment 
 ZCD       = 1.0_JPRB
 ZCB       = 5.0_JPRB
 ZEPS      = 1.E-10_JPRB

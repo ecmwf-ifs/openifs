@@ -1,10 +1,16 @@
 ! radiation_homogeneous_lw.F90 - Longwave homogeneous-column (no cloud fraction) solver
 !
-! Copyright (C) 2016-2019 ECMWF
+! (C) Copyright 2016- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
-! License: see the COPYING file for details
 !
 ! Modifications
 !   2017-04-11  R. Hogan  Receive emission/albedo rather than planck/emissivity
@@ -13,6 +19,8 @@
 !   2019-01-14  R. Hogan  Save spectral flux profile if required
 
 module radiation_homogeneous_lw
+
+  public
 
 contains
 
@@ -27,6 +35,7 @@ contains
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
+
     use radiation_config, only         : config_type
     use radiation_cloud, only          : cloud_type
     use radiation_flux, only           : flux_type, indexed_sum_profile
@@ -211,7 +220,7 @@ contains
                        &     *  od_cloud_g) & 
                        &     / od_total
                 end where
-                where (ssa_total > 0.0_jprb)
+                where (ssa_total > 0.0_jprb .and. od_total > 0.0_jprb)
                   g_total = (g(:,jlev,jcol)*ssa(:,jlev,jcol)*od(:,jlev,jcol) &
                        &     +   g_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
                        &     * ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
@@ -223,7 +232,7 @@ contains
                   ssa_total = ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
                        &     * od_cloud_g / od_total
                 end where
-                where (ssa_total > 0.0_jprb)
+                where (ssa_total > 0.0_jprb .and. od_total > 0.0_jprb)
                   g_total = g_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
                        &     * ssa_cloud(config%i_band_from_reordered_g_lw,jlev,jcol) &
                        &     *  od_cloud_g / (ssa_total*od_total)
