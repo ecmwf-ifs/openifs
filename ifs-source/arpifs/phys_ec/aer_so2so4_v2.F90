@@ -440,7 +440,7 @@ DO JK=1,KLEV
             ZTend_OH_Sum = ZTend_OH_Sum + ZTend_OH
 
             ! -- Update gas phase concentrations
-            ZC_OH_gas  = ZC_OH_gas  - ZTend_OH ! in this test version, no depletion of OH during oxidation
+            !ZC_OH_gas  = ZC_OH_gas  - ZTend_OH ! in this test version, no depletion of OH during oxidation
             ZC_SO2_gas = ZC_SO2_gas - ZTend_OH
 
          ENDDO
