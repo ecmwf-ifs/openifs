@@ -875,7 +875,7 @@ CONTAINS
        pxtm1,         ppd_hl,                                    &
        aer_tau_sw_vr, aer_piz_sw_vr, aer_cg_sw_vr, aer_tau_lw_vr, rwet_m7, &
        & ldiag_aeropt, kb_diag, ntype_diaf, &
-       & lambda_diag, zaer_tau_diag, zaer_ssa_diag, zaer_asym_diag)
+       & lambda_diag, zaer_tau_diag, zaer_ssa_diag, zaer_asym_diag, zaer_lidarR_diag)
     ! *ham_rad* calculates optical properties for
     !            aerosol distributions from look-up
     !            tables.
@@ -949,10 +949,13 @@ CONTAINS
     real(dp),intent(inout) :: zaer_tau_diag(kbdim,klev,kb_diag)
     real(dp),intent(inout) :: zaer_ssa_diag(kbdim,klev,kb_diag)
     real(dp),intent(inout) :: zaer_asym_diag(kbdim,klev,kb_diag)
+    real(dp),intent(inout) :: zaer_lidarR_diag(kbdim,klev,kb_diag)
+    real(dp) :: zaer_tau180_diag(kbdim,klev,kb_diag)
 
     REAL(dp) :: sigma_diag(kbdim,klev,kb_diag,nclass),    &
                 omega_diag(kbdim,klev,kb_diag,nclass), &
                 asym_diag (kbdim,klev,kb_diag,nclass), &
+                pp180_diag(kbdim,klev,kb_diag,nclass), &
                 nr_diag(kbdim,klev,kb_diag,nclass),       &
                 ni_diag(kbdim,klev,kb_diag,nclass)
     !--- Local Variables:
@@ -977,7 +980,8 @@ CONTAINS
                 zni2d(kbdim,klev),                         & ! 2D subset of 4D array ni
                 zsigma2d(kbdim,klev),                      & ! 2D subste of 4D array sigma
                 zomega2d(kbdim,klev),                      & ! 2D subste of 4D array omega
-                zasym2d(kbdim,klev)                          ! 2D subste of 4D array asym
+                zasym2d(kbdim,klev),                       & ! 2D subste of 4D array asym
+                zpp180deg2d(kbdim,klev)                      ! Phase function at 180 degrees
 !<<gf
 
 
@@ -1338,6 +1342,9 @@ CONTAINS
  !--- 3) Calculate optical properties for diagnostic bands:
 
       IF (ldiag_aeropt) THEN
+       zaer_tau180_diag(1:kproma,:,:) = 0.0_dp
+       zaer_lidarR_diag(1:kproma,:,:) = 0.0_dp
+       pp180_diag(1:kproma,:,:,:) = 0.0_dp
        IF (ANY(nrad(:)==1) .OR. ANY(nrad(:)==3)) THEN
 
        DO jclass=1, nclass
@@ -1413,7 +1420,8 @@ CONTAINS
                                          zxx,   znr2d,     zni2d,                &
                                          itable, lut1_sigma, zsigma2d,           & 
                                                  lut1_omega, zomega2d,           &
-                                                 lut1_g,     zasym2d             )
+                                                 lut1_g,     zasym2d,            &
+                                                 lut1_pp180, zpp180deg2d)
 
                 ELSE 
 
@@ -1421,7 +1429,8 @@ CONTAINS
                                          zxx,   znr2d,     zni2d,                &
                                          itable, lut2_sigma, zsigma2d,           &
                                                  lut2_omega, zomega2d,           &
-                                                 lut2_g,     zasym2d             )
+                                                 lut2_g,     zasym2d,            &
+                                                 lut2_pp180, zpp180deg2d)
 
                 END IF
 #ifdef HAMMOZ
@@ -1431,6 +1440,7 @@ CONTAINS
                 sigma_diag(1:kproma,:,jwv,jclass) = zsigma2d(1:kproma,:)*lambda_diag(jwv)*lambda_diag(jwv)
                 omega_diag(1:kproma,:,jwv,jclass) = zomega2d(1:kproma,:)
                 asym_diag(1:kproma,:,jwv,jclass)  = zasym2d(1:kproma,:)
+                pp180_diag(1:kproma,:,jwv,jclass) = zpp180deg2d(1:kproma,:)
                 nr_diag(1:kproma,:,jwv,jclass)    = znr2d(1:kproma,:)
                 ni_diag(1:kproma,:,jwv,jclass)    = zni2d(1:kproma,:)
                 !<<gf
@@ -1497,6 +1507,8 @@ CONTAINS
                                             zaer_tau_diag_vr(jl,ikl,jwv,jclass)*omega_diag(jl,ikl,jwv,jclass)
                    zaer_asym_diag(jl,jk,jwv) =zaer_asym_diag(jl,jk,jwv) + &
                                             zaer_tau_diag_vr(jl,ikl,jwv,jclass)*omega_diag(jl,ikl,jwv,jclass)*asym_diag(jl,ikl,jwv,jclass)
+                   zaer_tau180_diag(jl,jk,jwv) = zaer_tau180_diag(jl,jk,jwv) + &
+                                            zaer_tau_diag_vr(jl,ikl,jwv,jclass)*omega_diag(jl,ikl,jwv,jclass)*pp180_diag(jl,ikl,jwv,jclass)
                 END DO
              END DO
           END DO
@@ -1508,6 +1520,10 @@ CONTAINS
                  zaer_asym_diag(jl,jk,jwv) = zaer_asym_diag(jl,jk,jwv)/zaer_ssa_diag(jl,jk,jwv)
                  zaer_ssa_diag(jl,jk,jwv)  = zaer_ssa_diag(jl,jk,jwv)/ zaer_tau_diag(jl,jk,jwv)
                 END IF
+               ! The phase function is normalized to 4*pi; guard the backscatter denominator.
+               IF (zaer_tau180_diag(jl,jk,jwv) > THRESHOLD) THEN
+                 zaer_lidarR_diag(jl,jk,jwv) = 4.0_dp*pi*zaer_tau_diag(jl,jk,jwv)/zaer_tau180_diag(jl,jk,jwv)
+               END IF
              END DO
           END DO
 
@@ -1571,7 +1587,8 @@ CONTAINS
                               pxx,    pnr,   pni,     &
                               ktable, plut1,  pfit1,  &
                                       plut2,  pfit2,  &
-                                      plut3,  pfit3   )
+                                      plut3,  pfit3,  &
+                                      plut4,  pfit4   )
   !<<dod
   
     ! *ham_rad_fitplus* returns linear interpolated fit of the 
@@ -1604,12 +1621,14 @@ CONTAINS
     REAL(dp), INTENT(out) :: pfit1(kbdim,klev)
     REAL(dp), INTENT(out), OPTIONAL :: pfit2(kbdim,klev)
     REAL(dp), INTENT(out), OPTIONAL :: pfit3(kbdim,klev)
+    REAL(dp), INTENT(out), OPTIONAL :: pfit4(kbdim,klev)
 
     REAL(dp), INTENT(in)  :: pnr(kbdim,klev),  pni(kbdim,klev), pxx(kbdim,klev)
 
     REAL(dp), INTENT(in)  :: plut1(0:Nnrmax(ktable), 0:Nnimax(ktable), 0:Ndismax(ktable))
     REAL(dp), INTENT(in), OPTIONAL  :: plut2(0:Nnrmax(ktable), 0:Nnimax(ktable), 0:Ndismax(ktable))
     REAL(dp), INTENT(in), OPTIONAL  :: plut3(0:Nnrmax(ktable), 0:Nnimax(ktable), 0:Ndismax(ktable))
+    REAL(dp), INTENT(in), OPTIONAL  :: plut4(0:Nnrmax(ktable), 0:Nnimax(ktable), 0:Ndismax(ktable))
 
     !--- Local variables:
 
@@ -1706,12 +1725,14 @@ CONTAINS
                 
                 IF (PRESENT(plut2)) pfit2(jl,jk) = plut2(Nnr, Nni,Ndis)
                 IF (PRESENT(plut3)) pfit3(jl,jk) = plut3(Nnr, Nni,Ndis)
+                IF (PRESENT(plut4)) pfit4(jl,jk) = plut4(Nnr, Nni,Ndis)
 
              ELSE
                 
                 pfit1(jl,jk)=0._dp
                 IF (PRESENT(plut2)) pfit2(jl,jk) = 0._dp
                 IF (PRESENT(plut3)) pfit3(jl,jk) = 0._dp
+                IF (PRESENT(plut4)) pfit4(jl,jk) = 0._dp
 
              END IF
           END DO
