@@ -369,11 +369,14 @@ LAUNCHER_NPROC_FLAG="-np"
 LAUNCHER_NTHREAD_FLAG=""
 LAUNCHER_OTHER_FLAGS=""
 
-if [[ "${ECPLATFORM:-"unset"}" == "hpc2020" ]] ; then
+if [[ "${OIFS_PLATFORM:-"unset"}" == "hpc2020" ]] ; then
     LAUNCHER="srun -c${OIFS_NPROC} --mem=64GB --time=60"
     LAUNCHER_NPROC_FLAG="-n"
     LAUNCHER_NTHREAD_FLAG="--cpus-per-task"
     export OMP_PROC_BIND=true
+    export OMP_PLACES=threads
+fi
+if [[ "${OIFS_PLATFORM:-"unset"}" == "ewc" ]] ; then
     export OMP_PLACES=threads
 fi
 
