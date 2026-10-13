@@ -13,7 +13,7 @@ Building and running OpenIFS depends on a set of global environment variables. T
   * If you do not have access to the ECMWF hpc2020 file system, or if you wish to install the climatological input files in a local directory of your choice, then you can download the required data for your model cycle from this site: [OpenIFS download: ifsdata](https://openifs.ecmwf.int/data/ifsdata/).
     * As a minimum you will require the packages `${OIFS_CYCLE}/rtables/rtables.tar.gz` and `${OIFS_CYCLE}/ifsdata/ifsdata.tar.gz`, where `${OIFS_CYCLE}` matches the environment variable.
     * You will also need to download the package for each of your selected horizontal grid resolutions from `${OIFS_CYCLE}/${OIFS_CLIMATE}/`. For example, for a T255 grid at model cycle 48r1 you will at the very least need the package `48r1_climate.v020_255.tar.gz`. Installing the packages for all supported horizontal grids will require a lot of disk space and is therefore not recommended.
-    * Download and extract the files in these tarballs into the same directory in your chosen location, and set the variable `OIFS_DATA_DIR` to the path of this directory.
+  * Download and extract the archives into `$OIFS_DATA_DIR/rtables`, `$OIFS_DATA_DIR/ifsdata`, and `$OIFS_DATA_DIR/$OIFS_CLIMATE`, respectively, and set `OIFS_DATA_DIR` to their parent directory.
 * `OIFS_EXEC` describes the location and file name for the OpenIFS 3D executable, e.g. `$OIFS_HOME/build/bin/ifsMASTER.SP`, which is the single-precision executable for the 3D model.
 
 > `$OIFS_HOME/oifs-config.edit_me.sh` also contains environment variables that relate to the Single-Column Model (SCM).
