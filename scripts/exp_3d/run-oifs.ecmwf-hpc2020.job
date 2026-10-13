@@ -24,7 +24,7 @@ set -eu -o pipefail
 #==========================================================================
 #
 #
-#    Submit OpenIFS 48r1 model experiment to scheduler
+#    Submit OpenIFS model experiment to scheduler
 #
 #    ECMWF Atos HPCF hpc2020
 #

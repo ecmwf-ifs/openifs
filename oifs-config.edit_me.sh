@@ -27,7 +27,7 @@ export OIFS_PLATFORM="local"
 #--- set principal OIFS variables ------------------------------
 
 export OIFS_CYCLE=49r1
-export OIFS_CLIMATE="climate.v020"
+export OIFS_CLIMATE="climate.v022"
 
 #---Base code assumes openifs and openifs-expt are installed
 #---in $HOME. Either these can be changed by the user------------
@@ -83,9 +83,9 @@ export SCM_EXEC="${OIFS_BLD_PARENT}/bin/MASTER_scm.SP"
 
 #---Default assumed paths, only change if you know what you are doing
 export SCM_TEST="${OIFS_HOME}/scripts/scm"
-export SCM_VERSIONDIR="${OIFS_EXPT}/scm_openifs/49r1"
+export SCM_VERSIONDIR="${OIFS_EXPT}/scm_openifs/${OIFS_CYCLE}"
 export SCM_PROJDIR="${SCM_VERSIONDIR}/scm-projects"
-export SCM_RUNDIR="${SCM_PROJDIR}/ref49r1"
+export SCM_RUNDIR="${SCM_PROJDIR}/ref${OIFS_CYCLE}"
 export SCM_LOGFILE="${SCM_RUNDIR}/scm_run_log.txt"
 
 alias scm_env="env -0 | sort -z | tr '\0' '\n' | grep -a SCM_"

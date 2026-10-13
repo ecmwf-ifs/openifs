@@ -12,7 +12,7 @@
 #=====================================================================
 #
 #
-#   Run script for OpenIFS 48R1
+#   Run script for OpenIFS
 #
 #
 #   This script should be either called interactively or
@@ -196,8 +196,9 @@ export GRIB_DEFINITION_PATH=${OIFS_BLD_PARENT}/share/eccodes/definitions
 export GRIB_SAMPLES_PATH=${OIFS_BLD_PARENT}/share/eccodes/ifs_samples/grib1_mlgrib2
 
 # IFS INSTALLATION
+IFS_CYCLE="${OIFS_CYCLE:-}"
+export IFS_CYCLE="${IFS_CYCLE//r/R}"
 export IFS_EXECUTABLE=${OIFS_EXEC}
-export IFS_CYCLE=48R1
 export IFS_NUNDEFLD=-99999
 export IFS_HAVE_OOPS=0
 export NUNDEFLD=-99999
@@ -369,11 +370,14 @@ LAUNCHER_NPROC_FLAG="-np"
 LAUNCHER_NTHREAD_FLAG=""
 LAUNCHER_OTHER_FLAGS=""
 
-if [[ "${ECPLATFORM:-"unset"}" == "hpc2020" ]] ; then
+if [[ "${OIFS_PLATFORM:-"unset"}" == "hpc2020" ]] ; then
     LAUNCHER="srun -c${OIFS_NPROC} --mem=64GB --time=60"
     LAUNCHER_NPROC_FLAG="-n"
     LAUNCHER_NTHREAD_FLAG="--cpus-per-task"
     export OMP_PROC_BIND=true
+    export OMP_PLACES=threads
+fi
+if [[ "${OIFS_PLATFORM:-"unset"}" == "ewc" ]] ; then
     export OMP_PLACES=threads
 fi
 

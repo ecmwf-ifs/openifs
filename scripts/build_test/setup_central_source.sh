@@ -35,15 +35,14 @@ usage_info()
     log_echo "----------------------------------------------------------------"
     log_echo "setup_central_source.sh sets up a directory in a user defined location" 
     log_echo "and then copies the standard openifs bundle dependencies, i.e. "
-    log_echo "ecbuild, eccodes, multio, fckit, eckit, metkit, fcb5, atlas and fcm"
+    log_echo "ecbuild, eccodes, multio, fckit, eckit, metkit, fdb5, atlas and fcm"
     log_echo ""
     log_echo "setup_central_source.sh usage :"
-    log_echo "setup_central_source.sh -c <cycle>"
+    log_echo "setup_central_source.sh [-h]"
     log_echo ""
-    log_echo "where :"
-    log_echo "-c cycle. Default is 48r1"
-    log_echo "This scripts requires source oifs-config.edit_me.sh, which "
-    log_echo "is found in the openifs package directory"
+    log_echo "The cycle is taken from OIFS_CYCLE, and the target directory is"
+    log_echo "\$OIFS_CENTRAL_SRC/\$OIFS_CYCLE. This script requires sourcing"
+    log_echo "oifs-config.edit_me.sh, which is found in the openifs package directory"
     log_echo "----------------------------------------------------------------"
     exit 1 
 }
@@ -69,6 +68,10 @@ check_user_input() {
 check_oifs_config() {
 
     log_echo "[INFO]: Begin check oifs-config.edit_me.sh input"
+
+    for v in OIFS_HOME OIFS_CENTRAL_SRC OIFS_CYCLE OIFS_TEST; do
+        [[ -n "${!v-}" ]] || { log_echo "[ERROR]: $v is not set - source oifs-config.edit_me.sh"; exit 1; }
+    done
 
     if [[ -n "${OIFS_HOME-}" && -d "${OIFS_HOME}" ]]; then 
         #
@@ -107,7 +110,7 @@ check_oifs_config() {
     else 
         log_echo "[ERROR]: OIFS_HOME does not exist or OIFS_HOME is not a directory."
         log_echo "         Please check oifs-config.edit_me.sh in the OpenIFS directory"
-        log_echo "         and then source, e.g. source ~/openifs-48r1/oifs-config.edit_me.sh "
+        log_echo "         and then source, e.g. source \$HOME/openifs/oifs-config.edit_me.sh "
         log_echo "         EXITING"
         exit 1 
     fi

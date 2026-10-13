@@ -19,12 +19,12 @@
 #=================================================================================
 #
 #
-#   Post-processing script for OpenIFS 48r1
+#   Post-processing script for OpenIFS
 #
 #
 #   Requirements:
 #   -------------
-#   Requires an OpenIFS 48r1 installation (access to the oifs-config*sh file)
+#   Requires an OpenIFS installation (access to the oifs-config*sh file)
 #   Requires OpenIFS experiment directories having the following structure:
 #   ./expid/YYYYMMDDHH/
 #   This script should be located one directory level above the expid directories
