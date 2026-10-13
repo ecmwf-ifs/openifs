@@ -17,6 +17,7 @@ SHELL ["/bin/bash", "-l", "-c"]
 ARG OPENIFS_DIR=
 ARG OPENIFS_EXPT_DATA=openifs-expt
 ARG OPENIFS_EXPT_URL=
+ARG OPENIFS_EXPT_ID=
 ARG SCM_URL=
 ARG OPENIFS_REPO_URL=
 ARG OPENIFS_BRANCH=
@@ -74,7 +75,7 @@ COPY --chown=openifs:openifs ${OPENIFS_DIR} /home/openifs/${OPENIFS_DIR}
 RUN sed -i 's|export OIFS_HOME="${HOME}/.*"|export OIFS_HOME="${HOME}/'${OPENIFS_DIR}'"|g' oifs-config.edit_me.sh && \
     echo "source /home/openifs/${OPENIFS_DIR}/oifs-config.edit_me.sh">> /home/openifs/.bashrc && \
     source /home/openifs/${OPENIFS_DIR}/oifs-config.edit_me.sh && \
-    cd $OIFS_EXPT/ab7z/2016092500 && \
+    cd $OIFS_EXPT/${OPENIFS_EXPT_ID}/2016092500 && \
     cp $OIFS_RUN_SCRIPT/oifs-run .
 
 # Download and extract all OpenIFS data files in a separate RUN layer so that

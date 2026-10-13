@@ -132,6 +132,16 @@ def modify_dockerfile(dockerfile_path, config):
 
     openifs_version = config['openifs_version']
     climate_version = config.get('climate_version', '')
+    openifs_expt_id = config.get('openifs_expt_id', '')
+
+    # Expand {openifs_version}, {climate_version} and {openifs_expt_id} in the URLs.
+    def expand(url):
+        return url.format(openifs_version=openifs_version,
+                          climate_version=climate_version,
+                          openifs_expt_id=openifs_expt_id)
+
+    scm_url = expand(config.get('scm_url', ''))
+    openifs_expt_url = expand(config.get('openifs_expt_url', ''))
 
     if include_openifs_data_downloads:
         base_data_url = config['openifs_data_base_url']
@@ -156,8 +166,8 @@ def modify_dockerfile(dockerfile_path, config):
         logger.info("Validating URLs to use in the Dockerfile, before image build...")
 
         urls_to_check = {
-            'SCM package': config.get('scm_url', ''),
-            'Experiment package': config.get('openifs_expt_url', ''),
+            'SCM package': scm_url,
+            'Experiment package': openifs_expt_url,
         }
 
         if include_openifs_data_downloads:
@@ -199,8 +209,9 @@ def modify_dockerfile(dockerfile_path, config):
     content = content.replace('FROM docker.io/library/gcc:13.2.0-bookworm',
                               f'FROM docker.io/library/gcc:{config["base_docker_image"]}')
     content = content.replace('ARG OPENIFS_DIR=', f'ARG OPENIFS_DIR={config["openifs_version"]}')
-    content = content.replace('ARG OPENIFS_EXPT_URL=', f'ARG OPENIFS_EXPT_URL={config.get("openifs_expt_url", "")}')
-    content = content.replace('ARG SCM_URL=', f'ARG SCM_URL={config.get("scm_url", "")}')
+    content = content.replace('ARG OPENIFS_EXPT_URL=', f'ARG OPENIFS_EXPT_URL={openifs_expt_url}')
+    content = content.replace('ARG OPENIFS_EXPT_ID=', f'ARG OPENIFS_EXPT_ID={openifs_expt_id}')
+    content = content.replace('ARG SCM_URL=', f'ARG SCM_URL={scm_url}')
     content = content.replace('ARG OPENIFS_REPO_URL=', f'ARG OPENIFS_REPO_URL={config["openifs_repo_url"]}')
     content = content.replace('ARG OPENIFS_BRANCH=', f'ARG OPENIFS_BRANCH={config["openifs_branch"]}')
     content = content.replace('ARG IFSDATA_URL=', f'ARG IFSDATA_URL={ifsdata_url}')

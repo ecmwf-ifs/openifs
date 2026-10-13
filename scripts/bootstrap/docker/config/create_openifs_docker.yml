@@ -9,12 +9,19 @@
 # nor does it submit to any jurisdiction.
 #
 
+# The only places to change when moving to a new model cycle or climate version
+# are openifs_version, climate_version and openifs_expt_id. They must match
+# OIFS_CYCLE and OIFS_CLIMATE in oifs-config.edit_me.sh.
+
 # OpenIFS version (used for directory naming, image tagging, and as a
 # component of every data-archive URL below).
-openifs_version : "48r1"
+openifs_version : "49r1"
 
 # Climate data version (embedded in the climate tarball filename).
-climate_version : "climate.v020"
+climate_version : "climate.v022"
+
+# Example 3-D experiment id (tarball name and experiment directory name).
+openifs_expt_id : "achx"
 
 # OpenIFS repository (must be accessible from the machine running this script).
 openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
@@ -23,11 +30,14 @@ openifs_repo_url : "https://github.com/ecmwf-ifs/openifs.git"
 # climate tarballs are derived from this in docker_lib.modify_dockerfile().
 openifs_data_base_url : "https://openifs.ecmwf.int/data/ifsdata"
 
+# The URLs below may use {openifs_version}, {climate_version} and
+# {openifs_expt_id}; these are substituted from the keys above.
+
 # SCM experiment data archive.
-scm_url : "https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz"
+scm_url : "https://openifs.ecmwf.int/data/scm/{openifs_version}/scm_openifs_{openifs_version}.tar.gz"
 
 # Low-resolution 3-D experiment package.
-openifs_expt_url : "https://openifs.ecmwf.int/data/experiments/2016-09_Karl/48r1/ab7z.tar.gz"
+openifs_expt_url : "https://openifs.ecmwf.int/data/experiments/2016-09_Karl/{openifs_version}/{openifs_expt_id}.tar.gz"
 
 # The OpenIFS branch to build inside the Docker image.
 # openifs_source controls where the OpenIFS tree comes from.

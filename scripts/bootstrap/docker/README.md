@@ -73,7 +73,13 @@ The configuration file, `config/create_openifs_docker.yml`, controls the build o
 
 ```yaml
 # OpenIFS version (used for directory naming and image tagging)
-openifs_version: "48r1"
+openifs_version: "49r1"
+
+# Climate data version and example experiment id; with openifs_version these
+# are substituted for {climate_version}, {openifs_version} and {openifs_expt_id}
+# in the URLs below, so a new cycle only needs these three keys changed.
+climate_version: "climate.v022"
+openifs_expt_id: "achx"
 
 # Where to get the OpenIFS source tree. Three modes:
 #   a branch name    -> clone that branch from openifs_repo_url (default)
@@ -85,7 +91,7 @@ openifs_source: "main"
 openifs_repo_url: "https://github.com/ecmwf-ifs/openifs.git"
 
 # SCM experiment data URL (tar.gz or tar file)
-scm_url: https://openifs.ecmwf.int/data/scm/48r1/scm_openifs_48r1.tar.gz
+scm_url: https://openifs.ecmwf.int/data/scm/{openifs_version}/scm_openifs_{openifs_version}.tar.gz
 
 # Force removal of existing source directory before re-staging
 force_reclone: False
@@ -128,11 +134,11 @@ openifs_build_docker_dir: "~/oifs_docker_create_dir"
 The [Quick Start](#quick-start) section describes using `create-oifs-docker.py` to automate the installation, build and testing of OpenIFS in a container. If this is successful, the container is removed and success is reported, e.g.
 
 ```bash
-[INFO] __main__.run_openifs_test : SUCCESS: All OpenIFS tests passed for openifs-48r1-gcc13:main
+[INFO] __main__.run_openifs_test : SUCCESS: All OpenIFS tests passed for openifs-49r1-gcc13:main
 [INFO] __main__.main : All tests passed successfully
 [INFO] __main__.main : ======================================================================
 [INFO] __main__.main : Summary:
-[INFO] __main__.main :   Image: openifs-48r1-gcc13:main
+[INFO] __main__.main :   Image: openifs-49r1-gcc13:main
 [INFO] __main__.main :   Built: Yes
 [INFO] __main__.main :   Tests: Passed
 [INFO] __main__.main : ======================================================================
@@ -147,7 +153,7 @@ Since the image has been built and is retained, the container can be re-created 
 docker run -it <image-name>
 ```
 
-where the image name can be taken from the report, e.g `openifs-48r1-gcc13:main`, or it can be found in the output of `docker ps -a` which lists stopped containers alongside their image names.
+where the image name can be taken from the report, e.g `openifs-49r1-gcc13:main`, or it can be found in the output of `docker ps -a` which lists stopped containers alongside their image names.
 
 This is a clean container in which `source oifs-config.edit_me.sh` is run upon start up. This container can be used as an environment for building, testing and running OpenIFS. For example, once started `$OIFS_TEST/openifs-test.sh -cbt` can be executed (see [Main OpenIFS README](../../README.md)).
 
