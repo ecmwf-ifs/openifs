@@ -10,7 +10,7 @@ The description in this document can be used for forecast experiments of the Sto
 
 An **example forecast experiment** has been prepared. You will need to download the **experiment data pack** matching your model cycle.
 
-* A listing of the available experiments, including their four-character alphanumeric `<experiment-id>` and download information, is shown in the table found in document [OpenIFS-experiment-list](./oifs_experiment_list.md). You should **download the experiment data pack** for your model cycle and model grid N128 (T255). Not all cycles provide an experiment at N128; in such cases, use any available experiment.
+* A listing of the available experiments, including their four-character alphanumeric `<experiment-id>` and download information, is shown in the table found in document [OpenIFS-experiment-list](./oifs_experiment_list.md). You should **download the experiment data pack** for your model cycle and model grid N128 (T255). This guide requires an N128 (T255) experiment; if your cycle does not provide one, use the N80 (T159) workflow in the top-level [README.md](../README.md) instead.
 
 > Example: For model cycle 48r1 the `<experiment-id>` is `ab2a` and you can download the tarball from here: https://openifs.ecmwf.int/data/experiments/2016-09_Karl/48r1/ab2a.tar.gz
 
