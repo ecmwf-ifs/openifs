@@ -1,0 +1,25 @@
+owner: ecmwf
+
+maintainers:
+  - Adehill
+
+checks:
+  ensure-assignee: {}
+  validate-target-branch:
+    allowed-branches:
+      - main
+      - main_staging
+    allowed-patterns:
+      - "openifs-*"
+      - "lts/*"
+      - "mts/*"
+      - "release/*"
+  assign-reviewers:
+    exclude-author: true
+    exclude-existing: true
+  copyright-audit:
+    reviewer: Adehill
+    skip-label: "prtk:skip-copyright"
+    allowed-holders:
+      - ECMWF
+      - European Centre for Medium-Range Weather Forecasts
