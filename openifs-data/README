@@ -1,0 +1,13 @@
+This directory is the default location for static OpenIFS data files.
+
+The data files can be downloaded from:
+https://openifs.ecmwf.int/data/ifsdata/
+
+Note: Depending on the number of selected model grid resolutions in the
+climate-version files, the downloaded data volume can be substantial.
+By default, all data packages are extracted to the $OIFS_HOME/openifs-data/
+directory. Please ensure that sufficient disk space is available.
+
+Alternatively, you can replace this directory with a symbolic link to
+another location on your file system.
+
