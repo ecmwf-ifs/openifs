@@ -13,7 +13,7 @@ This repository contains code and scripts needed to build and run OpenIFS and th
 
 Contact information for OpenIFS Support is available on the OpenIFS home page: https://openifs.ecmwf.int/wiki. Support is given on a best-effort basis by the developers.
 
-In addition to https://openifs.ecmwf.int/wiki, the [OpenIFS User Forums](https://forum.ecmwf.int/) are available to post support questions. These are monitored by the OpenIFS support team as well as members of the OpenIFS user community.
+In addition, the [OpenIFS User Forums](https://forum.ecmwf.int/) are available to post support questions. These are monitored by the OpenIFS support team as well as members of the OpenIFS user community.
 
 ## Licence
 
@@ -59,7 +59,7 @@ OpenIFS is available directly from this repository and it can be extracted by ei
 * Extract just the release branch using a shallow clone that targets a specific release branch, e.g.
   * `git clone --depth 1 --branch openifs-lts/CY48R1.1 --single-branch https://github.com/ecmwf-ifs/openifs.git openifs-48r1.1`
 * Extract a tagged release (shallow clone):
-  * `git clone --depth 1 --branch openifs-48r1.1_20260825 --single-branch https://github.com/ecmwf-ifs/openifs.git openifs-48r1.1_20260825`
+  * `git clone --depth 1 --branch openifs-48r1.1_20261116 --single-branch https://github.com/ecmwf-ifs/openifs.git openifs-48r1.1_20261116`
 
 > Note: cloning a tag will result in a detached HEAD. If you plan to make commits, create a branch at that tag after cloning:
 
@@ -85,7 +85,7 @@ The most important environment variable in `oifs-config.edit_me.sh` is `OIFS_HOM
 Once edited, the platform configuration file is loaded using the following command:
 
 ```bash
-source /path/to/file/location/oifs-config.edit_me.sh
+source </path/to/installation>/oifs-config.edit_me.sh
 ```
 
 For example, if you extracted OpenIFS into `$HOME/openifs`, the platform file would be loaded using
@@ -105,11 +105,9 @@ cd $OIFS_HOME
 $OIFS_TEST/openifs-test.sh -cb
 ```
 
-where:
+where `$OIFS_TEST` is defined in the platform configuration file (`oifs-config.edit_me.sh`) as `$OIFS_HOME/scripts/build_test`.
 
-`$OIFS_TEST` is defined in the platform configuration file (`oifs-config.edit_me.sh`) as `$OIFS_HOME/scripts/build_test`.
-
-* `-c` creates a `source` directory in `$OIFS_HOME`, which is used to collect all the sources defined in the `bundle.yml`, in preparation for the build
+* `-c` creates a `source` directory in `$OIFS_HOME` to collect all the sources defined in the `bundle.yml` in preparation for the build
 * `-b` builds `source`. This step creates the directory `build` in `$OIFS_HOME`, which is used to build and store the OpenIFS and SCM executables.
 
 For more details about `openifs-test.sh` and the available options, please refer to [OpenIFS-build-options](docs/oifs_build_options.md).
@@ -171,7 +169,7 @@ Create the required directory structure, then download and install the static fi
 
 ```bash
 # Replace this path with the actual installation path.
-source "/path/to/installation/oifs-config.edit_me.sh"
+source "</path/to/installation>/oifs-config.edit_me.sh"
 
 # Step 1: Create the directory structure for static files.
 mkdir -p \
@@ -219,7 +217,7 @@ To carry out the above steps, run the following commands in your terminal:
 
 ```bash
 # Replace this path with the actual installation path:
-source "/path/to/installation/oifs-config.edit_me.sh"
+source </path/to/installation>/oifs-config.edit_me.sh
 
 cd $OIFS_EXPT
 
@@ -353,7 +351,7 @@ We show below the installation steps:
 
 ```bash
 # Replace this path with the actual installation path:
-source "/path/to/installation/oifs-config.edit_me.sh"
+source "</path/to/installation>/oifs-config.edit_me.sh"
 
 cd $OIFS_EXPT
 wget https://openifs.ecmwf.int/data/scm/${OIFS_CYCLE}/scm_openifs_${OIFS_CYCLE}.tar.gz
